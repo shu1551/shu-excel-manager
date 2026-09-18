@@ -5779,7 +5779,7 @@ Sub 横持ちテーブルを縦持ちに変換する()
 End Sub
 
 Sub マスタ参照列を計算列に入れる()
-    ' 依頼の語: 計算列を足|マスタ参照|引く列|参照する列|コードの右|名前の列|構造化参照|名称を引|名前を引
+    ' 依頼の語: 計算列を足|マスタ参照|引く列|参照する列|コードの右|名前の列|構造化参照|名称を引|名前を引|名を引
     ' 扱う: マスタ参照列追加 計算列 構造化参照 テーブルに
     ' 見出し: なし
     ' 形: 数の列 日付の列 テーブル
@@ -7531,7 +7531,7 @@ Sub 項目別合計表を右に作る()
     ' 扱う: 項目別合計 SUMIF合計表 行を足
     ' 見出し: なし
     ' 選ぶ列: 2
-    ' 形: 数の列 日付の列
+    ' 形: 数の列
 
     Dim ws As Worksheet
     Dim colKey As Long, colVal As Long
@@ -7559,27 +7559,29 @@ Sub 項目別合計表を右に作る()
     urLastRow = ur.Row + ur.rows.Count - 1
     urRight = ur.Column + ur.Columns.Count - 1
 
-    Dim testRow As Long, testC As Long, numCount As Long
+    ' 見出し行を探す: 選んだ2列の両方に値がある最初の行を本文の開始とし、その1行上を見出しとする
+    ' ただし表題行などで数値でない行が連続することがあるので、選んだ列の本文開始を探す
     firstDataRow = 0
+    Dim testRow As Long
+    Dim selCol1HasVal As Boolean, selCol2HasVal As Boolean
     For testRow = urFirstRow To urLastRow
-        numCount = 0
-        For testC = ur.Column To urRight
-            cellVal = ws.Cells(testRow, testC).Value
-            If Not isEmpty(cellVal) And cellVal <> "" Then
-                If IsNumeric(cellVal) Or IsDate(cellVal) Then
-                    numCount = numCount + 1
-                End If
+        selCol1HasVal = Not isEmpty(ws.Cells(testRow, colKey).Value) And ws.Cells(testRow, colKey).Value <> ""
+        selCol2HasVal = Not isEmpty(ws.Cells(testRow, colVal).Value) And ws.Cells(testRow, colVal).Value <> ""
+        If selCol1HasVal And selCol2HasVal Then
+            ' 両方に値がある。colValが数値なら本文開始候補
+            If IsNumeric(ws.Cells(testRow, colVal).Value) And Not IsDate(ws.Cells(testRow, colVal).Value) Then
+                firstDataRow = testRow
+                Exit For
             End If
-        Next testC
-        If numCount >= 2 Then
-            firstDataRow = testRow
-            Exit For
         End If
     Next testRow
+
     If firstDataRow = 0 Then Exit Sub
+
     hdrRow = firstDataRow - 1
     If hdrRow < urFirstRow Then hdrRow = urFirstRow
 
+    ' 本文の最終行（合計行は除く）
     lastRow = urLastRow
     Dim checkStr As String
     Dim cc As Long
@@ -7603,6 +7605,7 @@ Sub 項目別合計表を右に作る()
     hdrKeyName = CStr(ws.Cells(hdrRow, colKey).Value)
     hdrValName = CStr(ws.Cells(hdrRow, colVal).Value)
 
+    ' 既存の合計表を探す（見出し行の同じ列名ペアを探す）
     Dim existCol As Long
     existCol = 0
     Dim checkCol As Long
@@ -7632,6 +7635,7 @@ Sub 項目別合計表を右に作る()
         outCol = urRight + 2
     End If
 
+    ' 項目を出現順に収集
     keyCount = 0
     ReDim keys(0)
     For r = firstDataRow To lastRow
@@ -7650,11 +7654,13 @@ Sub 項目別合計表を右に作る()
     ws.Cells(hdrRow, outCol).Value = hdrKeyName
     ws.Cells(hdrRow, outCol + 1).Value = hdrValName
 
+    ' 列アドレスを取得（絶対参照）
     Dim colLetterKey As String, colLetterVal As String
-    colLetterKey = Mid(ws.Cells(firstDataRow, colKey).Address(True, True), 2)
-    colLetterKey = Left(colLetterKey, InStr(colLetterKey, "$") - 1)
-    colLetterVal = Mid(ws.Cells(firstDataRow, colVal).Address(True, True), 2)
-    colLetterVal = Left(colLetterVal, InStr(colLetterVal, "$") - 1)
+    Dim addrKey As String, addrVal As String
+    addrKey = ws.Cells(1, colKey).Address(True, True)
+    colLetterKey = Replace(Split(addrKey, "$")(1), "$", "")
+    addrVal = ws.Cells(1, colVal).Address(True, True)
+    colLetterVal = Replace(Split(addrVal, "$")(1), "$", "")
 
     keyColAddr = "$" & colLetterKey & "$" & firstDataRow & ":$" & colLetterKey & "$" & lastRow
     valColAddr = "$" & colLetterVal & "$" & firstDataRow & ":$" & colLetterVal & "$" & lastRow
@@ -7681,71 +7687,69 @@ End Sub
 
 Sub 項目別件数表を右に作る()
     ' 依頼の語: 項目別件数|項目ごとに何件|項目ごとの件数|選んだ列で項目|項目別の件数|件数表を右|列で件数
-    ' 扱う: 項目別件数 COUNTIF件数表 合計 行を足
+    ' 扱う: 項目別件数 COUNTIF件数表 合計 行を足す
     ' 見出し: なし
     ' 選ぶ列: 1
-    ' 形: 数の列 日付の列
+    ' 形: 数の列
 
     ' 選んでいる列の項目ごとの件数表を明細の右に1列空けて作る
 
     Dim ws As Worksheet
     Dim selCol As Long
-    Dim ur As Range
     Dim hdrRow As Long, dataFirst As Long, dataLast As Long
     Dim r As Long, c As Long
     Dim outCol As Long
     Dim dict As Object
-    Dim keys() As String
     Dim keyCount As Long
-    Dim cellVal As String
-    Dim s As String
     Dim i As Long
     Dim colLetResult As String
     Dim colLetInput As Long
+    Dim rr As Long
+    Dim s As String
 
     Set ws = ActiveSheet
     selCol = Selection.Cells(1, 1).Column
+    hdrRow = Selection.Cells(1, 1).Row
 
-    Set ur = ws.UsedRange
-    Dim urFirstRow As Long, urLastRow As Long, urFirstCol As Long, urLastCol As Long
-    urFirstRow = ur.Row
-    urLastRow = ur.Row + ur.rows.Count - 1
-    urFirstCol = ur.Column
-    urLastCol = ur.Column + ur.Columns.Count - 1
-
-    hdrRow = 0
-    Dim rr As Long
-    For rr = urFirstRow To urLastRow
-        Dim numCount As Long
-        numCount = 0
-        Dim cv As Variant
-        For c = urFirstCol To urLastCol
-            cv = ws.Cells(rr, c).Value
-            If Not isEmpty(cv) Then
-                If IsNumeric(cv) Or IsDate(cv) Then
-                    numCount = numCount + 1
-                End If
+    ' 明細の右端：見出し行で左端列から右へ走査し、最初に空のセルに当たる手前の列
+    Dim mFirstCol As Long, mLastCol As Long
+    mFirstCol = 0
+    mLastCol = 0
+    Dim c2 As Long
+    For c2 = 1 To 1000
+        Dim hv As String
+        hv = Trim(CStr(ws.Cells(hdrRow, c2).Value))
+        If mFirstCol = 0 Then
+            If hv <> "" Then mFirstCol = c2
+        Else
+            If hv = "" Then
+                mLastCol = c2 - 1
+                Exit For
             End If
-        Next c
-        If numCount >= 2 Then
-            If rr > urFirstRow Then
-                hdrRow = rr - 1
-            Else
-                hdrRow = rr
-            End If
-            dataFirst = rr
-            Exit For
         End If
-    Next rr
+    Next c2
+    If mFirstCol = 0 Then Exit Sub
+    If mLastCol = 0 Then
+        ' 右端まで値が続いていた場合、UsedRangeで補完
+        Dim ur As Range
+        Set ur = ws.UsedRange
+        mLastCol = ur.Column + ur.Columns.Count - 1
+    End If
 
-    If hdrRow = 0 Then Exit Sub
+    dataFirst = hdrRow + 1
 
-    dataLast = dataFirst
-    Dim rowLabel As String
+    ' UsedRangeの下端
+    Dim urLastRow As Long
+    Set ur = ws.UsedRange
+    urLastRow = ur.Row + ur.rows.Count - 1
+
+    ' データ最終行（合計行を除く）
+    dataLast = dataFirst - 1
+    Dim rv As String
     For rr = urLastRow To dataFirst Step -1
+        Dim rowLabel As String
         rowLabel = ""
-        For c = urFirstCol To urLastCol
-            Dim rv As String
+        For c = mFirstCol To mLastCol
             rv = Trim(CStr(ws.Cells(rr, c).Value))
             If rv <> "" Then
                 rowLabel = rv
@@ -7754,74 +7758,37 @@ Sub 項目別件数表を右に作る()
         Next c
         If rowLabel = "合計" Or rowLabel = "計" Or rowLabel = "小計" Or rowLabel = "総計" Then
             ' skip
-        Else
+        ElseIf rowLabel <> "" Then
             dataLast = rr
             Exit For
         End If
     Next rr
 
+    If dataLast < dataFirst Then Exit Sub
+
+    ' 出力先列 = mLastCol + 2
+    Dim baseOutCol As Long
+    baseOutCol = mLastCol + 2
+
+    ' 選択列の見出し
     Dim selHdr As String
-    selHdr = CStr(ws.Cells(hdrRow, selCol).Value)
+    selHdr = Trim(CStr(ws.Cells(hdrRow, selCol).Value))
 
-    ' 既存の出力表を探す（見出し行で selHdr が出てくる列を右側から探す）
+    ' 既存の同じ見出し列をbaseOutCol以降で探す
     outCol = 0
-    Dim realLastCol As Long
-    realLastCol = urFirstCol - 1
-    For c = urFirstCol To urFirstCol + 200
-        If Trim(CStr(ws.Cells(hdrRow, c).Value)) <> "" Then
-            realLastCol = c
-        End If
-    Next c
-
-    Dim srcLastCol As Long
-    ' 明細の最終列を求める（selCol が属する明細ブロック）
-    srcLastCol = urFirstCol - 1
-    For c = urFirstCol To selCol + 50
-        Dim hv As String
-        hv = Trim(CStr(ws.Cells(hdrRow, c).Value))
-        If hv <> "" Then
-            srcLastCol = c
-        End If
-        ' 空白列の後を出力域とするため selCol より右で最初の空列を探す
-    Next c
-    ' 明細の右の空列の次が出力先候補 → selHdr が既にあればそこ
-    Dim checkFrom As Long
-    checkFrom = srcLastCol + 2
-    ' 明細最終列は selCol 以降の連続した値ある列の末尾
-    Dim mLastCol As Long
-    mLastCol = selCol
-    For c = selCol To selCol + 100
-        If Trim(CStr(ws.Cells(hdrRow, c).Value)) <> "" Then
-            mLastCol = c
-        Else
-            Exit For
-        End If
-    Next c
-    checkFrom = mLastCol + 2
-
-    ' 既存の出力表を探す
-    For c = checkFrom To realLastCol
+    For c2 = baseOutCol To baseOutCol + 100
         Dim hval As String
-        hval = Trim(CStr(ws.Cells(hdrRow, c).Value))
-        ' 正規化して比較
-        Dim hs As String
-        hs = hval: GoSub 正規化H: hval = hs
-        Dim sh2 As String
-        sh2 = selHdr: GoSub 正規化H: sh2 = hs
-        If hval = sh2 Then
-            outCol = c
+        hval = Trim(CStr(ws.Cells(hdrRow, c2).Value))
+        If hval = selHdr Then
+            outCol = c2
             Exit For
         End If
-    Next c
+    Next c2
+    If outCol = 0 Then outCol = baseOutCol
 
-    If outCol = 0 Then
-        ' 明細の右に1列空けた列
-        outCol = mLastCol + 2
-    End If
-
-    ' 既存出力をクリア
+    ' 既存出力をクリア（outCol と outCol+1）
     Dim clearRow As Long
-    For clearRow = hdrRow To hdrRow + 500
+    For clearRow = hdrRow To hdrRow + 5000
         Dim cv1 As String, cv2 As String
         cv1 = Trim(CStr(ws.Cells(clearRow, outCol).Value))
         cv2 = Trim(CStr(ws.Cells(clearRow, outCol + 1).Value))
@@ -7833,24 +7800,34 @@ Sub 項目別件数表を右に作る()
     ws.Cells(hdrRow, outCol).Value = selHdr
     ws.Cells(hdrRow, outCol + 1).Value = "件数"
 
-    ' 項目を初出順に収集（セル値をそのまま使う・正規化はキー比較のみ）
+    ' 項目を初出順に収集（合計行を除いた本文のみ）
     Set dict = CreateObject("Scripting.Dictionary")
     keyCount = 0
-    ReDim keys(0)
     Dim rawKeys() As String
     ReDim rawKeys(0)
 
     For rr = dataFirst To dataLast
-        Dim rawVal As String
-        rawVal = CStr(ws.Cells(rr, selCol).Value)
-        s = rawVal: GoSub 正規化: cellVal = s
-        If cellVal = "" Then GoTo NextRow
-        If Not dict.Exists(cellVal) Then
-            dict.Add cellVal, 1
-            ReDim Preserve keys(keyCount)
+        Dim isTotal As Boolean
+        isTotal = False
+        rowLabel = ""
+        For c = mFirstCol To mLastCol
+            rv = Trim(CStr(ws.Cells(rr, c).Value))
+            If rv <> "" Then
+                rowLabel = rv
+                Exit For
+            End If
+        Next c
+        If rowLabel = "合計" Or rowLabel = "計" Or rowLabel = "小計" Or rowLabel = "総計" Then
+            isTotal = True
+        End If
+        If isTotal Then GoTo NextRow
+
+        s = CStr(ws.Cells(rr, selCol).Value): GoSub 正規化
+        If s = "" Then GoTo NextRow
+        If Not dict.Exists(s) Then
+            dict.Add s, rr
             ReDim Preserve rawKeys(keyCount)
-            keys(keyCount) = cellVal
-            rawKeys(keyCount) = rawVal
+            rawKeys(keyCount) = CStr(ws.Cells(rr, selCol).Value)
             keyCount = keyCount + 1
         End If
 NextRow:
@@ -7889,11 +7866,7 @@ NextRow:
     Exit Sub
 
 正規化:
-    s = Trim$(StrConv(s, vbWide)): s = Replace(s, ",", "")
-    Return
-
-正規化H:
-    hs = Trim$(StrConv(hs, vbWide)): hs = Replace(hs, ",", "")
+    s = Trim$(StrConv(s, vbNarrow)): s = Replace(s, ",", "")
     Return
 
 ColLetSub:
@@ -8864,7 +8837,7 @@ Sub 重複キーを一覧にする()
     ' 扱う: 重複キー一覧 重複洗い出し 件数 合計
     ' 見出し: なし
     ' 選ぶ列: 1
-    ' 形: 数の列 日付の列
+    ' 形: 数の列
 
     Dim ws As Worksheet
     Dim keyCol As Long, hdrRow As Long
@@ -8994,7 +8967,7 @@ Sub コード列を名称に置き換える()
     ' 扱う: コード名称置き換え 突き合
     ' 見出し: なし
     ' 選ぶ列: 1
-    ' 形: 数の列 日付の列 別のシート 共通の見出しのシート
+    ' 形: 数の列 別のシート 共通の見出しのシート
 
     Dim ws As Worksheet
     Dim selCol As Long
@@ -9135,7 +9108,7 @@ Sub 空欄行を一覧にする()
     ' 扱う: 空欄チェック 入力漏れ 記入漏れ 未記入 合計
     ' 見出し: なし
     ' 選ぶ列: 1
-    ' 形: 数の列 日付の列
+    ' 形: 数の列
 
     Dim ws As Worksheet
     Dim selCol As Long
@@ -9299,7 +9272,7 @@ Sub 空白セルを上の値で埋める()
     ' 扱う: 空白埋め 上の値で埋める 合計
     ' 見出し: なし
     ' 選ぶ列: 1
-    ' 形: 数の列 日付の列
+    ' 形: 数の列
 
     Dim ws As Worksheet
     Dim sel As Range
@@ -9376,7 +9349,7 @@ Sub 文字日付を日付値に直す()
     ' 扱う: 文字日付変換
     ' 見出し: なし
     ' 選ぶ列: 1
-    ' 形: 数の列
+    ' 形: なし
     ' 選んでいる列の文字列日付を日付値に変換し表示形式をyyyy/m/dにする
 
     Dim ws As Worksheet
@@ -9430,7 +9403,7 @@ Sub 文字数字を数値に直す()
     ' 扱う: 文字数字変換 数値変換
     ' 見出し: なし
     ' 選ぶ列: 1
-    ' 形: 日付の列
+    ' 形: なし
 
     Dim ws As Worksheet
     Dim sel As Range
@@ -9537,7 +9510,7 @@ Sub 空行を削除して詰める()
     ' 依頼の語: 空行を消|空白行を削除|空白の行を|明細の間の空|行の抜けを詰め|空行を取り除|空行が無ければ
     ' 扱う: 空行削除 空行詰め 合計
     ' 見出し: なし
-    ' 形: 数の列 日付の列
+    ' 形: 数の列
     ' 表の中の完全な空行（見出し列範囲がすべて空）を上から順に行削除して詰める
     Dim ws As Worksheet
     Set ws = ActiveSheet
@@ -10114,7 +10087,7 @@ Sub 選んだ順に列を並べ替える()
     ' 扱う: 列並べ替え 列順変更 合計
     ' 見出し: なし
     ' 選ぶ列: 3
-    ' 形: 数の列 日付の列
+    ' 形: 数の列
 
     Dim ws As Worksheet
     Set ws = ActiveSheet
@@ -11112,6 +11085,7 @@ NextRow:
     ch.ChartType = xlChartTypeVal
 
     ch.SeriesCollection.NewSeries
+    ' 2系列目を追加
     ch.SeriesCollection.NewSeries
 
     Dim cats() As String
@@ -11523,7 +11497,7 @@ Sub 一覧からひな形を差し込む()
     ' 依頼の語: 差し込|件1枚|1件1枚|通知書を作|流し込|ひな形に|帳票を作|人ごとのシート|行ずつシート
     ' 扱う: 差し込み 帳票 ひな形 一覧シート 合計 印刷
     ' 見出し: なし
-    ' 形: 数の列 日付の列 別のシート
+    ' 形: 数の列 別のシート
 
     Dim wb As Workbook
     Dim listWs As Worksheet
@@ -12020,7 +11994,7 @@ Sub 列の値でシートに分割する()
     ' 扱う: シート分割 シート分け 値ごとに分割 合計
     ' 見出し: なし
     ' 選ぶ列: 1
-    ' 形: 数の列 日付の列
+    ' 形: 数の列
 
     Dim ws As Worksheet
     Dim selCol As Long
@@ -12646,7 +12620,7 @@ Sub テーブルの範囲を拡張する()
     ' 依頼の語: 拡張|下の行|テーブルの範囲|足した行|追加した列
     ' 扱う: テーブル拡張
     ' 見出し: なし
-    ' 形: 数の列 日付の列 テーブル
+    ' 形: 数の列 テーブル
     ' テーブルのすぐ下の行・すぐ右の列まで範囲をListObject.Resizeで広げる
     Dim ws As Worksheet
     Dim lo As ListObject
@@ -12706,7 +12680,7 @@ Sub 空の列を削除する()
     ' 依頼の語: 空の列を削除|空白の列を削除|空列を取り除|間の空いた列を詰|空の列を消|最後に値|入っていない列
     ' 扱う: 空列削除
     ' 見出し: なし
-    ' 形: 数の列 日付の列
+    ' 形: 数の列
 
     Dim ws As Worksheet
     Set ws = ActiveSheet
@@ -12785,7 +12759,7 @@ Sub 名前の揺れを一覧にする()
     ' 扱う: 名寄せ 名前の揺れ 合計
     ' 見出し: なし
     ' 選ぶ列: 1
-    ' 形: 数の列 日付の列
+    ' 形: 数の列
 
     Dim ws As Worksheet
     Set ws = ActiveSheet
