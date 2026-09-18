@@ -9,7 +9,7 @@ import vbam_objects as vo
 def _chart(**kw):
     c = {'sheet': '課別支出', 'chartsheet': False, 'type': 51, 'title': '課別支出額', 'legend': 'なし', 'font': 'Meiryo UI',
          'gap': 80, 'axes': {'数値軸': {'title': '', 'format': '#,##0', 'gridlines': False}},
-         'series': [{'name': '支出額', 'values': [100, 200], 'categories': ['総務課', '経理課'], 'labels': '値', 'color': '#1F4E79'}]}
+         'series': [{'name': '支出額', 'values': [100, 200], 'categories': ['総務課', '財政課'], 'labels': '値', 'color': '#1F4E79'}]}
     c.update(kw)
     return c
 

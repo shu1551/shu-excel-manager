@@ -3240,13 +3240,13 @@ def test_content_findings_catch_total_column_short_formula_and_dead_lookup():
     """中身の検査の追加分: 「合計」列が左の和と合わない／式が途中で切れる／突き合わせが全滅。"""
     from vbam_edit import _content_findings
     vals = [["支店", "4月", "5月", "合計"],
-            ["青葉", 10, 20, 30],
-            ["若葉", 30, 40, 71],          # 左の和は 70
-            ["松葉", 5, 6, 11]]
+            ["秋田", 10, 20, 30],
+            ["能代", 30, 40, 71],          # 左の和は 70
+            ["大館", 5, 6, 11]]
     fmls = [["支店", "4月", "5月", "合計"],
-            ["青葉", 10, 20, "=SUM(B2:C2)"],
-            ["若葉", 30, 40, 71],
-            ["松葉", 5, 6, "=SUM(B4:C4)"]]
+            ["秋田", 10, 20, "=SUM(B2:C2)"],
+            ["能代", 30, 40, 71],
+            ["大館", 5, 6, "=SUM(B4:C4)"]]
     block, _seen = _content_findings(vals, fmls, 1, 1)
     joined = " / ".join(block)
     assert "「合計」列の D3 が左の和と合いません" in joined and "70" in joined
@@ -3276,7 +3276,7 @@ def test_content_findings_do_not_cry_on_legit_lookup_and_totals():
     fml = [head] + [[f"100{i}", f"氏名{i}", f'=VLOOKUP(A{i + 1},T,2,FALSE)'] for i in range(1, 7)]
     block, _ = _content_findings(rows, fml, 1, 1)
     assert block == []
-    ok = [["支店", "4月", "5月", "合計"], ["青葉", 10, 20, 30], ["若葉", 30, 40, 70]]
+    ok = [["支店", "4月", "5月", "合計"], ["秋田", 10, 20, 30], ["能代", 30, 40, 70]]
     assert _content_findings(ok, None, 1, 1)[0] == []
     short = [["会員番号", "氏名", "申込"], ["1", "a", "なし"], ["2", "b", "なし"], ["3", "c", "なし"]]
     sf = [["会員番号", "氏名", "申込"], ["1", "a", "=X"], ["2", "b", "=X"], ["3", "c", "=X"]]
@@ -3295,7 +3295,7 @@ def test_total_column_ignores_id_columns_and_stays_quiet_when_the_layout_does_no
     assert "D2" not in joined and "D4" not in joined      # 会員番号を足していない
 
     odd = [["支店", "4月", "5月", "合計"],           # 合計が左の和と無関係な列（税抜だけ等）
-           ["青葉", 10, 20, 8], ["若葉", 30, 40, 9], ["松葉", 5, 6, 7]]
+           ["秋田", 10, 20, 8], ["能代", 30, 40, 9], ["大館", 5, 6, 7]]
     assert not any("左の和" in b for b in _content_findings(odd, None, 1, 1)[0])
 
     y = [["年", "4月", "合計"], [2024, 10, 10], [2025, 20, 20]]
@@ -3794,17 +3794,17 @@ def test_lost_rows_reads_serial_dates_against_date_column():
 
 
 def test_content_findings_read_group_named_subtotal_rows_as_subtotals():
-    """小計の行は「小計」だけとは限らない（「本社会計 小計」）。区分名つきでも小計＝下の合計は二重に数えない。
+    """小計の行は「小計」だけとは限らない（「一般会計 小計」）。区分名つきでも小計＝下の合計は二重に数えない。
 
     2026-09-18: B 集計の「小計行」を鍛えたとき、区分名つきの小計を本文の行と見なし、
     正解の表でも「合計が上の和と合わない」で止まった（登録しても毎回 AI に回る形）。
     """
     from vbam_edit import _content_findings
     vals = [["区分", "課", "金額"],
-            ["本社会計", "総務課", 100],
-            ["本社会計", "経理課", 200],
-            ["本社会計 小計", None, 300],
-            ["特別会計", "営業課", 400],
+            ["一般会計", "総務課", 100],
+            ["一般会計", "財政課", 200],
+            ["一般会計 小計", None, 300],
+            ["特別会計", "税務課", 400],
             ["特別会計 小計", None, 400],
             ["合計", None, 700]]
     block, _seen = _content_findings(vals, None, 1, 1)

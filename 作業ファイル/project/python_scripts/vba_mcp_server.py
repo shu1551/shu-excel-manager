@@ -289,7 +289,7 @@ _RELOAD_ORDER = ['vbam_core', 'vbam_view', 'vbam_edit', 'vbam_vba', 'vbam_form2v
                  'vbam_agent', 'vbam_fire', 'vbam_macro', 'vbam_clean', 'vbam_shake',
                  'vbam_prefire', 'vbam_forge',   # 2026-09-17 先撃ちの登録簿と鍛える回路（vbam_agent の上・遅延 import）
                  'format_bas',              # 2026-09-16 format-module の中身（vbam_devtools が関数の中で import する）
-                 'vbam_devtools',           # 2026-09-16 現場向けの手（vbam_core・vbam_vba の上・vba_manager の下）
+                 'vbam_devtools',           # 2026-09-16 職場向けの手（vbam_core・vbam_vba の上・vba_manager の下）
                  'vbam_lineage',            # 2026-09-17 系譜と閉じたブック（vbam_devtools の上）
                  'vbam_audit',              # 2026-09-17 数式・データ総合診断エンジン
                  'vba_manager']   # 依存の順（from X import はこの順で新しくなる）

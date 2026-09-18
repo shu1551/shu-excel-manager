@@ -136,7 +136,7 @@ py vba_manager.py agent --forge 合計行 [--register]              # 鍛える�
 #  末尾に足して全体コンパイル。アクティブなブックには足さない（9/17 の取り違え）。.xlam へは保存 → run-macro アドインの更新登録 --raw。
 #  登録簿は同じ Sub 名を 1 本に畳む（開いている .xlsm を先に採る）＝.xlsm と .xlam の両方にあっても 2 回撃たない。
 py vba_manager.py agent "依頼文" --forge 名前 --before 前.xlsx --truth 正解.xlsx [--sheet 名] [--test 前2.xlsx 正解2.xlsx ...]
-#  人が用意した 2 冊（直す前・人が直した正解）から鍛える（agent の走行は要らない＝現場の作業は 2 冊あれば鍛えられる・9/17 夕）。
+#  人が用意した 2 冊（直す前・人が直した正解）から鍛える（agent の走行は要らない＝職場の作業は 2 冊あれば鍛えられる・9/17 夕）。
 #  --truth だけ＝直前の走行を弾にしつつ、正解は AI の後の姿でなく人の表にする。--test＝形が同じで行数・並び・件数が違う表でも
 #  AI なしで撃ち、外れたら「別の表でこう外れた」を AI に返す（番地・行数・科目名の直書きを落とす）。合格は全部の表がそろったとき。
 #  AI には同じブックのほかのシートの頭（対応表など）も渡す。
@@ -149,7 +149,7 @@ py vba_manager.py agent "依頼文" --forge 名前 --before 前.xlsx --truth 正
 #  実行時エラー・時間切れ・何も変えずに終わった、なら人のブックでは撃たず AI に回す。
 #  依頼の語が複数の仕事に当たったら、長い語で当たった仕事を優先（見出しがそろわず撃てない仕事の語の方が長ければ、
 #  短い語で当たったマクロは撃たない）。
-#  現場の型の練習台と確かめ: 作業ファイル\project\fixtures\（振り直し・突合・集約・壊れ）。各フォルダの make_pairs.py が
+#  職場の型の練習台と確かめ: 作業ファイル\project\fixtures\（振り直し・突合・集約・壊れ）。各フォルダの make_pairs.py が
 #  前・正解の組を作る（--unseen N で見ていない種）。check_unseen.py <フォルダ> <名前>＝鍛えたマクロを AI なしで当てる。
 #  check_entry.py <フォルダ>=<名前> …（名前! は前提の欠けた表）--requests <名前>＝配った .xlam の登録簿で、
 #  依頼（台帳＋phrases.txt の言い換え）× 表 の組み合わせ全部を入口から撃つ（当たる表は値がそろう・ほかは変わらない）。
@@ -159,7 +159,7 @@ py vba_manager.py agent "依頼文" --forge 名前 --before 前.xlsx --truth 正
 #  鍛えるときは必須で、道具が「撃つ前の表・別の表にその語があるか」「依頼の語がこの依頼文に当たるか」を確かめる。
 #  試し撃ちは台（鍛冶_撃つ）越し＝実行時エラーは番号と説明で AI に返し、60 秒で打ち切る。同じセルが 2 往復続けて外れたら
 #  AI を呼ばずに止める（正解の表から読めない決まり＝並び順など。依頼文に書き足して撃ち直す）。
-#  ThisWorkbook・CreateObject（Scripting.Dictionary 以外）は規則で落とす（アドインに入る・現場の PC に .NET 3.5 が無い）
+#  ThisWorkbook・CreateObject（Scripting.Dictionary 以外）は規則で落とす（アドインに入る・職場の PC に .NET 3.5 が無い）
 py vba_manager.py agent --forged                               # 鍛えたマクロの一覧（弾・合格・登録先）
 py vba_manager.py agent --mend [--seed N] [--only 名,名] [--kinds compile,runtime,nothing,wrong,edge,double] [--dry-run]
 #  修理の試験（2026-09-17 夜・vbam_mend.py）: 鍛えたマクロ（前の表・正解・別の表を持つ）を Python が字面で壊し

@@ -100,7 +100,7 @@ def registry_from_text(text, owner=None):
 
 def head_key(s):
     """見出しの語のならし（純 Python）: 全角半角をそろえ、空白・改行を落とし、末尾の単位の括弧（（円）など）を落とす。
-    2026-09-17 夜: 実物らしい表で「勘定科目\\nコード」「科　目　名」「支出額（円）」の見出しに登録簿のマクロを撃たず AI に回した。"""
+    2026-09-17 夜: 実物らしい表で「予算科目\\nコード」「科　目　名」「支出額（円）」の見出しに登録簿のマクロを撃たず AI に回した。"""
     import unicodedata
     t = re.sub(r'\s+', '', unicodedata.normalize('NFKC', str(s or '')))
     # 落とすのは単位の括弧だけ（「支出額（税抜）」「予算額（前年度）」は別の列＝同じ見出しにしない）
@@ -448,7 +448,7 @@ def plan_full(request, registry=(), words=None, shape=None):
             continue
         extras.append(dict(e, strength=strength))
     # 依頼が名指ししている仕事は、より長い語で当たった方（2026-09-17 夕: 振り直しの依頼の「集計」が集約のマクロに当たり、
-    # 集約のブックでは見出しもそろうので撃たれた。依頼は「管理会計」で振り直しを名指ししていた）。
+    # 集約のブックでは見出しもそろうので撃たれた。依頼は「決算統計」で振り直しを名指ししていた）。
     # 見出しがそろわず撃たなかった仕事の語の方が長ければ、短い語で当たったマクロは撃たない＝AI に回す
     # 同じ長さなら、どちらを名指ししたか決められない＝撃たない（AI に回す＝安全側）
     # ただし「合計」「集計」のような作業の一般語で当たっただけの仕事は、名指しに数えない
@@ -456,7 +456,7 @@ def plan_full(request, registry=(), words=None, shape=None):
     top_skipped = max((e['strength'] for e in skipped if not _ASK_OTHER_RE.fullmatch(_ask_best_word(e['ask'], req))),
                       default=0)
     # 同じ長さなら、見出しがそろっている方（extras）を撃つ（2026-09-18 未明: 「振り直して、区分ごとの円グラフも」で、見出しの無い
-    # 円グラフの「円グラフ」と振り直しの「管理会計」が同じ 4 字で引き分け、どちらも撃たなかった）。長い語で名指しされた別の仕事は従来どおり
+    # 円グラフの「円グラフ」と振り直しの「決算統計」が同じ 4 字で引き分け、どちらも撃たなかった）。長い語で名指しされた別の仕事は従来どおり
     shadowed = [e for e in extras if top_skipped and e['strength'] < top_skipped]
     extras = [e for e in extras if not (top_skipped and e['strength'] < top_skipped)]
     others = sorted({m.group(0) for m in _ASK_OTHER_RE.finditer(req)})

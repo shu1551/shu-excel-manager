@@ -133,7 +133,7 @@ from vbam_edit import *  # noqa: F401,F403
 from vbam_heavy import *  # noqa: F401,F403
 from vbam_form2vba import *  # noqa: F401,F403
 from vbam_build import *  # noqa: F401,F403
-from vbam_devtools import *  # noqa: F401,F403  (2026-09-16 現場向け VBA ツール作りの手)
+from vbam_devtools import *  # noqa: F401,F403  (2026-09-16 職場向け VBA ツール作りの手)
 from vbam_lineage import *  # noqa: F401,F403  (2026-09-17 系譜と閉じたブック: versions・history・list-file・grep-files・export-file)
 from vbam_audit import *  # noqa: F401,F403  (2026-09-17 数式・データ総合診断エンジン)
 # AI の機能（agent・set-key・clear-key）は vbam_agent 一式があるときだけ読む（2026-09-12・本体だけでも動く形に）。
@@ -362,7 +362,7 @@ def build_parser():
     p.add_argument("posargs", nargs="*")
     p.add_argument("--json", action="store_true", help="結果をJSON形式で出力")
 
-    # ---- 現場向け VBA ツール作りの手（2026-09-16・vbam_devtools）----
+    # ---- 職場向け VBA ツール作りの手（2026-09-16・vbam_devtools）----
     # rename-procedure [excel_file] <旧名> <新名> [--module 名] [-y] [--dry-run]
     p = sub.add_parser("rename-procedure", help="マクロの改名（宣言・呼び元・Application.Run の文字・図形の OnAction・"
                                                 "ショートカットまで一括。変更行だけ ReplaceLine）")

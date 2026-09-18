@@ -4675,7 +4675,7 @@ def test_read_file_checks_the_path_and_guesses_the_encoding(tmp_path):
     assert va._read_file_path(f'"{f}"') == (str(f), '.csv')          # 引用符は外す・拡張子は小文字で見る
     assert va._read_text_decode(b'\xef\xbb\xbfabc') == ('abc', 'utf-8-sig')
     assert va._read_text_decode('日本'.encode('utf-8')) == ('日本', 'utf-8')
-    assert va._read_text_decode('日本'.encode('cp932')) == ('日本', 'cp932')   # 古い CSV
+    assert va._read_text_decode('日本'.encode('cp932')) == ('日本', 'cp932')   # 役所の CSV
 
 
 def test_read_file_reads_csv_tsv_and_books(tmp_path):
@@ -5418,7 +5418,7 @@ def test_key_type_mismatch_is_told_before_the_lookup_not_after():
         same[i][2] = str(same[i][2])
     assert key_type_mismatch(same) == []
 
-    plain = [["支店", "売上"], ["青葉", 10], ["若葉", 20]]      # キーらしい見出しでなければ黙る
+    plain = [["支店", "売上"], ["秋田", 10], ["能代", 20]]      # キーらしい見出しでなければ黙る
     assert key_type_mismatch(plain) == []
 
     src = _i.getsource(va._extra_materials) if hasattr(va, '_extra_materials') else ''
