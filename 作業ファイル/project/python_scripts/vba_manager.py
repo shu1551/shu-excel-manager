@@ -1163,7 +1163,7 @@ def build_parser():
     # 重量級(1) chart <create|list|delete>
     p = sub.add_parser("chart")
     p.add_argument("posargs", nargs="*")
-    p.add_argument("--type", help="column|bar|line|pie|scatter|area|doughnut")
+    p.add_argument("--type", help="column|stacked-column|bar|line|pie|scatter|area|doughnut")
     p.add_argument("--title", help="グラフタイトル")
     p.add_argument("--at", help="左上を合わせるセル")
     p.add_argument("--name", help="グラフ名")

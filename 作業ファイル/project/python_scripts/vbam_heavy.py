@@ -26,13 +26,14 @@ from vbam_edit import *  # noqa: F401,F403
 # ================================================================
 
 _XL_CHART_TYPE = {
-    'column':  51,     # xlColumnClustered
-    'bar':     57,     # xlBarClustered
-    'line':    4,      # xlLine
-    'pie':     5,      # xlPie
-    'scatter': -4169,  # xlXYScatter
-    'area':    1,      # xlArea
-    'doughnut': -4120, # xlDoughnut
+    'column':         51,     # xlColumnClustered
+    'stacked-column': 52,     # xlColumnStacked
+    'bar':            57,     # xlBarClustered
+    'line':           4,      # xlLine
+    'pie':            5,      # xlPie
+    'scatter':        -4169,  # xlXYScatter
+    'area':           1,      # xlArea
+    'doughnut':       -4120,  # xlDoughnut
 }
 _XL_CHART_TYPE_NAME = {v: k for k, v in _XL_CHART_TYPE.items()}
 
@@ -42,7 +43,7 @@ _XL_CHART_TYPE_NAME = {v: k for k, v in _XL_CHART_TYPE.items()}
 def cmd_chart(args):
     """グラフ操作: chart <create|list|delete> ...
 
-      chart create <data_range> [--type column|bar|line|pie|scatter|area]
+      chart create <data_range> [--type column|stacked-column|bar|line|pie|scatter|area]
                    [--title "見出し"] [--at セル] [--name 名] [--width N --height N]
       chart create --pivot <ピボット名> [--type ...] [--title ...] [--at セル]   ピボットグラフ
       chart list
@@ -152,7 +153,7 @@ def cmd_chart_config(args):
     """グラフ詳細設定: chart-config <action> <chart名> ...
 
       set-source <chart> <range>                          データ範囲を再設定
-      set-type <chart> <type>                             種別変更(column/bar/line/pie/...)
+      set-type <chart> <type>                             種別変更(column/stacked-column/bar/line/pie/...)
       set-title <chart> <text>                            グラフタイトル
       set-axis-title <chart> <category|value|secondary> <text>   軸タイトル
       axis-format <chart> <axis> [format]                 軸の表示形式 get/set
