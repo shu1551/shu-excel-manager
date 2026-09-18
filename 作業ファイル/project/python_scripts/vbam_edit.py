@@ -827,8 +827,18 @@ def _looks_like_header(cell):
 
 # tidy の「列の型」判定（2026-09-02 深夜・「会員番号は左寄せ・金額はカンマが入っていて当然。
 # 道具でそうなるようにしろ」）。見出しの語と値の型だけで決める。迷う列は触らない。
-_ID_KW_JA = ('番号', 'コード', '記号', '型番', '品番', 'キー')
+_ID_KW_JA = ('番号', '記号', '型番', '品番')
+# 「キー」「コード」は、後ろ・前にカタカナが続く語（キーボード・キーワード・レコード）を番号列にしない
+# （2026-09-19・商品名「キーボード」の売上の列が番号列と判定され、左寄せ・カンマなしになった）
+_ID_KW_KANA = re.compile(r'キー(?![ァ-ヶー])|(?<!レ)コード(?![ァ-ヶー])')
 _ID_KW_EN = re.compile(r'(?<![a-z])(no|id|cd|code|key)(?![a-z])')
+
+
+def _is_id_header(h):
+    """見出し（NFKC 済みの文字）が番号列の語を持つか。道具の中で番号列の定義を 1 つにする。"""
+    h = str(h or '')
+    return (any(k in h for k in _ID_KW_JA) or bool(_ID_KW_KANA.search(h))
+            or bool(_ID_KW_EN.search(h.lower())))
 _SKIP_KW = ('年度', '年月', '日付', '期日', '期間', '時刻', '時間', '西暦', '和暦', '率', '割合', '%')
 # 金額とわかる見出しの列は、欠測の文字（「申込なし」「-」など）が混じっていても数値の側で判定する
 # （2026-09-06・突き合わせで「申込なし」を入れた金額列にカンマが付かず、同じ依頼の 1 回目と 2 回目で
@@ -893,7 +903,7 @@ def _column_style(header, values):
     値が全部数値（空欄と "" は無視）で番号列でなければ数値列。文字や TRUE/FALSE が混じる列は触らない。
     """
     h = unicodedata.normalize('NFKC', str(header or '')).strip()
-    if any(k in h for k in _ID_KW_JA) or _ID_KW_EN.search(h.lower()):
+    if _is_id_header(h):
         return 'id'
     if any(k in h for k in _SKIP_KW) or h.endswith(_SKIP_TAIL):
         return None
@@ -1402,7 +1412,7 @@ def _content_findings(values, formulas, r0, c0, formulas_r1c1=None):
         h = unicodedata.normalize('NFKC', head(j))
         if not h:
             return False
-        if any(k in h for k in _ID_KW_JA) or _ID_KW_EN.search(h.lower()):
+        if _is_id_header(h):
             return False
         if any(k in h for k in _SKIP_KW):
             return False
@@ -1596,7 +1606,7 @@ def _content_findings(values, formulas, r0, c0, formulas_r1c1=None):
         if not h:
             continue
         hn = unicodedata.normalize('NFKC', h)
-        is_id = any(k in hn for k in _ID_KW_JA) or bool(_ID_KW_EN.search(hn.lower()))
+        is_id = _is_id_header(hn)
         col = [(i, rows[i][j]) for i in body_idx if not _is_blank_value(rows[i][j])]
         if not col:
             continue
@@ -4157,10 +4167,10 @@ def _looks_like_key(label):
     s = str(label or '').strip()
     if not s or len(s) > 20:
         return False
-    for w in ('番号', 'コード', 'ＩＤ', 'id', 'ID', 'Id', 'No', 'no', 'ＮＯ', '記号', 'キー'):
+    for w in ('番号', 'ＩＤ', 'id', 'ID', 'Id', 'No', 'no', 'ＮＯ', '記号'):
         if w in s:
             return True
-    return False
+    return bool(_ID_KW_KANA.search(s))
 
 
 def key_type_mismatch(values):

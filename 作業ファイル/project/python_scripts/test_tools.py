@@ -3069,6 +3069,22 @@ def test_the_money_column_gets_commas_even_with_not_applicable_text():
     assert ve._column_style('年度', [2024, 2025]) is None
 
 
+def test_katakana_words_with_key_or_code_are_not_id_columns():
+    """2026-09-19: 商品名「キーボード」の売上の列が番号列と判定され、左寄せ・カンマなしになった。
+    「キー」「コード」は、カタカナの語の一部（キーボード・キーワード・レコード・コードレス）なら番号列にしない。"""
+    import vbam_edit as ve
+    import vbam_hands as vh
+
+    assert ve._column_style('キーボード', [184000, 201000, 176000]) == 'int'
+    assert ve._column_style('レコード数', [12, 30, 45]) == 'int'
+    for h in ('キーワード', 'コードレス掃除機', 'ノートPC'):
+        assert not ve._is_id_header(h), h
+    for h in ('キー', '照合キー', '商品コード', 'バーコード', '会員番号', 'No', '社員ID'):
+        assert ve._is_id_header(h), h
+    assert vh._id_columns(['キーボード', '商品コード', '金額']) == {1}
+    assert not ve._looks_like_key('キーボード') and ve._looks_like_key('照合キー')
+
+
 def test_tidy_keeps_money_whole_and_skips_blank_rows_20260913():
     """お試し版テスト用1: 平均 10,162.5 が 1 つあるだけで金額 20 行が 7,200.00 に、空の行と合計欄の左にも罫線が付いた。"""
     import vbam_edit as ve

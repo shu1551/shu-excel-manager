@@ -373,11 +373,11 @@ def _id_columns(header_row):
     """見出しの行 → 番号列（会員番号・コード・No・ID …）の列位置（0 起点）の集合（純 Python）。
     判定の語は tidy の列の型（vbam_edit._column_style）と同じ＝道具の中で番号列の定義を 1 つにする。"""
     import unicodedata
-    from vbam_edit import _ID_KW_JA, _ID_KW_EN
+    from vbam_edit import _is_id_header
     out = set()
     for j, h in enumerate(header_row or []):
         hs = unicodedata.normalize('NFKC', str(h or '')).strip()
-        if hs and (any(k in hs for k in _ID_KW_JA) or _ID_KW_EN.search(hs.lower())):
+        if hs and _is_id_header(hs):
             out.add(j)
     return out
 

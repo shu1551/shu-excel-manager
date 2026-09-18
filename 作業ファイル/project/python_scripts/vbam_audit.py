@@ -391,9 +391,23 @@ def check_data_cleaner(
                     })
 
     # C. 統計的外れ値・桁間違いの検知 (IQR法)
+    # 合計・小計・平均の行は検査に入れない（2026-09-19・月別の表の「合計」の行が 4 列とも外れ値と出た。
+    # 合計が明細と桁違いなのは当たり前で、入れると四分位も歪む）
+    def _is_total_row(r: int) -> bool:
+        for k in range(num_cols):
+            s = values[r][k]
+            if isinstance(s, str):
+                t = re.sub(r"[\s　]+", "", s)
+                if t in ("計", "平均", "総平均", "total", "Total", "TOTAL") or t.endswith(("合計", "小計", "総計", "累計")):
+                    return True
+        return False
+
+    total_rows = {r for r in range(num_rows) if _is_total_row(r)}
     for c in range(num_cols):
         num_entries = []
         for r in range(num_rows):
+            if r in total_rows:
+                continue
             v = values[r][c]
             if isinstance(v, (int, float)) and not isinstance(v, bool):
                 num_entries.append((r, float(v)))
