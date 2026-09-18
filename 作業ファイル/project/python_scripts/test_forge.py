@@ -327,13 +327,13 @@ def test_dedupe_registry_prefers_open_book_over_addin():
 
 
 def test_pick_register_target_names_or_single_owner():
-    books = [('秀コンボ.xlsm', True), ('現場の表.xlsx', False)]
+    books = [('秀コンボ.xlsm', True), ('職場の表.xlsx', False)]
     assert vf._pick_register_target(books) == ('秀コンボ.xlsm', None)          # アクティブがどちらでも持ち主へ
     assert vf._pick_register_target(books, to='秀コンボ') == ('秀コンボ.xlsm', None)
-    assert vf._pick_register_target(books, to='現場の表.xlsx') == ('現場の表.xlsx', None)
+    assert vf._pick_register_target(books, to='職場の表.xlsx') == ('職場の表.xlsx', None)
     name, why = vf._pick_register_target(books, to='無い.xlsm')
     assert name is None and '開いていません' in why
-    name, why = vf._pick_register_target([('現場の表.xlsx', False)])
+    name, why = vf._pick_register_target([('職場の表.xlsx', False)])
     assert name is None and '--to' in why
     name, why = vf._pick_register_target([('a.xlsm', True), ('b.xlsm', True)])
     assert name is None and '2 冊' in why
@@ -408,46 +408,46 @@ def test_prefire_names_follow_request_words():
     assert vf._prefire_names('書き方をそろえて。重複行は削除してよい') == ['表を整える', '重複行を消す']
 
 
-_FURI = """Sub 管理会計区分に振り直す()
-    ' 依頼の語: 振り直|管理会計|集計
+_FURI = """Sub 決算統計区分に振り直す()
+    ' 依頼の語: 振り直|決算統計|集計
     ' 扱う: 振り直し 集計 区分
-    ' 見出し: 勘定科目コード 支出額
+    ' 見出し: 予算科目コード 支出額
 End Sub
 """
 
 
 def test_plan_full_skips_registered_macro_when_sheet_lacks_its_headers():
     reg = vp.registry_from_text(_FURI, owner='秀コンボ.xlsm')
-    assert reg[0]['headers'] == ['勘定科目コード', '支出額']
+    assert reg[0]['headers'] == ['予算科目コード', '支出額']
     staff = vp.sheet_words([['担当', '件数'], ['佐藤', 3]])
     p = vp.plan_full("担当ごとに件数を集計して", reg, staff)
-    assert p['extras'] == [] and [e['name'] for e in p['skipped']] == ['管理会計区分に振り直す']
+    assert p['extras'] == [] and [e['name'] for e in p['skipped']] == ['決算統計区分に振り直す']
     assert '集計' in p['left'] and p['other'] is True              # 集計は AI に回る（片づいた扱いにしない）
-    budget = vp.sheet_words([['令和7年度 支出明細', None], [None, None], ['勘定科目コード', '支出額 ']])
-    p = vp.plan_full("管理会計区分に振り直して集計して", reg, budget)
-    assert [e['name'] for e in p['extras']] == ['管理会計区分に振り直す'] and p['other'] is False
+    budget = vp.sheet_words([['令和7年度 支出明細', None], [None, None], ['予算科目コード', '支出額 ']])
+    p = vp.plan_full("決算統計区分に振り直して集計して", reg, budget)
+    assert [e['name'] for e in p['extras']] == ['決算統計区分に振り直す'] and p['other'] is False
     assert vp.plan_full("担当ごとに件数を集計して", reg)['extras']   # 見出しを渡さない（従来の呼び方）は絞らない
     # 実物の見出し（改行・全角の空白・単位の括弧）でも同じ見出しとみなす（2026-09-17 夜）
-    real = vp.sheet_words([['勘定科目\nコード', '科　目　名', '支出額\n（円）']])
-    assert [e['name'] for e in vp.plan_full("管理会計区分に振り直して", reg, real)['extras']] == ['管理会計区分に振り直す']
+    real = vp.sheet_words([['予算科目\nコード', '科　目　名', '支出額\n（円）']])
+    assert [e['name'] for e in vp.plan_full("決算統計区分に振り直して", reg, real)['extras']] == ['決算統計区分に振り直す']
     assert vp.head_key('支出額(千円)') == '支出額' and vp.head_key('（円）') == '(円)' and vp.head_key('人数（計）') == '人数'
     assert vp.head_key('支出額（税抜）') != '支出額'                     # 単位でない括弧は別の見出し
 
 
 def test_check_fit_needs_headers_present_and_request_hit():
     c = _case()
-    c['before_values'] = _snap([['勘定科目コード', '支出額'], ['02-01', '100']])
-    c['request'] = '管理会計区分に振り直して'
-    c['tests'] = [{'label': 'B', 'expect': _snap([['表題', ''], ['勘定科目コード', '支出額']])}]
-    assert vf._check_fit(c, _FURI, '振り直|管理会計') == (['勘定科目コード', '支出額'], None)   # 集計は一般の依頼（課別の集計表を作って）に当たる
+    c['before_values'] = _snap([['予算科目コード', '支出額'], ['02-01', '100']])
+    c['request'] = '決算統計区分に振り直して'
+    c['tests'] = [{'label': 'B', 'expect': _snap([['表題', ''], ['予算科目コード', '支出額']])}]
+    assert vf._check_fit(c, _FURI, '振り直|決算統計') == (['予算科目コード', '支出額'], None)   # 集計は一般の依頼（課別の集計表を作って）に当たる
     heads, why = vf._check_fit(c, _FURI.replace('支出額', '金額'), '振り直')
     assert heads is None and '金額' in why and '撃つ前の表' in why
-    c['tests'] = [{'label': 'B', 'expect': _snap([['勘定科目コード', '実績額']])}]
+    c['tests'] = [{'label': 'B', 'expect': _snap([['予算科目コード', '執行額']])}]
     heads, why = vf._check_fit(c, _FURI, '振り直')
     assert heads is None and '別の表「B」' in why
     c['tests'] = []
     assert '当たりません' in vf._check_fit(c, _FURI, '合計行')[1]
-    assert "見出し: …" in vf._check_fit(c, _FURI.replace("    ' 見出し: 勘定科目コード 支出額\n", ''), '振り直')[1]
+    assert "見出し: …" in vf._check_fit(c, _FURI.replace("    ' 見出し: 予算科目コード 支出額\n", ''), '振り直')[1]
 
 
 def test_forge_stops_when_same_cells_keep_failing(tmp_path, monkeypatch, capsys):
@@ -473,10 +473,10 @@ def test_forge_stops_when_same_cells_keep_failing(tmp_path, monkeypatch, capsys)
 def test_tests_feedback_shows_other_sheets_and_stall_on_tables(tmp_path, monkeypatch, capsys):
     c = _case()
     exp = _snap([['a', '支出額'], ['000123', '100']], r0=1)
-    exp.update(sheet='旧システム出力', others=[{'name': '新システム出力', 'head': '（左上 A1）\n1\t新基幹会計システム'}])
+    exp.update(sheet='旧システム出力', others=[{'name': '新システム出力', 'head': '（左上 A1）\n1\t新財務会計システム'}])
     c['tests'] = [{'label': 'G', 'expect': exp}]
     text = vf._tests_feedback(c, [('G', ["マクロは表に何も書かずに終わりました（…）", "D1: 期待 'x' ／ マクロ後 ''"])])
-    assert 'シート「旧システム出力」の正解' in text and 'ほかのシート: 「新システム出力」' in text and '新基幹会計システム' in text
+    assert 'シート「旧システム出力」の正解' in text and 'ほかのシート: 「新システム出力」' in text and '新財務会計システム' in text
     # 別の表が同じ所で 2 往復続けて外れたら止める・撃ち直しは前回のマクロと説明から
     monkeypatch.setattr(vf, '_AGENT_FORGE_FILE', str(tmp_path / '_agent_forge.json'))
     monkeypatch.setattr(vf, '_AGENT_FORGE_DIR', str(tmp_path))
@@ -571,8 +571,8 @@ def test_context_rows_show_header_and_failed_rows():
 
 def test_hints_name_total_rows_and_row_count_shifts():
     mism = ["表の大きさ／位置が違う: 期待 30×5（左上 A1）・マクロ後 31×5（左上 A1）",
-            "A18: 期待 '総務課' ／ マクロ後 '環境課'", "B18: 期待 '社員食堂' ／ マクロ後 '合計'",
-            "B19: 期待 '水道管更新' ／ マクロ後 '社員食堂'", "C19: 期待 '2050000' ／ マクロ後 '680000'"]
+            "A18: 期待 '総務課' ／ マクロ後 '環境課'", "B18: 期待 '学校給食' ／ マクロ後 '合計'",
+            "B19: 期待 '水道管更新' ／ マクロ後 '学校給食'", "C19: 期待 '2050000' ／ マクロ後 '680000'"]
     h = vf._hints(mism)
     assert '行が 1 行多い' in h and '「合計」「計」などの行を明細' in h and 'ずれています＝どこかで' not in h
     h = vf._hints(["表の大きさ／位置が違う: 期待 30×8（左上 A1）・マクロ後 30×3（左上 A1）"])
@@ -626,7 +626,7 @@ def test_rehearse_drops_extras_on_error_or_no_change(monkeypatch):
     xl = _FakeXL([owner])
     wb = _FakeBook('支出.xlsx')
     reg = vp.registry_from_text(_FURI, owner='秀コンボ.xlam')
-    plan = vp.plan_full("管理会計区分に振り直して。書き方もそろえて", reg, {'勘定科目コード', '支出額'})
+    plan = vp.plan_full("決算統計区分に振り直して。書き方もそろえて", reg, {'予算科目コード', '支出額'})
     seen = {}
 
     def fake(text, names, copy, sheet, module='表の整理', sel_cols=None):
@@ -634,15 +634,15 @@ def test_rehearse_drops_extras_on_error_or_no_change(monkeypatch):
         return steps
     monkeypatch.setattr(vbam_forge, 'rehearse_steps', fake)
     steps = [{'name': '表を整える', 'ok': True, 'changed': True, 'why': ''},
-             {'name': '管理会計区分に振り直す', 'ok': True, 'changed': True, 'why': ''}]
+             {'name': '決算統計区分に振り直す', 'ok': True, 'changed': True, 'why': ''}]
     assert vp._rehearse(xl, wb, '支出明細', plan, '秀コンボ.xlam') == ([], '')
-    assert seen['names'] == ['表を整える', '管理会計区分に振り直す']
+    assert seen['names'] == ['表を整える', '決算統計区分に振り直す']
     steps = [{'name': '表を整える', 'ok': True, 'changed': False, 'why': ''},
-             {'name': '管理会計区分に振り直す', 'ok': False, 'changed': False, 'why': '実行時エラー 9 インデックスが有効範囲にありません。'}]
+             {'name': '決算統計区分に振り直す', 'ok': False, 'changed': False, 'why': '実行時エラー 9 インデックスが有効範囲にありません。'}]
     dropped, why = vp._rehearse(xl, wb, '支出明細', plan, '秀コンボ.xlam')
-    assert [e['name'] for e in dropped] == ['管理会計区分に振り直す'] and '実行時エラー 9' in why
+    assert [e['name'] for e in dropped] == ['決算統計区分に振り直す'] and '実行時エラー 9' in why
     steps = [{'name': '表を整える', 'ok': True, 'changed': True, 'why': ''},
-             {'name': '管理会計区分に振り直す', 'ok': True, 'changed': False, 'why': ''}]
+             {'name': '決算統計区分に振り直す', 'ok': True, 'changed': False, 'why': ''}]
     assert '何も変えずに' in vp._rehearse(xl, wb, '支出明細', plan, '秀コンボ.xlam')[1]
     steps = [{'name': '表を整える', 'ok': False, 'changed': False, 'why': 'コンパイルエラー'}]
     assert '表を整える がコンパイルエラー' in vp._rehearse(xl, wb, '支出明細', plan, '秀コンボ.xlam')[1]
@@ -675,13 +675,13 @@ def test_release_instance_closes_only_that_excel(monkeypatch):
 
 def test_phrases_make_ask_rule_and_reopen_passed_case(tmp_path, monkeypatch, capsys):
     c = _case()
-    c['before_values'] = _snap([['勘定科目コード', '支出額']], r0=1)
-    c['request'] = '管理会計区分に振り直して'
-    c['phrases'] = ['科目を管理会計の区分に分けて集計して', '統計の区分ごとにまとめて']
-    heads, why = vf._check_fit(c, _FURI, '振り直|管理会計')
-    assert heads is None and '「統計の区分ごとにまとめて」' in why and '科目を管理会計' not in why
-    wide = _FURI.replace("' 依頼の語: 振り直|管理会計|集計", "' 依頼の語: 振り直|管理会計|統計の区分")
-    assert vf._check_fit(c, wide, '振り直|管理会計|統計の区分')[1] is None
+    c['before_values'] = _snap([['予算科目コード', '支出額']], r0=1)
+    c['request'] = '決算統計区分に振り直して'
+    c['phrases'] = ['科目を決算統計の区分に分けて集計して', '統計の区分ごとにまとめて']
+    heads, why = vf._check_fit(c, _FURI, '振り直|決算統計')
+    assert heads is None and '「統計の区分ごとにまとめて」' in why and '科目を決算統計' not in why
+    wide = _FURI.replace("' 依頼の語: 振り直|決算統計|集計", "' 依頼の語: 振り直|決算統計|統計の区分")
+    assert vf._check_fit(c, wide, '振り直|決算統計|統計の区分')[1] is None
     assert '同じ仕事の言い換え' in vf._prompt(c) and '統計の区分ごとにまとめて' in vf._prompt(c)
     # 合格済みの弾に、依頼の語が当たらない言い換えを渡すと、鍛え直しに戻る
     monkeypatch.setattr(vf, '_AGENT_FORGE_FILE', str(tmp_path / '_agent_forge.json'))
@@ -690,13 +690,13 @@ def test_phrases_make_ask_rule_and_reopen_passed_case(tmp_path, monkeypatch, cap
     bed.write_bytes(b'x')
     bas = tmp_path / 'n.bas'
     bas.write_bytes(b'x')
-    c.update({'before': str(bed), 'passed': True, 'bas': str(bas), 'sub': '管理会計区分に振り直す', 'code': _FURI,
-              'ask': '振り直|管理会計', 'phrases': None})
+    c.update({'before': str(bed), 'passed': True, 'bas': str(bas), 'sub': '決算統計区分に振り直す', 'code': _FURI,
+              'ask': '振り直|決算統計', 'phrases': None})
     vf._forge_save({'n': c})
     ph = tmp_path / 'phrases.txt'
     ph.write_text('統計の区分ごとにまとめて\n', encoding='utf-8')
     prompts = []
-    fixed = _FURI.replace("' 依頼の語: 振り直|管理会計|集計", "' 依頼の語: 振り直|管理会計|統計の区分")
+    fixed = _FURI.replace("' 依頼の語: 振り直|決算統計|集計", "' 依頼の語: 振り直|決算統計|統計の区分")
     monkeypatch.setattr(vf, '_ask_once', lambda ai, model, prompt: (prompts.append(prompt), fixed)[1])
     monkeypatch.setattr(vf, '_try_macro', lambda case, bas, sub: ([], 0.1))
     monkeypatch.setattr(vf, '_check_bas', lambda p: True)
@@ -709,20 +709,20 @@ def test_phrases_make_ask_rule_and_reopen_passed_case(tmp_path, monkeypatch, cap
 _SHUYAKU = """Sub 課別シートを集約する()
     ' 依頼の語: 集約|まとめ|集計
     ' 扱う: 集約 まとめ
-    ' 見出し: 課名 事業名 予算額 実績額
+    ' 見出し: 課名 事業名 予算額 執行額
 End Sub
 """
 
 
 def test_plan_full_longer_match_on_skipped_job_blocks_short_match():
     reg = vp.registry_from_text(_FURI + _SHUYAKU, owner='秀コンボ.xlam')
-    shuyaku_sheet = {'課名', '事業名', '予算額', '実績額', '達成率'}
-    furi_sheet = {'勘定科目コード', '科目名', '支出額'}
-    req = "対応表シートで勘定科目コードを管理会計区分に振り直して、区分ごとの支出額を集計してください"
+    shuyaku_sheet = {'課名', '事業名', '予算額', '執行額', '執行率'}
+    furi_sheet = {'予算科目コード', '科目名', '支出額'}
+    req = "対応表シートで予算科目コードを決算統計区分に振り直して、区分ごとの支出額を集計してください"
     p = vp.plan_full(req, reg, shuyaku_sheet)                     # 振り直しを頼んだのに集約のブック
     assert p['extras'] == [] and [e['name'] for e in p['shadowed']] == ['課別シートを集約する'] and p['other']
     p = vp.plan_full(req, reg, furi_sheet)                        # 本来の表
-    assert [e['name'] for e in p['extras']] == ['管理会計区分に振り直す'] and p['shadowed'] == []
+    assert [e['name'] for e in p['extras']] == ['決算統計区分に振り直す'] and p['shadowed'] == []
     p = vp.plan_full("各課のシートを集約シートにまとめて集計して", reg, shuyaku_sheet)
     assert [e['name'] for e in p['extras']] == ['課別シートを集約する']
     assert vp._ask_strength('集約|まとめ|集計', '全部まとめて集計') == 3 and vp._ask_strength('x(', 'x') == 0
@@ -730,10 +730,10 @@ def test_plan_full_longer_match_on_skipped_job_blocks_short_match():
 
 def test_rehearse_drop_recomputes_plan_by_name():
     reg = vp.registry_from_text(_FURI, owner='o')
-    p = vp.plan_full("管理会計区分に振り直して", reg, {'勘定科目コード', '支出額'})
+    p = vp.plan_full("決算統計区分に振り直して", reg, {'予算科目コード', '支出額'})
     dropped = p['extras']
     gone = {x['name'] for x in dropped}
-    assert vp.plan_full("管理会計区分に振り直して", [e for e in reg if e['name'] not in gone], {'勘定科目コード', '支出額'})['extras'] == []
+    assert vp.plan_full("決算統計区分に振り直して", [e for e in reg if e['name'] not in gone], {'予算科目コード', '支出額'})['extras'] == []
 
 
 _TOTSUGO = """Sub 新システムと突合する()
@@ -770,13 +770,13 @@ def test_ask_must_be_plain_words_and_ties_do_not_fire():
     assert '語を | で並べるだけ' in vf._validate_code(bad)[1]
     assert vp._ask_strength('シート.*集|集計', '対応表シートで振り直して、支出額を集計して') == 4
     reg = vp.registry_from_text(_FURI + _SHUYAKU.replace('集約|まとめ|集計', '集約|まとめ|集計|区分'), owner='o')
-    # 「管理会計」(4) vs 「区分」(2)／同じ長さの取り合いは撃たない
-    p = vp.plan_full("管理会計区分に振り直して", reg, {'課名', '事業名', '予算額', '実績額'})
+    # 「決算統計」(4) vs 「区分」(2)／同じ長さの取り合いは撃たない
+    p = vp.plan_full("決算統計区分に振り直して", reg, {'課名', '事業名', '予算額', '執行額'})
     assert p['extras'] == []
-    tie = vp.registry_from_text(_FURI.replace('振り直|管理会計|集計', '振り直|集計') + _SHUYAKU, owner='o')
-    p = vp.plan_full("振り直して集計して", tie, {'課名', '事業名', '予算額', '実績額'})
+    tie = vp.registry_from_text(_FURI.replace('振り直|決算統計|集計', '振り直|集計') + _SHUYAKU, owner='o')
+    p = vp.plan_full("振り直して集計して", tie, {'課名', '事業名', '予算額', '執行額'})
     assert p['extras'] == [] and [e['name'] for e in p['shadowed']] == ['課別シートを集約する']
-    p = vp.plan_full("各課を集約して", tie, {'課名', '事業名', '予算額', '実績額'})
+    p = vp.plan_full("各課を集約して", tie, {'課名', '事業名', '予算額', '執行額'})
     assert [e['name'] for e in p['extras']] == ['課別シートを集約する']       # 撃てない仕事に当たらなければ撃つ
 
 
@@ -847,15 +847,15 @@ def test_header_line_break_still_runs_macro_and_returns_values(tmp_path, monkeyp
 def test_passed_case_is_rechecked_against_tightened_rules(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(vf, '_AGENT_FORGE_FILE', str(tmp_path / '_agent_forge.json'))
     monkeypatch.setattr(vf, '_AGENT_FORGE_DIR', str(tmp_path))
-    old = _FURI.replace('振り直|管理会計|集計', '振り直|管理会計.*区分')
+    old = _FURI.replace('振り直|決算統計|集計', '振り直|決算統計.*区分')
     c = _case()
     bed = tmp_path / 'x.xlsx'
     bed.write_bytes(b'x')
     bas = tmp_path / 'n.bas'
     bas.write_bytes(b'x')
-    c.update({'before': str(bed), 'passed': True, 'bas': str(bas), 'sub': '管理会計区分に振り直す', 'code': old,
-              'ask': '振り直|管理会計.*区分', 'request': '管理会計区分に振り直して',
-              'before_values': _snap([['勘定科目コード', '支出額']], r0=1)})
+    c.update({'before': str(bed), 'passed': True, 'bas': str(bas), 'sub': '決算統計区分に振り直す', 'code': old,
+              'ask': '振り直|決算統計.*区分', 'request': '決算統計区分に振り直して',
+              'before_values': _snap([['予算科目コード', '支出額']], r0=1)})
     vf._forge_save({'n': c})
     prompts = []
     monkeypatch.setattr(vf, '_ask_once', lambda ai, model, prompt: (prompts.append(prompt), _FURI)[1])
@@ -864,7 +864,7 @@ def test_passed_case_is_rechecked_against_tightened_rules(tmp_path, monkeypatch,
     assert vf.forge('n', max_turns=2) is True
     out = capsys.readouterr().out
     assert '今の規則に合いません' in out and '語を | で並べるだけ' in prompts[0]
-    assert vf._forge_load()['n']['ask'] in ('振り直|管理会計|集計', '振り直|管理会計')   # 2026-09-18: 集計は一般の依頼の語
+    assert vf._forge_load()['n']['ask'] in ('振り直|決算統計|集計', '振り直|決算統計')   # 2026-09-18: 集計は一般の依頼の語
 
 
 def test_instrument_exits_marks_each_exit_sub_with_its_line():
@@ -880,7 +880,7 @@ def test_instrument_exits_marks_each_exit_sub_with_its_line():
 
 
 def test_trap_hints_vbnarrow_with_katakana_literal():
-    assert vf._trap_hints('ss = StrConv(ss, vbNarrow)\r\nIf ss = "勘定科目コード" Then') 
+    assert vf._trap_hints('ss = StrConv(ss, vbNarrow)\r\nIf ss = "予算科目コード" Then') 
     assert not vf._trap_hints('ss = StrConv(ss, vbNarrow)\r\nIf ss = "支出額" Then')
 
 
@@ -920,8 +920,8 @@ def test_keep_best_reverts_worse_attempt():
 
 
 def test_hints_repeated_title_as_record():
-    exp = {'row': 1, 'col': 1, 'values': [['令和8年度 ものづくり設備助成金 申請受付簿', '', ''], ['受付番号', '', '受付番号'], ['', '', 'R8-001']]}
-    h = vf._hints(["G9: 期待 'R8-007' ／ マクロ後 '令和8年度 ものづくり設備助成金 申請受付簿'"], exp)
+    exp = {'row': 1, 'col': 1, 'values': [['令和8年度 地域づくり活動補助金 申請受付簿', '', ''], ['受付番号', '', '受付番号'], ['', '', 'R8-001']]}
+    h = vf._hints(["G9: 期待 'R8-007' ／ マクロ後 '令和8年度 地域づくり活動補助金 申請受付簿'"], exp)
     assert '表題' in h and 'くり返した' in h
     assert '表題' not in vf._hints(["G9: 期待 'R8-007' ／ マクロ後 'R8-008'"], exp)
 
@@ -931,14 +931,14 @@ def test_similar_heads_contains_search():
     code = 'If InStr(h, "支出額") > 0 Then amtCol = c'
     h = vf._trap_hints(code, start)
     assert any('「支出額」と「支出額（税抜）」' in x for x in h)
-    exp = {'others': [{'name': '総務課', 'head': '（左上 A1・5 行×4 列）\n1\t事業名\t前年度予算額\t予算額\t実績額\n2\t保守\t1\t2\t3'}]}
+    exp = {'others': [{'name': '総務課', 'head': '（左上 A1・5 行×4 列）\n1\t事業名\t前年度予算額\t予算額\t執行額\n2\t除雪\t1\t2\t3'}]}
     assert any('「予算額」と「前年度予算額」' in x for x in vf._trap_hints('If InStr(v, "予算額") Then', {'values': []}, exp))
     assert not vf._trap_hints('If h = "支出額" Then', start)                      # 一致で探していれば言わない
 
 
 def test_hints_total_in_header_row_points_to_list_sheet():
     exp = {'row': 1, 'col': 1, 'values': [['費目', '金額', '', '費目', '総務課', '合計']]}
-    h = vf._hints(["F1: 期待 '合計' ／ マクロ後 '経理課'", "G1: 期待 '' ／ マクロ後 '合計'"], exp)
+    h = vf._hints(["F1: 期待 '合計' ／ マクロ後 '財政課'", "G1: 期待 '' ／ マクロ後 '合計'"], exp)
     assert '見出しの行に「合計」' in h
     assert '見出しの行に' in vf._hints(["L1: 期待 '合計' ／ マクロ後 '※ 4月1日現在の人数'"], exp)
     assert '※」で始まる注記' in vf._hints(["D30: 期待 '' ／ マクロ後 '※ 税込み'"], exp)
@@ -951,7 +951,7 @@ def test_keep_best_names_tables_the_discarded_fix_broke():
     vf._keep_best(best, 1, 'A', 's', 'fbA', ['前年度'])
     code, fb, rev = vf._keep_best(best, 2, 'B', 's', 'fbB', ['前年度', '見出しの空白'])
     assert rev and code == 'A' and '「見出しの空白」を外しました' in fb
-    assert not vf._trap_hints('If InStr(v, "（例") > 0 Then', {'values': [['事業名', '予算額'], ['（例）社屋清掃', 1]], 'kinds': ['ss', 'sn']})
+    assert not vf._trap_hints('If InStr(v, "（例") > 0 Then', {'values': [['事業名', '予算額'], ['（例）庁舎清掃', 1]], 'kinds': ['ss', 'sn']})
 
 
 def test_hints_spaced_total_label():
@@ -1065,11 +1065,11 @@ def test_compare_ignores_trailing_empty_rows_and_cols():
 
 
 def test_plan_full_graph_or_sort_in_same_clause_goes_to_ai():
-    reg = vp.registry_from_text("Sub 管理会計区分を振り直して集計する()\n    ' 依頼の語: 管理会計|振り直\n    ' 扱う: 振り直し 区分 集計\n"
-                                "    ' 見出し: 勘定科目コード\nEnd Sub\n")
-    p = vp.plan_full("管理会計区分に振り直して、区分ごとの円グラフも作って", reg, {'勘定科目コード'})
+    reg = vp.registry_from_text("Sub 決算統計区分を振り直して集計する()\n    ' 依頼の語: 決算統計|振り直\n    ' 扱う: 振り直し 区分 集計\n"
+                                "    ' 見出し: 予算科目コード\nEnd Sub\n")
+    p = vp.plan_full("決算統計区分に振り直して、区分ごとの円グラフも作って", reg, {'予算科目コード'})
     assert p['extras'] and p['other'] is True and 'グラフ' in p['left']
-    p = vp.plan_full("管理会計区分に振り直して、区分ごとに集計して", reg, {'勘定科目コード'})
+    p = vp.plan_full("決算統計区分に振り直して、区分ごとに集計して", reg, {'予算科目コード'})
     assert p['extras'] and p['other'] is False
 
 
@@ -1192,23 +1192,23 @@ def test_trap_hints_line_ends_with_ampersand_without_continuation():
 def test_header_alternatives_with_bar(monkeypatch):
     """2026-09-18: ピボットを値で貼り付けた集計表は「課名」でなく「行ラベル」＝「課名|行ラベル」で両方の表に撃てる。"""
     import vbam_prefire as vp
-    assert vp.head_in('課名|行ラベル', {'行ラベル', '消耗費'}) and not vp.head_in('課名|行ラベル', {'科目'})
+    assert vp.head_in('課名|行ラベル', {'行ラベル', '需用費'}) and not vp.head_in('課名|行ラベル', {'科目'})
     monkeypatch.setattr(vf, '_OTHER_JOB_TEXTS', {})
     monkeypatch.setattr(vf, '_OTHER_JOB_WORDS', {})
     code = "Sub 積み上げ()\n    ' 依頼の語: 積み上げ縦棒\n    ' 扱う: グラフ\n    ' 見出し: 課名|行ラベル\nEnd Sub\n"
     case = {'name': '積み上げ', 'request': '積み上げ縦棒にして', 'phrases': [], 'keep_ask': '',
-            'before_values': {'values': [['課名', '消耗費', '合計']]},
-            'tests': [{'label': 'ピボット', 'expect': {'values': [['合計 / 支出額', '列ラベル'], ['行ラベル', '消耗費', '総計']]}}]}
+            'before_values': {'values': [['課名', '需用費', '合計']]},
+            'tests': [{'label': 'ピボット', 'expect': {'values': [['合計 / 支出額', '列ラベル'], ['行ラベル', '需用費', '総計']]}}]}
     assert vf._check_fit(case, code, '積み上げ縦棒')[1] is None
     reg = vp.registry_from_text(code)
-    assert vp.plan_full('積み上げ縦棒にして', reg, {'行ラベル', '消耗費'})['extras']
+    assert vp.plan_full('積み上げ縦棒にして', reg, {'行ラベル', '需用費'})['extras']
 
 def test_trap_hints_object_without_set():
     assert any('Set が要ります' in x for x in vf._trap_hints('    wb = ActiveWorkbook\n'))
     assert not any('Set が要ります' in x for x in vf._trap_hints('    Set wb = ActiveWorkbook\n    n = wb.Worksheets(1).Name\n'))
 
 # ----------------------------------------------------------------
-# どの表でも動く形（2026-09-18: 鍛えた 27 本が課名・支出額・T支出明細を書き込み、現場の表で動かなかった）
+# どの表でも動く形（2026-09-18: 鍛えた 27 本が課名・支出額・T支出明細を書き込み、職場の表で動かなかった）
 # ----------------------------------------------------------------
 
 def test_header_none_line_fires_on_any_table(monkeypatch):
@@ -1491,8 +1491,8 @@ def _rich_book(tmp_path, name='rich.xlsx'):
     import datetime as dt
     rows = [['課名', '受付日', '金額'],
             ['総務課', dt.datetime(2026, 4, 1), 1000],
-            ['経理課', dt.datetime(2026, 4, 2), 2000],
-            ['営業課', dt.datetime(2026, 4, 3), 3000]]
+            ['財政課', dt.datetime(2026, 4, 2), 2000],
+            ['税務課', dt.datetime(2026, 4, 3), 3000]]
     return _book(tmp_path / name, rows, table=('T明細', 'A1:C4'),
                  other=[['課名', '受付日', '金額'], ['総務課', dt.datetime(2026, 5, 1), 9]])
 
@@ -1515,10 +1515,10 @@ def test_shape_of_file_merged_header_only_counts_the_header_rows(tmp_path):
     """結合の見出し＝見出しの行〜+2 行の結合。表題の行だけの結合は数えない（帳票と普通の表を見分ける）。"""
     head = _book(tmp_path / 'head.xlsx',
                  [['課名', '支出', None, '備考'], [None, '予算', '執行', None],
-                  ['総務課', 1, 2, 'x'], ['経理課', 3, 4, 'y']], merges=('B1:C1',))
+                  ['総務課', 1, 2, 'x'], ['財政課', 3, 4, 'y']], merges=('B1:C1',))
     assert '結合の見出し' in vf.shape_of_file(head)
     title = _book(tmp_path / 'title.xlsx',
-                  [['支出一覧', None, None], ['課名', '予算', '執行'], ['総務課', 1, 2], ['経理課', 3, 4]],
+                  [['支出一覧', None, None], ['課名', '予算', '執行'], ['総務課', 1, 2], ['財政課', 3, 4]],
                   merges=('A1:C1',))
     assert '結合の見出し' not in vf.shape_of_file(title)
 

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""vbam_devtools.py — vba_manager 分割パート: 現場向けの VBA ツール作りに寄せた手（2026-09-16）
+"""vbam_devtools.py — vba_manager 分割パート: 職場向けの VBA ツール作りに寄せた手（2026-09-16）
 
-9/16 の見直しで「作って現場へ持っていく」ときに最初に欲しくなる手を足した。
+9/16 の見直しで「作って職場へ持っていく」ときに最初に欲しくなる手を足した。
   rename-procedure  マクロの改名（宣言・呼び元・Application.Run の文字・図形の OnAction・ショートカットまで一括）
   diff-module       モジュールの差分（.bas ファイル／直前の控え／別の開いているブック）
   references        参照設定の一覧・追加・削除
