@@ -103,8 +103,36 @@ def smart_path_resolve(filename):
               os.path.join(SCRIPT_DIR, '..', '..', '..')]:
         c = os.path.join(os.path.abspath(d), filename)
         if os.path.exists(c):
-            return c
+            # 2026-09-19: 「作業ファイル/test.xlsx」のように / で渡されると、/ が混ざったままのパスを返していた。
+            # Excel の FullName は \ なので、open が「開いたのに 30 秒待って失敗」と誤報した（Gemini の実射の記録）
+            return os.path.normpath(c)
     return None
+
+
+def note_if_macro_free_book(wb):
+    """マクロを入れたブックが .xlsx などマクロを持てない形式なら、1 行で知らせる（保存してもファイルには残らない）。
+
+    2026-09-19: Gemini も Claude も test_pivot.xlsx にマクロを足し、道具は「保存しました」と言ったが、
+    .xlsx はマクロを持てない＝開いているあいだ動くだけで、閉じると消える。人が後で「無い」と気づく形だった。"""
+    try:
+        name = str(wb.Name)
+    except Exception:
+        return False
+    if name.lower().endswith(('.xlsx', '.xltx', '.csv')):
+        print(f"⚠ {name} はマクロを持てない形式です。保存しても、いま入れたマクロはファイルに残りません"
+              "（開いているあいだは動きます）。残すには .xlsm で保存し直してください。")
+        return True
+    return False
+
+
+def same_path(a, b):
+    """2 つのパスが同じファイルを指すか（/ と \\・大文字小文字・.. の違いをならして比べる）。"""
+    if not a or not b:
+        return False
+    try:
+        return os.path.normcase(os.path.normpath(os.path.abspath(a))) == os.path.normcase(os.path.normpath(os.path.abspath(b)))
+    except Exception:
+        return str(a).lower() == str(b).lower()
 
 
 def parse_target_and_rest(posargs):
@@ -768,7 +796,7 @@ def _get_workbook_uncached(target_file_arg=None, load_addins=False, readonly=Fal
     for wb in _running_excel_workbooks():
         excel_running = True
         try:
-            if wb.FullName.lower() == target_path.lower():
+            if same_path(wb.FullName, target_path):
                 xl = wb.Application
                 _remember_excel_pid(xl)
                 print(f"対象ブック: {wb.Name}  (既に開いています)")
@@ -785,7 +813,7 @@ def _get_workbook_uncached(target_file_arg=None, load_addins=False, readonly=Fal
             # GetActiveObject で掴んだインスタンスの Workbooks も確認する
             try:
                 for wb in xl_fallback.Workbooks:
-                    if wb.FullName.lower() == target_path.lower():
+                    if same_path(wb.FullName, target_path):
                         _remember_excel_pid(xl_fallback)
                         print(f"対象ブック: {wb.Name}  (既に開いています)")
                         if load_addins:
@@ -2110,7 +2138,10 @@ __all__ = [
     'pythoncom',
     'pywintypes',
     're',
+    'note_if_macro_free_book',   # 2026-09-19（一覧に入れ忘れると import * の側から見えず、open の中では NameError が黙って飲まれた）
     'read_code_file',
+    'release_instance',          # 2026-09-17 に足したとき一覧に入れ忘れていた（見張りのテストが 9/19 に見つけた）
+    'same_path',
     'setup_encoding',
     'shutil',
     'smart_path_resolve',

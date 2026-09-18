@@ -3827,3 +3827,69 @@ def test_fired_ledger_counts_and_summary(tmp_path, monkeypatch):
     assert '2 回  合計行を足す' in txt and '一度も撃たれていない' in txt and '散布図を作る' in txt
     monkeypatch.setattr(vl, '_FIRED_FILE', str(tmp_path / 'none.jsonl'))
     assert '記録がありません' in vl.fired_summary()
+
+
+# ----------------------------------------------------------------
+# 2026-09-19 Gemini の実射の記録から: open が「開いたのに 30 秒待って失敗」と誤報した
+# （「作業ファイル/test.xlsx」のように / で渡されたパスを、/ が混ざったまま Excel の FullName と比べていた）
+# ----------------------------------------------------------------
+
+def test_same_path_ignores_slash_and_case(tmp_path):
+    import vbam_core
+    f = tmp_path / 'sub' / 'Book.xlsx'
+    f.parent.mkdir()
+    f.write_bytes(b'x')
+    win = str(f)
+    assert vbam_core.same_path(win, win.replace('\\', '/'))
+    assert vbam_core.same_path(win.upper(), win.lower())
+    assert vbam_core.same_path(str(tmp_path / 'sub' / '..' / 'sub' / 'Book.xlsx'), win)
+    assert not vbam_core.same_path(win, str(tmp_path / 'sub' / 'Other.xlsx'))
+    assert not vbam_core.same_path('', win) and not vbam_core.same_path(win, None)
+
+
+def test_smart_path_resolve_returns_backslash_path(tmp_path, monkeypatch):
+    import vbam_core
+    (tmp_path / 'work').mkdir()
+    (tmp_path / 'work' / 'test_pivot.xlsx').write_bytes(b'x')
+    (tmp_path / 'a' / 'b').mkdir(parents=True)
+    # 今いる場所からは見つからず、SCRIPT_DIR の 2 つ上（＝tmp_path）で見つかる形にする＝直した枝を通す
+    monkeypatch.setattr(vbam_core, 'SCRIPT_DIR', str(tmp_path / 'a' / 'b'))
+    monkeypatch.chdir(tmp_path / 'a')
+    got = vbam_core.smart_path_resolve('work/test_pivot.xlsx')
+    assert got and '/' not in got, got
+    assert vbam_core.same_path(got, str(tmp_path / 'work' / 'test_pivot.xlsx'))
+
+
+def test_note_if_macro_free_book(capsys):
+    import vbam_core
+
+    class _WB:
+        def __init__(self, name):
+            self.Name = name
+
+    assert vbam_core.note_if_macro_free_book(_WB('test_pivot.xlsx')) is True
+    assert 'マクロを持てない形式' in capsys.readouterr().out and True
+    assert vbam_core.note_if_macro_free_book(_WB('book.xlsm')) is False
+    assert vbam_core.note_if_macro_free_book(_WB('addin.XLAM')) is False
+    assert capsys.readouterr().out == ''
+
+
+def test_new_core_helpers_are_exported():
+    """vbam_core は __all__ を持つ＝足した関数を一覧に入れ忘れると、import * で使う側から見えない。
+    2026-09-19: same_path を入れ忘れ、open の中の NameError が except に黙って飲まれて「既に開いています」を素通りした。"""
+    import vbam_core
+    import vbam_edit
+    import vbam_vba
+    for name in ('same_path', 'note_if_macro_free_book', 'smart_path_resolve'):
+        assert name in vbam_core.__all__, name
+    assert vbam_edit.same_path is vbam_core.same_path
+    assert vbam_vba.note_if_macro_free_book is vbam_core.note_if_macro_free_book
+
+
+def test_every_public_function_in_core_is_exported():
+    """vbam_core の中で def された、下線で始まらない関数は全部 __all__ に入っていること（入れ忘れの見張り）。"""
+    import inspect
+    import vbam_core
+    missing = [n for n, f in vars(vbam_core).items()
+               if inspect.isfunction(f) and f.__module__ == 'vbam_core' and not n.startswith('_') and n not in vbam_core.__all__]
+    assert not missing, missing
