@@ -1,0 +1,9 @@
+pywin32
+mcp          # vba_mcp_server.py（MCP サーバー excel-manager）を使う場合
+openpyxl     # 正解つきの試験のお題を作る・閉じたブックを読む手
+oletools     # 閉じたブックの VBA を Excel を開かずに読む（versions / history / list-file / grep-files）
+Pillow       # 画面の写しを扱う手（screenshot・フォームの実表示）
+customtkinter  # 鍵の窓・手順書の窓（key_gui.py / recipe_gui.py）を使う場合
+
+# 開発用（任意・機械の試験を回す場合のみ）
+# pytest

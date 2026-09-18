@@ -1,0 +1,30 @@
+# 道具が実行のたびに置く作業ファイル・記録・控え（研究の記録は公開しない）
+_last_*
+_agent_*
+_calls.jsonl
+_cmd_progress.json
+_job_clock.json
+_fired.jsonl
+_exports/
+_checkup_history/
+backups/
+_sync_backup/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.tmp
+*.log
+*.bak
+*.bak_*
+
+# 個人設定（配るスキルだけ公開）
+.claude/*
+!.claude/skills/
+
+# Excel のブック（一時ファイルを含む）
+~$*
+*.xlsx
+*.xlsm
+*.xlam
+# 配るアドインだけは入れる
+!/秀コンボ.xlsm
