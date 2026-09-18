@@ -159,6 +159,19 @@ def test_data_cleaner_detects_outliers_iqr():
     assert "著しく乖離しています" in outliers[0]["msg"]
 
 
+def test_data_cleaner_outliers_skip_total_rows():
+    """2026-09-19: 月別の表の「合計」の行が、4 列とも外れ値と出た。合計・小計の行は検査に入れない。
+    明細の中の桁違いは、合計の行があっても拾う。"""
+    vals = [["月", "A", "B"], ["4月", 1850, 620], ["5月", 2120, 580], ["6月", 1980, 710],
+            ["7月", 2460, 845], ["8月", 2230, 790], ["9月", 2710, 930], ["合計", 13350, 4475]]
+    assert [i for i in va.check_data_cleaner(vals, 0, 0) if i["type"] == "outlier_value"] == []
+    vals[3][1] = 1980000                                     # 明細の桁違い
+    hit = [i["cell"] for i in va.check_data_cleaner(vals, 0, 0) if i["type"] == "outlier_value"]
+    assert hit == ["B4"]
+    vals2 = [["課", "額"], ["総務", 100], ["財政", 120], ["小 計", 220], ["税務", 110], ["福祉", 130], ["課別合計", 460]]
+    assert [i for i in va.check_data_cleaner(vals2, 0, 0) if i["type"] == "outlier_value"] == []
+
+
 def test_audit_report_formatting():
     issues = [
         {"cell": "A1", "severity": "critical", "type": "formula_error", "msg": "エラー", "formula": "=1/0"},
