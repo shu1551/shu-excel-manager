@@ -724,9 +724,24 @@ def _prompt(case, feedback=None, prev_code=None):
     return "\n".join(parts)
 
 
+FORGE_DEFAULT_MODEL = 'opus'      # 2026-09-19 shu「マクロを書く頭の既定は Opus に」。表を直す agent の既定（sonnet）とは別に持つ
+
+
+def _forge_model(ai, model):
+    """鍛える回路でマクロを書く頭。名指しが無く、頭が Claude Code（既定）のときだけ Opus にする。
+
+    マクロは一度合格すれば、次からは AI なしで何度でも回る＝書くときの数十秒より、1 回で正しく書けるほうが効く。
+    gemini／claude（API）を名指ししたとき・--model を付けたときは、そのまま。"""
+    if model:
+        return model
+    if not ai or ai == 'claude-code':
+        return FORGE_DEFAULT_MODEL
+    return model
+
+
 def _ask_once(ai, model, prompt):
     from vbam_ai import _ai_setup, _ask, _cc_oneshot
-    ai, model, key = _ai_setup(ai, model)
+    ai, model, key = _ai_setup(ai, _forge_model(ai, model))
     if ai == 'claude-code':
         res = _cc_oneshot(prompt, model)             # (text, usage) の 2 つ組で返る（1 回目は tuple の repr を読んで Sub が無いと出た）
         return res[0] if isinstance(res, tuple) else res

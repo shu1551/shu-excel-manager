@@ -1705,3 +1705,29 @@ def test_job_shape_object_words_come_from_main_table_only(monkeypatch, tmp_path)
     monkeypatch.setattr(vf, 'shape_of_file', lambda p, s=None: shapes[str(p)])
     case = {'before': str(main), 'sheet': None, 'tests': [{'before': str(h), 'sheet': None}]}
     assert vf._job_shape(case) == ['数の列', 'ピボット']
+
+
+def test_forge_writes_macros_with_opus_by_default(monkeypatch):
+    """2026-09-19 shu「マクロを書く頭の既定は Opus に」。名指しが無く頭が Claude Code のときだけ Opus。名指しはそのまま。"""
+    import vbam_forge as vf
+    assert vf._forge_model(None, None) == 'opus'
+    assert vf._forge_model('claude-code', None) == 'opus'
+    assert vf._forge_model('claude-code', 'sonnet') == 'sonnet'       # --model の名指しが勝つ
+    assert vf._forge_model('gemini', None) is None                    # ほかの頭は、その頭の既定に任せる
+    assert vf._forge_model(None, 'gemini-3.7-flash') == 'gemini-3.7-flash'
+
+    seen = {}
+    import vbam_ai
+
+    def fake_setup(ai, model):
+        seen['setup'] = (ai, model)
+        return 'claude-code', model, ''
+
+    def fake_oneshot(prompt, model):
+        seen['oneshot'] = model
+        return ('Sub X()\nEnd Sub', {})
+
+    monkeypatch.setattr(vbam_ai, '_ai_setup', fake_setup)
+    monkeypatch.setattr(vbam_ai, '_cc_oneshot', fake_oneshot)
+    assert vf._ask_once(None, None, 'p').startswith('Sub X')
+    assert seen['setup'] == (None, 'opus') and seen['oneshot'] == 'opus'
