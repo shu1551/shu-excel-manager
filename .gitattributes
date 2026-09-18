@@ -1,0 +1,6 @@
+# VBA の書き出し（Shift-JIS・CRLF）は 1 バイトも変えない（改行の自動変換で取り込めなくなるのを防ぐ）
+*.bas -text
+*.frm -text
+*.cls -text
+*.frx binary
+*.xlsm binary
