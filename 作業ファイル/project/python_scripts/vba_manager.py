@@ -803,7 +803,7 @@ def build_parser():
     p.add_argument("--ask", default=None,
                    help="依頼文を渡して AI に設計図を 1 回書かせてから組み上げる（GEMINI_API_KEY / ANTHROPIC_API_KEY）")
     p.add_argument("--ai", default=None, help="設計図を書かせる先: claude-code（既定・ヘッドレスの Claude Code・鍵なし）| gemini | claude（API 鍵）")
-    p.add_argument("--model", default=None, help="モデル名（既定 claude-code=sonnet / gemini-3.7-flash / claude-haiku-4-5-20251001。gemini で始まる名前なら --ai 省略時も gemini）")
+    p.add_argument("--model", default=None, help="モデル名（既定 claude-code=sonnet・--forge でマクロを書く頭だけ既定 opus / gemini-3.7-flash / claude-haiku-4-5-20251001。gemini で始まる名前なら --ai 省略時も gemini）")
     p.add_argument("--new-book", dest="new_book", action="store_true",
                    help="まっさらな新しいブックに組み上げる（訓練場。人のブックに触らない）")
     p.add_argument("--recipes", action="store_true", help="手順書（帳票の型）の一覧")
@@ -847,7 +847,7 @@ def build_parser():
     p.add_argument("--rehearse", action="store_true",
                    help="mode=macro: 直したあと rehearse（コピーで試し撃ち）まで回して結果を AI に見せる")
     p.add_argument("--ai", default=None, help="聞く先: claude-code（既定・ヘッドレスの Claude Code・鍵なし）| gemini | claude（API 鍵）")
-    p.add_argument("--model", default=None, help="モデル名（既定 claude-code=sonnet / gemini-3.7-flash / claude-haiku-4-5-20251001。gemini で始まる名前なら --ai 省略時も gemini）")
+    p.add_argument("--model", default=None, help="モデル名（既定 claude-code=sonnet・--forge でマクロを書く頭だけ既定 opus / gemini-3.7-flash / claude-haiku-4-5-20251001。gemini で始まる名前なら --ai 省略時も gemini）")
     p.add_argument("--max-turns", dest="max_turns", default=None, help="往復の上限（既定 4）")
     p.add_argument("--dry-run", dest="dry_run", action="store_true",
                    help="1 往復目の手（JSON）を表示するだけで Excel には触らない")
