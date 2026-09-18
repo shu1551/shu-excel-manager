@@ -613,6 +613,17 @@ def vba(command: str) -> str:
       "tidy A5:G13 I5:L11"（表の仕上げ＝見出し・罫線・番号列は左寄せ・数値列は#,##0・列幅。
       列を足したときは足した列だけでなく表全体の範囲を渡す）
     表・数式の列など TSV で書く範囲は write_grid（TSV を文字列で直接渡す。ファイル不要）。
+    よく外す手の形（2026-09-19 Gemini の実射で、形を外して使い方が返るだけの往復が 11 回あった）:
+      "pivot create Sheet1!A1:G13 --rows 部署 --cols 区分 --values 金額 --func sum --sheet 集計 --name P1" /
+      "pivot-field set-format P1 金額 #,##0" / "pivot-field sort P1 部署 desc" /
+      "chart create A1:B5 --type column --title 題 --name G1 --at H3"（ピボットからは --pivot P1） /
+      "chart-config legend G1 bottom" / "chart-config data-labels G1 --value" /
+      "slicer add P1 部署 --name S1 --at A11" / "slicer list" /
+      "shape --list"（図形の名前と位置） / "shape G1 --left 216 --top 135 --width 300 --height 180"（動かす・大きさ） /
+      "sheet add 新シート --before 既存" / "format-range B2:N2 --merge --bold --bg #1F4E79 --color #FFFFFF --size 16" /
+      "add-module Module1 -y" → set_procedure_code(全文) → "add-procedure Module1 -y"（新しい Sub を足す。直すのは replace_procedure）
+    手数の多い組み立て（ダッシュボード・帳票の作り直しなど、10 手を超えそうなもの）は、一手ずつ撃たずに
+    VBA のマクロ 1 本に書いて "compile" → "run-macro 名前" で撃つ（同じ仕事が 30 往復・数分 → 1 本・約 1 秒。二度目からは AI も要らない）。
     コマンド一覧・各引数は vba_help で確認できる。
     注意: 確認プロンプトを出すコマンドは必ず -y を付ける（例: "replace-procedure -y"）。
     shell / batch は使えない（このセッション自体が常駐＝接続使い回しのため不要）。

@@ -2294,6 +2294,7 @@ def cmd_replace_procedure(args):
             cm.InsertLines(eff_start, new_code.rstrip('\n'))
             wb.Save()
             print(f"置換完了: [{comp.Name}] '{macro_name}' → 保存しました")
+            note_if_macro_free_book(wb)
             return True
 
         # Attribute行あり → .bas編集 → replace-module 方式
@@ -2402,6 +2403,7 @@ def cmd_replace_procedure(args):
                 _remove_export_artifacts(tmp_bas)
         # ここまで来たら Import 済み・実名検証済み（黙って成功と報告しない、の実装）
         print(f"置換完了: [{module_name}] '{macro_name}' → 保存しました (Attribute保持)")
+        note_if_macro_free_book(wb)
         return True
 
     print(f"エラー: プロシージャ '{macro_name}' が見つかりません")
@@ -2570,6 +2572,7 @@ def cmd_add_procedure(args):
     cm.InsertLines(cm.CountOfLines + 1, body)
     wb.Save()
     print(f"追加完了: [{comp.Name}] '{proc_name}' → 保存しました")
+    note_if_macro_free_book(wb)
     return True
 
 
@@ -2631,6 +2634,7 @@ def cmd_add_module(args):
     wb.Save()
     label = {1: '標準モジュール', 2: 'クラスモジュール', 3: 'ユーザーフォーム'}[comp_type]
     print(f"追加完了: {label} '{comp.Name}' → 保存しました")
+    note_if_macro_free_book(wb)
     return True
 
 
@@ -2908,6 +2912,7 @@ def cmd_replace_module(args):
                 if tmp_norm and os.path.exists(tmp_norm):
                     _remove_export_artifacts(tmp_norm)
             print(f"置換完了: モジュール '{module_name}' → 保存しました")
+            note_if_macro_free_book(wb)
             return True
 
     if tmp_norm and os.path.exists(tmp_norm):

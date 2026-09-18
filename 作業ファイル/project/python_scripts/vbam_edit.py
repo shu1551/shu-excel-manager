@@ -3101,7 +3101,7 @@ def cmd_open(args):
     # 既に開いていないか（全インスタンス横断）
     for wb in _running_excel_workbooks():
         try:
-            if wb.FullName.lower() != path.lower():
+            if not same_path(wb.FullName, path):
                 continue
             app = wb.Application
             try:
@@ -3176,7 +3176,7 @@ def cmd_open(args):
     while time.time() < limit:
         for wb in _running_excel_workbooks():
             try:
-                if wb.FullName.lower() == path.lower():
+                if same_path(wb.FullName, path):
                     print(f"開きました: {wb.Name}  （Excel を通常起動）")
                     return True
             except Exception:
