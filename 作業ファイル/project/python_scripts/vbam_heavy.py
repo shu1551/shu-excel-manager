@@ -28,12 +28,18 @@ from vbam_edit import *  # noqa: F401,F403
 _XL_CHART_TYPE = {
     'column':         51,     # xlColumnClustered
     'stacked-column': 52,     # xlColumnStacked
+    'stacked-column-100': 53, # xlColumnStacked100
     'bar':            57,     # xlBarClustered
+    'stacked-bar':    58,     # xlBarStacked
+    'stacked-bar-100': 59,    # xlBarStacked100
     'line':           4,      # xlLine
+    'line-markers':   65,     # xlLineMarkers
     'pie':            5,      # xlPie
     'scatter':        -4169,  # xlXYScatter
     'area':           1,      # xlArea
+    'stacked-area':   76,     # xlAreaStacked
     'doughnut':       -4120,  # xlDoughnut
+    'radar':          -4151,  # xlRadar
 }
 _XL_CHART_TYPE_NAME = {v: k for k, v in _XL_CHART_TYPE.items()}
 
@@ -43,7 +49,8 @@ _XL_CHART_TYPE_NAME = {v: k for k, v in _XL_CHART_TYPE.items()}
 def cmd_chart(args):
     """グラフ操作: chart <create|list|delete> ...
 
-      chart create <data_range> [--type column|stacked-column|bar|line|pie|scatter|area]
+      chart create <data_range> [--type column|stacked-column|stacked-column-100|bar|stacked-bar|stacked-bar-100|
+                                        line|line-markers|pie|scatter|area|stacked-area|doughnut|radar]
                    [--title "見出し"] [--at セル] [--name 名] [--width N --height N]
       chart create --pivot <ピボット名> [--type ...] [--title ...] [--at セル]   ピボットグラフ
       chart list
@@ -153,7 +160,7 @@ def cmd_chart_config(args):
     """グラフ詳細設定: chart-config <action> <chart名> ...
 
       set-source <chart> <range>                          データ範囲を再設定
-      set-type <chart> <type>                             種別変更(column/stacked-column/bar/line/pie/...)
+      set-type <chart> <type>                             種別変更(chart create の --type と同じ語。外れれば一覧が出る)
       set-title <chart> <text>                            グラフタイトル
       set-axis-title <chart> <category|value|secondary> <text>   軸タイトル
       axis-format <chart> <axis> [format]                 軸の表示形式 get/set
