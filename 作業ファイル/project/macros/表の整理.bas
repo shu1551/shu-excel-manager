@@ -2053,9 +2053,10 @@ Sub 複合グラフを作る()
     Set ws = ActiveSheet
 
     Dim co As Object
-    For Each co In ws.ChartObjects
-        co.Delete
-    Next co
+    Dim iMae As Long
+    For iMae = ws.ChartObjects.Count To 1 Step -1
+        If Left$(ws.ChartObjects(iMae).Name, 5) = "表の整理_" Then ws.ChartObjects(iMae).Delete
+    Next iMae
 
     Dim ur As Object
     Set ur = ws.UsedRange
@@ -2200,6 +2201,7 @@ skipRow:
     Dim topPos As Double: topPos = ws.Cells(hdrRow, lastC + 2).Top
     Dim chObj As Object
     Set chObj = ws.ChartObjects.Add(leftPos, topPos, 420, 280)
+    chObj.Name = "表の整理_複合グラフ"
     Dim ch As Object
     Set ch = chObj.Chart
     ch.ChartType = 51
@@ -4772,9 +4774,10 @@ skipRow:
     If cnt = 0 Then Exit Sub
 
     Dim co As ChartObject
-    For Each co In ws.ChartObjects
-        co.Delete
-    Next co
+    Dim iMae As Long
+    For iMae = ws.ChartObjects.Count To 1 Step -1
+        If Left$(ws.ChartObjects(iMae).Name, 5) = "表の整理_" Then ws.ChartObjects(iMae).Delete
+    Next iMae
 
     Dim rightMost As Long
     rightMost = ur.Column + ur.Columns.Count - 1
@@ -4784,6 +4787,7 @@ skipRow:
     chartTop = ws.Cells(hdrRow, rightMost + 2).Top
 
     Set co = ws.ChartObjects.Add(chartLeft, chartTop, 300, 250)
+    co.Name = "表の整理_円グラフ"
     Dim ch As Chart
     Set ch = co.Chart
     ch.ChartType = xlPie
@@ -5313,7 +5317,7 @@ Sub 棒グラフを作る()
 
     Dim j As Long
     For j = ws.ChartObjects.Count To 1 Step -1
-        ws.ChartObjects(j).Delete
+        If Left$(ws.ChartObjects(j).Name, 5) = "表の整理_" Then ws.ChartObjects(j).Delete
     Next j
 
     Dim leftPos As Double, topPos As Double
@@ -5325,6 +5329,7 @@ Sub 棒グラフを作る()
 
     Dim newCO As Object
     Set newCO = ws.ChartObjects.Add(leftPos, topPos, 420, 300)
+    newCO.Name = "表の整理_棒グラフ"
     Dim ch As Object: Set ch = newCO.Chart
 
     If useHoriz Then
@@ -6813,9 +6818,10 @@ NextRow:
 
     ' 既存グラフ削除
     Dim co As Object
-    For Each co In ws.ChartObjects
-        co.Delete
-    Next co
+    Dim iMae As Long
+    For iMae = ws.ChartObjects.Count To 1 Step -1
+        If Left$(ws.ChartObjects(iMae).Name, 5) = "表の整理_" Then ws.ChartObjects(iMae).Delete
+    Next iMae
 
     Dim leftPos As Double, topPos As Double
     leftPos = ws.Cells(hdrRow, endCol + 2).Left
@@ -6823,6 +6829,7 @@ NextRow:
 
     Dim chObj As Object
     Set chObj = ws.ChartObjects.Add(leftPos, topPos, 400, 300)
+    chObj.Name = "表の整理_積み上げ縦棒グラフ"
     Dim ch As Object
     Set ch = chObj.Chart
 
@@ -7159,9 +7166,10 @@ Sub 推移グラフを作る()
     Set ws = ActiveSheet
 
     Dim co As ChartObject
-    For Each co In ws.ChartObjects
-        co.Delete
-    Next co
+    Dim iMae As Long
+    For iMae = ws.ChartObjects.Count To 1 Step -1
+        If Left$(ws.ChartObjects(iMae).Name, 5) = "表の整理_" Then ws.ChartObjects(iMae).Delete
+    Next iMae
 
     Dim ur As Range
     Set ur = ws.UsedRange
@@ -7270,6 +7278,7 @@ NextCol:
 
     Dim cht As ChartObject
     Set cht = ws.ChartObjects.Add(chartLeft, chartTop, 480, 300)
+    cht.Name = "表の整理_推移グラフ"
 
     Dim seriesColors(7) As Long
     seriesColors(0) = RGB(31, 78, 121)
@@ -11059,9 +11068,10 @@ NextRow:
         chartTitle = hdr1 & "と" & hdr2 & "の比較"
     End If
 
-    Do While ws.ChartObjects.Count > 0
-        ws.ChartObjects(1).Delete
-    Loop
+    Dim iMae As Long
+    For iMae = ws.ChartObjects.Count To 1 Step -1
+        If Left$(ws.ChartObjects(iMae).Name, 5) = "表の整理_" Then ws.ChartObjects(iMae).Delete
+    Next iMae
 
     Dim placeCol As Long
     placeCol = ur.Column + ur.Columns.Count
@@ -11072,6 +11082,7 @@ NextRow:
 
     Dim cht As ChartObject
     Set cht = ws.ChartObjects.Add(leftPos, topPos, 400, 300)
+    cht.Name = "表の整理_二本棒グラフ"
 
     Dim ch As Chart
     Set ch = cht.Chart
@@ -11338,9 +11349,10 @@ NextRow:
     xv(nPts - 1) = hdr2
 
     Dim co As ChartObject
-    For Each co In ws.ChartObjects
-        co.Delete
-    Next co
+    Dim iMae As Long
+    For iMae = ws.ChartObjects.Count To 1 Step -1
+        If Left$(ws.ChartObjects(iMae).Name, 5) = "表の整理_" Then ws.ChartObjects(iMae).Delete
+    Next iMae
 
     Dim urRight As Double
     urRight = ws.Cells(ur.Row, ur.Column + ur.Columns.Count - 1).Left + _
@@ -11348,6 +11360,7 @@ NextRow:
 
     Dim coNew As ChartObject
     Set coNew = ws.ChartObjects.Add(urRight, ws.Cells(ur.Row, ur.Column).Top, 480, 300)
+    coNew.Name = "表の整理_ウォーターフォールグラフ"
 
     Dim ch As Chart
     Set ch = coNew.Chart
