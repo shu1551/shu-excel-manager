@@ -1,0 +1,1 @@
+アクティブなシートのピボットテーブルを全部、いつもの見せ方にそろえてください。フィールドの置き方（行・列・値・フィルタ）は変えない。スタイルは PivotStyleMedium9（pt.TableStyle2）。表形式（pt.RowAxisLayout xlTabularRow）。ラベルを繰り返す（pt.RepeatAllLabels xlRepeatLabels）。行のフィールドは全部小計なし（PivotField.Subtotals の 12 個を全部 False）。空白のセルに 0 を出す（pt.NullString = "0"・pt.DisplayNullString = True）。値のフィールドの表示形式は全部 #,##0（DataField.NumberFormat）。ほかのシートのピボットは触らない。ピボットが無ければ何もしない。

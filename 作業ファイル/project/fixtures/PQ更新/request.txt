@@ -1,0 +1,1 @@
+このブックのパワークエリの読み込み先と、ピボットテーブルを、まとめて最新にしてください。すべてのシートの、クエリを読み込んだテーブル（ListObject の QueryTable があるもの）を全部、終わるのを待って更新し（QueryTable.Refresh BackgroundQuery:=False）、その後で、すべてのシートのピボットテーブルを全部更新する（PivotCache.Refresh）。元のテーブルや、ほかのセルは変えない。何も無ければ何もしない。
