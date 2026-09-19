@@ -163,6 +163,7 @@ format-module <モジュール> [--apply -y]                 # 整形（Dim 先�
 copy-modules <モジュール…> --to <ブック> [--overwrite] -y   # 別の開いているブックへ複製（ショートカット再登録つき・2026-09-16）
 references list | add <GUID|パス> | remove <名> -y      # 参照設定（参照不可＝眠ったブックが動かない筆頭原因・2026-09-16）
 list-shortcuts / set-shortcut <マクロ> <キー> -y | --clear   # ショートカット一覧・付け替え（k=Ctrl+k・K=Ctrl+Shift+K・2026-09-16）
+#  同じブックでほかのマクロが同じキーを持っていれば、そちらから外して掛ける（Excel は両方に残し名前の順で先の方を動かす・9/20）。一覧は同じキーに印
 reorder-macro <マクロ> <up|down|top|bottom|番号>         # メニュー表示順
 list-backups [語] / restore <控え.bas> / backup-prune [--days 30] [--keep 1] [--force]   # 控えの一覧・復元・間引き（2026-09-16）
 repair <マクロ> [--module 名]                          # 修理の材料を 1 手で＝本文（_last_proc.vba にも保存）・入口・呼び元呼び先・コンパイルの落ちた行・check の error 級・控えとの差分（2026-09-17）

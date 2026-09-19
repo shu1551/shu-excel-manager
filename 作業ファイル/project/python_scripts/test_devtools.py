@@ -112,6 +112,84 @@ def test_shortcut_label():
     assert dt._shortcut_label("k") == "Ctrl+k"
 
 
+class _ScCM:
+    def __init__(self, procs):
+        self.procs = procs
+
+    def ProcStartLine(self, name, kind):
+        if name not in self.procs:
+            raise Exception("not found")
+        return 1
+
+
+class _ScComp:
+    def __init__(self, name, procs, text=""):
+        self.Name, self.Type, self.CodeModule, self.text = name, 1, _ScCM(procs), text
+
+    def Export(self, path):
+        with open(path, "wb") as f:
+            f.write(self.text.encode("cp932"))
+
+
+def test_set_shortcut_moves_key_from_old_owners(monkeypatch, capsys):
+    """2026-09-20 読者の報告: 同じキーを別のマクロに掛けても Excel は両方に残し、名前の順で先の方を動かす
+    ＝道具は「持ち主が替わる」と言うだけで新しい方に掛けていた。古い持ち主から外してから掛ける（同じモジュールは 1 回で）。"""
+    from types import SimpleNamespace
+    m1, m2 = _ScComp("Module1", ["ScZ", "ScA"]), _ScComp("Module2", ["ScB"])
+    keys = {"Module1": {"ScA": "J"}, "Module2": {"ScB": "J"}}
+    wb = SimpleNamespace(VBProject=SimpleNamespace(VBComponents=[m1, m2]), Name="t.xlsm")
+    monkeypatch.setattr(dt, "get_workbook", lambda *a, **k: (None, wb))
+    monkeypatch.setattr(dt, "_addin_project_owning_proc", lambda wb, p: None)
+    monkeypatch.setattr(dt, "_key_in_other_projects", lambda xl, wb, key: ["秀コンボ.xlam: M.X"])
+    monkeypatch.setattr(dt, "_proc_shortcut_keys", lambda wb, comp: dict(keys[comp.Name]) if comp is not None else {})
+    calls = []
+
+    def fake_persist(wb, comp, proc, key, target_file=None, force=False, also=()):
+        calls.append((comp.Name, proc, key, list(also)))
+        for p, k in [(proc, key)] + list(also):
+            if k:
+                keys[comp.Name][p] = k
+            else:
+                keys[comp.Name].pop(p, None)
+        return True
+    monkeypatch.setattr(dt, "_persist_shortcut", fake_persist)
+    ns = argparse.Namespace(posargs=["ScZ", "J"], module_opt=None, clear=False, yes=True, force=False)
+    assert dt.cmd_set_shortcut(ns) is True
+    assert calls == [("Module2", "ScB", None, []), ("Module1", "ScZ", "J", [("ScA", None)])]
+    assert keys == {"Module1": {"ScZ": "J"}, "Module2": {}}
+    out = capsys.readouterr().out
+    assert "持ち主が" not in out and "ScA・ScB から外してから ScZ に掛けます" in out
+    assert "秀コンボ.xlam: M.X" in out and "手を出しません" in out
+    assert "Ctrl+Shift+J → ScZ" in out and "ScA・ScB からは外しました" in out
+
+
+def test_persist_shortcut_rewrites_both_procs_in_one_import(monkeypatch):
+    """同じモジュールの古い持ち主は、掛ける側と一緒に 1 回の Remove+Import で外す。"""
+    bas = ('Attribute VB_Name = "Module1"\r\n'
+           'Sub ScZ()\r\nEnd Sub\r\n'
+           'Sub ScA()\r\nAttribute ScA.VB_ProcData.VB_Invoke_Func = "J\\n14"\r\nEnd Sub\r\n')
+    seen = []
+    monkeypatch.setattr(dt, "cmd_replace_module",
+                        lambda ns: (seen.append(open(ns.posargs[-1], "rb").read().decode("cp932")), True)[1])
+    assert dt._persist_shortcut(None, _ScComp("Module1", [], bas), "ScZ", "J", also=[("ScA", None)]) is True
+    assert len(seen) == 1
+    assert 'Attribute ScZ.VB_ProcData.VB_Invoke_Func = "J\\n14"' in seen[0] and "ScA.VB_ProcData" not in seen[0]
+
+
+def test_list_shortcuts_marks_same_key(monkeypatch, capsys):
+    from types import SimpleNamespace
+    import vbam_vba as vv
+    text = ('Attribute VB_Name = "M"\r\n'
+            'Sub ScZ()\r\nAttribute ScZ.VB_ProcData.VB_Invoke_Func = "J\\n14"\r\nEnd Sub\r\n'
+            'Sub ScA()\r\nAttribute ScA.VB_ProcData.VB_Invoke_Func = "J\\n14"\r\nEnd Sub\r\n'
+            'Sub ScB()\r\nAttribute ScB.VB_ProcData.VB_Invoke_Func = "b\\n14"\r\nEnd Sub\r\n')
+    wb = SimpleNamespace(VBProject=SimpleNamespace(VBComponents=[_ScComp("M", [], text)]), Name="t.xlsm")
+    monkeypatch.setattr(vv, "get_workbook", lambda *a, **k: (None, wb))
+    assert vv.cmd_list_shortcuts(argparse.Namespace(posargs=[], json=False)) is True
+    rows = [ln for ln in capsys.readouterr().out.splitlines() if "->" in ln]
+    assert [("同じキーが 2 本" in ln) for ln in rows] == [True, True, False]
+
+
 # ================================================================
 # backup-prune（系列ごとに新しい K 個は残す）
 # ================================================================

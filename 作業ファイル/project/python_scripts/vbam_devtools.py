@@ -178,22 +178,24 @@ def _set_invoke_attribute(bas_text, proc, key):
     return nl.join(out), found
 
 
-def _persist_shortcut(wb, comp, proc, key, target_file=None, force=False):
+def _persist_shortcut(wb, comp, proc, key, target_file=None, force=False, also=()):
     """ショートカットをファイルに残す＝.bas の Attribute を書いて Remove+Import（replace-module 経路）。
 
     Application.MacroOptions はその場では効くが、保存して開き直すと消える（2026-09-16 実測・改名テスト.xlsm）。
     Excel が Attribute に書くのは「マクロ→オプション」の窓からだけらしい。道具が持っている確かな道は
     replace-module（.bas の Attribute → Import → 直後に MacroOptions で再登録）なので、それに乗せる。
     副作用: モジュールが VBComponents の末尾へ移る（メニューの並びが変わることがある）。
+    also＝同じモジュールのほかのマクロのキーも一緒に書き換える [(名前, キー or None)]（Remove+Import は 1 回・2026-09-20）。
     """
     tmp = os.path.join(SCRIPT_DIR, f"_sc_set_{comp.Name}.bas")
     try:
         comp.Export(tmp)
-        text = _read_bas_text(tmp)
-        new, found = _set_invoke_attribute(text, proc, key)
-        if not found:
-            print(f"  ⚠ {comp.Name} の中に '{proc}' の宣言が見つからず、ショートカットを書けませんでした")
-            return False
+        new = _read_bas_text(tmp)
+        for p, k in [(proc, key)] + list(also):
+            new, found = _set_invoke_attribute(new, p, k)
+            if not found:
+                print(f"  ⚠ {comp.Name} の中に '{p}' の宣言が見つからず、ショートカットを書けませんでした")
+                return False
         with open(tmp, 'wb') as f:
             f.write(new.encode('cp932', errors='replace'))
         import argparse as _ap
@@ -745,12 +747,46 @@ def cmd_copy_modules(args):
 # set-shortcut
 # ================================================================
 
+def _proj_file(proj):
+    try:
+        return str(proj.FileName or '')
+    except Exception:                       # 一度も保存していないブックは FileName で落ちる
+        return ''
+
+
+def _key_in_other_projects(xl, wb, key):
+    """ほかの開いているブック・アドインで同じキーを持つマクロ → ['ブック: モジュール.マクロ', …]。
+    手は出さない（対象は開いているブックだけ）。保護されたプロジェクト・読めない物は飛ばす。"""
+    out = []
+    try:
+        mine = (str(wb.VBProject.Name), _proj_file(wb.VBProject))
+        projects = list(xl.VBE.VBProjects)
+    except Exception:
+        return out
+    for proj in projects:
+        try:
+            if (str(proj.Name), _proj_file(proj)) == mine or int(proj.Protection) == 1:
+                continue
+            book = os.path.basename(_proj_file(proj)) or str(proj.Name)
+            for comp in proj.VBComponents:
+                if int(comp.Type) != 1:
+                    continue
+                for p, k in _proc_shortcut_keys(None, comp).items():
+                    if k == key:
+                        out.append(f"{book}: {comp.Name}.{p}")
+        except Exception:
+            continue
+    return out
+
+
 def cmd_set_shortcut(args):
     """ショートカットキー: set-shortcut <マクロ名> <キー> [--module 名] [-y] / set-shortcut <マクロ名> --clear
 
     キーは k / K / ctrl+k / Ctrl+Shift+K（大文字＝Shift つき）。Excel の MacroOptions で掛ける＝
     保存すると Attribute VB_ProcData.VB_Invoke_Func に書かれる（Excel の「マクロ→オプション」と同じ）。
-    別のマクロが同じキーを持っていれば言う（Excel は黙って持ち主を替える）。
+    同じブックの別のマクロが同じキーを持っていれば、そちらから外してから掛ける。Excel は同じキーを両方に残し、
+    片方しか動かさない（名前の順で先の方・2026-09-20 読者の報告で直した。それまでは「持ち主が替わる」と言って
+    新しい方に掛けるだけだった）。ほかのブック・アドインの同じキーは知らせるだけで触らない。
     """
     target_file, rest = parse_target_and_rest(args.posargs)
     clear = getattr(args, 'clear', False)
@@ -786,23 +822,37 @@ def cmd_set_shortcut(args):
     if int(owner.Type) != 1:
         print(f"エラー: ショートカットは標準モジュールの Sub にしか付きません（{owner.Name} は標準モジュールではない）")
         return False
+    taken = {}                                # モジュール名 → 同じキーを持つほかのマクロ（同じブックの中）
+    olds = ''
     if not clear:
         addin = _addin_project_owning_proc(wb, name)
         if addin and not getattr(args, 'force', False):
             print(f"エラー: アドイン {addin} が同名のマクロを持っています。持ち主を奪うと更新登録後にキーが宙に浮くので止めました（--force で強行）")
             return False
-        taken = []
         for comp in wb.VBProject.VBComponents:
             if int(comp.Type) != 1:
                 continue
             for p, k in _proc_shortcut_keys(wb, comp).items():
                 if k == key and p.lower() != name.lower():
-                    taken.append(f"{comp.Name}.{p}")
+                    taken.setdefault(str(comp.Name), []).append(p)
         if taken:
-            print(f"⚠ {_shortcut_label(key)} は既に {', '.join(taken)} に付いています（掛けると持ち主が {name} に替わります）")
+            olds = '・'.join(p for ps in taken.values() for p in ps)
+            where = ', '.join(f"{m}.{p}" for m, ps in taken.items() for p in ps)
+            print(f"⚠ {_shortcut_label(key)} は既に {where} に付いています。Excel は同じキーを両方に残して片方しか動かさない"
+                  f"（名前の順で先の方）ので、{olds} から外してから {name} に掛けます")
+        elsewhere = _key_in_other_projects(xl, wb, key)
+        if elsewhere:
+            print(f"（ほかのブック・アドインにも {_shortcut_label(key)} があります: {', '.join(elsewhere)}。そちらには手を出しません。"
+                  "どれが動くかは Excel が決めるので、気になるならそちらのキーを外してください）")
     if not getattr(args, 'yes', False):
+        if clear:
+            q = "ショートカットを外しますか？"
+        elif taken:
+            q = f"{olds} から外して、{_shortcut_label(key)} を {name} に掛けますか？"
+        else:
+            q = f"{_shortcut_label(key)} を {name} に掛けますか？"
         try:
-            ans = input(("ショートカットを外しますか？" if clear else f"{_shortcut_label(key)} を {name} に掛けますか？") + " (y/N): ")
+            ans = input(q + " (y/N): ")
         except EOFError:
             print("非対話環境のため確認できません。-y を付けて実行してください。")
             return False
@@ -812,7 +862,19 @@ def cmd_set_shortcut(args):
     # MacroOptions はその場では効くが保存に残らない（2026-09-16 実測）。.bas の Attribute を書いて Remove+Import で残す
     # （replace-module 経路＝控え・VB_Name 照合・Import 直後の MacroOptions 再登録・保存まで）
     owner_name = str(owner.Name)              # Remove+Import の後は古い comp の参照が死ぬ＝名前で引き直す
-    if not _persist_shortcut(wb, owner, name, None if clear else key, target_file, force=getattr(args, 'force', False)):
+    force = getattr(args, 'force', False)
+    for mod, procs in taken.items():
+        # 先に、ほかのモジュールの古い持ち主から外す（同じモジュールの分は、掛ける Remove+Import に畳む）
+        if mod == owner_name:
+            continue
+        comp_old = _find_comp(wb, mod)
+        if comp_old is None or not _persist_shortcut(wb, comp_old, procs[0], None, target_file, force=force,
+                                                     also=[(p, None) for p in procs[1:]]):
+            print(f"エラー: {mod} の {'・'.join(procs)} からキーを外せませんでした（{name} には掛けていません）")
+            return False
+    same = [(p, None) for p in taken.get(owner_name, [])]
+    if not _persist_shortcut(wb, _find_comp(wb, owner_name) or owner, name, None if clear else key, target_file,
+                             force=force, also=same):
         print("エラー: ショートカットを書けませんでした（上の replace-module の報告を見てください）")
         return False
     comp_now = _find_comp(wb, owner_name)
@@ -827,7 +889,14 @@ def cmd_set_shortcut(args):
         if after != key:
             print(f"⚠ Attribute に書けていません（{name} = {after!r}）")
             return False
-        print(f"掛けて保存しました: {_shortcut_label(key)} → {name}（Attribute で確認済み・開き直しても残る。モジュールは末尾へ移りました）")
+        still = [f"{m}.{p}" for m in taken for p, k in _proc_shortcut_keys(wb, _find_comp(wb, m)).items()
+                 if k == key and p.lower() != name.lower()]
+        if still:
+            print(f"⚠ 外したはずの {', '.join(still)} にまだ {_shortcut_label(key)} が残っています")
+            return False
+        gone = f"・{olds} からは外しました" if taken else ""
+        print(f"掛けて保存しました: {_shortcut_label(key)} → {name}（Attribute で確認済み・開き直しても残る{gone}。"
+              "モジュールは末尾へ移りました）")
     return True
 
 

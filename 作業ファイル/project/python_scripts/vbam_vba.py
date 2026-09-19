@@ -3428,6 +3428,13 @@ def cmd_list_shortcuts(args):
                 'shortcut': shortcut_str
             })
 
+    # 同じキーが 2 本以上: Excel は両方に残して片方しか動かさない（名前の順で先の方・2026-09-20 読者の報告）
+    same = {}
+    for item in shortcuts:
+        same[item['shortcut']] = same.get(item['shortcut'], 0) + 1
+    for item in shortcuts:
+        item['same_key'] = same[item['shortcut']]
+
     if getattr(args, 'json', False):
         import json
         out = {"success": True, "file": wb.Name, "shortcuts": shortcuts}
@@ -3451,8 +3458,11 @@ def cmd_list_shortcuts(args):
     print(f"設定されているショートカットキー一覧 (数: {len(shortcuts)})")
     print("-" * 60)
     for item in shortcuts:
-        print(f"[{item['module']}] {item['macro']} -> {item['shortcut']}")
+        dup = f"   ⚠ 同じキーが {item['same_key']} 本（動くのは名前の順で先の方だけ）" if item['same_key'] > 1 else ""
+        print(f"[{item['module']}] {item['macro']} -> {item['shortcut']}{dup}")
     print("-" * 60)
+    if any(v > 1 for v in same.values()):
+        print("同じキーを 1 本にするには: set-shortcut <動かしたいマクロ> <キー> -y（ほかの持ち主からは外します）")
     return True
 
 
