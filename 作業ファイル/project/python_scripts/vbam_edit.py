@@ -3592,14 +3592,18 @@ def cmd_shape(args):
     sheet_opt = getattr(args, 'sheet_opt', None)
     ws = wb.Sheets(sheet_opt) if sheet_opt else wb.ActiveSheet
 
+    def _pt(v):
+        # 整数に丸めると 123.5 が 124 と出て、その数で当て直すと図形がずれる。端数は小数 2 桁まで出す
+        return f"{float(v):.2f}".rstrip('0').rstrip('.')
+
     def _info(shp):
         try:
             oa = str(shp.OnAction or '')
         except Exception:
             oa = ''
         return (f"  {shp.Name}" + (f" → {oa}" if oa else "")
-                + f"  [l={float(shp.Left):.0f} t={float(shp.Top):.0f} "
-                  f"w={float(shp.Width):.0f} h={float(shp.Height):.0f}]")
+                + f"  [l={_pt(shp.Left)} t={_pt(shp.Top)} "
+                  f"w={_pt(shp.Width)} h={_pt(shp.Height)}]")
 
     names = [str(n).strip() for n in rest if str(n).strip()]
 
