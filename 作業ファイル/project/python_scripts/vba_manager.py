@@ -914,6 +914,12 @@ def build_parser():
                    help="--forge と: 同じ仕事の言い換え（UTF-8・1 行 1 つ）。マクロの「依頼の語」が全部に当たるまで鍛える")
     p.add_argument("--test", dest="forge_tests", nargs="+", default=None, metavar="xlsx",
                    help="--forge と: 別の表でも試す（直す前 正解 の 2 冊ずつ並べる）。合格の条件に入る（AI なしで撃つ）")
+    p.add_argument("--prompt", dest="forge_prompt", action="store_true",
+                   help="--forge と: 会話している AI（Gemini・Claude など）が自分でマクロを書くとき（API の鍵は要らない）。"
+                        "AI を呼ばずに、書き手への問い（決まり・依頼・表・前回の外れ）を _agent_forge\\名前_prompt.txt に書いて止まる（2026-09-19）")
+    p.add_argument("--answer", dest="forge_answer", default=None, metavar="答え.txt",
+                   help="--forge と: 会話している AI が書いた答え（Sub 全文・UTF-8 可）を 1 往復ぶん採点する（採点は道具）。"
+                        "不合格なら _agent_forge\\名前_prompt.txt が次の問い（外れの説明と前回のマクロつき）に書き換わる")
     p.add_argument("--keep-case", dest="keep_case", default=None, metavar="名前",
                    help="直前の本番の走行を弾にする（そのブックを写し取って練習台にし、依頼文と一緒に控える）。"
                         "撃ち直すのは --fire mine。判定は写し取りと同じ＝正解の表は要らない")

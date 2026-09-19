@@ -3514,18 +3514,43 @@ def _cmd_agent_body(args):
         _book_re = re.compile(r'\.(xlsx|xlsm|xlsb|xls)$', re.I)
         rest = list(rest) + [t for t in _tests if not _book_re.search(str(t))]
         args.forge_tests = [t for t in _tests if _book_re.search(str(t))]
+        # 会話している AI が自分でマクロを書くとき（2026-09-19・API の鍵は要らない）: --prompt で問いを書き出し、
+        # --answer 答えのファイル で 1 往復ぶん採点する（採点は道具）。不合格なら問いのファイルが次の問いに書き換わる
+        answer = getattr(args, 'forge_answer', None)
+        extra = {}
+        if answer or getattr(args, 'forge_prompt', False):
+            import vbam_forge as _vf
+            os.makedirs(_vf._AGENT_FORGE_DIR, exist_ok=True)
+            extra['prompt_out'] = os.path.join(_vf._AGENT_FORGE_DIR, _vf._safe_name(args.forge) + '_prompt.txt')
+            if answer:
+                if args.forge not in _vf._forge_load():
+                    print(f"エラー: 台帳に「{args.forge}」がありません。先に agent --forge {args.forge} --prompt"
+                          "（--before・--truth・依頼文つき）で問いを書き出してください")
+                    return False
+                if not os.path.isfile(answer):
+                    print(f"エラー: 答えのファイルがありません: {answer}")
+                    return False
+                ai, model = 'file', os.path.abspath(answer)
+            else:
+                extra['prompt_only'] = True
         try:
-            return forge(args.forge, target_file, ai=ai, model=model,
-                         max_turns=int(getattr(args, 'max_turns', None) or 3),
-                         register=bool(getattr(args, 'register', False)),
-                         dry_run=bool(getattr(args, 'dry_run', False)),
-                         truth=getattr(args, 'truth', None), before=getattr(args, 'forge_before', None),
-                         tests=getattr(args, 'forge_tests', None), sheet=getattr(args, 'sheet_opt', None),
-                         request=" ".join(rest).strip() or None, to=getattr(args, 'register_to', None),
-                         phrases=getattr(args, 'forge_phrases', None))
+            ok = forge(args.forge, target_file, ai=ai, model=model,
+                       max_turns=1 if answer else int(getattr(args, 'max_turns', None) or 3),
+                       register=bool(getattr(args, 'register', False)),
+                       dry_run=bool(getattr(args, 'dry_run', False)),
+                       truth=getattr(args, 'truth', None), before=getattr(args, 'forge_before', None),
+                       tests=getattr(args, 'forge_tests', None), sheet=getattr(args, 'sheet_opt', None),
+                       request=" ".join(rest).strip() or None, to=getattr(args, 'register_to', None),
+                       phrases=getattr(args, 'forge_phrases', None), **extra)
         except Exception as ex:
             print(f"エラー: {ex}")
             return False
+        if ok is None:
+            print(f"問いを読んでマクロ（Sub 全文）を書いたら: agent --forge {args.forge} --answer 答えのファイル")
+            return True
+        if ok and extra:
+            _vf._write_prompt(extra['prompt_out'], "（合格しました。次の問いはありません）\n")
+        return ok
     if getattr(args, 'keep_case', None):
         try:
             return keep_case(args.keep_case, target_file, getattr(args, 'seed', None))
