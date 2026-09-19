@@ -739,7 +739,32 @@ def _forge_model(ai, model):
     return model
 
 
+def _read_answer(path):
+    """会話している AI（Gemini・Claude など）が書いた答え（Sub 全文）をファイルから読む。UTF-8 → CP932 の順。"""
+    try:
+        raw = open(path, 'rb').read()
+    except OSError as e:
+        return f"（答えのファイルが読めません: {path}・{e}）"
+    for enc in ('utf-8-sig', 'cp932'):
+        with contextlib.suppress(UnicodeDecodeError):
+            return raw.decode(enc).replace('\r\n', '\n')      # AI の返事と同じ \n にそろえる（.bas の改行の二重化を避ける）
+    return raw.decode('utf-8', errors='replace').replace('\r\n', '\n')
+
+
+def _write_prompt(path, text):
+    """書き手への問いを UTF-8 で書く（path が無ければ画面に出す）。"""
+    if not path:
+        print(text)
+        return
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write(text)
+
+
 def _ask_once(ai, model, prompt):
+    if ai == 'file':
+        # 書き手が会話している AI のとき（2026-09-19 shu・Gemini「ハーネスを作れば自分で回せる」）: 答えはファイルで受け取る。
+        # 問いは forge(prompt_only=True) か、前の往復の終わりに prompt_out へ書いてある。採点は今までどおり道具がする
+        return _read_answer(model)
     from vbam_ai import _ai_setup, _ask, _cc_oneshot
     ai, model, key = _ai_setup(ai, _forge_model(ai, model))
     if ai == 'claude-code':
@@ -2426,10 +2451,13 @@ def _load_phrases(path):
 
 
 def forge(name, target_file=None, ai=None, model=None, max_turns=3, register=False, dry_run=False,
-          truth=None, before=None, tests=None, sheet=None, request=None, to=None, phrases=None):
+          truth=None, before=None, tests=None, sheet=None, request=None, to=None, phrases=None,
+          prompt_only=False, prompt_out=None):
     """鍛える 1 周: 拾う（無ければ）→ AI が書く → 写しで試す（不一致は AI へ・max_turns まで）→ 台帳へ → --register で登録。
     before＋truth＝人が用意した 2 冊から弾を作る（agent の走行は要らない）。truth だけ＝直前の走行の正解を人の表にする。
-    tests＝別の表（直す前 正解 の 2 冊ずつ）でも試す。to＝登録先のブック名。"""
+    tests＝別の表（直す前 正解 の 2 冊ずつ）でも試す。to＝登録先のブック名。
+    会話している AI が書き手のとき（2026-09-19）: prompt_only＝次に書き手へ渡す問い（前回の外れつき）を prompt_out に書いて
+    止まる（戻り値 None・AI は呼ばない）。ai='file'・model＝答えのファイル＝その答えを採点し、不合格なら次の問いを prompt_out に書く。"""
     d = _forge_load()
     case = d.get(str(name))
     live = {k: v for k, v in d.items() if not v.get('retired')}     # 引退した仕事はぶつかりに数えない（2026-09-18 shu「作りすぎは消す」）
@@ -2581,6 +2609,10 @@ def forge(name, target_file=None, ai=None, model=None, max_turns=3, register=Fal
         print(prompt)
         print(f"\n（--dry-run: ここまで。AI には聞いていません。弾 {case['before']}）")
         return True
+    if prompt_only:
+        _write_prompt(prompt_out, prompt)
+        print(f"書き手への問いを書きました（{len(prompt)} 字・AI には聞いていません）: {prompt_out or '画面'}")
+        return None
     best = {}                                              # いちばん外れの少なかった版（外れが増えた直しは捨てて戻す）
     if code and feedback and case.get('sub') and start_score is not None:
         best = {'score': start_score, 'code': code, 'sub': case.get('sub'), 'feedback': feedback, 'labels': start_labels}
@@ -2593,7 +2625,10 @@ def forge(name, target_file=None, ai=None, model=None, max_turns=3, register=Fal
     for turn in range(1, int(max_turns) + 1):
         if feedback:
             prompt = _prompt(case, feedback, code)
-        print(f"往復 {turn}/{max_turns}: AI にマクロを書かせます（{len(prompt)} 字）…", flush=True)
+        if ai == 'file':
+            print(f"往復 {turn}/{max_turns}: 会話の AI が書いた答えを採点します（{model}）", flush=True)
+        else:
+            print(f"往復 {turn}/{max_turns}: AI にマクロを書かせます（{len(prompt)} 字）…", flush=True)
         t0 = time.time()
         text = _ask_once(ai, model, prompt)
         _log_reply(name, turn, prompt, text)
@@ -2784,6 +2819,13 @@ def forge(name, target_file=None, ai=None, model=None, max_turns=3, register=Fal
               " compile まで。--to ブック名 で名指し）")
     else:
         print("  不合格のまま。不一致を見て依頼の言い直しか、agent --forge を撃ち直してください（弾は残っています）")
+    if prompt_out:
+        # 会話の AI が書き手のとき: 次の問い（外れの説明と、直す元のマクロつき）を書いておく＝読んで答えを直せばよい
+        if case.get('passed'):
+            _write_prompt(prompt_out, "（合格しました。次の問いはありません）\n")
+        else:
+            _write_prompt(prompt_out, _prompt(case, feedback, code))
+            print(f"  次の問い（外れの説明つき）を書きました: {prompt_out}")
     return bool(case.get('passed'))
 
 

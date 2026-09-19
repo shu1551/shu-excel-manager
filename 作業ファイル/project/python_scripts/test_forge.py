@@ -1731,3 +1731,75 @@ def test_forge_writes_macros_with_opus_by_default(monkeypatch):
     monkeypatch.setattr(vbam_ai, '_cc_oneshot', fake_oneshot)
     assert vf._ask_once(None, None, 'p').startswith('Sub X')
     assert seen['setup'] == (None, 'opus') and seen['oneshot'] == 'opus'
+
+
+def test_forge_file_writer_reads_answer_without_ai(tmp_path, monkeypatch):
+    """2026-09-19: 書き手が会話している AI（Gemini・Claude）のとき、答えはファイルで受け取る（UTF-8 も CP932 も）。AI は呼ばない。"""
+    import vbam_ai
+    monkeypatch.setattr(vbam_ai, '_ai_setup', lambda *a: (_ for _ in ()).throw(AssertionError('AI を呼んだ')))
+    utf = tmp_path / 'a.bas'
+    utf.write_text(_GOOD, encoding='utf-8')
+    assert vf._ask_once('file', str(utf), 'p') == _GOOD
+    sj = tmp_path / 'b.bas'
+    sj.write_bytes(_GOOD.encode('cp932'))
+    assert vf._ask_once('file', str(sj), 'p') == _GOOD
+    assert '読めません' in vf._ask_once('file', str(tmp_path / 'none.bas'), 'p')
+
+
+def test_forge_prompt_only_writes_prompt_and_stops(tmp_path, monkeypatch):
+    """--prompt: AI を呼ばずに、書き手への問いをファイルに書いて止まる（戻り値 None）。"""
+    monkeypatch.setattr(vf, '_AGENT_FORGE_FILE', str(tmp_path / '_agent_forge.json'))
+    c = _case()
+    bed = tmp_path / 'x.xlsx'
+    bed.write_bytes(b'x')
+    c['before'] = str(bed)
+    vf._forge_save({'n': c})
+    monkeypatch.setattr(vf, '_ask_once', lambda *a, **k: (_ for _ in ()).throw(AssertionError('AI を呼んだ')))
+    q = tmp_path / 'q.txt'
+    assert vf.forge('n', prompt_only=True, prompt_out=str(q)) is None
+    text = q.read_text(encoding='utf-8')
+    assert text.startswith(vf.FORGE_RULES) and '合計を出して' in text
+
+
+def test_forge_file_writer_one_turn_per_call_writes_next_prompt(tmp_path, monkeypatch):
+    """--answer 1 回＝1 往復。外れたら次の問い（外れの説明と直す元のマクロ）を書き、次の呼び出しで直した答えを採点して合格にする。"""
+    monkeypatch.setattr(vf, '_AGENT_FORGE_FILE', str(tmp_path / '_agent_forge.json'))
+    monkeypatch.setattr(vf, '_AGENT_FORGE_DIR', str(tmp_path))
+    c = _case()
+    bed = tmp_path / 'x.xlsx'
+    bed.write_bytes(b'x')
+    c['before'] = str(bed)
+    vf._forge_save({'n': c})
+    ans, q = tmp_path / 'ans.bas', tmp_path / 'q.txt'
+    ans.write_text(_GOOD, encoding='utf-8')
+    tries = iter([(["A7: 期待 '1' ／ マクロ後 ''"], 0.1),      # 1 回目の答え
+                  (["A7: 期待 '1' ／ マクロ後 ''"], 0.1),      # 2 回目の呼び出しの頭で、前回のマクロを撃ち直す
+                  ([], 0.1)])                                  # 直した答え
+    monkeypatch.setattr(vf, '_try_macro', lambda case, bas, sub: next(tries))
+    assert vf.forge('n', ai='file', model=str(ans), max_turns=1, prompt_out=str(q)) is False
+    nxt = q.read_text(encoding='utf-8')
+    assert '前回のマクロの不一致' in nxt and "A7: 期待 '1'" in nxt and 'Sub 合計行を足す' in nxt
+    assert vf.forge('n', ai='file', model=str(ans), max_turns=1, prompt_out=str(q)) is True
+    assert vf._forge_load()['n']['passed']
+    assert '合格' in q.read_text(encoding='utf-8')
+
+
+def test_agent_forge_prompt_and_answer_flags_reach_forge(tmp_path, monkeypatch):
+    """公開の入口 agent --forge 名前 --prompt／--answer 答え.txt（2026-09-19）。--answer は台帳にある仕事だけ・1 往復・書き手はファイル。"""
+    import argparse
+    import vbam_agent as va
+    monkeypatch.setattr(vf, '_AGENT_FORGE_FILE', str(tmp_path / '_agent_forge.json'))
+    monkeypatch.setattr(vf, '_AGENT_FORGE_DIR', str(tmp_path / 'forge'))
+    seen = []
+    monkeypatch.setattr(vf, 'forge', lambda name, target=None, **kw: (seen.append(kw), None if kw.get('prompt_only') else True)[1])
+    base = dict(posargs=[], ai=None, model=None, forge='n', max_turns=None)
+    assert va._cmd_agent_body(argparse.Namespace(**base, forge_prompt=True)) is True
+    assert seen[-1]['prompt_only'] is True and seen[-1]['prompt_out'].endswith('n_prompt.txt')
+    ans = tmp_path / 'a.txt'
+    ans.write_text(_GOOD, encoding='utf-8')
+    assert va._cmd_agent_body(argparse.Namespace(**base, forge_answer=str(ans))) is False     # 台帳に無い仕事は撃たない
+    vf._forge_save({'n': _case()})
+    assert va._cmd_agent_body(argparse.Namespace(**base, forge_answer=str(ans))) is True
+    kw = seen[-1]
+    assert kw['ai'] == 'file' and kw['model'] == os.path.abspath(str(ans)) and kw['max_turns'] == 1 and 'prompt_only' not in kw
+    assert '合格' in (tmp_path / 'forge' / 'n_prompt.txt').read_text(encoding='utf-8')

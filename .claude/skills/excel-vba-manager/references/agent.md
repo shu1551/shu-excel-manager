@@ -160,6 +160,13 @@ py vba_manager.py agent "依頼文" --forge 名前 --before 前.xlsx --truth 正
 #  試し撃ちは台（鍛冶_撃つ）越し＝実行時エラーは番号と説明で AI に返し、60 秒で打ち切る。同じセルが 2 往復続けて外れたら
 #  AI を呼ばずに止める（正解の表から読めない決まり＝並び順など。依頼文に書き足して撃ち直す）。
 #  ThisWorkbook・CreateObject（Scripting.Dictionary 以外）は規則で落とす（アドインに入る・職場の PC に .NET 3.5 が無い）
+py vba_manager.py agent --forge 名前 --prompt                   # 会話している AI（Gemini・Claude など）が自分でマクロを書くとき（2026-09-19・鍵は要らない）
+#  AI を呼ばずに、書き手への問い（決まり・依頼・前と後の表・別の表・前回の外れ）を _agent_forge\名前_prompt.txt に書いて止まる。
+#  初めての仕事は上の「"依頼文" --forge 名前 --before … --truth … --test …」に --prompt を付ける。
+py vba_manager.py agent --forge 名前 --answer 答え.txt          # 会話の AI が書いた答え（Sub 全文だけ・UTF-8 可）を 1 往復ぶん採点（採点は道具）
+#  合格なら終わり。不合格なら _prompt.txt が次の問い（外れの説明と前回のマクロつき）に書き換わる＝読んで答えを直し、また --answer。
+#  外れが増えた答えは捨て、いちばん良かった版から直させる。往復をまたいだくり返しは道具が止めない＝同じ外れが 2 回続いたら依頼文かお題を疑う。
+#  お題のフォルダ（fixtures）なら forge_job.py <フォルダ> <名前> --prompt／--answer でも同じ（問いと答えはそのフォルダの _forge_prompt.txt／_forge_answer.txt）。
 py vba_manager.py agent --forged                               # 鍛えたマクロの一覧（弾・合格・登録先）
 py vba_manager.py agent --mend [--seed N] [--only 名,名] [--kinds compile,runtime,nothing,wrong,edge,double] [--dry-run]
 #  修理の試験（2026-09-17 夜・vbam_mend.py）: 鍛えたマクロ（前の表・正解・別の表を持つ）を Python が字面で壊し
