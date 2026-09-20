@@ -3171,7 +3171,6 @@ def test_seiri_one_command_names_the_error_cause_and_takes_the_screen_book_20260
         ActiveWorkbook = "Book1"
 
     assert vcore._screen_book(_App2()) == "Book1"
-
     class _CM:
         def __init__(self, text):
             self.text = text
@@ -3909,3 +3908,43 @@ def test_every_public_function_in_core_is_exported():
     missing = [n for n, f in vars(vbam_core).items()
                if inspect.isfunction(f) and f.__module__ == 'vbam_core' and not n.startswith('_') and n not in vbam_core.__all__]
     assert not missing, missing
+
+
+def test_generated_vba_never_reads_err_after_on_error_goto_0_20260920():
+    """On Error GoTo 0 は Err を消す。その後で Err.Number を見ると、失敗しても 0 に見える。
+
+    2026-09-20 に読者から報告: form-to-vba の作成マクロで、古いフォームを改名して逃がすループが
+    「改名が失敗しても Exit For」になり、旧フォーム2 以降を試さないまま先へ進んでいた
+    （保存せずに 2 回続けて実行すると 2 回目が実行時エラー 50135）。番号は On Error GoTo 0 の
+    前に変数へ退避して判定する。生成する VBA 全部に同じ見張りを当てる。
+    """
+    import re as _re
+    import glob
+    base = os.path.dirname(os.path.abspath(__file__))
+    # 生成側は a("…") / lines.append("…") の形で 1 行ずつ吐く。中身を取り出し、取れない行（"""…""" の
+    # VBA ブロック）はそのまま見る。Python のコメント（#）と VBA のコメント（'）は見張りの外。
+    EMIT = _re.compile(r"""^\s*\w+(?:\.\w+)*\(\s*[fFrRbBuU]{0,2}(['"])(.*?)\1\s*[,)%]""")
+    bad = []
+    for path in sorted(glob.glob(os.path.join(base, '*.py'))):
+        if os.path.basename(path).startswith('test_'):
+            continue
+        with open(path, encoding='utf-8') as f:
+            src = f.read()
+        if 'On Error GoTo 0' not in src:
+            continue
+        cleared = False                      # 直前の On Error GoTo 0 で Err が消えている区間か
+        for raw in src.split('\n'):
+            if raw.strip().startswith('#'):
+                continue
+            m = EMIT.match(raw)
+            t = (m.group(2) if m else raw).strip()
+            if not t or t.startswith("'"):
+                continue
+            if ('On Error Resume Next' in t or 'Err.Clear' in t
+                    or (t.startswith('On Error GoTo') and t != 'On Error GoTo 0')):
+                cleared = False              # ラベルへ飛ばす On Error GoTo は Err を残す
+            elif t == 'On Error GoTo 0':
+                cleared = True
+            elif cleared and ('Err.Number' in t or 'Err.Description' in t):
+                bad.append('%s: %s' % (os.path.basename(path), t))
+    assert not bad, 'On Error GoTo 0 の後で Err を読んでいる（常に 0 になる）: %s' % bad
