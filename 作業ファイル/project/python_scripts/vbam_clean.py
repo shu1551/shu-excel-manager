@@ -25,12 +25,9 @@ _CLEAN_DATE_FMT = 'yyyy/mm/dd'
 
 
 def _clean_norm_key(v):
-    """重複を見るための正規化（表記ゆれを畳む）。"""
-    if isinstance(v, str):
-        return re.sub(r'\s+', ' ', unicodedata.normalize('NFKC', v)).strip()
-    if isinstance(v, float) and float(v).is_integer():
-        return int(v)
-    return v
+    """重複を見るための正規化（表記ゆれを畳む）。materials の「重複行」・dedupe の手と同じ照合
+    （2026-09-21 利用者の報告: 数値 5000 と文字 "5000" を別の値と読み、materials が出す重複を消さなかった）。"""
+    return vh._loose_key(v)
 
 
 def clean_plan(grid, hdr_idx):
@@ -109,6 +106,18 @@ def clean_plan(grid, hdr_idx):
     return {'rules': rules, 'dups': dups, 'blanks': blanks, 'date_cols': date_cols}
 
 
+def _row_has_outside(ws, r, c1, c2):
+    """行 r の、表の列 c1〜c2 の外（使用範囲の内）に値があるか。"""
+    ur = ws.UsedRange
+    u1 = int(ur.Column)
+    u2 = u1 + int(ur.Columns.Count) - 1
+    if u1 >= c1 and u2 <= c2:
+        return False
+    got = vh._rows_of(ws.Range(ws.Cells(r, u1), ws.Cells(r, u2)).Value)
+    return any((u1 + j < c1 or u1 + j > c2) and v not in (None, '')
+               for j, v in enumerate(got[0] if got else ()))
+
+
 def cmd_clean_table(args):
     """表を掃除する（AI を使わない）: clean-table [範囲|セル] [--sheet 名] [--delete-dups] [--no-tidy]
 
@@ -185,10 +194,22 @@ def cmd_clean_table(args):
     if plan['dups']:
         lines = [f"行{r0 + i}（行{r0 + f} と同じ）" for i, f in plan['dups']]
         if getattr(args, 'delete_dups', False):
-            for i, _f in sorted(plan['dups'], reverse=True):   # 下から消す（行番号がずれない）
+            # 行ごと消す（隣の列も一緒に上がる＝行とずれない）。表の外の同じ行に値があるときは、その値を
+            # 巻き込んで消すことになるので消さずに知らせる（表の中だけ詰めると隣の列が行とずれる）
+            kept = []
+            for i, f in sorted(plan['dups'], reverse=True):     # 下から消す（行番号がずれない）
+                if _row_has_outside(ws, r0 + i, c0, c0 + nc - 1):
+                    kept.append((i, f))
+                    continue
                 ws.Rows(r0 + i).Delete()
-            print(f"重複行を削除: {len(plan['dups'])} 行（" + "／".join(lines) + "）")
-            body_bottom -= len(plan['dups'])
+            gone = [p for p in plan['dups'] if p not in kept]
+            if gone:
+                print(f"重複行を削除: {len(gone)} 行（" + "／".join(
+                    f"行{r0 + i}（行{r0 + f} と同じ）" for i, f in gone) + "）")
+            if kept:
+                print(f"重複でも消していない行: {len(kept)} 行（表の外の同じ行に値がある＝消すと巻き込む）: "
+                      + "／".join(f"行{r0 + i}" for i, _f in sorted(kept)))
+            body_bottom -= len(gone)
         else:
             print(f"重複行が {len(plan['dups'])} 行あります（消していません。消すなら --delete-dups）: "
                   + "／".join(lines))

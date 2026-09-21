@@ -1928,6 +1928,7 @@ def _do_dedupe(ws, act):
     ur = ws.UsedRange
     uc0 = int(ur.Column)
     uc1 = uc0 + int(ur.Columns.Count) - 1
+    kept = []
     for i, _k in sorted(drop, reverse=True):          # 下の行から＝上の行番号がずれない
         r = r0 + 1 + i
         outside = False
@@ -1939,9 +1940,15 @@ def _do_dedupe(ws, act):
                     outside = True
                     break
         if outside:
-            ws.Range(ws.Cells(r, c0), ws.Cells(r, c0 + nc - 1)).Delete(-4162)   # 表の外に値がある行は表の中だけ上へ詰める
+            # 表の外の同じ行に値がある。表の中だけ上へ詰めると隣の列が行とずれ、行ごと消すとその値を巻き込む
+            # （2026-09-21 利用者の報告）＝消さずに知らせる
+            kept.append((i, _k))
         else:
             ws.Rows(r).Delete()
+    drop = [p for p in drop if p not in kept]
+    if not drop:
+        return (f"dedupe {rng}", True, "重複はありますが、どれも表の外の同じ行に値があるため消していません"
+                f"（{'／'.join(f'行{r0 + 1 + i}' for i, _k in sorted(kept))}）\n")
     last = r0 + nr - 1 - len(drop)
     end = f"{_col_letter(c0)}{r0}:{_col_letter(c0 + nc - 1)}{last}"
     j0 = kidx[0]
@@ -1951,6 +1958,9 @@ def _do_dedupe(ws, act):
            + "消した行（消す前の行番号）: " + "／".join(lines) + "\n"
            + f"表はいま {end}（見出し + {nr - 1 - len(drop)} 行）。後ろの手はこの番地で"
              "（消した分だけ下の行が繰り上がっています）\n")
+    if kept:
+        out += ("重複でも消していない行（表の外の同じ行に値がある＝消すと巻き込む。消す前の行番号）: "
+                + "／".join(f"行{r0 + 1 + i}" for i, _k in sorted(kept)) + "\n")
     return (f"dedupe {rng}", True, out)
 
 

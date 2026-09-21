@@ -2737,8 +2737,20 @@ def cmd_sort(args):
     # 「多い順に並べて」が、手で隠した 7・8 行目を末尾に置き去りにしたまま「合格」で通った）。
     # 値の並びが黙って狂うので、並べる前に出す。出したことは必ず報告する（黙って見せ方を変えない）。
     shown = _unhide_for_sort(ws, rng)
-    rng.Sort(Key1=keycell, Order1=order, Header=header,
-             Orientation=1, MatchCase=False, OrderCustom=1)
+    # Range.Sort に名前つき引数で渡すと、環境（gen_py の型キャッシュの有無）によっては Header の手前の
+    # Type を埋められず Header が届かない＝見出しが一番下へ動く（2026-09-21 利用者の報告）。
+    # Sort オブジェクトは引数の穴が無いので、どの環境でも同じに動く
+    so = ws.Sort
+    so.SortFields.Clear()
+    so.SortFields.Add(ws.Range(ws.Cells(rng.Row, key_idx),
+                               ws.Cells(rng.Row + rng.Rows.Count - 1, key_idx)), 0, order)   # xlSortOnValues
+    so.SetRange(rng)
+    so.Header = header
+    so.MatchCase = False
+    so.Orientation = 1
+    so.SortMethod = 1                                       # xlPinYin（ふつうの順）
+    so.Apply()
+    so.SortFields.Clear()
     print(f"並べ替え: {ws.Name}!{rng.Address}  キー列={keycol or _col_letter(rng.Column)}  "
           f"{'降順' if order == 2 else '昇順'}")
     for note in shown:
@@ -2894,7 +2906,9 @@ def cmd_find(args):
             print(f"（'{ws.Name}' はワークシートではないためスキップ）")
             continue
         try:
-            cell = rng.Find(What=needle, LookIn=look_in, LookAt=look_at, MatchCase=False)
+            # 名前つき引数だと環境によって LookAt/MatchCase が届かない＝引数を位置で全部渡す
+            # （What, After, LookIn, LookAt, SearchOrder, SearchDirection, MatchCase）
+            cell = rng.Find(needle, rng.Cells(rng.Cells.Count), look_in, look_at, 1, 1, False)
         except Exception:
             cell = None
         first = None
@@ -2962,8 +2976,12 @@ def cmd_find_replace(args):
     #   撃つのは、ユーザーが UI に仕込んだ「書式を指定して検索」の設定を消す越権）
     # ・MatchByte=True＝半角/全角を区別する（厳密側）。False だと「アイウ」の置換が
     #   "ｱｲｳ" のセルまで当たり、指示より広く書き換わる
-    cell = rng.Find(What=needle, LookAt=look_at, LookIn=-4123, MatchCase=match_case,
-                    SearchFormat=False, MatchByte=True)
+    # 名前つき引数で途中（After・SearchOrder）を省くと、環境によって後ろの MatchCase が届かず
+    # --match-case が効かない（2026-09-21 利用者の報告）。位置で全部渡す:
+    # What, After(最後のセル＝先頭から探す), LookIn, LookAt, SearchOrder(xlByRows), SearchDirection(xlNext),
+    # MatchCase, MatchByte, SearchFormat
+    cell = rng.Find(needle, rng.Cells(rng.Cells.Count), -4123, look_at, 1, 1,
+                    bool(match_case), True, False)
     while cell is not None:
         addr = cell.Address
         if first is None:
@@ -3000,8 +3018,9 @@ def cmd_find_replace(args):
               f"もとから含む {skipped} セルは、二重にならないよう飛ばしました）")
         print("（保存はしていません）")
         return True
-    rng.Replace(What=needle, Replacement=repl, LookAt=look_at, MatchCase=match_case,
-                SearchFormat=False, ReplaceFormat=False, MatchByte=True)
+    # 位置で全部渡す（What, Replacement, LookAt, SearchOrder, MatchCase, MatchByte, SearchFormat, ReplaceFormat）。
+    # SearchOrder を省くと環境によって MatchCase が届かず、大文字小文字の違うセルまで置き換わる
+    rng.Replace(needle, repl, look_at, 1, bool(match_case), True, False, False)
     print(f"置換: {ws.Name}!{rng.Address}  '{needle}' → '{repl}'  （{count}セルにヒット）")
     print("（保存はしていません）")
     return True
@@ -3671,6 +3690,21 @@ def cmd_print_setup(args):
     ps = ws.PageSetup
     applied = []
 
+    # 数の項目は当てる前に全部確かめる（途中で落ちると前の項目だけ当たった半端な状態が残る）
+    nums = {}
+    for k in ('fit_wide', 'fit_tall', 'zoom'):
+        v = getattr(args, k, None)
+        if v is None:
+            continue
+        try:
+            nums[k] = int(v)
+        except (TypeError, ValueError):
+            print(f"エラー: --{k.replace('_', '-')} は数で指定してください: '{v}'（何も変えていません）")
+            return False
+        if nums[k] < 0:
+            print(f"エラー: --{k.replace('_', '-')} は 0 以上で指定してください（何も変えていません）")
+            return False
+
     if getattr(args, 'area', None):
         ps.PrintArea = ws.Range(args.area).Address
         applied.append(f"area={args.area}")
@@ -3686,14 +3720,20 @@ def cmd_print_setup(args):
         ps.Orientation = 2; applied.append("landscape")
     if getattr(args, 'portrait', False):
         ps.Orientation = 1; applied.append("portrait")
-    if getattr(args, 'fit_wide', None) is not None:
-        ps.Zoom = False; ps.FitToPagesWide = int(args.fit_wide)
-        applied.append(f"fit-wide={args.fit_wide}")
-    if getattr(args, 'fit_tall', None) is not None:
-        ps.Zoom = False; ps.FitToPagesTall = int(args.fit_tall)
-        applied.append(f"fit-tall={args.fit_tall}")
-    if getattr(args, 'zoom', None) is not None:
-        ps.Zoom = int(args.zoom); applied.append(f"zoom={args.zoom}")
+    # 0 は「その向きは自動（何ページでも）」。Excel は 0 を拒むので False を渡す。
+    # --fit-wide だけのときは「横 N ページ・縦は自動」の意味に取る（縦に前の値が残ると 1 ページに縮む）
+    if 'fit_wide' in nums or 'fit_tall' in nums:
+        ps.Zoom = False
+        fw = nums.get('fit_wide')
+        ft = nums.get('fit_tall', 0 if fw is not None else None)
+        if fw is not None:
+            ps.FitToPagesWide = fw if fw else False
+            applied.append(f"fit-wide={fw or '自動'}")
+        if ft is not None:
+            ps.FitToPagesTall = ft if ft else False
+            applied.append(f"fit-tall={ft or '自動'}")
+    if 'zoom' in nums:
+        ps.Zoom = nums['zoom']; applied.append(f"zoom={nums['zoom']}")
     if getattr(args, 'center_h', False):
         ps.CenterHorizontally = True; applied.append("center-h")
     if getattr(args, 'center_v', False):

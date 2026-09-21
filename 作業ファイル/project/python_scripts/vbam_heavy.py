@@ -1087,7 +1087,20 @@ def cmd_pivot_field(args):
         p = pf(field)
         if p is None:
             print(f"エラー: フィールド '{field}' が見つかりません。"); return False
-        p.DataRange.Cells(1, 1).Group(Periods=periods)
+        # DataRange.Cells(1,1) は、日付が内側の行のとき外側の項目のセルを指し「グループ化できません」になる
+        # （2026-09-21 利用者の報告）。日付の項目そのもののセル（LabelRange）を掴む
+        cell = None
+        try:
+            for it in p.PivotItems():
+                try:
+                    if bool(it.Visible):
+                        cell = it.LabelRange.Cells(1, 1)
+                        break
+                except Exception:
+                    continue
+        except Exception:
+            cell = None
+        (cell if cell is not None else p.DataRange.Cells(1, 1)).Group(True, True, 1, periods)
         print(f"日付グループ化: {pname}[{field}] = {interval}"); print("（保存はしていません）"); return True
 
     if action == 'group-numeric':
@@ -1104,7 +1117,18 @@ def cmd_pivot_field(args):
         p = pf(field)
         if p is None:
             print(f"エラー: フィールド '{field}' が見つかりません。"); return False
-        p.DataRange.Cells(1, 1).Group(Start=start, End=end, By=step)
+        cell = None                                    # group-date と同じ＝内側の行でも項目そのもののセルを掴む
+        try:
+            for it in p.PivotItems():
+                try:
+                    if bool(it.Visible):
+                        cell = it.LabelRange.Cells(1, 1)
+                        break
+                except Exception:
+                    continue
+        except Exception:
+            cell = None
+        (cell if cell is not None else p.DataRange.Cells(1, 1)).Group(start, end, step)
         print(f"数値グループ化: {pname}[{field}] = {start}〜{end} 刻み{step}"); print("（保存はしていません）"); return True
 
     if action == 'show-as':

@@ -744,8 +744,14 @@ Sub 重複行を消す()
             seen.Add key, i
         End If
     Next
+    ' 行ごと消す（隣の列も一緒に上がる＝行とずれない）。表の外の同じ行に値があるときは、
+    ' 消すとその値を巻き込み、表の中だけ詰めると隣の列が行とずれる＝その行は消さずに残す
     For i = lastR To hr + 1 Step -1
-        If dup(i) Then ws.Range(ws.Cells(i, hc1), ws.Cells(i, hc2)).Delete Shift:=xlUp
+        If dup(i) Then
+            n = Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, c0), ws.Cells(i, c0 + nc - 1))) _
+                - Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, hc1), ws.Cells(i, hc2)))
+            If n = 0 Then ws.rows(i).Delete
+        End If
     Next
     Exit Sub
 

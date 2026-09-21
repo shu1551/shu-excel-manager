@@ -560,6 +560,16 @@ def apply_audit_fixes(ws: Any, issues: List[Dict[str, Any]]) -> Dict[str, Any]:
     suggestions = []
     skipped = []
 
+    # 先頭ゼロの文字の数字（007）がある列は番号の列＝同じ列の 2001 も文字のまま残す
+    # （片方だけ数値にすると、同じ列に文字と数値が混ざる・2026-09-21 利用者の報告）
+    def _col_of(addr):
+        m = re.match(r'\$?([A-Za-z]+)\$?\d', str(addr).split('!')[-1])
+        return m.group(1).upper() if m else None
+    code_cols = {_col_of(it.get("cell")) for it in issues
+                 if it.get("type") == "text_number" and isinstance(it.get("value"), str)
+                 and not _text_number_safe_to_convert(it["value"].strip())}
+    code_cols.discard(None)
+
     for item in issues:
         itype = item.get("type")
         cell_addr = item.get("cell")
@@ -598,6 +608,9 @@ def apply_audit_fixes(ws: Any, issues: List[Dict[str, Any]]) -> Dict[str, Any]:
             trimmed = val.strip()
             if not _text_number_safe_to_convert(trimmed):
                 skipped.append(f"  ・{cell_addr}: '{trimmed}' は先頭ゼロか桁が多い＝文字のまま残す")
+                continue
+            if _col_of(cell_addr) in code_cols:
+                skipped.append(f"  ・{cell_addr}: '{trimmed}' は先頭ゼロの番号と同じ列＝文字のまま残す（列の型を揃える）")
                 continue
             try:
                 num_val = float(trimmed) if "." in trimmed else int(trimmed)
@@ -1016,12 +1029,8 @@ def cmd_diagnose(args):
     return True
 
 
-cmd_audit = cmd_diagnose
-
-
 __all__ = [
     'cmd_diagnose',
-    'cmd_audit',
     'check_formula_linter',
     'check_circular_references',
     'check_data_cleaner',
