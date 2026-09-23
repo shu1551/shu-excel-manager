@@ -2511,31 +2511,63 @@ def test_undo_restores_formulas_so_they_do_not_become_external_links():
     """
     import vbam_agent as va
 
-    class FakeRange:
-        def __init__(self, nr, nc):
-            self.Rows = type("R", (), {"Count": nr})()
-            self.Columns = type("C", (), {"Count": nc})()
-            self.Formula = None
+    class FakeCell:
+        def __init__(self, ws, key):
+            self.ws, self.key = ws, key
+
+        @property
+        def Formula(self):
+            return self.ws.cur
+
+        @Formula.setter
+        def Formula(self, v):
+            self.ws.writes.append((self.key, v))
 
     class FakeWs:
-        def __init__(self, nr, nc):
-            self.rng = FakeRange(nr, nc)
+        """A1 起点の範囲。Range(addr).Formula は貼り戻した後の字面（外部リンクに化けたもの）を返す。"""
+        def __init__(self, cur):
+            self.cur, self.writes = cur, []
 
-        def Range(self, _addr):
-            return self.rng
+        def Range(self, a, b=None):
+            if b is not None:
+                return FakeCell(self, (a.key, b.key))
+            rng = FakeCell(self, a)
+            rng.Row, rng.Column = 1, 1
+            return rng
 
-    ws = FakeWs(2, 2)
-    snap = {'formulas': [["=明細!B2", 1], ["=SUM(明細!B2:B5)", 2]]}
+        def Cells(self, r, c):
+            return FakeCell(self, (r, c))
+
+    link = "='C:\\b\\[控え.xlsx]明細'!B2"
+    ws = FakeWs(((link, "1,000"), ("=SUM(明細!B2:B5)", "0021")))
+    snap = {'formulas': [["=明細!B2", "1,000"], ["=SUM(明細!B2:B5)", "0021"]]}
     assert va._restore_formulas(ws, "A1:B2", snap) is True
-    assert ws.rng.Formula == (("=明細!B2", 1), ("=SUM(明細!B2:B5)", 2))
+    # 入れ直すのは外部リンクに化けた数式のセルだけ。文字の「1,000」「0021」は .Formula で書き直さない
+    # （書き直すと数値に化けた＝戻すための道具が、マクロの触っていない合計を変えていた・2026-09-23 実測）
+    assert ws.writes == [((1, 1), "=明細!B2")]
     # 1 セルだけの控えは 2 次元で渡さない（COM が受け取れない）
-    ws1 = FakeWs(1, 1)
+    ws1 = FakeWs("='C:\\b\\[控え.xlsx]Sheet1'!B1")
     assert va._restore_formulas(ws1, "A1", {'formulas': [["=B1"]]}) is True
-    assert ws1.rng.Formula == "=B1"
+    assert ws1.writes == [((1, 1), "=B1")]
     # 控えが大きすぎて写せなかったときは None（呼び側が警告を出して外部リンクを外しに行く）
     assert va._restore_formulas(ws, "A1:B2", {'formulas': None}) is None
     src = inspect.getsource(va.undo_agent)
     assert "_restore_formulas(ws, addr, src_snap)" in src and "_drop_backup_link(wb, path)" in src
+
+
+def test_formula_blocks_rewrite_only_formula_cells_and_fold_them_into_rectangles_20260923():
+    """undo の入れ直しは数式のセルだけ・長方形に畳んで COM の書き込みを減らす（純 Python）。"""
+    import vbam_undo as vu
+    grid = [["見出し", "=A1", "=B1"],
+            ["1,000", "=A2", "=B2"],
+            ["0021", "文字", "=B3"]]
+    assert vu._formula_blocks(grid) == [(0, 1, 1, 2), (2, 2, 2, 2)]
+    # 貼り戻した後の字面が控えと同じ（化けていない）セルは入れ直さない
+    cur = [["見出し", "=A1", "=B1"],
+           ["1000", "='C:\\[控え.xlsx]明細'!A2", "=B2"],
+           ["21", "文字", "=B3"]]
+    assert vu._formula_blocks(grid, cur) == [(1, 1, 1, 1)]
+    assert vu._formula_blocks([["値", 1]]) == []
 
 
 def test_build_fix_loop_requires_zero_errors_not_merely_no_increase():

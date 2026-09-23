@@ -1770,7 +1770,7 @@ def cmd_stats(args):
 def _coerce_cell(s):
     """文字列をセル値に変換。'='始まりは数式、数値は数値、空は None。
 
-    数値化しても文字列に戻したい場合（郵便番号 "007" 等）は write-range --raw を使う。
+    先頭が 0 の数字（郵便番号 "007"・伝票番号 "0004"）は文字のまま返す（2026-09-23）。
     """
     if s is None or s == '':
         return None
@@ -1795,6 +1795,10 @@ def _coerce_cell(s):
                 tzinfo=datetime.timezone.utc)
         except ValueError:
             return s                  # 2026/99/99 のような非実在日付は文字列のまま
+    if re.fullmatch(r'0\d+', s):
+        # 先頭が 0 の数字（伝票番号 0004・郵便番号 007）は番号＝文字のまま書く。数にすると 0 が消え、
+        # 書いた後の「化けたら文字に戻す」も「意図した変換」と見て戻さなかった（2026-09-23 通しの実測 2 の A5）
+        return s
     if re.fullmatch(r'-?\d+', s):
         try:
             return int(s)
