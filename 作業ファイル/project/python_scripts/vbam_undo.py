@@ -949,21 +949,74 @@ def _restore_formulas(ws, addr, snap):
     （='明細'!B2 → ='C:\\…\\[名簿_agent_before_….xlsx]明細'!B2）。控えは 5 個で間引かれるので、
     そのままだといずれ #REF! になる（2026-09-04・別インスタンスの Excel で再現して確認）。
     控えの UsedRange から読んだ .Formula は控えブックの中での字面＝外部リンクが付いていないので、
-    貼り付けの直後にそれで上書きすれば元に戻る（値だけのセルも .Formula で同じ値が入る）。
+    貼り付けの直後にそれで上書きすれば元に戻る。
+
+    **入れ直すのは数式のセルだけ**（2026-09-23）。前は範囲の全部を .Formula で書き直していたので、
+    文字で入っていた「1,000」「0021」「4-1」が数値・日付に化けた（.Formula で読むと先頭の ' が落ちる）。
+    戻すための道具が、マクロが触っていない列の合計まで変えていた。値のセルは貼り付けで正しく戻っている。
     """
     grid = (snap or {}).get('formulas')
     if not grid:
         return None                     # 控えが大きすぎて写せなかった（_SNAPSHOT_MAX_CELLS 超）
     try:
         rng = ws.Range(addr)
-        if int(rng.Rows.Count) == 1 and int(rng.Columns.Count) == 1:
-            rng.Formula = grid[0][0]
-        else:
-            rng.Formula = tuple(tuple(r) for r in grid)
+        try:
+            cur = _rows_of(rng.Formula)
+        except Exception:
+            cur = None
+        r0, c0 = int(rng.Row), int(rng.Column)
+        for i0, j0, i1, j1 in _formula_blocks(grid, cur):
+            if i0 == i1 and j0 == j1:
+                ws.Cells(r0 + i0, c0 + j0).Formula = grid[i0][j0]
+            else:
+                ws.Range(ws.Cells(r0 + i0, c0 + j0), ws.Cells(r0 + i1, c0 + j1)).Formula = \
+                    tuple(tuple(grid[i][j0:j1 + 1]) for i in range(i0, i1 + 1))
         return True
     except Exception as ex:
         print(f"  ⚠ 数式を控えの字面で入れ直せませんでした: {ex}")
         return False
+
+
+def _formula_blocks(grid, cur=None):
+    """入れ直す数式のセルを長方形に畳む → [(i0, j0, i1, j1)]（0 始まり・両端を含む・純 Python）。
+
+    入れ直すのは控えで '=' で始まるセルだけ。cur（貼り戻した後の字面）を渡すと、控えと同じ字面の
+    セルは外す（外部リンクに化けていない＝触らない）。横に続く数式を 1 本にし、同じ列幅で縦に続けば
+    1 つの長方形にする＝COM の書き込みは長方形の数だけ。
+    """
+    def need(i, j):
+        v = grid[i][j]
+        if not (isinstance(v, str) and v.startswith('=')):
+            return False
+        if cur is None:
+            return True
+        try:
+            return cur[i][j] != v
+        except (IndexError, TypeError):
+            return True
+
+    blocks, tail = [], {}              # tail: (j0, j1) → 直前の行で終わっている長方形の番号
+    for i, row in enumerate(grid):
+        j, n = 0, len(row)
+        next_tail = {}
+        while j < n:
+            if not need(i, j):
+                j += 1
+                continue
+            k = j
+            while k + 1 < n and need(i, k + 1):
+                k += 1
+            idx = tail.get((j, k))
+            if idx is not None:
+                b = blocks[idx]
+                blocks[idx] = (b[0], b[1], i, b[3])
+            else:
+                blocks.append((i, j, i, k))
+                idx = len(blocks) - 1
+            next_tail[(j, k)] = idx
+            j = k + 1
+        tail = next_tail
+    return blocks
 
 
 def _drop_backup_link(wb, path):

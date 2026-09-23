@@ -98,6 +98,13 @@ def test_coerce_cell():
 # form_layout: レイアウト計算の不変条件
 # ================================================================
 
+
+def test_coerce_cell_keeps_leading_zero_numbers_as_text():
+    """先頭が 0 の数字（伝票番号 0004・郵便番号 007）は文字のまま（2026-09-23 通しの実測 2 で A5 が 4 に化けた）。"""
+    from vbam_core import _coerce_cell
+    assert _coerce_cell("0004") == "0004" and _coerce_cell("007") == "007"
+    assert _coerce_cell("0") == 0 and _coerce_cell("10") == 10 and _coerce_cell("0.5") == 0.5
+
 def _std_rows():
     return [
         fl.row(fl.lbl("名前"), fl.txt("txtName")),
