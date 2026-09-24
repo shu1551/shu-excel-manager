@@ -1771,9 +1771,8 @@ def cmd_materials(args):
     #   手の型は Claude には毎回流し込まれるが、ほかの AI に確実に届くのは道具の返事だけ＝ここに出す）
     try:
         if _macro_book(xl, _SEIRI_MODULE, _SEIRI_TIDY):
-            print("次の手（表を直す・整える依頼なら）: seiri → 報告の「棚で直せる手」を shelf-run で上から → "
-                  "seiri の「残り」（エラーの式など棚では直らない所）は表を見て write-cells で直す → tidy。"
-                  "棚で直る所を手で打ち直さない・ブックの既存マクロやソースを探しに行かない")
+            print("次の手（表を直す・整える依頼なら）: seiri 頼みの文 を 1 回（頼みに当たる棚と tidy まで道具が撃つ）。"
+                  "ブックの既存マクロやソースを探しに行かない")
     except Exception:
         pass
     return True
