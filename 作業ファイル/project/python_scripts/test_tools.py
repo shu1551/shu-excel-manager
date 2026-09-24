@@ -3764,12 +3764,12 @@ import datetime as _dt                                              # noqa: E402
 # ----------------------------------------------------------------
 def _messy_rows_20260911():
     return [["会社名", "担当者名", "電話番号", "メール", "金額", "状態"],
-            ["株式会社サンライズ", "田中 太郎", "03-1234-5678", "tanaka@sunrise.co.jp", 1500000, "相談中"],
-            ["株式会社スカイネット", "加藤 健", "０３１１１１９９９９", "KATO@SKYNET.JP", "¥3,500,000", "Active"],
-            ["株式会社サンライズ ", "田中 太郎", "0312345678", "TANAKA@SUNRISE.CO.JP", "1,500,000", "相談中"],
-            ["株式会社スカイネット", "加藤 健", "03-1111-9999", "kato@skynet.jp", 3500000, "Active"],
-            ["有限会社みらい工芸", "鈴木 健二", "045-111-2222", "suzuki@mirai.jp", 500000, "受注済み"],
-            ["株式会社ハートビート", "木村 拓", "03-1888-2222", "kimura@heartbeat.jp", 300000, "相談中"]]
+            ["株式会社サンライズ", "田中 太郎", "03-1234-5678", "tanaka@example.co.jp", 1500000, "相談中"],
+            ["株式会社スカイネット", "加藤 健", "０３１１１１９９９９", "KATO@EXAMPLE.JP", "¥3,500,000", "Active"],
+            ["株式会社サンライズ ", "田中 太郎", "0312345678", "TANAKA@EXAMPLE.CO.JP", "1,500,000", "相談中"],
+            ["株式会社スカイネット", "加藤 健", "03-1111-9999", "kato@example.jp", 3500000, "Active"],
+            ["有限会社みらい工芸", "鈴木 健二", "045-111-2222", "suzuki@example.jp", 500000, "受注済み"],
+            ["株式会社ハートビート", "木村 拓", "03-1888-2222", "kimura@example.jp", 300000, "相談中"]]
 
 
 def test_duplicates_are_matched_through_spelling_and_lost_rows_are_seen_20260911():
@@ -3807,7 +3807,7 @@ def test_normalize_reads_yen_man_english_dates_and_lowercases_20260911():
     assert (d.year, d.month, d.day) == (2026, 3, 15)
     d = vh._normalize_value("April 2, 2026", [("date", None)])[0]
     assert (d.month, d.day) == (4, 2)
-    assert vh._normalize_value(" KATO@SKYNET.JP", [("trim", None), ("lower", None)])[0] == "kato@skynet.jp"
+    assert vh._normalize_value(" KATO@EXAMPLE.JP", [("trim", None), ("lower", None)])[0] == "kato@example.jp"
     assert "lower" in vh._NORMALIZE_RULES
 
 
@@ -3815,10 +3815,10 @@ def test_a_name_column_is_not_an_id_column_after_dedupe_20260911():
     """重複を消した後は会社名が全部違う値になる。それを番号の列と見なすと、書き方の違う同じ会社を見逃す。"""
     import vbam_hands as vh
     rows = [["会社名", "担当者名", "電話番号", "メール", "金額"],
-            ["株式会社アクアテック", "渡辺 隆", "06-1234-5678", "watanabe@aquatech.jp", 750000],
-            ["株式会社サンライズ", "田中 太郎", "03-1234-5678", "tanaka@sunrise.co.jp", 1500000],
-            ["（株） アクアテック", "渡辺 隆", "0612345678", "watanabe@aquatech.jp", 750000],
-            ["有限会社みらい工芸", "鈴木 健二", "045-111-2222", "suzuki@mirai.jp", 500000]]
+            ["株式会社アクアテック", "渡辺 隆", "06-1234-5678", "watanabe@example.jp", 750000],
+            ["株式会社サンライズ", "田中 太郎", "03-1234-5678", "tanaka@example.co.jp", 1500000],
+            ["（株） アクアテック", "渡辺 隆", "0612345678", "watanabe@example.jp", 750000],
+            ["有限会社みらい工芸", "鈴木 健二", "045-111-2222", "suzuki@example.jp", 500000]]
     assert [(i, k) for i, k, _ in vh._dup_pairs(rows, 0)] == [(3, 1)]
     # 見出しが番号の列で値が違えば別の相手（伝票番号の違う同じ取引先・同じ品）
     rows2 = [["伝票番号", "取引先", "品名", "数量"],
