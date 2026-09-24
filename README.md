@@ -159,8 +159,10 @@ Antigravity（`%USERPROFILE%\.gemini\antigravity-ide\mcp_config.json`）:
 
 - このフォルダで Claude Code を起動して使うなら、そのままで読まれます（`CLAUDE.md` も同じ）
 - ほかのフォルダから使うなら、`.claude\skills\` の中の 2 つのフォルダを `%USERPROFILE%\.claude\skills\` へ写してください
-- **Antigravity（Gemini）で使うとき**は、表を直す手順を、毎回読まれる決まりの置き場（作者の環境ではワークスペースの `.agents\AGENTS.md`）に
-  書いておいてください。書いていないと、Gemini が棚を使わずに値を自分で打ち直すことがありました（2026-09-24 の試し）。書く中身は次の 1 行で足ります:
+- **Antigravity（Gemini）で使うとき**は、次の 2 つをしてください（2026-09-24 の試しで、どちらも無いと Gemini が棚を使わずに値を自分で打ち直した）。
+  1. `.claude\skills\` の 2 つのフォルダを、Antigravity のスキルの置き場（作者の環境では `%USERPROFILE%\.gemini\config\skills\`）へ**写す**。
+     つなぎ（ジャンクション）にすると、Antigravity のスキル一覧に出ず、読まれませんでした
+  2. 表を直す手順を、毎回読まれる決まりの置き場（作者の環境ではワークスペースの `.agents\AGENTS.md`）に書いておく。書く中身は次の 1 行で足ります:
 
   ```text
   表を直す・整える依頼は、excel-manager の seiri → 報告の「棚で直せる手」を shelf-run で上から → 棚に無い所だけ write-cells／write_grid → tidy の順で行う。値を自分で打ち直さない。ブックの既存マクロで片付けない。
