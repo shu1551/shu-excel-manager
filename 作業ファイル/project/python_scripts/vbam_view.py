@@ -1873,6 +1873,107 @@ def seiri_formula_hints(fa, fr, grid, r0, c0, hidx):
     return out
 
 
+# seiri が先に撃つ「表の書き方と罫線と列幅をそろえる」で済む物（Excelコンボの 先撃ちの並び と同じ扱い）
+_SEIRI_COVERED = {'表の書き方と罫線と列幅をそろえる', '住所と郵便番号の形をそろえる'}
+
+
+def _seiri_request_plan(request, entries):
+    """依頼の文 → 撃つ棚の並び（純 Python・2026-09-24 夜）。Excelコンボの先撃ちと同じ採点（shelf_plan／shelf_pick）。
+    表を整えるで済む物は外す（seiri が先に撃っている）。"""
+    import vbam_prefire as vp
+    # 頼みは空白・改行・「。」で分ける（MCP の 1 行は空白で切られて届く＝「統一して 住所の…」が 1 つの頼みに見える）。
+    # 「、」では分けない（「重複している会員を探して、行を削除して」は 1 つの頼み）。当たらない頼みは AI が「残り」として直す
+    parts = [p for p in re.split(r'[\s　。]+', str(request or '')) if p]
+    plan = []
+    for p in (parts if len(parts) >= 2 else [str(request or '').strip()]):
+        n = vp.shelf_pick(p, entries)
+        if n and n not in _SEIRI_COVERED and n not in plan:
+            plan.append(n)
+    return plan
+
+
+def _header_col_span(heads):
+    """見出しの行の値の並び → 表の列の範囲 (左の位置, 右の位置)（純 Python）。両端の、見出しが文字でない列は表の外として外す
+    （2026-09-24 夜: 突き合わせで L 列が埋まり、隣の M 列の件数の式〔数〕とメモまでひとかたまりになって tidy が当たった）。
+    文字の見出しが 1 つも無ければ None。"""
+    idx = [i for i, v in enumerate(heads) if isinstance(v, str) and v.strip()]
+    if not idx:
+        return None
+    return idx[0], idx[-1]
+
+
+def _trim_to_header_cols(ws, anchor):
+    """番地（表の中の 1 セル）→ その表の範囲の番地。両端の見出しが文字でない列を外す。読めなければ元の番地。"""
+    try:
+        rg = ws.Range(anchor).CurrentRegion
+        r0, c0 = int(rg.Row), int(rg.Column)
+        nr, nc = int(rg.Rows.Count), int(rg.Columns.Count)
+        heads = [ws.Cells(r0, c0 + j).Value for j in range(nc)]
+    except Exception:
+        return anchor
+    span = _header_col_span(heads)
+    if span is None or nr < 2:
+        return anchor
+    return f"{_col_letter(c0 + span[0])}{r0}:{_col_letter(c0 + span[1])}{r0 + nr - 1}"
+
+
+def _seiri_fire_request(xl, wb, ws, request, before_snap):
+    """seiri に渡された依頼の文を棚に当て、当たったマクロを同じ呼び出しで撃ち、書いた表を tidy で仕上げる（2026-09-24 夜）。
+
+    棚撃ち式＝依頼の文で棚を引いて撃つ（Excelコンボの先撃ちと同じ）を、MCP の 1 回の呼び出しに畳む。
+    前は seiri → shelf --ask → shelf-run → tidy を AI が 1 手ずつ撃ち、その間ごとに AI が考えていた（Gemini で 30〜40 秒）。
+    列を選ぶ棚は、依頼の語と見出しで列が決まるときだけ撃つ（エージェントの先撃ちと同じ pick_columns）。
+    """
+    import vbam_prefire as vp
+    from vbam_vba import run_book_macro
+    src, lines = _shelf_source(xl)
+    if not src:
+        print("依頼の文に当たる棚: 棚（秀コンボ）が開いていないので撃っていません")
+        return []
+    entries = vp.shelf_entries_from_text("\n".join(lines))
+    plan = _seiri_request_plan(request, entries)
+    if not plan:
+        print(f"依頼の文に当たる棚: なし（表を整えるで済むか、棚に無い仕事＝下の「残り」として直す）")
+        return []
+    sel_of = {r['name']: r['sel'] for r in _parse_shelf_catalog(lines)}
+    cells, fired = None, []
+    for nm in plan:
+        need = sel_of.get(nm, '-')
+        if need and need != '-':
+            lo, _sep, hi = need.partition('-')
+            try:
+                want = (int(lo), int(hi or lo))
+            except ValueError:
+                want = None
+            if cells is None:
+                cells = vp._header_cells(ws)
+            cols = vp.pick_columns(request, cells, want) if want else None
+            if not cols:
+                print(f"棚: {nm} は列を選ぶ仕事（選ぶ列={need}）で、依頼の語と見出しから列が決まらないので撃っていません"
+                      f"（shelf-run {nm} --select 列,列 で撃つ）")
+                continue
+            vp.select_columns(ws, cols)
+        t0 = time.time()
+        run_book_macro(xl, src, nm)
+        try:
+            wb.Activate()
+            ws.Activate()
+        except Exception:
+            pass
+        fired.append(nm)
+        print(f"棚: {nm}（依頼の文に当たった・{time.time() - t0:.2f} 秒）")
+    if fired:
+        targets = []
+        for a in [vp._table_anchor(ws)] + vp._written_anchors(ws, before_snap):
+            a = _trim_to_header_cols(ws, a) if a else a
+            if a and a not in targets:
+                targets.append(a)
+        if targets:
+            ok, out = vp.va._run_cmd(['tidy', '--sheet', str(ws.Name)] + targets, wb)
+            print(out.rstrip())
+    return fired
+
+
 def print_seiri_hints(hints):
     """棚で直せる手を、撃つ順に並べて出す（式を先に揃えてから行を消す＝消した行を指す式が #REF! にならない）。"""
     if not hints:
@@ -1917,7 +2018,10 @@ def _seiri_print_changes(ws, before_snap, backup_path, show=12):
 
 
 def cmd_seiri(args):
-    """表を直す 1 手目: seiri [--dedupe]（2026-09-13・shu「まとめてみろ」）
+    """表を直す 1 手目: seiri [依頼の文] [--dedupe]（2026-09-13・shu「まとめてみろ」）
+
+    依頼の文を渡すと（2026-09-24 夜）、表を整えるマクロに続けて、依頼の文に当たる棚のマクロ（Excelコンボの先撃ちと同じ採点）も
+    同じ呼び出しで撃ち、書いた表を tidy で仕上げる＝棚撃ちが 1 回で済む。控えは最初の 1 回だけ（戻すと依頼の前に戻る）。
 
     materials で表の全体を読んでから、次の往復でマクロと書き込み、の 2 往復と読む時間を畳む。
     画面のシートに「表の書き方と罫線と列幅をそろえる」マクロ（開いているブックかアドインのモジュール「表の整理」）を撃ち、
@@ -1925,6 +2029,7 @@ def cmd_seiri(args):
     直す手（式の書き直しなど判断の要るもの）はこの残りの分だけ。仕事の時計も押す。
     """
     target_file, rest = parse_target_and_rest(args.posargs)
+    request = " ".join(str(x) for x in rest).strip()     # 依頼の文（渡されたら棚にも当てて同じ呼び出しで撃つ）
     xl, wb = get_workbook(target_file)
     ws = wb.ActiveSheet
     job_clock_start(f"{wb.Name}!{ws.Name}")
@@ -1951,6 +2056,11 @@ def cmd_seiri(args):
             print(f"マクロ: {' → '.join(names)}（{owner}・{time.time() - t0:.2f} 秒）")
         except Exception as e:
             print(f"マクロを撃てませんでした: {e}（残りだけ出します）")
+        if request:
+            try:
+                _seiri_fire_request(xl, wb, ws, request, before_snap)
+            except Exception as e:
+                print(f"依頼の文に当たる棚を撃てませんでした: {e}（残りとして直す）")
         _seiri_print_changes(ws, before_snap, backup_path)
     else:
         print(f"マクロ: モジュール「{_SEIRI_MODULE}」の {_SEIRI_TIDY} が開いているブック・アドインに無いので撃っていません")

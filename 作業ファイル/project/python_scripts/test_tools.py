@@ -4560,6 +4560,30 @@ def test_usage_examples_parse_and_show_on_mistake_20260924():
     assert "例: print-setup --area" in msg
 
 
+def test_seiri_request_plan_splits_requests_20260924():
+    """seiri に渡した依頼の文を頼みごとに棚へ当てる。表を整えるで済む物（住所と郵便番号）は外し、当たらない頼みは捨てる
+    （2026-09-24 夜・棚撃ちを 1 回の呼び出しに畳む）。"""
+    import vbam_prefire as vp
+    import vbam_view as vw
+    shelf = ("Sub 左右に並んだ表を突き合わせる()\r\n    ' 依頼の語: 突き合わせ|突合\r\nEnd Sub\r\n"
+             "Sub 住所と郵便番号の形をそろえる()\r\n    ' 依頼の語: 郵便番号|全角半角\r\nEnd Sub\r\n"
+             "Sub 全列が同じ重複行を削除する()\r\n    ' 依頼の語: 重複\r\nEnd Sub\r\n")
+    entries = vp.shelf_entries_from_text(shelf)
+    req = "郵便番号をハイフンつきに統一して 住所の全角半角をそろえて 左の名簿と右の申込一覧を会員番号で突き合わせて"
+    assert vw._seiri_request_plan(req, entries) == ["左右に並んだ表を突き合わせる"]
+    assert vw._seiri_request_plan("重複している会員を探して、重複している行を削除して", entries) == ["全列が同じ重複行を削除する"]
+    assert vw._seiri_request_plan("表の修正をお願いします", entries) == []
+    assert vw._seiri_request_plan("", entries) == []
+
+
+def test_header_col_span_drops_non_text_ends_20260924():
+    """tidy の当て先から、見出しが文字でない両端の列（隣り合った件数の式・メモ）を外す（2026-09-24 夜）。"""
+    import vbam_view as vw
+    assert vw._header_col_span(["会員番号", "申込コース", "金額", "左の表との突合", 54]) == (0, 3)
+    assert vw._header_col_span([None, "項目", "金額"]) == (1, 2)
+    assert vw._header_col_span([1, 2, 3]) is None
+
+
 def test_shape_list_and_delete_words_are_options_20260924():
     """shape list ＝ shape --list、shape delete 名前 ＝ shape 名前 --delete（Gemini が「図形 'list' が無い」で撃ち直していた）。"""
     p = vm.build_parser()
