@@ -159,6 +159,13 @@ Antigravity（`%USERPROFILE%\.gemini\antigravity-ide\mcp_config.json`）:
 
 - このフォルダで Claude Code を起動して使うなら、そのままで読まれます（`CLAUDE.md` も同じ）
 - ほかのフォルダから使うなら、`.claude\skills\` の中の 2 つのフォルダを `%USERPROFILE%\.claude\skills\` へ写してください
+- **Antigravity（Gemini）にも同じ手順書を読ませてください。** MCP の説明だけでも動きますが、手順書があると「表を直すときは棚を先に見る」
+  「書いたら仕上げまで」などの型が効きます。作者の環境の Antigravity は `%USERPROFILE%\.gemini\config\skills\` から読んでいます。
+  写すと古くなるので、つなぎ（ジャンクション）にしておくと、道具を入れ替えたときもそのまま新しい手順書が読まれます:
+
+  ```powershell
+  New-Item -ItemType Junction -Path "$env:USERPROFILE\.gemini\config\skills\excel-vba-manager" -Target "<このフォルダ>\.claude\skills\excel-vba-manager"
+  ```
 
 手順書が無くても道具は動きますが、AI が道具の使い方を一から探るので、手数が増えて遅くなります。
 
