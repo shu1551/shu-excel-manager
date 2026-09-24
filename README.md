@@ -165,7 +165,7 @@ Antigravity（`%USERPROFILE%\.gemini\antigravity-ide\mcp_config.json`）:
   2. 表を直す手順を、毎回読まれる決まりの置き場（作者の環境ではワークスペースの `.agents\AGENTS.md`）に書いておく。書く中身は次の 1 行で足ります:
 
   ```text
-  表を直す・整える依頼は、excel-manager の seiri → 報告の「棚で直せる手」を shelf-run で上から → 棚に無い所だけ write-cells／write_grid → tidy の順で行う。値を自分で打ち直さない。ブックの既存マクロで片付けない。
+  表を直す・整える依頼は、excel-manager の seiri → 報告の「棚で直せる手」を shelf-run で上から → seiri の「残り」（エラーの式など）は表を見て write-cells で直す → tidy の順で行う。棚で直る所を手で打ち直さない。直す手を探してソースやブックの既存マクロを読みに行かない。
   ```
 
   道具の側でも、`materials` の返事の最後に同じ次の手を出しています。
