@@ -605,41 +605,6 @@ def cmd_sheet_info(args):
     return True
 
 
-def _print_long_cells(rng, width=40, limit=10, max_chars=400):
-    """格子で '…' に切れた長い文字セルを全文で出す。
-
-    指示文・説明文が A3 等に長く入っている表向け（2026-09-02 夜・A3 の指示を読むために
-    read-range をもう1往復していた）。_values_to_grid の切り詰め幅（既定 40）を超える
-    文字列セルだけを拾う。
-    """
-    try:
-        raw = rng.Value
-    except Exception:
-        return
-    if raw is None:
-        return
-    if not isinstance(raw, tuple):
-        raw = ((raw,),)
-    r0, c0 = int(rng.Row), int(rng.Column)
-    hits = []
-    for i, row in enumerate(raw):
-        if not isinstance(row, tuple):
-            row = (row,)
-        for j, v in enumerate(row):
-            if isinstance(v, str) and _disp_width(v) > width:
-                hits.append((f"{_col_letter(c0 + j)}{r0 + i}", v))
-    if not hits:
-        return
-    print("長文セル（格子で切れた分の全文）:")
-    for addr, v in hits[:limit]:
-        t = v.replace("\r", "").replace("\n", " ")
-        if len(t) > max_chars:
-            t = t[:max_chars] + "…"
-        print(f"  {addr}: {t}")
-    if len(hits) > limit:
-        print(f"  …他{len(hits) - limit}件")
-
-
 # ---- 気づき（表の汚れ）2026-09-07 ----
 # materials の格子は、空白の幅・日付の型・半角カナを見せない。見えない分を頭で埋めようとして
 # read-range と --raw を 2 往復挟み、書き始めるまで materials から 100 秒（道具は合計数秒）。
@@ -1523,7 +1488,7 @@ def cmd_materials(args):
     """先回り材料：1シートについて、手を動かす前に見るべきものを1回でまとめて出す。
 
     Excelコンボの「先回り材料」から輸入（2026-09-02）。手の型の初手（「見る」は これ1回）。
-    使用範囲・非表示・値（小さい表は全体＋長文セルの全文）・結合・テーブル・名前定義・数式の型・
+    使用範囲・非表示・値（小さい表は全体）・結合・テーブル・名前定義・数式の型・
     エラーセル・図形ボタン・### のセル・列幅。推測で動く前に、ここで現物を見る。
     あわせて仕事の時計を押す（tidy／write-range／write-cells が「materials から N 秒」を出す）。
     """
@@ -1572,7 +1537,7 @@ def cmd_materials(args):
     except Exception:
         pass
     # 先頭N行（値）。小さい表（40行×30列まで・--rows 指定なし）は全体を出す＝「見る」を1往復で終える。
-    # 格子で '…' に切れた長文セル（A3 の指示文など）は下に全文を出す（read-range を重ねない）
+    # 長文セルの全文は出さない（題・例の文・メモは表の中身ではない。A3 の例文を AI が頼みと読んで撃っていた・2026-09-25）
     try:
         # --full（エージェント・採点係）は 200 行まで全体を出す（2026-09-11: 56 行の表で先頭 5 行しか見せず、
         # AI が毎回 1 往復目を「表を読み直す」だけに使っていた＝7〜12 秒と 1 往復の無駄）
@@ -1583,7 +1548,6 @@ def cmd_materials(args):
         label = "全体" if whole else f"先頭{n}行"
         print(f"--- {label}（値） ---")
         print(_values_to_grid(head))
-        _print_long_cells(head)
     except Exception as e:
         print(f"（先頭行を読めませんでした: {e}）")
     # 結合セル
@@ -1771,7 +1735,8 @@ def cmd_materials(args):
     #   手の型は Claude には毎回流し込まれるが、ほかの AI に確実に届くのは道具の返事だけ＝ここに出す）
     try:
         if _macro_book(xl, _SEIRI_MODULE, _SEIRI_TIDY):
-            print("次の手（表を直す・整える依頼なら）: seiri 頼みの文 を 1 回（頼みに当たる棚と tidy まで道具が撃つ）。"
+            print("次の手（表を直す・整える依頼なら）: seiri を 1 回（汚れは道具が見つけて棚で直し tidy まで撃つ。"
+                  "使う人の頼みに語があれば seiri の後にその文を渡す）。"
                   "ブックの既存マクロやソースを探しに行かない。報告は要点だけ 1〜3 行・番地で")
     except Exception:
         pass
@@ -1961,33 +1926,144 @@ def _seiri_fire_request(xl, wb, ws, request, before_snap):
             pass
         fired.append(nm)
         print(f"棚: {nm}（依頼の文に当たった・{time.time() - t0:.2f} 秒）")
-    if fired:
-        targets = []
-        for a in [vp._table_anchor(ws)] + vp._written_anchors(ws, before_snap):
-            a = _trim_to_header_cols(ws, a) if a else a
-            if a and a not in targets:
-                targets.append(a)
-        if targets:
-            ok, out = vp.va._run_cmd(['tidy', '--sheet', str(ws.Name)] + targets, wb)
-            print(out.rstrip())
     return fired
 
 
-def print_seiri_hints(hints):
-    """棚で直せる手を、撃つ順に並べて出す（式を先に揃えてから行を消す＝消した行を指す式が #REF! にならない）。"""
+def _seiri_tidy(wb, ws, before_snap):
+    """棚を撃った後の仕上げ（tidy）を、元の表と棚が書いた表にまとめて 1 回当てる。"""
+    import vbam_prefire as vp
+    targets = []
+    for a in [vp._table_anchor(ws)] + vp._written_anchors(ws, before_snap):
+        a = _trim_to_header_cols(ws, a) if a else a
+        if a and a not in targets:
+            targets.append(a)
+    if targets:
+        ok, out = vp.va._run_cmd(['tidy', '--sheet', str(ws.Name)] + targets, wb)
+        print(out.rstrip())
+
+
+def _seiri_hints_now(ws):
+    """今のシートで「棚で直せる手」を数え直す → [(順, マクロ, 選択, 理由)]（COM で読んで純 Python で数える）。"""
+    ur = ws.UsedRange
+    nr, nc = int(ur.Rows.Count), int(ur.Columns.Count)
+    if nr * nc > _FML_LENS_MAX_CELLS:
+        return []
+    fa = _grid_of_value(ur.Formula)
+    fr = _grid_of_value(ur.FormulaR1C1)
+    grid = _grid_of_value(ur.Value)
+    r0, c0 = int(ur.Row), int(ur.Column)
+    hidx = _guess_header_idx(grid)
+    hints = []
+    dirt_notes(grid, r0, c0, hidx, None, hints=hints)
+    hints += seiri_formula_hints(fa, fr, grid, r0, c0, hidx)
+    return hints
+
+
+def _seiri_hint_key(name, sel):
+    """同じ手を二度撃たないための鍵。行を消すと選ぶ範囲の行番号がずれるので、列の文字だけで見る。"""
+    return name, re.sub(r'\d', '', sel or '')
+
+
+def _seiri_needs_human(name, why):
+    """撃たずに人へ回す手（番号の重複＝同じ件の二重入力かもしれない）。"""
+    return name == "番号の列を連番に振り直す" and "二重入力" in (why or '')
+
+
+def _seiri_autofix(xl, wb, ws, max_steps=10):
+    """気づき（表の汚れ・式のずれ）のうち棚で直せる手を、その場で上から撃つ（2026-09-25 shu「突き返さずにやり切る」）。
+
+    前は「棚で直せる手」を報告に並べて AI が 1 本ずつ shelf-run していた（手の間ごとに AI が考える）。
+    1 本撃つたびに数え直す＝行を消すと番地がずれるので、前に数えた範囲を使い回さない。
+    式を揃える手が先・行を消す手が後の順は print_seiri_hints と同じ（順の小さい方から）。
+    人の判断が要る手（番号の重複の振り直し）は撃たない。撃っても消えない手は二度撃たない（残りに出る）。
+    → 撃った手の [(名前, 選択, 理由)]、撃った鍵の集合。
+    """
+    import vbam_prefire as vp
+    from vbam_vba import run_book_macro, _VbaRuntimeError
+    src, _lines = _shelf_source(xl)
+    if not src:
+        return [], set()
+    fired, tried = [], set()
+    watcher = _start_dialog_watcher(xl)
+    try:
+        for _step in range(max_steps):
+            try:
+                hints = sorted(_seiri_hints_now(ws), key=lambda h: h[0])
+            except Exception:
+                break
+            nxt = next(((n, s, w) for _o, n, s, w in hints
+                        if _seiri_hint_key(n, s) not in tried and not _seiri_needs_human(n, w)), None)
+            if nxt is None:
+                break
+            name, sel, why = nxt
+            tried.add(_seiri_hint_key(name, sel))
+            try:
+                if sel:
+                    ws.Range(sel).Select()
+                else:
+                    # 選択が 2 つ以上だと棚はその範囲しか見ない＝表の見出しの 1 セルに戻して表の全部を見せる
+                    anchor = vp._table_anchor(ws)
+                    (ws.Range(anchor) if anchor else xl.ActiveCell).Select()
+            except Exception:
+                pass
+            t0 = time.time()
+            try:
+                run_book_macro(xl, src, name)
+            except _VbaRuntimeError as ex:
+                print(f"棚: {name} が実行時エラーで止まりました: {ex}（残りとして直す）")
+                continue
+            except Exception as ex:
+                print(f"棚: {name} を撃てませんでした: {ex}（残りとして直す）")
+                continue
+            finally:
+                try:
+                    wb.Activate()
+                    ws.Activate()
+                except Exception:
+                    pass
+            fired.append((name, sel, why))
+            print(f"棚: {name}" + (f"（選択 {sel}）" if sel else "") + f" ← {why}（気づきから・{time.time() - t0:.2f} 秒）")
+    finally:
+        try:
+            watcher.stop()
+        except Exception:
+            pass
+    note = _dialog_watcher_note(watcher, None)
+    if note:
+        print(note)
+    return fired, tried
+
+
+def print_seiri_hints(hints, tried=None):
+    """棚で直せる手を、撃つ順に並べて出す（式を先に揃えてから行を消す＝消した行を指す式が #REF! にならない）。
+
+    tried（seiri がもう撃った手の鍵）に入っている手は「撃っても残った」として分けて出す＝撃ち直しても直らない所。
+    """
     if not hints:
         return
-    seen, lines = set(), []
+    auto = tried is not None
+    tried = tried or set()
+    seen, lines, stuck = set(), [], []
     for _o, name, sel, why in sorted(hints, key=lambda h: h[0]):
         key = (name, sel)
         if key in seen:
             continue
         seen.add(key)
+        if _seiri_hint_key(name, sel) in tried:
+            stuck.append(f"  {name}" + (f"（選択 {sel}）" if sel else "") + f"   ← {why}")
+            continue
         lines.append(f"  shelf-run {name}" + (f" --select {sel}" if sel else "") + f"   ← {why}")
-    print("棚で直せる手（この順に撃つ。式を先に揃えてから行を消す。人の判断が要るもの＝マイナス・桁違い・番号の重複・"
-          "式の中の数は、撃たずに報告）:")
-    for ln in lines:
-        print(ln)
+    if lines:
+        print("棚で直せる手（道具が撃たなかった＝人の判断が要るもの。中身を確かめてから撃つか、番地で報告）:"
+              if auto else
+              "棚で直せる手（この順に撃つ。式を先に揃えてから行を消す。人の判断が要るもの＝マイナス・桁違い・番号の重複・"
+              "式の中の数は、撃たずに報告）:")
+        for ln in lines:
+            print(ln)
+    if stuck:
+        print("棚を撃っても残った所（撃ち直さない。表を見て write-cells で直す）:")
+        for ln in stuck:
+            print(ln)
 
 
 def _seiri_print_changes(ws, before_snap, backup_path, show=12):
@@ -2021,10 +2097,12 @@ def cmd_seiri(args):
 
     依頼の文を渡すと（2026-09-24 夜）、表を整えるマクロに続けて、依頼の文に当たる棚のマクロ（Excelコンボの先撃ちと同じ採点）も
     同じ呼び出しで撃ち、書いた表を tidy で仕上げる＝棚撃ちが 1 回で済む。控えは最初の 1 回だけ（戻すと依頼の前に戻る）。
+    気づきのうち棚で直せる汚れ（重複行・空行・先頭のゼロ・空白の揺れ・文字の日付・式のずれ）も、依頼の文が無くても
+    同じ呼び出しで撃つ（2026-09-25・_seiri_autofix）。人の判断が要る手（番号の重複）だけ残りに出す。
 
     materials で表の全体を読んでから、次の往復でマクロと書き込み、の 2 往復と読む時間を畳む。
     画面のシートに「表の書き方と罫線と列幅をそろえる」マクロ（開いているブックかアドインのモジュール「表の整理」）を撃ち、
-    残り＝エラーセル（式と一言の原因）・数式と表の気づき・指示文らしい長文セル・### だけを出す。
+    残り＝エラーセル（式と一言の原因）・数式と表の気づき・### だけを出す。
     直す手（式の書き直しなど判断の要るもの）はこの残りの分だけ。仕事の時計も押す。
     """
     target_file, rest = parse_target_and_rest(args.posargs)
@@ -2035,6 +2113,7 @@ def cmd_seiri(args):
     print(f"ブック: {wb.Name}   シート: {ws.Name}")
     owner = _macro_book(xl, _SEIRI_MODULE, _SEIRI_TIDY)
     names = [_SEIRI_TIDY] + ([_SEIRI_DEDUPE] if getattr(args, 'dedupe', False) else [])
+    tried = None                    # 気づきから撃った手の鍵（撃っていなければ None＝残りの手をそのまま並べる）
     if owner:
         # マクロが直した所を出す＋控えを取る（2026-09-23 の通しの実測: 文字の日付・全角の数字・半角カナ等 6 か所を
         # 黙って直し、報告に 1 つも出なかった＝何が変わったか分からず、戻す手も無かった）
@@ -2055,11 +2134,24 @@ def cmd_seiri(args):
             print(f"マクロ: {' → '.join(names)}（{owner}・{time.time() - t0:.2f} 秒）")
         except Exception as e:
             print(f"マクロを撃てませんでした: {e}（残りだけ出します）")
+        fired = []
         if request:
             try:
-                _seiri_fire_request(xl, wb, ws, request, before_snap)
+                fired += _seiri_fire_request(xl, wb, ws, request, before_snap)
             except Exception as e:
                 print(f"依頼の文に当たる棚を撃てませんでした: {e}（残りとして直す）")
+        # 気づき（重複行・空行・消えた先頭のゼロ・空白の揺れ・文字の日付・式のずれ）で棚が直せる手は、報告に並べずにここで撃つ
+        # （2026-09-25 shu「検知した定型の異常を AI への宿題として突き返さず、seiri がその場でやり切る」）
+        try:
+            auto_fired, tried = _seiri_autofix(xl, wb, ws)
+            fired += [n for n, _s, _w in auto_fired]
+        except Exception as e:
+            print(f"気づきの棚を撃てませんでした: {e}（残りとして直す）")
+        if fired:
+            try:
+                _seiri_tidy(wb, ws, before_snap)
+            except Exception as e:
+                print(f"仕上げ（tidy）を撃てませんでした: {e}")
         _seiri_print_changes(ws, before_snap, backup_path)
     else:
         print(f"マクロ: モジュール「{_SEIRI_MODULE}」の {_SEIRI_TIDY} が開いているブック・アドインに無いので撃っていません")
@@ -2100,11 +2192,8 @@ def cmd_seiri(args):
     print(f"エラーセル: {len(errs)}個" if errs else "エラーセル: なし")
     for e in errs:
         print(e)
-    # 指示文らしい長文セル（シートに書いてある頼みごと）
-    try:
-        _print_long_cells(ws.Range(ur.Cells(1, 1), ur.Cells(min(nr, 40), min(nc, 30))))
-    except Exception:
-        pass
+    # 長文セル（題・例の文・メモ）は「残り」に出さない。実務の表に頼みの文は普通は無く、ここに全文を出すと
+    # AI が直す宿題と読んで seiri に渡し直していた（2026-09-25 テスト用4 の A3 の例文で突き合わせまで撃った）
     # 気づき（数式・表の汚れ）
     try:
         if nr * nc <= _FML_LENS_MAX_CELLS:
@@ -2149,7 +2238,7 @@ def cmd_seiri(args):
             # 棚で直せる手（2026-09-23・通しの実測で、気づきを見てから棚を探す往復が要っていた）
             try:
                 hints += seiri_formula_hints(_fa, _fr, grid, r0, c0, hidx)
-                print_seiri_hints(hints)
+                print_seiri_hints(hints, tried)
             except Exception:
                 pass
     except Exception as e:
@@ -2162,8 +2251,9 @@ def cmd_seiri(args):
         pass
     # 次の手（2026-09-24 夜: Gemini が「残り」の D31 を直さず、直す手を探してソースやマクロを読み回った＝
     #   残りは AI が表を見て直す所だと、ここで言い切る）
-    print("次の手: 「棚で直せる手」があれば上から shelf-run。「残り」（エラーの式など）は棚では直らない所＝"
-          "上の表と式を見て、その場で write-cells で直す（ソースやブックの既存マクロを探しに行かない）→ tidy。"
+    print("次の手: 棚で直せる汚れ（重複行・空行・先頭のゼロ・空白の揺れ・文字の日付・式のずれ）は道具が撃ち済み。"
+          "「残り」（エラーの式・棚を撃っても残った所）だけ、上の表と式を見てその場で write-cells で直す"
+          "（ソースやブックの既存マクロを探しに行かない）→ tidy。残りが無ければ直す手は要らない。"
           "報告は要点だけ 1〜3 行（何をどこに直したかを番地で。経過・秒数・長い説明は書かない）")
     print("（保存はしていません）")
     return True
@@ -4724,7 +4814,6 @@ __all__ = [
     '_disp_truncate',
     '_disp_width',
     '_merged_areas_in_range',
-    '_print_long_cells',
     '_resolve_range',
     '_screenshot_cleanup',
     '_shape_text',

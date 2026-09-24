@@ -312,7 +312,7 @@ py vba_manager.py read-range     "集計!A1:D50" --tsv     # _last_values.tsv �
 py vba_manager.py read-range     A1:D10 --width 80       # 列の表示幅を広げる（既定40、切り詰めは…付き）。--json も可
 py vba_manager.py read-selection [excel_file] [--formula] # 今選択している範囲を読む（--formulaで数式）
 py vba_manager.py sheet-info     [excel_file] [--preview 3] # シート構成一覧（--preview で各シート先頭N行も＝ブック俯瞰が1接続）
-py vba_manager.py materials      [excel_file] [シート] [--rows 5]  # 先回り材料＝1シートの使用範囲・値・結合・テーブル・名前定義・数式の型（式は A1 形式＋代表の番地。R1C1 の相対番号を数え直さない・2026-09-08）・エラー・図形ボタン・###・列幅を1回で（手を動かす前に見る・2026-09-02）。40行×30列までの表は全体＋長文セルの全文。**気づき（数式）＝列の中で式の形が違うセル・式に直書きされた率や単価・集計の起点行の食い違いを、道具が全部の式について数えて出す（2026-09-09。式の点検はここが出発点。read で全部読み直さない）**。仕事の時計を押す（tidy／write が経過秒を出す）。式・非表示・結合は一括で読む（2026-09-16。それまで数式セル 1 つにつき COM 3 回＝数式の多い表で数十秒）
+py vba_manager.py materials      [excel_file] [シート] [--rows 5]  # 先回り材料＝1シートの使用範囲・値・結合・テーブル・名前定義・数式の型（式は A1 形式＋代表の番地。R1C1 の相対番号を数え直さない・2026-09-08）・エラー・図形ボタン・###・列幅を1回で（手を動かす前に見る・2026-09-02）。40行×30列までの表は全体。**気づき（数式）＝列の中で式の形が違うセル・式に直書きされた率や単価・集計の起点行の食い違いを、道具が全部の式について数えて出す（2026-09-09。式の点検はここが出発点。read で全部読み直さない）**。仕事の時計を押す（tidy／write が経過秒を出す）。式・非表示・結合は一括で読む（2026-09-16。それまで数式セル 1 つにつき COM 3 回＝数式の多い表で数十秒）
 py vba_manager.py table read <テーブル名> [--tsv]        # テーブル名で直接読む（番地調べ→read-range の2段を1段に）
 py vba_manager.py screenshot     [excel_file] [range] [--out f.png]  # 範囲を画像(PNG)で書き出す（省略時 _last_view.png）
 py vba_manager.py snapshot       [excel_file] [--sheet 名] [--out f.json] [--max-rows N]
