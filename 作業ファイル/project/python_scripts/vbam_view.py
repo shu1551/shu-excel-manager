@@ -1767,6 +1767,15 @@ def cmd_materials(args):
     except Exception:
         pass
     print("=" * 60)
+    # 次の手（2026-09-24 夜: Antigravity の Gemini が materials の後に値を自分で書き、ブックの中の答えのマクロまで撃った。
+    #   手の型は Claude には毎回流し込まれるが、ほかの AI に確実に届くのは道具の返事だけ＝ここに出す）
+    try:
+        if _macro_book(xl, _SEIRI_MODULE, _SEIRI_TIDY):
+            print("次の手（表を直す・整える依頼なら）: seiri → 報告の「棚で直せる手」を shelf-run で上から → "
+                  "頼みの文は shelf --ask 依頼文 で棚に当てる → 棚に無い所だけ write-cells／write_grid → tidy。"
+                  "値を自分で打ち直さない・このブックの既存マクロで片付けない")
+    except Exception:
+        pass
     return True
 
 

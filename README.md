@@ -159,13 +159,14 @@ Antigravity（`%USERPROFILE%\.gemini\antigravity-ide\mcp_config.json`）:
 
 - このフォルダで Claude Code を起動して使うなら、そのままで読まれます（`CLAUDE.md` も同じ）
 - ほかのフォルダから使うなら、`.claude\skills\` の中の 2 つのフォルダを `%USERPROFILE%\.claude\skills\` へ写してください
-- **Antigravity（Gemini）にも同じ手順書を読ませてください。** MCP の説明だけでも動きますが、手順書があると「表を直すときは棚を先に見る」
-  「書いたら仕上げまで」などの型が効きます。作者の環境の Antigravity は `%USERPROFILE%\.gemini\config\skills\` から読んでいます。
-  写すと古くなるので、つなぎ（ジャンクション）にしておくと、道具を入れ替えたときもそのまま新しい手順書が読まれます:
+- **Antigravity（Gemini）で使うとき**は、表を直す手順を、毎回読まれる決まりの置き場（作者の環境ではワークスペースの `.agents\AGENTS.md`）に
+  書いておいてください。書いていないと、Gemini が棚を使わずに値を自分で打ち直すことがありました（2026-09-24 の試し）。書く中身は次の 1 行で足ります:
 
-  ```powershell
-  New-Item -ItemType Junction -Path "$env:USERPROFILE\.gemini\config\skills\excel-vba-manager" -Target "<このフォルダ>\.claude\skills\excel-vba-manager"
+  ```text
+  表を直す・整える依頼は、excel-manager の seiri → 報告の「棚で直せる手」を shelf-run で上から → 棚に無い所だけ write-cells／write_grid → tidy の順で行う。値を自分で打ち直さない。ブックの既存マクロで片付けない。
   ```
+
+  道具の側でも、`materials` の返事の最後に同じ次の手を出しています。
 
 手順書が無くても道具は動きますが、AI が道具の使い方を一から探るので、手数が増えて遅くなります。
 
