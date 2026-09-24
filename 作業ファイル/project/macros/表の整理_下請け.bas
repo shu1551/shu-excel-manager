@@ -475,7 +475,7 @@ Function íIÇÃÉVÅ[Égñº(ByVal wb As Object, ByVal ñº As String, Optional ByVal ç°â
         On Error GoTo 0
         If sh Is Nothing Then Exit Do
         è¡Ç∑ = íIÇÃÉVÅ[ÉgÇ©(sh)
-        If è¡Ç∑ And Not ç°âÒ Is Nothing Then è¡Ç∑ = Not ç°âÒ.exists(LCase$(cand))
+        If è¡Ç∑ And Not ç°âÒ Is Nothing Then è¡Ç∑ = Not ç°âÒ.Exists(LCase$(cand))
         If è¡Ç∑ Then
             Application.DisplayAlerts = False
             sh.Delete

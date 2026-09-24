@@ -19,7 +19,7 @@ Sub 表の書き方と罫線と列幅をそろえる()
     ' 値の意味は変えずに書き方をそろえる（行は消さない・数式のセルは触らない）: 前後の空白・全角英数→半角・半角カナ→全角・
     ' 文字の間の空白（列の多い方の 1 つ）・（株）→株式会社・電話・郵便番号・メール・文字の日付と和暦→日付・文字の金額→数値・率・罫線・列幅
     Dim ws As Worksheet, ur As Range, tb As Range, c As Range, dv As Object
-    Dim r0 As Long, c0 As Long, nr As Long, NC As Long, scanTo As Long
+    Dim r0 As Long, c0 As Long, nR As Long, nC As Long, scanTo As Long
     Dim hr As Long, hc1 As Long, hc2 As Long, lastR As Long
     Dim i As Long, j As Long, k As Long, n As Long, best As Long, ln As Long, a As Long, b As Long, g As Long
     Dim v As Variant, nv As Variant, x As Variant, parts As Variant, ks As Variant
@@ -36,8 +36,8 @@ Sub 表の書き方と罫線と列幅をそろえる()
 
     Set ws = ActiveSheet
     Set ur = ws.UsedRange
-    r0 = ur.Row: c0 = ur.Column: nr = ur.rows.Count: NC = ur.Columns.Count
-    If nr < 2 Then Exit Sub
+    r0 = ur.Row: c0 = ur.Column: nR = ur.rows.Count: nC = ur.Columns.Count
+    If nR < 2 Then Exit Sub
     GoSub 見出しを探す
     If hr = 0 Then Exit Sub
     ' 見出しの行を「列まるごと空の列」と「式の見出し（=COUNTA などの集計）」で区切り、見出しが 2 つ以上ある塊ごとに
@@ -46,15 +46,15 @@ Sub 表の書き方と罫線と列幅をそろえる()
     ' 表の列、2024 のような数の見出しも区切りにしない（年を並べた横持ちの表を割らない）
     Dim blk1(1 To 50) As Long, blk2(1 To 50) As Long, nBlk As Long, bi As Long, inBlk As Boolean
     nBlk = 0: inBlk = False
-    For j = c0 To c0 + NC
+    For j = c0 To c0 + nC
         ok = False
-        If j <= c0 + NC - 1 Then
+        If j <= c0 + nC - 1 Then
             If ws.Cells(hr, j).HasFormula Then
                 ok = False
             ElseIf Len(Trim(ws.Cells(hr, j).text)) > 0 Then
                 ok = True
             Else
-                ok = Application.WorksheetFunction.CountA(ws.Range(ws.Cells(hr, j), ws.Cells(r0 + nr - 1, j))) > 0
+                ok = Application.WorksheetFunction.CountA(ws.Range(ws.Cells(hr, j), ws.Cells(r0 + nR - 1, j))) > 0
             End If
         End If
         If ok Then
@@ -188,7 +188,7 @@ Sub 表の書き方と罫線と列幅をそろえる()
     ws.Range(ws.Cells(hr, hc1), ws.Cells(lastR, hc2)).Columns.AutoFit
     For k = hc1 To hc2
         If ws.Columns(k).ColumnWidth < colW(k) Then
-            For rr = r0 To r0 + nr - 1
+            For rr = r0 To r0 + nR - 1
                 If rr < hr Or rr > lastR Then
                     t = ws.Cells(rr, k).text
                     If Len(t) > 0 And Replace(t, "#", "") = "" Then
@@ -203,16 +203,16 @@ Sub 表の書き方と罫線と列幅をそろえる()
 
 見出しを探す:
     ' 先頭 20 行で、値のある列が最も多い行の 6 割以上を最初に満たす行＝見出し。本文は見出しの列が全部空の行の手前まで
-    scanTo = r0 + IIf(nr > 20, 20, nr) - 1
+    scanTo = r0 + IIf(nR > 20, 20, nR) - 1
     best = 0
     For i = r0 To scanTo
-        n = Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, c0), ws.Cells(i, c0 + NC - 1)))
+        n = Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, c0), ws.Cells(i, c0 + nC - 1)))
         If n > best Then best = n
     Next
     hr = 0
     If best < 2 Then Return
     For i = r0 To scanTo
-        n = Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, c0), ws.Cells(i, c0 + NC - 1)))
+        n = Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, c0), ws.Cells(i, c0 + nC - 1)))
         If hr = 0 And n >= 2 And n >= best * 0.6 Then hr = i
     Next
     Return
@@ -221,7 +221,7 @@ Sub 表の書き方と罫線と列幅をそろえる()
     ' 本文の終わり: 途中の空行 1 行は飛ばして続ける。空行が 2 行続いたら表の終わり
     lastR = hr
     n = 0
-    For i = hr + 1 To r0 + nr - 1
+    For i = hr + 1 To r0 + nR - 1
         If n < 2 Then
             If Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, hc1), ws.Cells(i, hc2))) = 0 Then
                 n = n + 1
@@ -800,7 +800,7 @@ Sub 全列が同じ重複行を削除する()
     ' 依頼の語: 重複行を消|同じ行が二つ|同じ行が2つ|ダブっている行|ダブった行|重複データ|重複した行を1つ|重複した行をひとつ|二重に入っている行|重複行を削除|重複を消|重複を削除|重複を取り除|重複を除|重複データを消|重複をなくし|重複を無くし|ダブりを消|同じ行を消|同じ行を削除|重複している行を消|重複している行を削除|重複した行を消|重複した行を削除|重複行を取
     ' 依頼の組: 重複,ダブ,二重,かぶ,同じデータ,同じ行+消,削除,除,取り,なくし,無くし,1つに,ひとつに+-番号,キー,伝票,一覧にし,洗い出,マクロ,二重計上,二重払
     Dim ws As Worksheet, ur As Range, seen As Object
-    Dim r0 As Long, c0 As Long, nr As Long, NC As Long, scanTo As Long
+    Dim r0 As Long, c0 As Long, nR As Long, nC As Long, scanTo As Long
     Dim hr As Long, hc1 As Long, hc2 As Long, lastR As Long
     Dim i As Long, j As Long, k As Long, n As Long, best As Long
     Dim v As Variant, x As Variant, parts As Variant, dup() As Boolean
@@ -812,8 +812,8 @@ Sub 全列が同じ重複行を削除する()
     ' 1 列でも中身が違えば別の行として残す（備考だけ違う行も消さない）。先に出てくる行を残し、後の行を下から消す
     Set ws = ActiveSheet
     Set ur = ws.UsedRange
-    r0 = ur.Row: c0 = ur.Column: nr = ur.rows.Count: NC = ur.Columns.Count
-    If nr < 3 Then Exit Sub
+    r0 = ur.Row: c0 = ur.Column: nR = ur.rows.Count: nC = ur.Columns.Count
+    If nR < 3 Then Exit Sub
     GoSub 見出しを探す
     If hr = 0 Or lastR <= hr + 1 Then Exit Sub
     Set seen = CreateObject("Scripting.Dictionary")
@@ -827,7 +827,7 @@ Sub 全列が同じ重複行を削除する()
         Next
         If Len(Replace(key, Chr(1), "")) = 0 Then
             ' 途中の空行は重複と見ない（消さない）
-        ElseIf seen.exists(key) Then
+        ElseIf seen.Exists(key) Then
             dup(i) = True
         Else
             seen.Add key, i
@@ -837,7 +837,7 @@ Sub 全列が同じ重複行を削除する()
     ' 消すとその値を巻き込み、表の中だけ詰めると隣の列が行とずれる＝その行は消さずに残す
     For i = lastR To hr + 1 Step -1
         If dup(i) Then
-            n = Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, c0), ws.Cells(i, c0 + NC - 1))) _
+            n = Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, c0), ws.Cells(i, c0 + nC - 1))) _
                 - Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, hc1), ws.Cells(i, hc2)))
             If n = 0 Then ws.rows(i).Delete
         End If
@@ -845,21 +845,21 @@ Sub 全列が同じ重複行を削除する()
     Exit Sub
 
 見出しを探す:
-    scanTo = r0 + IIf(nr > 20, 20, nr) - 1
+    scanTo = r0 + IIf(nR > 20, 20, nR) - 1
     best = 0
     For i = r0 To scanTo
-        n = Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, c0), ws.Cells(i, c0 + NC - 1)))
+        n = Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, c0), ws.Cells(i, c0 + nC - 1)))
         If n > best Then best = n
     Next
     hr = 0
     If best < 2 Then Return
     For i = r0 To scanTo
-        n = Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, c0), ws.Cells(i, c0 + NC - 1)))
+        n = Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, c0), ws.Cells(i, c0 + nC - 1)))
         If hr = 0 And n >= 2 And n >= best * 0.6 Then hr = i
     Next
     If hr = 0 Then Return
     hc1 = 0: hc2 = 0
-    For j = c0 To c0 + NC - 1
+    For j = c0 To c0 + nC - 1
         ' 二段見出しの下の段では、コード・品目のように上の段と縦に結合した列も表の列（2026-09-24 通しの実測 5:
         ' 下の段＝月の列だけを表と見て、コード・年計の列を「表の外」と数え、重複の行を残していた）
         ok = Len(Trim(ws.Cells(hr, j).text)) > 0
@@ -872,7 +872,7 @@ Sub 全列が同じ重複行を削除する()
     ' 本文の終わり: 途中の空行 1 行は飛ばして続ける。空行が 2 行続いたら表の終わり
     lastR = hr
     n = 0
-    For i = hr + 1 To r0 + nr - 1
+    For i = hr + 1 To r0 + nR - 1
         If n < 2 Then
             If Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, hc1), ws.Cells(i, hc2))) = 0 Then
                 n = n + 1
@@ -1409,7 +1409,7 @@ Sub 選んだコード列を名称で上書きする()
     For i = headerRow + 1 To lastRow
         If セルの字(ws.Cells(i, selCol).Value) <> "" Then
             s = CStr(ws.Cells(i, selCol).Value): GoSub 正規化
-            If Not sampleVals.exists(s) Then
+            If Not sampleVals.Exists(s) Then
                 sampleVals.Add s, 1
                 sampleCount = sampleCount + 1
                 If sampleCount >= 10 Then Exit For
@@ -1445,7 +1445,7 @@ Sub 選んだコード列を名称で上書きする()
         matchCount = 0
         For i = tFirstRow To tLastRow
             s = CStr(targetSheet.Cells(i, c).Value): GoSub 正規化
-            If sampleVals.exists(s) Then matchCount = matchCount + 1
+            If sampleVals.Exists(s) Then matchCount = matchCount + 1
         Next i
         If matchCount > bestMatch Then
             bestMatch = matchCount
@@ -1473,7 +1473,7 @@ NextSheet:
         vv = CStr(bestSheet.Cells(i, bestValCol).Value)
         If セルの字(kv) <> "" And セルの字(vv) <> "" Then
             s = kv: GoSub 正規化
-            If Not dict.exists(s) Then dict.Add s, vv
+            If Not dict.Exists(s) Then dict.Add s, vv
         End If
     Next i
 
@@ -1485,17 +1485,17 @@ NextSheet:
     For Each dk In dict.keys
         Dim nv As String
         nv = CStr(dict(dk))
-        If Not nameSet.exists(nv) Then nameSet.Add nv, 1
+        If Not nameSet.Exists(nv) Then nameSet.Add nv, 1
     Next dk
 
     ' 置き換え（見出し行の次から）
     For i = headerRow + 1 To lastRow
         cellVal = CStr(ws.Cells(i, selCol).Value)
         If セルの字(cellVal) = "" Then GoTo NextCell
-        If nameSet.exists(cellVal) Then GoTo NextCell
+        If nameSet.Exists(cellVal) Then GoTo NextCell
         s = cellVal: GoSub 正規化
         normalKey = s
-        If dict.exists(normalKey) Then
+        If dict.Exists(normalKey) Then
             ws.Cells(i, selCol).Value = dict(normalKey)
         End If
 NextCell:
@@ -2399,7 +2399,7 @@ Sub 選んだ列の途切れた式を戻す()
                 If cellVal.HasFormula Then
                     Dim f As String
                     f = cellVal.FormulaR1C1
-                    If dict.exists(f) Then
+                    If dict.Exists(f) Then
                         dict(f) = dict(f) + 1
                     Else
                         dict.Add f, 1
@@ -4263,7 +4263,7 @@ Sub 番号に先頭のゼロを付けてそろえる()
     End If
 
     For c = urLeft To urRight
-        If useCol.Count = 0 Or useCol.exists(c) Then
+        If useCol.Count = 0 Or useCol.Exists(c) Then
             ' 列の中のゼロ付きの番号の桁を数える
             Set lens = CreateObject("Scripting.Dictionary")
             filled = 0
@@ -4358,7 +4358,7 @@ Sub 空白の有無を多い方にそろえる()
     End If
 
     For c = urLeft To urRight
-        If useCol.Count = 0 Or useCol.exists(c) Then
+        If useCol.Count = 0 Or useCol.Exists(c) Then
             ' 空白を抜いた字 → {書き方: 件数}
             Set forms = CreateObject("Scripting.Dictionary")
             For r = dataStart To lastRow
@@ -4366,7 +4366,7 @@ Sub 空白の有無を多い方にそろえる()
                     s = ws.Cells(r, c).Value
                     k = Replace(Replace(s, " ", ""), "　", "")
                     If k <> "" Then
-                        If Not forms.exists(k) Then forms.Add k, CreateObject("Scripting.Dictionary")
+                        If Not forms.Exists(k) Then forms.Add k, CreateObject("Scripting.Dictionary")
                         Set f = forms(k)
                         f(s) = f(s) + 1
                     End If
