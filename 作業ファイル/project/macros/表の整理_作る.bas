@@ -168,7 +168,7 @@ Sub 帳票を右に1行1件の一覧にする()
         Dim hn As String
         hn = colHeaders(c)
         If セルの字(hn) <> "" Then
-            If Not listColDict.exists(hn) Then
+            If Not listColDict.Exists(hn) Then
                 listColDict.Add hn, listColCnt
                 ReDim Preserve listColNames(listColCnt)
                 listColNames(listColCnt) = hn
@@ -183,12 +183,12 @@ Sub 帳票を右に1行1件の一覧にする()
     For c = urLeft To frmRight
         Dim cv2 As String
         cv2 = Trim(CStr(ws.Cells(hdrRow, c).Value))
-        If セルの字(cv2) <> "" And Not hdrKwDict.exists(cv2) Then hdrKwDict.Add cv2, 1
+        If セルの字(cv2) <> "" And Not hdrKwDict.Exists(cv2) Then hdrKwDict.Add cv2, 1
     Next c
     If sub1Row > 0 Then
         For c = urLeft To frmRight
             cv2 = Trim(CStr(ws.Cells(sub1Row, c).Value))
-            If セルの字(cv2) <> "" And Not hdrKwDict.exists(cv2) Then hdrKwDict.Add cv2, 1
+            If セルの字(cv2) <> "" And Not hdrKwDict.Exists(cv2) Then hdrKwDict.Add cv2, 1
         Next c
     End If
 
@@ -206,7 +206,7 @@ Sub 帳票を右に1行1件の一覧にする()
             tv = Trim(CStr(ws.Cells(ttr, c).Value))
             If セルの字(tv) <> "" Then tNE = tNE + 1: tval = tv
         Next c
-        If tNE = 1 And セルの字(tval) <> "" And Not titleDict.exists(tval) Then titleDict.Add tval, 1
+        If tNE = 1 And セルの字(tval) <> "" And Not titleDict.Exists(tval) Then titleDict.Add tval, 1
     Next ttr
 
     ' --- 主キー列（帳票左端）---
@@ -268,7 +268,7 @@ Sub 帳票を右に1行1件の一覧にする()
                 Dim cv4 As String
                 cv4 = rowVals(c - urLeft)
                 If セルの字(cv4) <> "" Then
-                    If Not hdrKwDict.exists(cv4) Then allKw = False: Exit For
+                    If Not hdrKwDict.Exists(cv4) Then allKw = False: Exit For
                 End If
             Next c
             If allKw And rowNE >= 2 Then GoTo NextRow
@@ -281,7 +281,7 @@ Sub 帳票を右に1行1件の一覧にする()
             For c = urLeft To frmRight
                 If セルの字(rowVals(c - urLeft)) <> "" Then oneVal = rowVals(c - urLeft): Exit For
             Next c
-            If titleDict.exists(oneVal) Then GoTo NextRow
+            If titleDict.Exists(oneVal) Then GoTo NextRow
         End If
 
         ' 合計行スキップ
@@ -309,7 +309,7 @@ Sub 帳票を右に1行1件の一覧にする()
                 Dim hN2 As String
                 hN2 = colHeaders(c)
                 If セルの字(hN2) <> "" Then
-                    If Not recVals(curIdx).exists(hN2) Then
+                    If Not recVals(curIdx).Exists(hN2) Then
                         recVals(curIdx).Add hN2, ws.Cells(r, c).Value
                     End If
                 End If
@@ -338,13 +338,13 @@ Sub 帳票を右に1行1件の一覧にする()
                         If foundVal Then
                             Dim lname As String
                             lname = scv
-                            If Not listColDict.exists(lname) Then
+                            If Not listColDict.Exists(lname) Then
                                 listColDict.Add lname, listColCnt
                                 ReDim Preserve listColNames(listColCnt)
                                 listColNames(listColCnt) = lname
                                 listColCnt = listColCnt + 1
                             End If
-                            If Not recVals(curIdx).exists(lname) Then
+                            If Not recVals(curIdx).Exists(lname) Then
                                 recVals(curIdx).Add lname, ws.Cells(r, nsc).Value
                             End If
                             sc = nsc + 1
@@ -387,7 +387,7 @@ NextRow:
             colName = listColNames(c)
             Dim wv As Variant
             wv = ""
-            If recVals(i).exists(colName) Then wv = recVals(i)(colName)
+            If recVals(i).Exists(colName) Then wv = recVals(i)(colName)
             Dim tgt As Range
             Set tgt = ws.Cells(outRow, listStartCol + c)
             If isEmpty(wv) Or CStr(wv) = "" Then
@@ -725,7 +725,7 @@ ChkNext:
             If IsNumeric(s) Then amtVal = CDbl(s)
         End If
 
-        If Not dict.exists(itemKey) Then
+        If Not dict.Exists(itemKey) Then
             dict.Add itemKey, Array(0#, 0#, 0#, 0#, 0#, 0#, 0#, 0#, 0#, 0#, 0#, 0#)
             ReDim Preserve itemOrder(itemCount)
             itemOrder(itemCount) = itemKey
@@ -759,7 +759,7 @@ NextRow:
         Dim ik2 As String: ik2 = s
         If セルの字(ik2) = "" Then GoTo LabelNext
         If 集計の語か(ik2) Then GoTo LabelNext
-        If Not dictLabel.exists(ik2) Then
+        If Not dictLabel.Exists(ik2) Then
             dictLabel.Add ik2, rawI2
         End If
 LabelNext:
@@ -784,7 +784,7 @@ LabelNext:
     For i = 0 To itemCount - 1
         Dim ik As String: ik = itemOrder(i)
         Dim dispName As String
-        If dictLabel.exists(ik) Then
+        If dictLabel.Exists(ik) Then
             dispName = dictLabel(ik)
         Else
             dispName = ik
@@ -1399,7 +1399,7 @@ NextSheet:
         divRaw = CStr(wsMap.Cells(i, mapDivCol).Value)
         ss = divRaw: GoSub NormalizePlain: kDiv = ss
         If セルの字(kCode) <> "" And セルの字(kDiv) <> "" Then
-            If Not dict.exists(kCode) Then dict(kCode) = kDiv
+            If Not dict.Exists(kCode) Then dict(kCode) = kDiv
         End If
         If セルの字(kDiv) <> "" Then
             found = False
@@ -1545,7 +1545,7 @@ NextCheckR:
         If セルの字(code) = "" Or isAggRow Then
             ws.Cells(i, divCol).Value = ""
         ElseIf InStr(code, "-") > 0 Then
-            If dict.exists(code) Then
+            If dict.Exists(code) Then
                 ws.Cells(i, divCol).Value = dict(code)
             Else
                 ws.Cells(i, divCol).Value = "対応なし"
@@ -1587,7 +1587,7 @@ NextCheckR:
         If divVal = "対応なし" Then
             unmatched = unmatched + amtResult
         Else
-            If sumDict.exists(divVal) Then
+            If sumDict.Exists(divVal) Then
                 sumDict(divVal) = sumDict(divVal) + amtResult
             Else
                 sumDict(divVal) = amtResult
@@ -1601,7 +1601,7 @@ NextDataRow:
     For j = 0 To divCount - 1
         outRow = hdrRow + 1 + j
         ws.Cells(outRow, fcol).Value = divOrder(j)
-        If sumDict.exists(divOrder(j)) Then
+        If sumDict.Exists(divOrder(j)) Then
             divSum = sumDict(divOrder(j))
         Else
             divSum = 0
@@ -1861,7 +1861,7 @@ SkipMyKey:
             Dim hit As Long: hit = 0
             For ri = shDR1x To shR2
                 s = CStr(sh.Cells(ri, shci).Value): GoSub NormKeySub
-                If セルの字(s) <> "" And dicMyKeys.exists(s) Then hit = hit + 1
+                If セルの字(s) <> "" And dicMyKeys.Exists(s) Then hit = hit + 1
             Next ri
             If hit > bestShScore Then bestShScore = hit
 NextShCI:
@@ -1918,7 +1918,7 @@ NextSheet:
         Dim phit As Long: phit = 0
         For ri = pDR1 To pR2
             s = CStr(wsP.Cells(ri, shci2).Value): GoSub NormKeySub
-            If セルの字(s) <> "" And dicMyKeys.exists(s) Then phit = phit + 1
+            If セルの字(s) <> "" And dicMyKeys.Exists(s) Then phit = phit + 1
         Next ri
         If phit > pBestHit Then pBestHit = phit: pColKey = shci2
 SkipPKey:
@@ -1967,7 +1967,7 @@ SkipPAmt:
         Dim pamtRaw As String: pamtRaw = CStr(wsP.Cells(ri, pColAmt).Value)
         s = pamtRaw: GoSub NormAmtSub
         If IsNumeric(s) And セルの字(s) <> "" Then
-            If Not dicP.exists(pkey) Then dicP(pkey) = CDbl(s)
+            If Not dicP.Exists(pkey) Then dicP(pkey) = CDbl(s)
         End If
 NextPRow:
     Next ri
@@ -2024,7 +2024,7 @@ NextPRow:
         s = myAmtRaw: GoSub NormAmtSub
         Dim myAmt As String: myAmt = s
 
-        If dicP.exists(myKey) Then
+        If dicP.Exists(myKey) Then
             Dim pAmtDbl As Double: pAmtDbl = CDbl(dicP(myKey))
             ws.Cells(ri, colPartnerAmt).Value = pAmtDbl
             If IsNumeric(myAmt) And セルの字(myAmt) <> "" Then
@@ -2050,7 +2050,7 @@ SkipDataRow:
     Dim cntNoMe As Long: cntNoMe = 0
     Dim kk As Variant
     For Each kk In dicP.keys
-        If Not dicMyUsed.exists(kk) Then cntNoMe = cntNoMe + 1
+        If Not dicMyUsed.Exists(kk) Then cntNoMe = cntNoMe + 1
     Next kk
 
     ' 件数表列を確定（突合列の2列右）
@@ -3200,7 +3200,7 @@ NextSheet:
             isTotalRow = (集計の語か(cellN))
             If Not isTotalRow Then
                 blankCount = 0
-                If Not dictCurr.exists(cellN) Then
+                If Not dictCurr.Exists(cellN) Then
                     s = CStr(ws.Cells(r, amtCol).Value): GoSub 正規化数値チェック
                     If IsNumeric(s) Then dictCurr(cellN) = CDbl(s) Else dictCurr(cellN) = 0
                     currCount = currCount + 1
@@ -3237,7 +3237,7 @@ NextSheet:
             isTotalRow2 = (集計の語か(pvCellN))
             If Not isTotalRow2 Then
                 blankCount2 = 0
-                If Not dictPrev.exists(pvCellN) Then
+                If Not dictPrev.Exists(pvCellN) Then
                     s = CStr(wsPrev.Cells(r, pvAmtCol).Value): GoSub 正規化数値チェック
                     If IsNumeric(s) Then dictPrev(pvCellN) = CDbl(s) Else dictPrev(pvCellN) = 0
                     prevKeyCount = prevKeyCount + 1
@@ -3258,7 +3258,7 @@ NextSheet:
     prevOnlyCount = 0
     Dim ki As Long
     For ki = 1 To prevKeyCount
-        If Not dictCurr.exists(prevNormKeys(ki)) Then
+        If Not dictCurr.Exists(prevNormKeys(ki)) Then
             prevOnlyCount = prevOnlyCount + 1
             ReDim Preserve prevOnlyNorm(1 To prevOnlyCount)
             ReDim Preserve prevOnlyRaw(1 To prevOnlyCount)
@@ -3343,7 +3343,7 @@ NextSheet:
         rOut = dataStartRow + rowIdx - 1
         Dim vC As Double, vP As Double
         vC = dictCurr(kName)
-        If dictPrev.exists(kName) Then vP = dictPrev(kName) Else vP = 0
+        If dictPrev.Exists(kName) Then vP = dictPrev(kName) Else vP = 0
         Dim diff As Double
         diff = vC - vP
         ws.Cells(rOut, outCol).Value = currRawKeys(i)
@@ -4719,7 +4719,7 @@ Sub マスタを引く計算列を足す()
                     Dim score As Long: score = 0
                     For ri = 1 To lo.DataBodyRange.rows.Count
                         s = CStr(lo.DataBodyRange.Cells(ri, mainC).Value): GoSub normKey
-                        If セルの字(s) <> "" And dicM.exists(s) Then score = score + 1
+                        If セルの字(s) <> "" And dicM.Exists(s) Then score = score + 1
                     Next ri
 
                     If score > bestScore Then
@@ -6573,7 +6573,7 @@ Sub 選んだ2列の項目別合計表を作る()
         If 集計の行か(ws, r, ur.Column, urRight) Then cellVal = Empty
         If Not isEmpty(cellVal) And セルの字(cellVal) <> "" Then
             s = CStr(cellVal)
-            If Not dict.exists(s) Then
+            If Not dict.Exists(s) Then
                 dict.Add s, 1
                 ReDim Preserve keys(keyCount)
                 keys(keyCount) = s
@@ -6743,7 +6743,7 @@ Sub 選んだ列の項目別件数表を右に作る()
 
         s = CStr(ws.Cells(rr, selCol).Value): GoSub 正規化
         If セルの字(s) = "" Then GoTo NextRow
-        If Not dict.exists(s) Then
+        If Not dict.Exists(s) Then
             dict.Add s, rr
             ReDim Preserve rawKeys(keyCount)
             rawKeys(keyCount) = CStr(ws.Cells(rr, selCol).Value)
@@ -9781,7 +9781,7 @@ FoundFHdr:
 
             s = CStr(wsForm.Cells(r, c).Value): GoSub 正規化
             If セルの字(s) = "" Then GoTo NextFCol
-            If Not dictItems.exists(s) Then GoTo NextFCol
+            If Not dictItems.Exists(s) Then GoTo NextFCol
 
             ' 一致した: 集計表の対応行を取得
             Dim srcRow As Long
@@ -9894,7 +9894,7 @@ Sub 選んだ列の値ごとにシートを分ける()
         keyVal = CStr(ws.Cells(r, selCol).Value)
         keyTrim = Trim(keyVal)
         If セルの字(keyTrim) = "" Then GoTo NextRow
-        If Not dict.exists(keyTrim) Then
+        If Not dict.Exists(keyTrim) Then
             dict.Add keyTrim, 1
             ReDim Preserve keys(keyCount)
             keys(keyCount) = keyTrim
@@ -10272,7 +10272,7 @@ Sub ピボットの値の横に累計を足す()
         For rf_idx = 1 To pt.RowFields.Count
             Dim tmpPF As PivotField
             Set tmpPF = pt.RowFields(rf_idx)
-            If tmpPF.Name <> "Values" And Not colFieldNames.exists(tmpPF.Name) Then
+            If tmpPF.Name <> "Values" And Not colFieldNames.Exists(tmpPF.Name) Then
                 If tmpPF.Position < minPos Then
                     minPos = tmpPF.Position
                     Set outerRowField = tmpPF
