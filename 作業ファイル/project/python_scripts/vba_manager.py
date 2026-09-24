@@ -638,11 +638,12 @@ def build_parser():
 
     # materials [excel_file] [sheet] [--rows N]
     p = sub.add_parser("seiri", aliases=["表の整理"],
-                       help="表を直す 1 手目（materials の代わり）：「表の書き方と罫線と列幅をそろえる」マクロを撃ち、残り（エラーセルと式・"
-                            "数式と表の気づき・指示文・###）だけを出す。直す手は残りの分だけ（2026-09-13）")
+                       help="表を直す 1 手目（materials の代わり）：「表の書き方と罫線と列幅をそろえる」マクロと、気づきの汚れ"
+                            "（重複行・空行・先頭のゼロ・空白の揺れ・文字の日付・式のずれ）に当たる棚を撃って tidy まで仕上げ、"
+                            "残り（エラーセルと式・人の判断が要る気づき・###）だけを出す（2026-09-13・09-25）")
     p.add_argument("posargs", nargs="*")
     p.add_argument("--dedupe", action="store_true",
-                   help="「全列が同じ重複行を削除する」も撃つ（依頼かシートの指示文が重複行の削除を頼んでいるときだけ）")
+                   help="「全列が同じ重複行を削除する」を必ず撃つ（重複行は気づきから自動で消すので普通は要らない）")
     p = sub.add_parser("register-addin", aliases=["更新登録"],
                        help="前に出ているブックを .xlam に焼き直してアドインに登録し直す（「アドインの更新登録」を、"
                             "焼く先・空のブック・表示中フォームを確かめてから素の Run で撃つ。2026-09-23）")
@@ -678,7 +679,7 @@ def build_parser():
     p.add_argument("--sheet", dest="sheet_opt", default=None,
                    help="対象シート名（省略時はアクティブシート）")
     p = sub.add_parser("materials",
-                       help="先回り材料：1シートの使用範囲・値（小さい表は全体＋長文セルの全文）・結合・テーブル・名前・"
+                       help="先回り材料：1シートの使用範囲・値（小さい表は全体）・結合・テーブル・名前・"
                             "数式の型・エラー・図形・###・列幅を1回で出し、仕事の時計を押す（手を動かす前に見る）")
     p.add_argument("posargs", nargs="*")
     p.add_argument("--rows", dest="rows", default=None,
