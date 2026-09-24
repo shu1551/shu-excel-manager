@@ -1402,6 +1402,9 @@ _COMMAND_ALIASES = {
     "shortcut": ["list-shortcuts"],
     "shortcuts": ["list-shortcuts"],
     "list-sheets": ["sheet-info", "--fast"],
+    "sheets": ["sheet-info", "--fast"],          # 2026-09-25 Gemini が「今のシートは？」で 2 回撃って外した
+    "active-sheet": ["sheet-info", "--fast"],
+    "current-sheet": ["sheet-info", "--fast"],
     "activate-sheet": ["sheet", "activate"],
     "add-sheet": ["sheet", "add"],
     "delete-sheet": ["sheet", "delete"],

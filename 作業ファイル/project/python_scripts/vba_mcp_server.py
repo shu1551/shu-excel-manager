@@ -683,7 +683,8 @@ def _submit_async(line):
 # 2026-09-23 つないだ AI に渡す説明（instructions）を足した。棚撃ち式（seiri → shelf-run）は Claude にだけ
 # 起動時のフックで流していて、Gemini や公開の読者の AI には見えていなかった。
 _INSTRUCTIONS = """秀エクセルマネージャー（excel-manager）。道具は今アクティブに開いている Excel ブックに効く（保存はしない）。
-シートを見るのは vba("materials")（read-range を重ねない）。表について答えるときは番地を添える。
+今開いているブック・シートを聞かれたら vba("sheet-info")（軽い・1 回で答える）。表の中身を見るのは vba("materials")
+（返事が長い。read-range を重ねない）。表について答えるときは番地を添える。
 
 表を直す・整える・点検する依頼は、自分で書く前に「棚」を使う。棚＝秀コンボのモジュール「表の整理」「表の整理_作る」
 「表の整理_調べる」の、言葉で頼んで撃つマクロ（表の書き方と罫線と列幅をそろえる・全列が同じ重複行を削除する・空行を詰める・番号の列を連番に振り直す・表の下に合計行を足す・
@@ -705,13 +706,17 @@ mcp = FastMCP("excel-manager", instructions=_INSTRUCTIONS)
 def vba(command: str) -> str:
     """vba_manager のコマンドを1行実行する。対象は今アクティブに開いている Excel ブック。
 
+    まずこれ（1 回撃って、その返事だけで答える）:
+      今開いているブック・シートは？ → "sheet-info"（軽い。ブック名・アクティブシート・全シートの一覧）
+      表の中身を見る → "materials"（返事が長い。表を読むときだけ）
+      表を直す・整える → "seiri 頼みの文" を 1 回（先撃ち。下に詳しく）
+
     CLI と同じ引数列をそのまま渡す。例:
       "list"（マクロ一覧） / "list-open"（開いているブック一覧） /
       "get モジュール名 プロシージャ名" / "run-macro マクロ名" /
-      "read-range A1:D10" / "write-range A1 値" / "sheet-info" /
+      "read-range A1:D10" / "write-range A1 値" /
       "grep ActiveSheet" / "checkup" / "impact マクロ名" /
       "close-form"（表示中の UserForm を閉じる。フォームを直す前に人へ頼まず自分で閉じる） /
-      "materials"（シートを触る前の材料。開いているシートを Excel に聞く） /
       "write-cells C7 値 C11 値 --show"（飛び飛びのセルを1回で） /
       "tidy A5:G13 I5:L11"（表の仕上げ＝見出し・罫線・番号列は左寄せ・数値列は#,##0・列幅。
       列を足したときは足した列だけでなく表全体の範囲を渡す）
