@@ -16,7 +16,7 @@ AI が使った手＋先に撃ったマクロの名前。判断は AI（マク�
 人の値には触らない（試すのは写し・自分の Excel）。
 
 マクロの頭の 2 行が「登録簿」（データはファイル自身＝別の台帳を持たない）:
-    Sub 合計行を足す()
+    Sub 表の下に合計行を足す()
         ' 依頼の語: 合計|集計
         ' 扱う: 合計 集計
 vbam_prefire はこの 2 行を読んで、依頼に「依頼の語」が当たれば撃ち、「扱う」の語は AI に回す仕事から外す。
@@ -28,6 +28,7 @@ import time
 import shutil
 import contextlib
 
+import vbam_core
 from vbam_core import SCRIPT_DIR, LAST_PROC_FILE, _col_letter, get_or_start_excel
 from vbam_hands import _rows_of, _text_of
 from vbam_undo import _load_undo_meta
@@ -89,7 +90,7 @@ End Sub
    正規化:
        s = Trim$(StrConv(s, vbNarrow)): s = Replace(s, ",", "")
        Return
- - マクロ名は日本語の動詞止め（例: 合計行を足す・表を棒グラフにする）。「表を整える」「重複行を消す」は既にあるので使わない。
+ - マクロ名は日本語の動詞止め（例: 表の下に合計行を足す・表を棒グラフにする）。「表の書き方と罫線と列幅をそろえる」「全列が同じ重複行を削除する」は既にあるので使わない。
    マクロ名にもお題の表の語（課別・支出・職員名簿など）を入れない（どの表にも使うマクロの名前にする）。
  - 対象は ActiveSheet の表。表は「見出し 1 行＋本文」（上に表題の行があることもある）。見出しの行と列の範囲は UsedRange から
    自分で探す（番地を直書きしない）。
@@ -978,7 +979,7 @@ def _validate_code(code):
     if len(subs) != 1:
         return None, f"Sub は 1 本だけ（{len(subs)} 本あります）", None
     name = subs[0]
-    if name in ('表を整える', '重複行を消す'):
+    if name in ('表の書き方と罫線と列幅をそろえる', '全列が同じ重複行を削除する'):
         return None, f"「{name}」は既にあるマクロの名前です。別の名前にしてください", None
     ask = _ASK_LINE_RE.search(code)
     handles = _HANDLE_LINE_RE.search(code)
@@ -2029,17 +2030,24 @@ def rehearse_steps(module_text, names, book_path, sheet, module='表の整理', 
     import vbam_core
     out = []
     work = tempfile.mkdtemp(prefix='_prefire_rehearse_')
-    bas = os.path.join(work, module + '.bas')
-    err = _write_bas(bas, module, module_text)
-    if err:
-        return [{'name': names[0] if names else '', 'ok': False, 'changed': False, 'why': err}]
+    # 棚が「表の整理_〜」に分かれていると module_text は [(モジュール名, 本文)]。つないで 1 本にすると
+    # Option Explicit・Option Private Module が途中に来てコンパイルが通らないので、モジュールごとに入れる（2026-09-23）
+    parts = [(module, module_text)] if isinstance(module_text, str) else list(module_text)
+    bases = []
+    for mod, text in parts:
+        bas = os.path.join(work, mod + '.bas')
+        err = _write_bas(bas, mod, text)
+        if err:
+            return [{'name': names[0] if names else '', 'ok': False, 'changed': False, 'why': err}]
+        bases.append(bas)
     xl, pid = _start_own()
     mwb = wb = None
     macro_file = None
     try:
         try:
             mwb = xl.Workbooks.Add()
-            mwb.VBProject.VBComponents.Import(bas)
+            for bas in bases:
+                mwb.VBProject.VBComponents.Import(bas)
             h = mwb.VBProject.VBComponents.Add(1)
             h.Name = _HARNESS
             h.CodeModule.AddFromString("".join(_harness_code([nm]).replace('鍛冶_撃つ()', f'鍛冶_撃つ{k}()')
@@ -2815,7 +2823,7 @@ def forge(name, target_file=None, ai=None, model=None, max_turns=3, register=Fal
         _write_bas(case['bas'], _MODULE, case['code'])       # 登録用にモジュール名を「表の整理」に
         if register:
             return _register(case, target_file, to)
-        print(f"  登録するなら: agent --forge {name} --register（「表を整える」を持つ開いているブックの「{_MODULE}」に足して"
+        print(f"  登録するなら: agent --forge {name} --register（「表の書き方と罫線と列幅をそろえる」を持つ開いているブックの「{_MODULE}」に足して"
               " compile まで。--to ブック名 で名指し）")
     else:
         print("  不合格のまま。不一致を見て依頼の言い直しか、agent --forge を撃ち直してください（弾は残っています）")
@@ -2830,10 +2838,10 @@ def forge(name, target_file=None, ai=None, model=None, max_turns=3, register=Fal
 
 
 def _pick_register_target(books, to=None):
-    """登録先を決める（純 Python）。books＝[(ブック名, 「表を整える」を持つか)]（開いているブック。アドインは入れない）。
+    """登録先を決める（純 Python）。books＝[(ブック名, 「表の書き方と罫線と列幅をそろえる」を持つか)]（開いているブック。アドインは入れない）。
     → (ブック名, None) か (None, 理由)。
     2026-09-17: 登録先を「アクティブなブック」にしていたので、秀コンボがアクティブだと秀コンボへ、職場のブックが
-    アクティブだと職場のブックへ入った（先撃ちが探すのは「表を整える」の持ち主）。名指し か 持ち主 1 冊 に限る。"""
+    アクティブだと職場のブックへ入った（先撃ちが探すのは「表の書き方と罫線と列幅をそろえる」の持ち主）。名指し か 持ち主 1 冊 に限る。"""
     names = [b for b, _h in books]
     if to:
         want = str(to).strip()
@@ -2845,21 +2853,19 @@ def _pick_register_target(books, to=None):
     if len(owners) == 1:
         return owners[0], None
     if not owners:
-        return None, ("「表を整える」を持つブック（秀コンボ.xlsm など）が開いていません。開いてから撃つか、"
+        return None, ("「表の書き方と罫線と列幅をそろえる」を持つブック（秀コンボ.xlsm など）が開いていません。開いてから撃つか、"
                       "--to ブック名 で登録先を名指ししてください（アドインには直接足しません＝更新登録で入れる）")
-    return None, f"「表を整える」を持つブックが {len(owners)} 冊あります（{'・'.join(owners)}）。--to ブック名 で名指ししてください"
+    return None, f"「表の書き方と罫線と列幅をそろえる」を持つブックが {len(owners)} 冊あります（{'・'.join(owners)}）。--to ブック名 で名指ししてください"
 
 
 def _book_has_tidy(wb):
     with contextlib.suppress(Exception):
-        cm = wb.VBProject.VBComponents(_MODULE).CodeModule
-        n = int(cm.CountOfLines)
-        return bool(n and re.search(r'^\s*Sub\s+表を整える\s*\(', cm.Lines(1, n), re.M))
+        return bool(vbam_core.shelf_module_of(wb.VBProject, '表の書き方と罫線と列幅をそろえる'))
     return False
 
 
 def _register(case, target_file=None, to=None):
-    """合格したマクロを「表を整える」の持ち主（か --to のブック）の標準モジュール「表の整理」の末尾に足す → compile。"""
+    """合格したマクロを「表の書き方と罫線と列幅をそろえる」の持ち主（か --to のブック）の標準モジュール「表の整理」の末尾に足す → compile。"""
     code = case.get('code')
     if not code:
         print("エラー: 登録するコードがありません（先に agent --forge 名前 で合格させてください）")
@@ -2888,16 +2894,15 @@ def _register(case, target_file=None, to=None):
         if not ok:
             print(out.strip())
             return False
-    # 同名の Sub が既にあれば replace、無ければ add（鍛え直しを重ねても二重にしない）
-    exists = False
+    # 同名の Sub が既にあれば replace、無ければ add（鍛え直しを重ねても二重にしない）。
+    # 棚が「表の整理_〜」に分かれていれば、その Sub のいるモジュールで置き換える（2026-09-23）。新しい Sub は「表の整理」へ
+    home = None
     with contextlib.suppress(Exception):
-        cm = wb.VBProject.VBComponents(_MODULE).CodeModule
-        n = int(cm.CountOfLines)
-        exists = bool(n and re.search(r'^\s*Sub\s+' + re.escape(case['sub']) + r'\s*\(', cm.Lines(1, n), re.M))
+        home = vbam_core.shelf_module_of(wb.VBProject, case['sub'])
     with open(LAST_PROC_FILE, 'w', encoding='utf-8') as f:
         f.write(code)
-    if exists:
-        ok, out = va._run_cmd(['replace-procedure', '--module', _MODULE, '-y'] + force, wb)
+    if home:
+        ok, out = va._run_cmd(['replace-procedure', '--module', home, '-y'] + force, wb)
     else:
         ok, out = va._run_cmd(['add-procedure', _MODULE, '-y'] + force, wb)
     if not ok:

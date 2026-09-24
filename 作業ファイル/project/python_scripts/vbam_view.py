@@ -565,11 +565,17 @@ def cmd_sheet_info(args):
         return False
     xl, wb = get_workbook(target_file)
     active = wb.ActiveSheet.Name
+    only = getattr(args, 'sheet_opt', None)          # --sheet で 1 枚だけ（2026-09-24: 不明な引数で落ちていた）
+    if only and not any(str(sh.Name) == only for sh in wb.Sheets):
+        print(f"エラー: シート '{only}' が {wb.Name} にありません（シート: {', '.join(str(sh.Name) for sh in wb.Sheets)}）")
+        return False
     print(f"ブック: {wb.Name}")
     print(f"シート数: {wb.Sheets.Count}   アクティブ: {active}")
     print("-" * 60)
     fast = getattr(args, 'fast', False)
     for sh in wb.Sheets:
+        if only and str(sh.Name) != only:
+            continue
         mark = '*' if sh.Name == active else ' '
         try:
             ur = sh.UsedRange
@@ -662,13 +668,79 @@ def _grid_of_value(val):
 
 
 def _guess_header_idx(grid):
-    """格子の見出し行（0 始まり）を推定。文字だけのセルが 2 つ以上あり、次の行にも値が 2 つ以上ある最初の行。"""
+    """格子の見出し行（0 始まり）を推定。文字のセルが 2 つ以上で値の過半を占め、次の行にも値が 2 つ以上ある最初の行。
+
+    2026-09-23: 前は「値が全部文字」の行だけを見出しと見ていたので、見出しの行の端にメモ用の式（テスト用4 の M5
+    =COUNTA(会員名簿)＝45）が 1 つあるだけで見出しを見失い、題・例の文と見出しの間の空行を「表の中の空行」と言った。
+    """
     for i in range(len(grid) - 1):
         filled = [v for v in grid[i] if not _blank_cell(v)]
-        if len(filled) >= 2 and all(isinstance(v, str) for v in filled):
+        texts = [v for v in filled if isinstance(v, str)]
+        if len(texts) >= 2 and len(texts) * 2 > len(filled):
             if len([v for v in grid[i + 1] if not _blank_cell(v)]) >= 2:
-                return i
+                return i + 1 if _is_second_header_row(grid[i], grid[i + 1]) else i
     return None
+
+
+def _is_second_header_row(top, low):
+    """low が二段見出しの下の段か（純 Python・2026-09-24 通しの実測 5）。
+
+    上の段の空き（上期・下期の結合の右側）を下の段（4月・5月…）が埋め、上の段にある所（コード・品目の縦の結合）は
+    下の段が空き、下の段が文字だけ。前は上の段だけを見出しと見て、下の段を本文に数え「表の中の空欄 A4 B4…」
+    「書式がセルごとに違う」と言っていた。名簿のように文字だけの明細は、見出しの下に空きが無いので当たらない。
+    """
+    n = max(len(top), len(low))
+    tv = [top[j] if j < len(top) else None for j in range(n)]
+    lv = [low[j] if j < len(low) else None for j in range(n)]
+    low_filled = [v for v in lv if not _blank_cell(v)]
+    if len(low_filled) < 2 or not all(isinstance(v, str) for v in low_filled):
+        return False
+    fills_gap = any(_blank_cell(tv[j]) and not _blank_cell(lv[j]) for j in range(n))
+    leaves_gap = any(not _blank_cell(tv[j]) and _blank_cell(lv[j]) for j in range(n))
+    return fills_gap and leaves_gap
+
+
+_BODY_TOTAL_RE = re.compile(r'^(合計|計|総計|小計|中計|総合計|平均)$')
+_TOTAL_TAILS = ('小計', '合計', '総計', '中計')
+
+
+def _is_total_label(v):
+    """集計の行の目印の語か（棚の VBA「集計の語か」と同じ規則・純 Python）。
+
+    「総務課 小計」「合計（税込）」のように前に語・後ろに括弧書きが付いたものも集計の行と見る。
+    ぴったり「小計」だけを見ていて、小計の行を本文に数え「表の中の空欄」「太字を外せ」と勧めていた（2026-09-24 通しの実測 4）。
+    「合計請求書」のように語で始まる文は拾わない（末尾で見る）。
+    """
+    if not isinstance(v, str):
+        return False
+    s = v.strip().replace(' ', '').replace('　', '')
+    cut = [k for k in (s.find('（'), s.find('(')) if k > 0]
+    if cut:
+        s = s[:min(cut)]
+    if not s or len(s) > 12:
+        return False
+    return bool(_BODY_TOTAL_RE.match(s)) or s.endswith(_TOTAL_TAILS)
+
+
+def _table_body_rows(rows, body, n_head):
+    """見出しの下の本文の行（grid の index）を、表の終わりまでに絞る（純 Python）。
+
+    合計・小計・平均の行は本文に数えない。空行の後は、見出しの 6 割以上に値がある行（表の中の空行の後の明細）だけ
+    本文に戻し、それより値の少ない行（表の下のメモ）が来たら終わる＝棚の VBA「表の本文の最終行」と同じ考え。
+    """
+    need = max(2, n_head * 0.6)
+    out, prev = [], None
+    for i in body:
+        row = rows[i]
+        if any(_is_total_label(v) for v in row):
+            prev = i
+            continue
+        filled = sum(1 for v in row if not _blank_cell(v))
+        if prev is not None and (i > prev + 1 or (out and prev != out[-1])) and filled < need:
+            break                          # 空行か合計の行の後の、値の少ない行＝表の下のメモ
+        out.append(i)
+        prev = i
+    return out
 
 
 def _date_col_formats(ws, grid, r0, c0, header_idx):
@@ -698,6 +770,50 @@ def _date_col_formats(ws, grid, r0, c0, header_idx):
     return out
 
 
+def _num_col_format_odd(ws, grid, r0, c0, header_idx, limit=6):
+    """数の列で、表示形式が 1〜少数のセルだけ違う → [(番地, そのセルの形, 多数の形, 多数の数)]。
+
+    列まとめての NumberFormat が None（混在）の列だけセルごとに見る。集計の行は数えない。
+    2026-09-24 通しの実測 5: 前年比の列で Q5 だけ 0%（他は 0.00）なのを誰も言わず、手で見つけた。
+    """
+    out = []
+    h = -1 if header_idx is None else header_idx
+    width = max((len(r) for r in grid), default=0)
+    for j in range(width):
+        idx = [i for i in range(h + 1, len(grid))
+               if j < len(grid[i]) and isinstance(grid[i][j], (int, float)) and not isinstance(grid[i][j], bool)
+               and not any(_is_total_label(v) for v in grid[i])]
+        if len(idx) < 3:
+            continue
+        try:
+            if ws.Range(ws.Cells(r0 + idx[0], c0 + j), ws.Cells(r0 + idx[-1], c0 + j)).NumberFormat is not None:
+                continue
+        except Exception:
+            continue
+        fm = {}
+        for i in idx[:200]:
+            try:
+                fm.setdefault(str(ws.Cells(r0 + i, c0 + j).NumberFormat), []).append(i)
+            except Exception:
+                pass
+        if len(fm) < 2:
+            continue
+        top = max(fm, key=lambda k: len(fm[k]))
+        if len(fm[top]) < 3 or len(fm[top]) < len(idx) * 0.6:
+            continue
+        for f, rows in fm.items():
+            if f != top:
+                out += [(f"{_col_letter(c0 + j)}{r0 + i}", f, top, len(fm[top])) for i in rows]
+    return out[:limit]
+
+
+def _safe_fmt_odd(ws, grid, r0, c0, hidx):
+    try:
+        return _num_col_format_odd(ws, grid, r0, c0, hidx)
+    except Exception:
+        return None
+
+
 def _body_look_mixed(ws, grid, r0, c0, header_idx):
     """見出しの下の本文で、セルごとに違う文字の書式 → (番地, [性質の名前])。範囲まとめての COM が None＝混在。
 
@@ -711,17 +827,32 @@ def _body_look_mixed(ws, grid, r0, c0, header_idx):
     if len(filled) < 2 or width == 0:
         return None, []
     rng = ws.Range(ws.Cells(r0 + filled[0], c0), ws.Cells(r0 + filled[-1], c0 + width - 1))
-    f = rng.Font
+    # 小計・合計の行の太字・塗りは強調＝汚れではない。明細の行だけを塊で見る（2026-09-24 通しの実測 4 で「太字を外せ」と勧めた）
+    blocks, start = [], None
+    for i in range(filled[0], filled[-1] + 2):
+        is_sum = i > filled[-1] or any(_is_total_label(v) for v in rows[i])
+        if is_sum:
+            if start is not None:
+                blocks.append(ws.Range(ws.Cells(r0 + start, c0), ws.Cells(r0 + i - 1, c0 + width - 1)))
+            start = None
+        elif start is None:
+            start = i
+    if not blocks:
+        return None, []
+    look = blocks[0]
+    for b in blocks[1:]:
+        look = ws.Application.Union(look, b)
+    f = look.Font
     bad = []
     for name, v in (("フォント名", f.Name), ("大きさ", f.Size), ("文字色", f.Color), ("太字", f.Bold),
                     ("斜体", f.Italic), ("下線", f.Underline), ("取り消し線", f.Strikethrough),
-                    ("塗り", rng.Interior.ColorIndex)):
+                    ("塗り", look.Interior.ColorIndex)):
         if v is None:
             bad.append(name)
     return str(rng.Address).replace('$', ''), bad
 
 
-def dirt_notes(grid, r0=1, c0=1, header_idx=None, col_formats=None, limit=12, look_mixed=None):
+def dirt_notes(grid, r0=1, c0=1, header_idx=None, col_formats=None, limit=12, look_mixed=None, hints=None, fmt_odd=None):
     """表の汚れを数えて「気づき」の行にする（純 Python。COM は呼ばない）。
 
     grid: 値の 2 次元リスト（UsedRange.Value を _grid_of_value した形）。r0/c0: 左上のシート上の行・列番号。
@@ -785,22 +916,30 @@ def dirt_notes(grid, r0=1, c0=1, header_idx=None, col_formats=None, limit=12, lo
                    + "／".join(f"行{r0 + i} と 行{r0 + k}（{'・'.join(_hn(j) for j in diff) or '書き方'}が違う）"
                               for i, k, diff in near[:15]) + (f" ほか {len(near) - 15} 組" if len(near) > 15 else ""))
     dup_keys = []
-    for j in sorted(id_cols):
-        seen = {}
+    # 郵便番号・電話は番号の列でも同じ値が当たり前（同じ町・同じ会社の代表番号）。重複とは言わない
+    # （2026-09-23 通しの実測 3: 名簿の 010-0951 の 2 人を「番号列の重複」と言っていた）
+    for j in sorted(j for j in id_cols if not re.search(r'郵便|〒|電話|TEL|携帯|FAX', str(heads[j]), re.I)):
+        seen, col_dups, filled = {}, [], 0
         for i in body:
             v = rows[i][j]
             if _blank_cell(v):
                 continue
+            filled += 1
             k = str(norm(v))
             if k in seen:
                 if i not in dup_row_set:
-                    dup_keys.append(f"{addr(i, j)} = {addr(seen[k], j)}（{k}）")
+                    col_dups.append(f"{addr(i, j)} = {addr(seen[k], j)}（{k}）")
             else:
                 seen[k] = i
+        # 繰り返すのが当たり前の列（明細の取引先コード・課コード）は重複と言わない。番号の重複は「まれに 1〜2 件」
+        # （2026-09-23 通しの実測 2: 伝票の取引先コード C001〜C004 の繰り返し 8 件を「番号列の重複」と並べていた）
+        if col_dups and len(col_dups) <= max(2, filled // 5):
+            dup_keys += col_dups
     if dup_keys:
         out.append("  番号列の重複: " + show(dup_keys))
     zen, han, edge, only_ws, multi, numstr, datestr, sep = [], [], [], [], [], [], [], {}
     astext = []          # 文字として入った式（'=' で始まる文字。計算されていない・2026-09-09）
+    date_cols = set()    # 文字の日付のある列（棚の 選んだ列の文字の日付を日付にする に渡す）
     for i in body:
         for j in range(width):
             v = rows[i][j]
@@ -824,8 +963,9 @@ def dirt_notes(grid, r0=1, c0=1, header_idx=None, col_formats=None, limit=12, lo
             if _NUMLIKE_STR_RE.match(core):
                 if j not in id_cols:
                     numstr.append(a)
-            elif _DATELIKE_STR_RE.match(core):
-                datestr.append(a)
+            elif _DATELIKE_STR_RE.match(core) or re.fullmatch(r'\d{1,2}\s?月\s?\d{1,2}\s?日', core):
+                datestr.append(a)            # 年の無い「5月16日」も文字の日付（2026-09-23 通しの実測 2）
+                date_cols.add(j)
             if ' ' in core or '　' in core:
                 d = sep.setdefault(j, {'half': [], 'full': []})
                 if ' ' in core:
@@ -886,21 +1026,173 @@ def dirt_notes(grid, r0=1, c0=1, header_idx=None, col_formats=None, limit=12, lo
         fmts = sorted(str(f) for f in col_formats[j])
         if len(fmts) > 1:
             out.append(f"  日付の表示形式が混在: {_col_letter(c0 + j)}列（{', '.join(fmts[:4])}）")
+    if fmt_odd:
+        # 数の列で 1〜少数のセルだけ表示形式が違う（呼び手が _num_col_format_odd で集める・2026-09-24）
+        parts = [f"{a}（{f}／他 {n} 行は {top}）" for a, f, top, n in fmt_odd]
+        out.append("  数の表示形式が 1 セルだけ違う: " + "／".join(parts)
+                   + f"  → format-range {fmt_odd[0][0]} --number-format \"{fmt_odd[0][2]}\" のように多数の形にそろえる")
     if look_mixed and look_mixed[1]:
         out.append(f"  文字の書式がセルごとに違う（本文 {look_mixed[0]}）: {'・'.join(look_mixed[1])}"
                    "  → format で本文全体に font・size・color と \"plain\": true・\"bg\": \"none\"・\"unbold\": true")
     blanks = []
     if h >= 0 and body:
+        # 本文の終わりまでで数える。合計・平均の行と、その後のメモの行の空きは表の中の空欄ではない
+        # （2026-09-23 Gemini の試し: テスト用1 で 合計・平均・メモの行 A27 A28 B30… を「表の中の空欄」と出した）
+        n_head0 = sum(1 for v in heads if not _blank_cell(v))
+        core = _table_body_rows(rows, body, n_head0)
+        # 左右に並んだ表は、見出しの空いた列で塊に分け、塊ごとの最後の行までで数える
+        # （テスト用4: 右の申込一覧は 11 行目で終わるのに、左の名簿の 13 行目までの空きを「表の中の空欄」と出した）
+        block_last, start = {}, None
+        for j in range(width + 1):
+            if j < width and not _blank_cell(heads[j]):
+                start = j if start is None else start
+                continue
+            if start is not None:
+                last = max((i for i in core if any(not _blank_cell(rows[i][k]) for k in range(start, j))), default=-1)
+                for k in range(start, j):
+                    block_last[k] = last
+                start = None
         for j in range(width):
             if _blank_cell(heads[j]):
                 continue
-            cells = [(i, rows[i][j]) for i in body]
+            cells = [(i, rows[i][j]) for i in core if i <= block_last.get(j, -1)]
+            if not cells:
+                continue
             filled = sum(1 for _i, v in cells if not _blank_cell(v))
             if filled < 3 or filled / len(cells) < 0.6:
                 continue
             blanks += [addr(i, j) for i, v in cells if _blank_cell(v)]
     if blanks:
         out.append("  表の中の空欄: " + show(blanks))
+    # ---- 2026-09-23 通しの実測 2 で手で見つけていた 3 つ（空行・ゼロの消えた番号・空白の有無の揺れ）----
+    n_head = sum(1 for v in heads if not _blank_cell(v)) if h >= 0 else width
+    blank_rows = []
+    if body and h >= 0:            # 見出しが分からない表では数えない（題・例の文と見出しの間の空行を「表の中」と言った・2026-09-23 テスト用4）
+        for i in range(body[0] + 1, body[-1]):
+            if i in body:
+                continue
+            nxt = next((k for k in body if k > i), None)
+            # 空行の下が本文の行（見出しの 6 割以上に値）なら表の中の空行。合計・メモの前の空行は数えない
+            # （合計・平均の行は値が多いので本文と見ていた＝明細と合計の間の空行を「詰める」と勧めた・2026-09-23）
+            if nxt is not None and not any(_is_total_label(v) for v in rows[nxt]) \
+                    and sum(1 for v in rows[nxt] if not _blank_cell(v)) >= max(2, n_head * 0.6):
+                blank_rows.append(r0 + i)
+    if blank_rows:
+        out.append("  表の中の空行: " + " ".join(f"行{x}" for x in blank_rows[:limit]))
+    zero_lost = []
+    for j in range(width):
+        cells = [(i, rows[i][j]) for i in body if not _blank_cell(rows[i][j])]
+        lens = {}
+        for _i, v in cells:
+            if isinstance(v, str) and re.fullmatch(r'0\d+', v.strip()):
+                lens[len(v.strip())] = lens.get(len(v.strip()), 0) + 1
+        if not lens:
+            continue
+        L, nL = max(lens.items(), key=lambda kv: kv[1])
+        if nL < 2 or nL < len(cells) * 0.6:
+            continue
+        for i, v in cells:
+            s = (str(int(v)) if isinstance(v, (int, float)) and not isinstance(v, bool) and float(v).is_integer() and v >= 0
+                 else (v.strip() if isinstance(v, str) else ''))
+            if s.isdigit() and len(s) < L:
+                zero_lost.append(f"{addr(i, j)}（{s}・列は {L} 桁）")
+    if zero_lost:
+        out.append("  先頭のゼロが消えた番号: " + show(zero_lost))
+    space_var = []
+    for j in range(width):
+        forms = {}
+        for i in body:
+            v = rows[i][j]
+            if isinstance(v, str) and v.strip():
+                forms.setdefault(re.sub(r'[ 　]', '', v), {}).setdefault(v, []).append(i)
+        for _k, fs in forms.items():
+            if len(fs) < 2:
+                continue
+            top = max(fs, key=lambda f: (len(fs[f]), -len(f)))
+            space_var += [f"{addr(i, j)}（{f}→{top}）" for f, idx in fs.items() if f != top for i in idx]
+    if space_var:
+        out.append("  空白の有無だけ違う書き方: " + show(space_var))
+    # ---- 2026-09-23 通しの実測 3（名簿）で言えなかった 4 つ（番号の抜け・未来の生年月日・電話の桁・同姓同名）----
+    seq_cols = [j for j in id_cols if isinstance(heads[j], str)
+                and re.fullmatch(r'(?i)no\.?|№|番号|連番|通し番号|項番', heads[j].strip())]
+    seq_gaps = []
+    for j in seq_cols[:1]:
+        nums = []
+        for i in body:
+            v = rows[i][j]
+            if isinstance(v, str) and v.strip().isdigit():
+                v = int(v.strip())
+            if isinstance(v, (int, float)) and not isinstance(v, bool) and float(v).is_integer():
+                nums.append((i, int(v)))
+        if len(nums) < 3 or len(nums) < len(body) * 0.8:
+            continue
+        ups = sum(1 for (_a, x), (_b, y) in zip(nums, nums[1:]) if y > x)
+        if ups < (len(nums) - 1) * 0.7:          # 並びが上がっていない列は連番ではない
+            continue
+        for (_a, x), (b, y) in zip(nums, nums[1:]):
+            if y != x + 1:
+                seq_gaps.append(f"{addr(b, j)}（{x} の次が {y}）")
+    if seq_gaps:
+        out.append("  番号の抜け・飛び: " + show(seq_gaps))
+    birth_future, today = [], time.localtime()[:3]
+    for j in range(width):
+        hd = heads[j] if h >= 0 else None
+        if not (isinstance(hd, str) and re.search(r'生年月日|誕生|生まれ', hd)):
+            continue
+        for i in body:
+            v = rows[i][j]
+            if isinstance(v, datetime.datetime) and (v.year, v.month, v.day) > today:
+                birth_future.append(f"{addr(i, j)}（{v.year}/{v.month}/{v.day}）")
+    if birth_future:
+        out.append("  生年月日が今日より後（打ち間違いか・人の確認が要る）: " + show(birth_future))
+    phone_len = []
+    for j in range(width):
+        hd = heads[j] if h >= 0 else None
+        if not (isinstance(hd, str) and re.search(r'電話|TEL|携帯|FAX', hd, re.I)):
+            continue
+        for i in body:
+            v = rows[i][j]
+            if isinstance(v, str) and v.strip():
+                d = re.sub(r'\D', '', unicodedata.normalize('NFKC', v))
+                if d and len(d) not in (10, 11):        # 固定・0120 は 10 桁、携帯は 11 桁
+                    phone_len.append(f"{addr(i, j)}（{len(d)} 桁）")
+    if phone_len:
+        out.append("  電話の桁が合わない（10・11 桁でない＝抜けか打ち間違い・人の確認が要る）: " + show(phone_len))
+    same_name = []
+    for j in range(width):
+        hd = heads[j] if h >= 0 else None
+        if not (isinstance(hd, str) and re.fullmatch(r'氏名|名前|お名前|氏名（漢字）', hd.strip())):
+            continue
+        seen = {}
+        for i in body:
+            v = rows[i][j]
+            if i in dup_row_set or not isinstance(v, str) or not v.strip():
+                continue
+            k = re.sub(r'[ 　]', '', v)
+            if k in seen:
+                same_name.append(f"{addr(i, j)} と {addr(seen[k], j)}（{v.strip()}）")
+            else:
+                seen[k] = i
+    if same_name:
+        out.append("  同じ氏名で中身が別の行（同姓同名か古い行か・重複ではない・消さない）: " + show(same_name))
+    if hints is not None:
+        last_row = r0 + (body[-1] if body else 0)
+        first_row = r0 + h + 1
+        if blank_rows:
+            hints.append((2, "表の中の空行を削除して詰める", None, "表の中の空行 " + " ".join(f"行{x}" for x in blank_rows[:6])))
+        if dup_rows:
+            hints.append((3, "全列が同じ重複行を削除する", None, "重複行 " + dup_rows[0].split("（")[0]))
+        if zero_lost:
+            hints.append((5, "番号に先頭のゼロを付けてそろえる", None, "先頭のゼロが消えた番号 " + zero_lost[0].split("（")[0]))
+        if space_var:
+            hints.append((6, "空白の有無を多い方にそろえる", None, "空白の有無だけ違う書き方 " + space_var[0].split("（")[0]))
+        for j in sorted(date_cols):
+            col = _col_letter(c0 + j)
+            hints.append((7, "選んだ列の文字の日付を日付にする", f"{col}{first_row}:{col}{last_row}", f"{col}列の文字の日付"))
+        if seq_cols and (seq_gaps or any(k.startswith(_col_letter(c0 + seq_cols[0])) for k in dup_keys)):
+            _dup = any(k.startswith(_col_letter(c0 + seq_cols[0])) for k in dup_keys)
+            hints.append((8, "番号の列を連番に振り直す", None, f"{heads[seq_cols[0]]}の重複・抜け"
+                          + ("（重複は同じ件の二重入力かもしれない＝行の中身を確かめてから撃つ）" if _dup else "")))
     if not out:
         return ["気づき（表の汚れ）: なし（重複・全角数字・半角カナ・空白の乱れ・文字の数字/日付・空欄・"
                 "文字として入った式、いずれも無し）"]
@@ -1173,7 +1465,8 @@ def formula_notes(cells, body_rows=None, limit=8):
             for _r, _a, k in items:
                 cnt[k] = cnt.get(k, 0) + 1
             top = max(cnt, key=lambda k: cnt[k])
-            if cnt[top] < 3 or (len(items) - cnt[top]) > max(1, len(items) // 5):
+            # はずれは 4 割未満まで言う（5 行に 1 つまでだと 9 行中 2 行の年計のずれを黙った・2026-09-24 通しの実測 5）
+            if cnt[top] < 3 or cnt[top] < len(items) * 0.6:
                 continue
             top_a1 = next(a for _r, a, k in items if k == top)
             top_rows = [r for r, _a, k in items if k == top]
@@ -1452,7 +1745,7 @@ def cmd_materials(args):
                     for _b in _blk:
                         print(f"⚠ 【要修正】循環参照 {_b}")
                     for _n in _ntc:
-                        print(f"気づき（外れ値）: {_n}")
+                        print(f"気づき（{'数式' if _n.startswith(('式の列', '集計の')) else '外れ値'}）: {_n}")
             except Exception:
                 pass
             hidx = _guess_header_idx(grid)
@@ -1461,7 +1754,7 @@ def cmd_materials(args):
             except Exception:
                 _look = None
             for ln in dirt_notes(grid, r0, c0, hidx, _date_col_formats(ws, grid, r0, c0, hidx),
-                                 look_mixed=_look):
+                                 look_mixed=_look, fmt_odd=_safe_fmt_odd(ws, grid, r0, c0, hidx)):
                 print(ln)
     except Exception as e:
         print(f"（気づきを数えられませんでした: {e}）")
@@ -1478,8 +1771,8 @@ def cmd_materials(args):
 
 
 _SEIRI_MODULE = '表の整理'
-_SEIRI_TIDY = '表を整える'
-_SEIRI_DEDUPE = '重複行を消す'
+_SEIRI_TIDY = '表の書き方と罫線と列幅をそろえる'
+_SEIRI_DEDUPE = '全列が同じ重複行を削除する'
 _CELL_REF_RE = re.compile(r"(?<![A-Za-z_!])\$?([A-Z]{1,3})\$?(\d{1,7})(?![\d(])")
 
 
@@ -1492,9 +1785,13 @@ def _macro_book(xl, module, sub):
         return None
     for p in projects:
         try:
-            cm = p.VBComponents(module).CodeModule
-            n = int(cm.CountOfLines)
-            if n and re.search(r'^\s*Sub\s+' + re.escape(sub) + r'\b', cm.Lines(1, n), re.M):
+            if module == SHELF_MODULE:           # 棚は「表の整理_〜」に分かれていても探す（2026-09-23）
+                hit = shelf_module_of(p, sub) is not None
+            else:
+                cm = p.VBComponents(module).CodeModule
+                n = int(cm.CountOfLines)
+                hit = bool(n and re.search(r'^\s*Sub\s+' + re.escape(sub) + r'\b', cm.Lines(1, n), re.M))
+            if hit:
                 name = _project_book_name(xl, p)
                 if name:
                     return name
@@ -1519,11 +1816,102 @@ def error_hint(text, formula, empty_refs):
     return ''
 
 
+_TOTAL_WORD_RE = re.compile(r'^(合計|計|総計|小計|総合計)$')
+
+
+def seiri_formula_hints(fa, fr, grid, r0, c0, hidx):
+    """式の側で棚が直せるもの → [(順, マクロ, 選択, 理由)]（純 Python・2026-09-23）。
+
+    式のずれ・式の列の数字の直書き → 選んだ列の途切れた式を戻す（列の本文を選んで）／合計の行の循環参照・集計の取りこぼし → 表の下に合計行を足す。
+    """
+    try:
+        from vbam_audit import check_formula_linter
+        issues = check_formula_linter(fa, fr, grid, r0 - 1, c0 - 1)
+    except Exception:
+        return []
+    rows = [list(r) for r in (grid or [])]
+    first = r0 + (hidx if hidx is not None else 0) + 1
+    last = r0 + len(rows) - 1
+
+    def is_total_row(abs_row):
+        i = abs_row - r0
+        return 0 <= i < len(rows) and any(isinstance(v, str) and _TOTAL_WORD_RE.match(v.strip().replace(' ', ''))
+                                          for v in rows[i])
+    out, cols, tot = [], {}, []
+    for it in issues:
+        m = re.match(r'([A-Z]+)(\d+)$', it.get('cell', ''))
+        if not m:
+            continue
+        col, row = m.group(1), int(m.group(2))
+        if it['type'] in ('inconsistent_formula', 'value_in_formula_column') and not is_total_row(row):
+            cols.setdefault(col, []).append(it['cell'])
+        elif it['type'] in ('circular_reference', 'omitted_sum_range') and is_total_row(row):
+            tot.append(it['cell'])
+    for col, cells in sorted(cols.items()):
+        # 選ぶのは、その列で式か数の入った明細の行だけ（見出しの 2 段目・合計の行を含めない。P4:P15 と出して
+        # 合計の行まで明細の式で上書きさせるところだった・2026-09-24 通しの実測 5）
+        ci = 0
+        for ch in col:
+            ci = ci * 26 + ord(ch) - 64
+        ci -= c0
+        body = [r0 + i for i, row in enumerate(fa or [])
+                if first <= r0 + i <= last and not is_total_row(r0 + i) and 0 <= ci < len(row or [])
+                and row[ci] not in (None, "")]
+        lo, hi = (min(body), max(body)) if body else (first, last)
+        out.append((1, "選んだ列の途切れた式を戻す", f"{col}{lo}:{col}{hi}", f"{col}列の式のずれ・直書き " + " ".join(cells[:4])))
+    if tot:
+        out.append((4, "表の下に合計行を足す", None, "合計の行の式（循環参照・集計の取りこぼし） " + " ".join(sorted(set(tot))[:4])))
+    return out
+
+
+def print_seiri_hints(hints):
+    """棚で直せる手を、撃つ順に並べて出す（式を先に揃えてから行を消す＝消した行を指す式が #REF! にならない）。"""
+    if not hints:
+        return
+    seen, lines = set(), []
+    for _o, name, sel, why in sorted(hints, key=lambda h: h[0]):
+        key = (name, sel)
+        if key in seen:
+            continue
+        seen.add(key)
+        lines.append(f"  shelf-run {name}" + (f" --select {sel}" if sel else "") + f"   ← {why}")
+    print("棚で直せる手（この順に撃つ。式を先に揃えてから行を消す。人の判断が要るもの＝マイナス・桁違い・番号の重複・"
+          "式の中の数は、撃たずに報告）:")
+    for ln in lines:
+        print(ln)
+
+
+def _seiri_print_changes(ws, before_snap, backup_path, show=12):
+    """seiri のマクロが直したセル（番地: 前→後）と書式の変化の件数を出す。数えられなければ黙る。"""
+    if not before_snap or before_snap.get('too_big'):
+        return
+    try:
+        from vbam_undo import _changes_of, _changes_table, _format_changes, _write_changes_file
+        rows = _changes_of(before_snap, ws, str(ws.Name)) or []
+        fmt_rows = _format_changes(before_snap.get('format'), ws) or []
+    except Exception:
+        return
+    if rows:
+        print(f"マクロが直したセル: {len(rows)} 個")
+        for line in _changes_table(rows, show=show):
+            print(line)
+    else:
+        print("マクロが直したセル: なし（値と式はそのまま）")
+    if fmt_rows:
+        print(f"書式の変化: {len(fmt_rows)} 件（明細は agent --changes）")
+    try:
+        _write_changes_file(rows, fmt_rows=fmt_rows)
+    except Exception:
+        pass
+    if backup_path and (rows or fmt_rows):
+        print("（戻すなら agent --undo）")
+
+
 def cmd_seiri(args):
     """表を直す 1 手目: seiri [--dedupe]（2026-09-13・shu「まとめてみろ」）
 
     materials で表の全体を読んでから、次の往復でマクロと書き込み、の 2 往復と読む時間を畳む。
-    画面のシートに「表を整える」マクロ（開いているブックかアドインのモジュール「表の整理」）を撃ち、
+    画面のシートに「表の書き方と罫線と列幅をそろえる」マクロ（開いているブックかアドインのモジュール「表の整理」）を撃ち、
     残り＝エラーセル（式と一言の原因）・数式と表の気づき・指示文らしい長文セル・### だけを出す。
     直す手（式の書き直しなど判断の要るもの）はこの残りの分だけ。仕事の時計も押す。
     """
@@ -1535,16 +1923,26 @@ def cmd_seiri(args):
     owner = _macro_book(xl, _SEIRI_MODULE, _SEIRI_TIDY)
     names = [_SEIRI_TIDY] + ([_SEIRI_DEDUPE] if getattr(args, 'dedupe', False) else [])
     if owner:
+        # マクロが直した所を出す＋控えを取る（2026-09-23 の通しの実測: 文字の日付・全角の数字・半角カナ等 6 か所を
+        # 黙って直し、報告に 1 つも出なかった＝何が変わったか分からず、戻す手も無かった）
+        before_snap, backup_path = None, None
+        try:
+            from vbam_undo import _agent_backup, _sheet_snapshot
+            before_snap = _sheet_snapshot(ws)
+            backup_path = _agent_backup(wb, ws, str(ws.Name), request="seiri")
+        except Exception:
+            pass
         t0 = time.time()
         try:
             wb.Activate()
             ws.Activate()
-            q = owner.replace("'", "''")
+            from vbam_vba import run_book_macro
             for nm in names:
-                xl.Run(f"'{q}'!{nm}")
+                run_book_macro(xl, owner, nm)      # 実行時エラーで窓を出して止まらない（2026-09-24 総点検）
             print(f"マクロ: {' → '.join(names)}（{owner}・{time.time() - t0:.2f} 秒）")
         except Exception as e:
             print(f"マクロを撃てませんでした: {e}（残りだけ出します）")
+        _seiri_print_changes(ws, before_snap, backup_path)
     else:
         print(f"マクロ: モジュール「{_SEIRI_MODULE}」の {_SEIRI_TIDY} が開いているブック・アドインに無いので撃っていません")
     try:
@@ -1612,7 +2010,7 @@ def cmd_seiri(args):
                 for _b in _blk:
                     print(f"⚠ 【要修正】循環参照 {_b}")
                 for _n in _ntc:
-                    print(f"気づき（外れ値）: {_n}")
+                    print(f"気づき（{'数式' if _n.startswith(('式の列', '集計の')) else '外れ値'}）: {_n}")
             except Exception:
                 pass
             hidx = _guess_header_idx(grid)
@@ -1620,12 +2018,20 @@ def cmd_seiri(args):
                 look = _body_look_mixed(ws, grid, r0, c0, hidx)
             except Exception:
                 look = None
-            for ln in dirt_notes(grid, r0, c0, hidx, _date_col_formats(ws, grid, r0, c0, hidx), look_mixed=look):
+            hints = []
+            for ln in dirt_notes(grid, r0, c0, hidx, _date_col_formats(ws, grid, r0, c0, hidx), look_mixed=look,
+                                 hints=hints, fmt_odd=_safe_fmt_odd(ws, grid, r0, c0, hidx)):
                 print(ln)
             try:
                 _areas, _sk = _merged_areas_in_range(ur)
                 for _ln in style_summary(ws, ur, nr, nc, _areas):
                     print(_ln)
+            except Exception:
+                pass
+            # 棚で直せる手（2026-09-23・通しの実測で、気づきを見てから棚を探す往復が要っていた）
+            try:
+                hints += seiri_formula_hints(_fa, _fr, grid, r0, c0, hidx)
+                print_seiri_hints(hints)
             except Exception:
                 pass
     except Exception as e:
@@ -1637,6 +2043,1007 @@ def cmd_seiri(args):
     except Exception:
         pass
     print("（保存はしていません）")
+    return True
+
+
+# ----------------------------------------------------------------
+# 棚（表の整理）を自由に使う: shelf（目録）・shelf-run（選んで撃つ・差分・控え）
+# 2026-09-23・作業ファイル\project\work_order_20260923_shelf_free.md
+# ----------------------------------------------------------------
+_SHELF_HEADER_RE = re.compile(r"\s*(?:Public\s+)?Sub\s+([^\s(]+)\s*\(\s*\)")
+_SHELF_END_RE = re.compile(r"^End\s+Sub\b")
+_SHELF_WINDOW_RE = re.compile(r'\b(MsgBox|InputBox)\b')
+_SHELF_KEYS = ("依頼の語:", "依頼の組:", "扱う:", "見出し:", "選ぶ列:", "形:")
+_SHELF_DATE_NOTE_RE = re.compile(r"（[^（）]*20\d\d-\d\d-\d\d[^（）]*）")
+_SHELF_ASK_RE = re.compile(r"^依頼の語\s*[:：]\s*(.+)$")
+_SHELF_FP_MAX_CELLS = 50000     # 別シートの書き換わりを見る指紋を取るセル数の上限（超えたら番地だけ比べる）
+
+
+def _shelf_source(xl):
+    """棚（モジュール「表の整理」）のコードを持つブックと行の並び。無ければ (None, None)。
+
+    make_catalog.py（作業ファイル\\project\\fixtures\\shelf_exam）と同じ畳み方を道具側に持たせた。
+    固定の shelf_catalog.tsv を鵜呑みにせず、開いているブック・アドインの中身から毎回組み立てる
+    （棚が増減しても道具の目録が古くならない）。
+    """
+    try:
+        projects = list(xl.VBE.VBProjects)
+    except Exception:
+        return None, None
+    for p in projects:
+        try:
+            text = shelf_text(p)            # 「表の整理_〜」に分かれていても全部（2026-09-23）
+            if not text:
+                continue
+            from vbam_vba import _project_book_name
+            name = _project_book_name(xl, p)
+            if name:
+                return name, text.split('\r\n')
+        except Exception:
+            continue
+    return None, None
+
+
+def _shelf_module_name(xl, owner, sub):
+    """owner（ブック名）の棚で Sub sub がいるモジュール名（表示用）。分からなければ「表の整理」。"""
+    try:
+        from vbam_vba import _project_book_name
+        for p in xl.VBE.VBProjects:
+            if _project_book_name(xl, p) == owner:
+                return shelf_module_of(p, sub) or SHELF_MODULE
+    except Exception:
+        pass
+    return SHELF_MODULE
+
+
+def _parse_shelf_catalog(lines):
+    """棚のコード行 → [{'name','sel','kind','desc','ask','window'}, …]（引数なし Sub 単位。純 Python）。
+
+    頭に説明の注記が無い Sub（118 本のうち 38 本・2026-09-23 実測）は、説明の代わりに「依頼の語」を出す。
+    空の説明では目録から選べない（試験側の make_catalog.py は補足のファイルで埋めていたが、道具は読んでいなかった）。
+    """
+    rows, cur = [], None
+    for ln in lines:
+        m = _SHELF_HEADER_RE.match(ln)
+        if m:
+            cur = {"name": m.group(1), "sel": "", "kind": "", "desc": [], "ask": "", "body": [], "header": True}
+            rows.append(cur)
+            continue
+        if cur is None:
+            continue
+        s = ln.strip()
+        if _SHELF_END_RE.match(s):
+            cur = None
+            continue
+        cur["body"].append(ln)
+        if not cur["header"]:
+            continue
+        if not s.startswith("'"):
+            if s and not s.startswith("Dim"):
+                cur["header"] = False
+            continue
+        t = s[1:].strip()
+        ask = _SHELF_ASK_RE.match(t)
+        if t.startswith("扱う:"):
+            cur["kind"] = t[3:].strip()
+        elif t.startswith("選ぶ列:"):
+            cur["sel"] = t[4:].strip()
+        elif ask:
+            cur["ask"] = ask.group(1).strip()
+        elif not t.startswith(_SHELF_KEYS) and len(cur["desc"]) < 2 and not t.startswith("-"):
+            cur["desc"].append(t)
+    out = []
+    for r in rows:
+        d = _SHELF_DATE_NOTE_RE.sub('', " ".join(r["desc"])).strip()
+        if not d and r["ask"]:
+            d = "（依頼の語）" + "・".join(w.strip() for w in r["ask"].split("|") if w.strip())
+        out.append({"name": r["name"], "sel": r["sel"] or "-", "kind": r["kind"], "desc": d[:120],
+                    "ask": r["ask"], "window": bool(_SHELF_WINDOW_RE.search("\n".join(r["body"])))})
+    return out
+
+
+def cmd_shelf(args):
+    """`shelf [--grep 語]`: 棚（表の整理）の目録を 1 手で返す（2026-09-23）。
+
+    名前・選ぶ列・窓を出すか（本文に MsgBox/InputBox があるか）・扱う・説明。
+    撃つ手は shelf-run。目録どおりに動くとは限らないマクロ側の間違いはここでは直さない。
+    """
+    target_file, rest = parse_target_and_rest(args.posargs)
+    xl, wb = get_workbook(target_file)
+    owner, lines = _shelf_source(xl)
+    if not owner:
+        print(f"棚（モジュール「{_SEIRI_MODULE}」）が開いているブック・アドインに見つかりません")
+        return False
+    rows = _parse_shelf_catalog(lines)
+    ask = (getattr(args, 'ask', None) or '').strip()
+    if ask:
+        return _shelf_ask(owner, lines, rows, ask)
+    grep = (getattr(args, 'grep', None) or '').strip()
+    if grep:
+        rows = [r for r in rows if any(grep in r[k] for k in ('name', 'kind', 'desc', 'ask'))]
+    print(f"棚: {owner}!{_SEIRI_MODULE}   {len(rows)} 本" + (f"（「{grep}」で絞り込み）" if grep else ""))
+    for r in rows:
+        win = '窓あり' if r['window'] else '-'
+        print(f"  {r['name']}\t選ぶ列={r['sel']}\t{win}\t{r['kind']}\t{r['desc']}")
+    print("（撃つ: shelf-run <名前> [--select 範囲] [--sheet 名]）")
+    return True
+
+
+def _shelf_ask(owner, lines, rows, ask):
+    """`shelf --ask 依頼文`: 依頼文から撃つマクロを 1 本選ぶ（2026-09-23）。
+
+    採点は Excelコンボの先撃ち（VBA の コンボ道具.先撃ち候補）を移した vbam_prefire.shelf_pick
+    （888 問で VBA と食い違い 0）。それまで shelf_pick は試験からしか呼ばれておらず、Claude が棚を選ぶ手に
+    つながっていなかった。当たらないのは「棚に無い」か「質問・コードの依頼」＝手で直すか AI の役目。
+    """
+    import vbam_prefire as vp
+    entries = vp.shelf_entries_from_text("\n".join(lines))
+    print(f"棚: {owner}!{_SEIRI_MODULE}   依頼「{ask}」")
+    # 頼みが 2 つ以上で全部が棚に当たれば、撃つ順に全部を出す（2026-09-24・Excelコンボの 先撃ちの並び と同じ）
+    plan = vp.shelf_plan(ask, entries)
+    if plan:
+        print(f"当たり: {len(plan)} 本（この順に撃つ）")
+        for k, nm in enumerate(plan, 1):
+            r = next((x for x in rows if x['name'] == nm), None)
+            sel = f"　選ぶ列={r['sel']}" if r and r['sel'] != '-' else ""
+            win = "　窓あり" if r and r['window'] else ""
+            print(f"  {k}. shelf-run {nm}{sel}{win}")
+        return True
+    pick = vp.shelf_pick(ask, entries)
+    r = next((x for x in rows if x['name'] == pick), None) if pick else None
+    if not r:
+        print("当たり: なし（棚に当たるマクロが無い。質問・コードの依頼も当てない）。語で探すなら shelf --grep 語")
+        return True
+    win = '窓あり' if r['window'] else '-'
+    print(f"当たり: {r['name']}\t選ぶ列={r['sel']}\t{win}\t{r['kind']}\t{r['desc']}")
+    how = f"shelf-run {r['name']}"
+    if r['sel'] != '-':
+        how += " --select 列1,列2…（選ぶ列=" + r['sel'] + "。列は 1 列ずつカンマで分ける）"
+    if r['window']:
+        how += " [--input-text 答え]"
+    print(f"（撃つ: {how}）")
+    return True
+
+
+def _fingerprint_of(fmls, vals):
+    """(書いた中身の CRC, 値の CRC)（純 Python）。
+
+    書いた中身＝式のセルは式の字面、値のセルは字面と型（文字の「21」と数の 21 を分ける）。
+    値＝計算の結果も含めた見え方。書いた中身が同じで値だけ違う＝式の再計算で変わっただけ（書き換えていない）。
+    """
+    fr, vr = _rows_of_value(fmls), _rows_of_value(vals)
+    written = []
+    for i, row in enumerate(fr):
+        for j, f in enumerate(row):
+            if isinstance(f, str) and f.startswith('='):
+                written.append(f)
+            else:
+                v = vr[i][j] if i < len(vr) and j < len(vr[i]) else None
+                written.append((f, type(v).__name__))
+    enc = lambda x: zlib.crc32(repr(x).encode('utf-8', 'replace'))  # noqa: E731
+    return enc(written), enc(vr)
+
+
+def _sheet_fingerprint(ws, cap=None):
+    """シートの中身の指紋 (使用範囲の番地, 書いた中身の CRC, 値の CRC)。大きすぎれば CRC は None。読めなければ None。"""
+    cap = _SHELF_FP_MAX_CELLS if cap is None else cap
+    try:
+        ur = ws.UsedRange
+        addr = str(ur.Address)
+        if int(ur.Cells.CountLarge) > cap:
+            return (addr, None, None)
+        return (addr,) + _fingerprint_of(ur.Formula, ur.Value2)
+    except Exception:
+        return None
+
+
+def _shelf_book_state(wb):
+    """撃つ前後のブックの姿（2026-09-23）: シートの並び・シートごとの中身の指紋と図形の位置・テーブル・ピボット・
+    名前（見えるものだけ）・クエリ。読めない項目は黙って飛ばす（撃つ手を止めない）。"""
+    from vbam_undo import _shapes_geometry
+    st = {'order': [], 'fp': {}, 'geom': {}, 'tables': set(), 'pivots': set(), 'names': {}, 'queries': set()}
+    try:
+        st['order'] = [str(s.Name) for s in wb.Sheets]
+    except Exception:
+        pass
+    try:
+        sheets = list(wb.Worksheets)
+    except Exception:
+        sheets = []
+    for sh in sheets:
+        try:
+            n = str(sh.Name)
+        except Exception:
+            continue
+        st['fp'][n] = _sheet_fingerprint(sh)
+        st['geom'][n] = _shapes_geometry(sh)
+        # 循環参照のあるシートに Excel が描く矢印（Line 10 等）は、人が足した図形ではない。数えない
+        # （2026-09-23 通しの実測 2: 撃つたびに「足された図形・グラフ: 売上!Line 10」と出ていた）
+        try:
+            if sh.CircularReference is not None:
+                st['geom'][n] = [g for g in st['geom'][n] if not re.fullmatch(r'Line \d+', g['name'])]
+        except Exception:
+            pass
+        try:
+            for lo in sh.ListObjects:
+                st['tables'].add((n, str(lo.Name)))
+        except Exception:
+            pass
+        try:
+            for pt in sh.PivotTables():
+                st['pivots'].add((n, str(pt.Name)))
+        except Exception:
+            pass
+    try:
+        for nm in wb.Names:
+            try:
+                if nm.Visible:
+                    st['names'][str(nm.Name)] = str(nm.RefersTo)
+            except Exception:
+                continue
+    except Exception:
+        pass
+    try:
+        for q in wb.Queries:
+            st['queries'].add(str(q.Name))
+    except Exception:
+        pass
+    return st
+
+
+def _shelf_book_changes(before, after, target):
+    """撃つ前後のブックの姿 → 作った物・書き換わった別シート・消えた物（純 Python・2026-09-23）。
+
+    created は undo の「作った物」の形（kind/sheet/name）。控えは対象シートの中身しか戻さなかったので、
+    棚のマクロが足したシート（調査_…）・グラフ・テーブル・ピボット・クエリ・名前は、undo の後も残っていた。
+    足したシートの上の物はシートごと消えるので数えない。
+    """
+    added = [n for n in after['order'] if n not in before['order']]
+    removed = [n for n in before['order'] if n not in after['order']]
+    changed, recalc = [], []
+    for n, fp in after['fp'].items():
+        old = before['fp'].get(n)
+        if n == target or n not in before['fp'] or fp == old:
+            continue
+        if fp and old and fp[:2] == old[:2] and fp[1] is not None:
+            recalc.append(n)                     # 書いた中身は同じ＝式の再計算で値が変わっただけ
+        else:
+            changed.append(n)
+    created = [{'kind': 'sheet', 'name': n} for n in added]
+    for n, geom in after['geom'].items():
+        if n in added:
+            continue
+        old = {g['name'] for g in before['geom'].get(n, [])}
+        created += [{'kind': 'shape', 'sheet': n, 'name': g['name']} for g in geom if g['name'] not in old]
+    created += [{'kind': 'table', 'sheet': n, 'name': t}
+                for n, t in sorted(after['tables'] - before['tables']) if n not in added]
+    created += [{'kind': 'pivot', 'sheet': n, 'name': p}
+                for n, p in sorted(after['pivots'] - before['pivots']) if n not in added]
+    created += [{'kind': 'query', 'name': q} for q in sorted(after['queries'] - before['queries'])]
+    created += [{'kind': 'name', 'name': nm} for nm in after['names'] if nm not in before['names']]
+    lost = [nm for nm in before['names'] if nm not in after['names']]
+    moved = [nm for nm in before['names'] if nm in after['names'] and after['names'][nm] != before['names'][nm]]
+    return {'created': created, 'changed': changed, 'recalc': recalc, 'removed': removed,
+            'lost_names': lost, 'moved_names': moved}
+
+
+_SHELF_KIND_LABEL = (('sheet', '足されたシート'), ('shape', '足された図形・グラフ'), ('table', '足されたテーブル'),
+                     ('pivot', '足されたピボット'), ('query', '足されたクエリ'), ('name', '足された名前'))
+
+
+def _shelf_book_lines(bc):
+    """撃つ前後の違い（作った物・別シート・消えた物）を報告の行に（純 Python）。"""
+    out = []
+    for kind, label in _SHELF_KIND_LABEL:
+        items = [c for c in bc['created'] if c['kind'] == kind]
+        if items:
+            out.append(f"{label}: " + "・".join((f"{c['sheet']}!" if c.get('sheet') else '') + c['name'] for c in items))
+    if bc['changed']:
+        out.append("書き換わった別のシート: " + "・".join(bc['changed']) + "（undo で一緒に戻ります）")
+    if bc.get('recalc'):
+        out.append("計算で値が変わった別のシート: " + "・".join(bc['recalc'])
+                   + "（式はそのまま。このシートを参照する式の結果が変わった）")
+    if bc['removed']:
+        out.append("⚠ 消えたシート: " + "・".join(bc['removed']) + "（agent --undo では戻りません。控えのファイルから写してください）")
+    if bc['lost_names']:
+        out.append("⚠ 消えた名前: " + "・".join(bc['lost_names'][:10]) + "（agent --undo では戻りません）")
+    if bc['moved_names']:
+        out.append("⚠ 参照先が変わった名前: " + "・".join(bc['moved_names'][:10]) + "（agent --undo では戻りません）")
+    return out
+
+
+def _shelf_inplace(ws, before_snap, rows_changed, sel):
+    """--inplace: 右に出た結果の表で元の表を置き換える → 報告の行（2026-09-23 直し）。
+
+    直す前は ① 結果を式ごと元の場所へ写してから元の表を消した＝元を指していた式（=COUNTIF($A$2:$A$6,…)）が
+    写した自分自身を数え、件数と合計が黙って狂った（実測: 東 2 件→1 件・合計 5→4）。② 結果が元の表より
+    広いと、写した後の「結果を消す」が写した先の右端まで消した。今は、式を値にしてから（元の表が消えると
+    式は成り立たない）、元の表を消し、切り取り（Cut）で動かす＝重なっても Excel が正しく動かす。
+    """
+    vals_b = before_snap.get('values') or []
+    c0_b, r0_b = int(before_snap.get('col', 1)), int(before_snap.get('row', 1))
+    max_c_before = c0_b + (len(vals_b[0]) if vals_b else 0) - 1
+    max_r_before = r0_b + len(vals_b) - 1
+    new_cells, has_formula = [], False
+    for it in rows_changed:
+        if it.get('before') or not it.get('after'):
+            continue
+        m = re.match(r'([A-Z]+)(\d+)$', str(it.get('addr') or ''))
+        if not m:
+            continue
+        r, c = int(m.group(2)), _col_num_of(m.group(1))
+        if c > max_c_before:
+            new_cells.append((r, c))
+            has_formula = has_formula or str(it.get('after_formula') or '').startswith('=')
+    if not new_cells:
+        return ["その場置き換え: 右に出た新しい表が見つからないので、置き換えていません"]
+    r_min, r_max = min(r for r, _ in new_cells), max(r for r, _ in new_cells)
+    c_min, c_max = min(c for _, c in new_cells), max(c for _, c in new_cells)
+    dst_r, dst_c = r_min, c0_b
+    if sel:
+        try:
+            sr = ws.Range(sel)
+            dst_r, dst_c = int(sr.Row), int(sr.Column)
+        except Exception:
+            pass
+    if dst_c >= c_min:
+        return ["その場置き換え: 置き換える先が結果の表より右にあるので、置き換えていません"]
+    rng_new = ws.Range(ws.Cells(r_min, c_min), ws.Cells(r_max, c_max))
+    src_addr = str(rng_new.Address).replace('$', '')
+    if has_formula:                              # 値の貼り付け＝書式も文字の数字もそのまま残る
+        rng_new.Copy()
+        rng_new.PasteSpecial(-4163)              # xlPasteValues
+        ws.Application.CutCopyMode = False
+    orig = ws.Range(ws.Cells(dst_r, dst_c), ws.Cells(max(r_max, max_r_before), c_min - 1))
+    try:
+        orig.UnMerge()
+    except Exception:
+        pass
+    orig.Clear()
+    rng_new.Cut(ws.Cells(dst_r, dst_c))
+    final = ws.Range(ws.Cells(dst_r, dst_c), ws.Cells(dst_r + r_max - r_min, dst_c + c_max - c_min))
+    try:
+        final.Borders.LineStyle = 1
+        final.Borders.Weight = 2
+    except Exception:
+        pass
+    out = [f"その場置き換え: {src_addr} → {str(final.Address).replace('$', '')}（元の表を消して、結果の表を移した）"]
+    if has_formula:
+        out.append("  結果の式は値にしました（元の表が無くなると、元を指していた式が成り立たないため）")
+    return out
+
+
+_EXTRA_PAGE_KEYS = (('Zoom', '拡大縮小'), ('FitToPagesWide', '横のページ数'), ('FitToPagesTall', '縦のページ数'),
+                    ('Orientation', '向き'), ('PrintTitleRows', '見出しの繰り返し'), ('PrintArea', '印刷範囲'))
+
+
+def _sheet_extras_state(ws, rows_max=3000):
+    """セルの値・書式の差分では見えない物の姿（印刷設定・行の高さと非表示・絞り込み）。読めなければ {}（2026-09-24）。"""
+    st = {}
+    try:
+        p = ws.PageSetup
+        st['page'] = {k: str(getattr(p, k)) for k, _l in _EXTRA_PAGE_KEYS}
+    except Exception:
+        pass
+    try:
+        last = min(int(ws.UsedRange.Row) + int(ws.UsedRange.Rows.Count), rows_max)
+        st['rows'] = [(round(float(ws.Rows(r).RowHeight), 2), bool(ws.Rows(r).Hidden)) for r in range(1, last + 1)]
+    except Exception:
+        pass
+    try:
+        st['filter'] = (bool(ws.AutoFilterMode), bool(ws.FilterMode))
+    except Exception:
+        pass
+    return st
+
+
+def _sheet_extras_changes(before, after):
+    """_sheet_extras_state の前後 → 報告の行（純 Python）。shelf-run が印刷設定・行の高さだけを変えたマクロで
+    「何も変わりませんでした」と言っていた（縦横1ページに収めて印刷設定・行の高さをそろえる・2026-09-24）。"""
+    out = []
+    pb, pa = (before or {}).get('page') or {}, (after or {}).get('page') or {}
+    diff = [f"{lab} {pb.get(k)}→{pa.get(k)}" for k, lab in _EXTRA_PAGE_KEYS if k in pb and k in pa and pb[k] != pa[k]]
+    if diff:
+        out.append("印刷設定の変化: " + "・".join(diff))
+    rb, ra = (before or {}).get('rows') or [], (after or {}).get('rows') or []
+    n = min(len(rb), len(ra))
+    hs = [i + 1 for i in range(n) if rb[i][0] != ra[i][0]]
+    hid = [i + 1 for i in range(n) if rb[i][1] != ra[i][1]]
+    if hs:
+        out.append(f"行の高さの変化: {len(hs)} 行（{hs[0]} 行目 {rb[hs[0] - 1][0]}→{ra[hs[0] - 1][0]} ほか）")
+    if hid:
+        out.append(f"表示・非表示の変わった行: {len(hid)} 行（{' '.join(str(x) for x in hid[:8])}{'…' if len(hid) > 8 else ''}）")
+    fb, fa = (before or {}).get('filter'), (after or {}).get('filter')
+    if fb and fa and fb != fa:
+        out.append(f"絞り込み: {'あり' if fb[0] else 'なし'}→{'あり' if fa[0] else 'なし'}"
+                   + ("（絞り込み中）" if fa[1] else ""))
+    return out
+
+
+def _shelf_nothing_hint(row):
+    """何も変わらなかったときの一言（純 Python）。選ぶ列のあるマクロは、選び方が前提に合わないと黙って終わる。"""
+    msg = "何も変わりませんでした。"
+    if row and row.get('sel') not in (None, '', '-'):
+        msg += (f"このマクロは列を選んでから撃つ形です（選ぶ列={row['sel']}）。列は 1 列ずつカンマで分けて渡してください"
+                "（例 --select A1:A6,C1:C6。隣り合う列も A1:A6,B1:B6 と分ける）。")
+    return (msg + "すでに同じ結果になっているとき（2 回目に撃ったとき等）のほか、選んだ範囲や表の形がマクロの前提に"
+            "合わないと、何も言わずに終わるマクロがあります")
+
+
+_SHELF_ERR_CODES = {str(c) for c in range(-2146826288, -2146826245)}
+_SHELF_ERR_WORDS = ('#REF!', '#N/A', '#VALUE!', '#DIV/0!', '#NAME?', '#NUM!', '#NULL!')
+
+
+def _shelf_is_error_text(t):
+    """差分の片側（_text_of の文字）がエラー値か。COM はエラー値を -2146826xxx の数で返す。"""
+    t = str(t or '').strip()
+    return t in _SHELF_ERR_CODES or t in _SHELF_ERR_WORDS
+
+
+def _font_colors_really_differ(rng, limit=4000):
+    """範囲の中に見た目の違う文字色が 2 つ以上あるか（自動＝黒と明示の黒は同じと数える）。大きい範囲は True のまま（数えない）。"""
+    try:
+        if int(rng.Rows.Count) * int(rng.Columns.Count) > limit:
+            return True
+        seen = set()
+        for cell in rng.Cells:
+            try:
+                seen.add(int(cell.Font.Color))
+            except Exception:
+                return True
+            if len(seen) > 1:
+                return True
+        return False
+    except Exception:
+        return True
+
+
+def _book_with_sheet(xl, wb, sheet):
+    """--sheet の当て先。wb にあれば (wb, '')。無ければ、そのシートを持つ見えているブックが 1 冊だけなら (そのブック, 知らせ)、
+    0 冊・2 冊以上なら (None, エラーの文)。"""
+    def has(b):
+        try:
+            b.Sheets(sheet)
+            return True
+        except Exception:
+            return False
+    if has(wb):
+        return wb, ''
+    others = []
+    try:
+        for i in range(1, int(xl.Workbooks.Count) + 1):
+            b = xl.Workbooks.Item(i)
+            try:
+                if b.IsAddin or b.Name == wb.Name or not b.Windows(1).Visible:
+                    continue
+            except Exception:
+                continue
+            if has(b):
+                others.append(b)
+    except Exception:
+        pass
+    if len(others) == 1:
+        return others[0], f"（シート「{sheet}」は前に出ている {wb.Name} ではなく {others[0].Name} にありました。{others[0].Name} を対象にします）"
+    try:
+        names = ', '.join(str(s.Name) for s in wb.Sheets)
+    except Exception:
+        names = '?'
+    if others:
+        return None, (f"エラー: シート「{sheet}」は前に出ている {wb.Name} に無く、ほかの "
+                      f"{' / '.join(b.Name for b in others)} にあります。どれか 1 冊を前に出して撃ち直してください")
+    return None, f"エラー: シート「{sheet}」が {wb.Name} にも、ほかに開いているブックにもありません（{wb.Name} のシート: {names}）"
+
+
+def cmd_shelf_run(args):
+    """`shelf-run 名前 [--select 範囲[,範囲]] [--sheet 名] [--input-text 値]`: 棚のマクロを選んで撃つ（2026-09-23）。
+
+    対象ブック・シートを前に出し、--select があれば選んでから棚のマクロを撃つ。撃つ前に控えを取り、
+    撃った後の差分（番地: 前→後・上限 30 件＋件数・書式の変化・足された行/列）と、ブック全体の違い
+    （足されたシート・図形・グラフ・テーブル・ピボット・クエリ・名前／書き換わった別シート／消えた物）を返す。
+    作った物と書き換わった別シートは控えの覚書に積む＝agent --undo でまとめて戻る。
+    途中で出た窓（MsgBox/InputBox）は安全側（キャンセル優先）で自動解除し、本文を報告する
+    （--input-text があれば InputBox に入れて確定）。明細は agent --changes でも読める。
+    """
+    target_file, rest = parse_target_and_rest(args.posargs)
+    if not rest:
+        print("使い方: shelf-run <名前> [--select 範囲[,範囲]] [--sheet 名] [--input-text 値]（一覧は shelf）")
+        return False
+    name = rest[0]
+    xl, wb = get_workbook(target_file)
+    owner, lines = _shelf_source(xl)
+    if not owner:
+        print(f"エラー: 棚（モジュール「{_SEIRI_MODULE}」）が開いているブック・アドインに見つかりません")
+        return False
+    catalog = _parse_shelf_catalog(lines)
+    row = next((r for r in catalog if r['name'] == name), None)
+    if row is None:
+        cands = [r['name'] for r in catalog if name in r['name']][:5]
+        print(f"エラー: 棚に「{name}」はありません" + (f"（似た名前: {' / '.join(cands)}）" if cands else "")
+              + "（一覧は shelf --grep・依頼文からなら shelf --ask）")
+        return False
+    sheet_opt = getattr(args, 'sheet_opt', None)
+    if sheet_opt and not target_file:
+        # 前に出ているブックにそのシートが無い＝前が入れ替わっている（2026-09-24 17:25: 秀コンボ.xlsm が前に出ていて
+        # Book2 の「明細」に撃てず、COM の生の例外だけが返った）。そのシートを持つブックが 1 冊だけならそちらへ移る
+        wb2, msg = _book_with_sheet(xl, wb, sheet_opt)
+        if wb2 is None:
+            print(msg)
+            return False
+        if msg:
+            print(msg)
+        wb = wb2
+    try:
+        wb.Activate()
+        ws = wb.Sheets(sheet_opt) if sheet_opt else wb.ActiveSheet
+        ws.Activate()
+    except Exception as ex:
+        print(f"エラー: 対象シートを前に出せません（{wb.Name}!{sheet_opt or '今のシート'}）: {ex}")
+        return False
+    sel = getattr(args, 'select', None)
+    if sel:
+        try:
+            ws.Range(sel).Select()
+        except Exception as ex:
+            print(f"エラー: --select の範囲を選べません（{sel}）: {ex}")
+            return False
+    else:
+        # --select が無いときは選択を今のセル 1 つに戻す。棚のマクロは「2 つ以上選んでいればその範囲だけ」を見るので、
+        # 前に撃ったときの選択（選んだ列の文字の日付を日付にする --select B2:B13 など）が残ると、表の全部でなく B 列だけを見る（2026-09-23）
+        try:
+            xl.ActiveCell.Select()
+        except Exception:
+            pass
+    sheet_name = str(ws.Name)
+    if job_clock_elapsed(max_age=900) is None:
+        # materials が押した時計が動いていれば押し直さない（押し直すと tidy の「materials から N 秒」が
+        # shelf-run からの秒になり、頼んでから終わるまでより短く出た・2026-09-23 のテスト）
+        job_clock_start(f"shelf-run {name}  {wb.Name}!{sheet_name}")
+    from vbam_undo import (_agent_backup, _changes_of, _changes_table, _sheet_snapshot, _format_changes,
+                           _format_table, _write_changes_file, _record_created, _undo_add_sheets)
+    from vbam_ledger import runs_append, _run_id
+    book_before = _shelf_book_state(wb)
+    before_snap = _sheet_snapshot(ws)
+    extras_before = _sheet_extras_state(ws)
+    run_id = _run_id()
+    request = f"shelf-run {name}" + (f" --select {sel}" if sel else "")
+    backup_path = _agent_backup(wb, ws, sheet_name, request=request, run_id=run_id)
+    # run-macro と同じハーネスで撃つ（run_book_macro）。素の Run だと実行時エラーが「終了／デバッグ」の窓になり、
+    # 窓の見張りはそれを閉じないので、人が vbe-reset するまで Excel ごと止まる（2026-09-23 選んだ列の途切れた式を戻す で 671 秒）
+    watcher = _start_dialog_watcher(xl, input_texts=getattr(args, 'input_text', None))
+    t0 = time.time()
+    ok = True
+    from vbam_vba import run_book_macro, _VbaRuntimeError
+    try:
+        run_book_macro(xl, owner, name)
+    except _VbaRuntimeError as ex:
+        ok = False
+        print(f"エラー: マクロが実行時エラーで止まりました: {ex}（窓は出ていません。落ちた行までの変更は下の差分に出ます）")
+    except Exception as ex:
+        ok = False
+        print(f"エラー: マクロを撃てませんでした: {ex}")
+    finally:
+        try:
+            watcher.stop()
+        except Exception:
+            pass
+        # 撃った後も対象のブックとシートを前に残す（棚の持ち主のブックが前に出たまま戻ると、次の手が
+        # 持ち主のブックに当たる・2026-09-24）
+        try:
+            wb.Activate()
+            ws.Activate()
+        except Exception:
+            pass
+    sec = time.time() - t0
+    note = _dialog_watcher_note(watcher, None)
+    if note:
+        print(note)
+    print(f"撃った: {owner}!{_shelf_module_name(xl, owner, name)}.{name}（{wb.Name}!{sheet_name}・{sec:.2f} 秒）"
+          + (f"　選択: {sel}" if sel else ""))
+    bc = _shelf_book_changes(book_before, _shelf_book_state(wb), sheet_name)
+    if backup_path:                              # 控えの覚書に積む＝undo で作った物を消し、別シートも戻す
+        _record_created(bc['created'])
+        _undo_add_sheets(bc['changed'], book_before['geom'])
+    rows_changed = _changes_of(before_snap, ws, sheet_name) if before_snap else None
+    inplace_lines = []
+    if getattr(args, 'inplace', False) and rows_changed:
+        try:
+            ws.Activate()
+            inplace_lines = _shelf_inplace(ws, before_snap, rows_changed, sel)
+        except Exception as ex_ip:
+            inplace_lines = [f"警告: --inplace の置き換えで失敗しました: {ex_ip}（戻すなら agent --undo）"]
+        rows_changed = _changes_of(before_snap, ws, sheet_name)
+    n_changed = None
+    if rows_changed is None:
+        print("差分: 数えられませんでした（表が大きすぎる、等）。控えから確かめてください")
+    else:
+        n_changed = len(rows_changed)
+        print(f"変わったセル: {n_changed} 個")
+        if rows_changed:
+            for line in _changes_table(rows_changed, show=30):
+                print(line)
+    fmt_rows = []
+    if before_snap and not before_snap.get('too_big'):
+        fmt_rows = _format_changes(before_snap.get('format'), ws)
+        if fmt_rows:
+            print(f"書式の変化: {len(fmt_rows)} 件")
+            for line in _format_table(fmt_rows, show=12):
+                print(line)
+    grew = False
+    try:
+        ur = ws.UsedRange
+        nr_a, nc_a = int(ur.Rows.Count), int(ur.Columns.Count)
+        if before_snap and not before_snap.get('too_big') and before_snap.get('values'):
+            nr_b = len(before_snap['values'])
+            nc_b = len(before_snap['values'][0]) if before_snap['values'] else 0
+            if nr_a > nr_b:
+                print(f"足された行: {nr_a - nr_b} 行")
+                grew = True
+            if nc_a > nc_b:
+                print(f"足された列: {nc_a - nc_b} 列")
+                grew = True
+    except Exception:
+        pass
+    extra_lines = _sheet_extras_changes(extras_before, _sheet_extras_state(ws))
+    for line in inplace_lines + extra_lines + _shelf_book_lines(bc):
+        print(line)
+    # 撃った後に新しくできたエラー（#REF! 等）。行を消すマクロが、消えた行を指していた式を #REF! にする
+    # （2026-09-23 通しの実測 2: 空行を消したら 1 行上を指していた H10 が =F9*#REF! になり、合計まで #REF! になった）
+    try:
+        new_err = []
+        for rw in rows_changed or []:
+            af, bf = str(rw.get('after_formula') or ''), str(rw.get('before_formula') or '')
+            a_err = _shelf_is_error_text(rw.get('after'))
+            b_err = _shelf_is_error_text(rw.get('before'))
+            if ('#REF!' in af and '#REF!' not in bf) or (a_err and not b_err):
+                new_err.append(rw['addr'])
+        if new_err:
+            print(f"⚠ 【要確認】撃った後にエラーが新しくできたセル: {len(new_err)} 個（{' '.join(new_err[:12])}"
+                  + ("…" if len(new_err) > 12 else "") + "）→ 行や列を消すマクロなら、消した所を指していた式が壊れた。"
+                  "agent --undo で戻し、先に式を直してから（選んだ列の途切れた式を戻す 等）撃ち直す")
+    except Exception:
+        pass
+    # 撃った後の ###（合計行を足すで合計が列幅に収まらず ##### のまま渡った・2026-09-23 の通しの実測）
+    try:
+        ur = ws.UsedRange
+        nr_h, nc_h = int(ur.Rows.Count), int(ur.Columns.Count)
+        if nr_h * nc_h <= 3000:
+            hashes, bad_h, _n = _hash_scan(ur, max_rows=nr_h, max_cols=nc_h)
+            if hashes:
+                print(f"⚠ 【表示崩れ】'###' で読めないセル: {hashes}個（{' '.join(bad_h)}・列幅不足）→ tidy 表の範囲 で列幅を直す")
+    except Exception:
+        pass
+    if rows_changed is not None:
+        _write_changes_file(rows_changed, fmt_rows=fmt_rows)
+    if ok and not note and n_changed == 0 and not fmt_rows and not grew and not any(bc.values()) and not extra_lines:
+        print(_shelf_nothing_hint(row))
+    runs_append({'time': time.strftime('%Y-%m-%d %H:%M:%S'), 'run_id': run_id, 'mode': 'shelf-run',
+                 'book': str(wb.Name), 'sheet': sheet_name, 'request': request, 'macro': name,
+                 'sec': round(sec, 2), 'changed': n_changed, 'created': len(bc['created']),
+                 'other_sheets': bc['changed']})
+    print(f"（控え: {backup_path or 'なし'}。戻すなら agent --undo・明細は agent --changes。保存はしていません）")
+    return ok
+
+
+# ----------------------------------------------------------------
+# 式の元をたどる trace（2026-09-23）
+#   DirectPrecedents はシートをまたがない（別シート参照は取れない）ので、式の字面を自分で読んで解く。
+#   「C15 の合計は 明細!E4:E14 の和・E9 だけ文字の数字」のように、番地を添えて答えるための材料。
+# ----------------------------------------------------------------
+_TRACE_STR_RE = re.compile(r'"[^"]*"')
+_TRACE_REF_RE = re.compile(
+    r"(?:\[(?P<book>[^\]]+)\])?"
+    r"(?:(?P<sheet>'(?:[^']|'')+'|[^\s!,()+\-*/&<>=^%:\"'\[\]{};]+)!)?"
+    r"(?:(?P<a1>\$?[A-Z]{1,3}\$?\d{1,7})(?::(?P<a2>\$?[A-Z]{1,3}\$?\d{1,7}))?"
+    r"|(?P<c1>\$?[A-Z]{1,3}):(?P<c2>\$?[A-Z]{1,3})(?![\d(])"
+    r"|(?P<r1>\$?\d{1,7}):(?P<r2>\$?\d{1,7}))"
+)
+# 名前（税率 など）とテーブルの参照（売上[金額]・[@単価]）。関数名は後ろの ( で外す
+_TRACE_WORD_RE = re.compile(r"(?<![\w.$\[])([^\W\d][\w.]*)(?![\w(!\[])")
+_TRACE_TABLE_RE = re.compile(r"([^\W\d][\w.]*)?(\[(?:[^\[\]]|\[[^\]]*\])*\])")
+_TRACE_ERRORS = {-2146826281: '#DIV/0!', -2146826246: '#N/A', -2146826259: '#NAME?', -2146826288: '#NULL!',
+                 -2146826252: '#NUM!', -2146826265: '#REF!', -2146826273: '#VALUE!'}
+_TRACE_MAX_NODES = 120          # 1 回の trace で読むセルの上限（式が横に広くても止まる）
+_TRACE_MAX_REFS = 12            # 1 つの式から追う参照の数の上限
+_TRACE_SUMMARY_MAX_CELLS = 20000  # 範囲の中身の内訳を数えるセル数の上限
+_TRACE_NUMLIKE_RE = re.compile(r"^[-+△▲]?\d[\d,]*(?:\.\d+)?%?$")
+
+
+def _trace_refs(formula, default_sheet=''):
+    """式の字面 → 参照している所 [{'sheet','a1','a2','book','text','whole'}]（重複なし・純 Python）。
+
+    文字列リテラルは先に落とす。関数名（LOG10・SUMIF 等）は前後の字で外す。
+    列まるごと（A:C）・行まるごと（1:3）も拾う（whole='col'/'row'。VLOOKUP(…,マスタ!A:C,…) や
+    SUMIF(明細!D:D,…) を黙って落としていた＝木に元が 1 つも出ず、値だけのセルに見えた・2026-09-23）。
+    別ブック（[Book.xlsx] ／ 'C:\\…\\[Book.xlsx]Sheet'）は book に入れて返す（たどらない＝開いていないことがある）。
+    """
+    if not isinstance(formula, str) or not formula.startswith('='):
+        return []
+    body = _TRACE_STR_RE.sub(' ', formula)
+    out, seen = [], set()
+    for m in _TRACE_REF_RE.finditer(body):
+        kind = 'a1' if m.group('a1') else ('c1' if m.group('c1') else 'r1')
+        i, j = m.start(kind), m.end()
+        before = body[i - 1] if i else ''
+        after = body[j] if j < len(body) else ''
+        if m.group('sheet') is None and m.group('book') is None and before and (before.isalpha() or before in '_.'):
+            continue                                   # LOG10 のような関数名の一部
+        if after and (after == '(' or after.isdigit() or after.isalpha() or after in '_['):
+            continue
+        book = m.group('book') or ''
+        sheet = (m.group('sheet') or '').strip("'").replace("''", "'")
+        if '[' in sheet and ']' in sheet:              # 'C:\…\[Book.xlsx]Sheet1'!A1（閉じた別ブック）
+            book = sheet[sheet.index('[') + 1:sheet.index(']')]
+            sheet = sheet[sheet.index(']') + 1:]
+        sheet = sheet or default_sheet
+        if kind == 'a1':
+            a1 = m.group('a1').replace('$', '')
+            a2 = (m.group('a2') or '').replace('$', '')
+            whole = ''
+        else:
+            a1 = m.group(kind).replace('$', '')
+            a2 = m.group('c2' if kind == 'c1' else 'r2').replace('$', '')
+            whole = 'col' if kind == 'c1' else 'row'
+        key = (book, sheet, a1, a2)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({'book': book, 'sheet': sheet, 'a1': a1, 'a2': a2, 'whole': whole,
+                    'text': (f"{sheet}!" if sheet else '') + (f"{a1}:{a2}" if a2 else a1)})
+    return out
+
+
+def _trace_words(formula, names=(), tables=()):
+    """式の字面 → (使っている名前, テーブルの参照)（純 Python）。names・tables は小文字で比べる。
+
+    名前（=B2*税率 の 税率）は _trace_refs では拾えない＝黙って落ちていた（2026-09-23）。
+    テーブルの参照（売上[金額]・[@単価]）は たどらない が、あることは言う（黙って落とさない）。
+    """
+    if not isinstance(formula, str) or not formula.startswith('='):
+        return [], []
+    body = _TRACE_STR_RE.sub(' ', formula)
+    tabs = []
+    for m in _TRACE_TABLE_RE.finditer(body):
+        head = m.group(1) or ''
+        if head and head.lower() not in tables:
+            continue                                   # [Book.xlsx] の類はテーブルではない
+        if not head and not m.group(2).startswith('[@') and not m.group(2).startswith('[['):
+            continue
+        tok = head + m.group(2)
+        if tok not in tabs:
+            tabs.append(tok)
+    body = _TRACE_TABLE_RE.sub(' ', body)
+    body = _TRACE_REF_RE.sub(' ', body)
+    found = []
+    for m in _TRACE_WORD_RE.finditer(body):
+        w = m.group(1)
+        if w.lower() in names and w not in found:
+            found.append(w)
+    return found, tabs
+
+
+def _trace_range_cells(a1, a2):
+    """範囲の (件数, 先頭, 末尾)。読めなければ (None, a1, a2)（純 Python）。"""
+    from vbam_inv import _range_box
+    box = _range_box(f"{a1}:{a2}")
+    if not box:
+        return None, a1, a2
+    r1, c1, r2, c2 = box
+    return (r2 - r1 + 1) * (c2 - c1 + 1), f"{_col_letter(c1)}{r1}", f"{_col_letter(c2)}{r2}"
+
+
+def _trace_kind_of(v):
+    """セルの値の種類（純 Python）: 'blank' 'num' 'tnum'（文字の数字） 'text' 'err' 'bool'。
+
+    COM の Value は数を float、エラーを int（-2146826281 等）で返す。文字の数字は全角・カンマ・円記号・
+    △（負）をならして数に見えるもの＝SUM・AVERAGE が黙って数えない値。
+    """
+    if v is None or (isinstance(v, str) and v.strip() == ''):
+        return 'blank'
+    if isinstance(v, bool):
+        return 'bool'
+    if isinstance(v, int):
+        return 'err'
+    if isinstance(v, str):
+        t = unicodedata.normalize('NFKC', v).strip().replace('¥', '').replace('\\', '').replace('円', '')
+        t = t.replace(' ', '')
+        return 'tnum' if _TRACE_NUMLIKE_RE.match(t) else 'text'
+    return 'num'
+
+
+def _trace_summary_line(vals, fmls, texts, r0, c0, limit=5):
+    """範囲の中身の内訳を 1 行に（純 Python）。「C15 の合計は E4:E14 の和・E9 だけ文字の数字」の材料。"""
+    counts = {'num': 0, 'tnum': 0, 'text': 0, 'blank': 0, 'err': 0, 'bool': 0}
+    tnum, errs, n_f = [], [], 0
+    for i, row in enumerate(vals):
+        for j, v in enumerate(row):
+            k = _trace_kind_of(v)
+            counts[k] += 1
+            f = fmls[i][j] if i < len(fmls) and j < len(fmls[i]) else None
+            if isinstance(f, str) and f.startswith('='):
+                n_f += 1
+            addr = f"{_col_letter(c0 + j)}{r0 + i}"
+            shown = texts[i][j] if texts and i < len(texts) and j < len(texts[i]) else _TRACE_ERRORS.get(v, v)
+            if k == 'tnum' and len(tnum) < limit:
+                tnum.append(f'{addr} "{v}"')
+            elif k == 'err' and len(errs) < limit:
+                errs.append(f"{addr} {shown}")
+    parts = [f"数 {counts['num']}"]
+    if counts['tnum']:
+        parts.append(f"⚠ 文字の数字 {counts['tnum']}（{'・'.join(tnum)}）")
+    if counts['text']:
+        parts.append(f"文字 {counts['text']}")
+    if counts['bool']:
+        parts.append(f"TRUE/FALSE {counts['bool']}")
+    parts.append(f"空 {counts['blank']}")
+    if counts['err']:
+        parts.append(f"⚠ エラー {counts['err']}（{'・'.join(errs)}）")
+    line = "内訳: " + "・".join(parts) + f"（うち式 {n_f}）"
+    if counts['tnum']:
+        line += "　※ SUM・AVERAGE・COUNT は文字の数字を数えない"
+    return line
+
+
+def _trace_range(wb, r):
+    """範囲の参照 → (見出しの行, 中身の内訳の行 or None, 先頭, 末尾)。列・行まるごとは使っている所に絞る。"""
+    sheet = r['sheet']
+    spec = f"{r['a1']}:{r['a2']}"
+    head_line = f"{sheet}!{spec}"
+    ws = wb.Sheets(sheet) if sheet else wb.ActiveSheet
+    rng = ws.Range(spec)
+    if r.get('whole'):
+        eff = ws.Application.Intersect(rng, ws.UsedRange)
+        if eff is None:
+            return head_line + f"  {'列' if r['whole'] == 'col' else '行'}まるごと（使っている所に掛からない＝空）", None, None, None
+        rng = eff
+    n = int(rng.Cells.CountLarge)
+    first = str(rng.Cells(1, 1).Address).replace('$', '')
+    last = str(rng.Cells(int(rng.Rows.Count), int(rng.Columns.Count)).Address).replace('$', '')
+    if r.get('whole'):
+        head_line += (f"  {'列' if r['whole'] == 'col' else '行'}まるごと＝使っている所 {first}:{last}"
+                      f"  {n:,} 件（先頭 {first} / 末尾 {last}）")
+    else:
+        head_line += f"  {n} 件（先頭 {first} / 末尾 {last}）"
+    if n > _TRACE_SUMMARY_MAX_CELLS:
+        return head_line, "内訳: 大きいので数えません", first, last
+    vals, fmls = _rows_of_value(rng.Value), _rows_of_value(rng.Formula)
+    try:
+        texts = _rows_of_value(rng.Text) if n == 1 else None
+    except Exception:
+        texts = None
+    return head_line, _trace_summary_line(vals, fmls, texts, int(rng.Row), int(rng.Column)), first, last
+
+
+def _rows_of_value(v):
+    """Range.Value（タプルのタプル／1 セルは素の値）を 2 次元リストに（純 Python）。"""
+    if not isinstance(v, tuple):
+        return [[v]]
+    return [list(r) if isinstance(r, tuple) else [r] for r in v]
+
+
+def _trace_read(wb, sheet, a1):
+    """1 セルの (式 or None, 表示文字)。読めなければ (None, '?')。"""
+    try:
+        ws = wb.Sheets(sheet) if sheet else wb.ActiveSheet
+        rng = ws.Range(a1)
+        f = str(rng.Formula or '')
+        return (f if f.startswith('=') else None), str(rng.Text or '')
+    except Exception:
+        return None, '?'
+
+
+def _trace_walk(wb, sheet, a1, depth, path, state, indent=1):
+    """1 セルの元をたどって state['lines'] に木を積む（深さ・件数・循環で止まる）。
+
+    state['names']（小文字の名前 → 参照先の字面）・state['tables']（小文字のテーブル名）があれば、
+    名前は参照先へたどり、テーブルの参照はあることだけ言う。
+    """
+    pad = '  ' * indent
+    key = f"{sheet}!{a1}"
+    if key in path:
+        state['lines'].append(f"{pad}{key}  ⚠ 循環参照（ここで止めます）")
+        return
+    if state['nodes'] >= _TRACE_MAX_NODES:
+        return
+    state['nodes'] += 1
+    formula, text = _trace_read(wb, sheet, a1)
+    state['lines'].append(f"{pad}{key}  {formula or '（値）'}  → {text}")
+    if formula is None or depth <= 0:
+        return
+    refs = _trace_refs(formula, sheet)
+    names = state.get('names') or {}
+    used_names, tabs = _trace_words(formula, names, state.get('tables') or ())
+    for nm in used_names:
+        target = names.get(nm.lower(), '')
+        state['lines'].append(f"{pad}  名前 {nm} = {target.lstrip('=')}")
+        refs += [dict(r, via=nm) for r in _trace_refs(target, sheet)]
+    for t in tabs:
+        state['lines'].append(f"{pad}  テーブルの参照 {t}（たどりません。materials のテーブル欄で列を確かめる）")
+    if len(refs) > _TRACE_MAX_REFS:
+        state['lines'].append(f"{pad}  …参照 {len(refs)} か所のうち先頭 {_TRACE_MAX_REFS} か所だけ追います")
+        refs = refs[:_TRACE_MAX_REFS]
+    for r in refs:
+        if r['book']:
+            state['lines'].append(f"{pad}  [{r['book']}]{r['text']}  （別ブック＝たどりません）")
+            continue
+        if r['a2']:
+            try:
+                head_line, summary, head, tail = _trace_range(wb, r)
+            except Exception:
+                n, head, tail = _trace_range_cells(r['a1'], r['a2']) if not r.get('whole') else (None, None, None)
+                head_line, summary = (f"{r['sheet']}!{r['a1']}:{r['a2']}"
+                                      + (f"  {n} 件（先頭 {head} / 末尾 {tail}）" if n else '')), None
+            state['lines'].append(f"{pad}  {head_line}")
+            if summary:
+                state['lines'].append(f"{pad}    {summary}")
+            for one in ([head, tail] if head != tail else [head]):
+                if one:
+                    _trace_walk(wb, r['sheet'], one, depth - 1, path | {key}, state, indent + 2)
+            continue
+        _trace_walk(wb, r['sheet'], r['a1'], depth - 1, path | {key}, state, indent + 1)
+
+
+def _trace_book_words(wb):
+    """ブックの名前（小文字 → 参照先の字面）とテーブル名（小文字）の集まり。読めなければ空。"""
+    names, tables = {}, set()
+    try:
+        for nm in wb.Names:
+            try:
+                full = str(nm.Name)
+                names.setdefault(full.split('!')[-1].lower(), str(nm.RefersTo))
+            except Exception:
+                continue
+    except Exception:
+        pass
+    try:
+        for sh in wb.Worksheets:
+            try:
+                for lo in sh.ListObjects:
+                    tables.add(str(lo.Name).lower())
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return names, tables
+
+
+def cmd_trace(args):
+    """`trace <セル> [--depth N] [--sheet 名]`: 式の元をシートをまたいでたどる（2026-09-23）。
+
+    「番地・式・値」の木で返す。範囲は先頭と末尾と件数に畳み、中身の内訳（数・文字の数字・空・エラーの番地）を
+    添える。列まるごと（A:C）は使っている所に絞る。名前は参照先へたどる。循環は印を付けて止める。
+    DirectPrecedents はシートをまたがないので、式の字面を読んで解いている。何も書き換えない。
+    """
+    target_file, rest = parse_target_and_rest(args.posargs)
+    if not rest:
+        print("使い方: trace <セル> [--depth N] [--sheet 名]（例: trace 集計!C15 --depth 3）")
+        return False
+    spec = rest[0]
+    xl, wb = get_workbook(target_file)
+    sheet_opt = getattr(args, 'sheet_opt', None)
+    if '!' in spec and not sheet_opt:
+        sheet, a1 = spec.rsplit('!', 1)
+        sheet = sheet.strip("'").replace("''", "'")
+    else:
+        a1 = spec
+        sheet = sheet_opt or str(wb.ActiveSheet.Name)
+    a1 = a1.replace('$', '').upper()
+    try:
+        depth = int(getattr(args, 'depth', None) or 3)
+    except (TypeError, ValueError):
+        depth = 3
+    try:
+        wb.Sheets(sheet)
+    except Exception:
+        print(f"エラー: シート「{sheet}」がありません（シートの一覧は sheet-info）")
+        return False
+    print(f"式の元: {wb.Name}   深さ {depth} まで")
+    names, tables = _trace_book_words(wb)
+    state = {'lines': [], 'nodes': 0, 'names': names, 'tables': tables}
+    _trace_walk(wb, sheet, a1, depth, frozenset(), state, indent=0)
+    for line in state['lines']:
+        print(line)
+    if state['nodes'] >= _TRACE_MAX_NODES:
+        print(f"（読んだセルが上限 {_TRACE_MAX_NODES} 個に達したので途中で止めました）")
     return True
 
 
@@ -2735,7 +4142,8 @@ def cmd_screenshot(args):
     out_path = os.path.abspath(getattr(args, 'out_opt', None) or LAST_VIEW_FILE)
 
     xl, wb = get_workbook(target_file)
-    ws, rng = _resolve_range(xl, wb, spec)
+    # --sheet はほかの手（read-range・tidy・materials）と同じ口（2026-09-24: screenshot --sheet 図形 が不明な引数で 2 回落ちた）
+    ws, rng = _resolve_range(xl, wb, spec, getattr(args, 'sheet_opt', None))
 
     # 対象シートをアクティブにすると CopyPicture が安定する
     try:
@@ -2892,7 +4300,9 @@ def style_summary(ws, ur, nr, nc, areas=None, max_rows=300):
         elif int(ci) != -4142:
             marks.append("全体に塗り")
         fc = ur.Font.Color
-        if fc is None:
+        if fc is None and _font_colors_really_differ(ur):
+            # 「自動」と「黒を明示」だけの違いでも範囲の Font.Color は None になる＝見た目は同じなのに
+            # 「混在あり」と言っていた（2026-09-24 通しの確かめ: 表を整えるマクロが黒を明示した後）
             marks.append("文字色の混在あり")
         fb = ur.Font.Bold
         if fb is None:
@@ -2904,6 +4314,65 @@ def style_summary(ws, ur, nr, nc, areas=None, max_rows=300):
     return out
 
 
+def _sum_gap_and_double_notes(fa, vals, r0, c0):
+    """縦の SUM の 2 つの間違い → 気づきの行（純 Python・2026-09-24 通しの実測 4）。
+
+    ① 集計の取りこぼし: 範囲のすぐ下（上）の明細の数を外している（=SUM(G4:G9) の G10）。すぐ下・上が集計の式・
+       集計の行なら取りこぼしではない（小計ごとの表）。
+    ② 二重計上: 範囲の中に小計（SUM の式）と明細の数が両方入っている（=SUM(G4:G20) が小計 G11・G19 も足す）。
+    どちらも式の目（formula_notes）と棚の手（seiri_formula_hints）が拾えず、黙って通していた。
+    """
+    grid_f, grid_v = fa or [], vals or []
+
+    def cell(g, r, c):
+        i, j = r - r0, c - c0
+        if 0 <= i < len(g) and 0 <= j < len(g[i] or []):
+            return g[i][j]
+        return None
+
+    def is_num(v):
+        return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+    def is_agg(r, c):
+        f = cell(grid_f, r, c)
+        return isinstance(f, str) and bool(_FML_AGG_ANY_RE.search(f))
+
+    def total_row(r):
+        i = r - r0
+        return 0 <= i < len(grid_v) and any(_is_total_label(v) for v in (grid_v[i] or []))
+
+    out = []
+    for i, row in enumerate(grid_f):
+        for j, f in enumerate(row or []):
+            if not (isinstance(f, str) and f.startswith('=')):
+                continue
+            aggs = fml_agg_ranges(f)
+            if len(aggs) != 1 or aggs[0][0] != 'SUM' or len(aggs[0][1]) != 1:
+                continue
+            top, left, bot, right = aggs[0][1][0]
+            r, c = r0 + i, c0 + j
+            if left != right or left != c or not (bot < r or top > r):
+                continue
+            addr = f"{_col_letter(c)}{r}"
+            inner = range(top, bot + 1)
+            subs = [k for k in inner if is_agg(k, c)]
+            plain = [k for k in inner if not is_agg(k, c) and is_num(cell(grid_v, k, c))]
+            if subs and plain:
+                refs = "+".join(f"{_col_letter(c)}{k}" for k in subs)
+                out.append(f"集計の二重計上 {addr}: {_clip_fml(f)} は小計 {' '.join(f'{_col_letter(c)}{k}' for k in subs[:4])} と"
+                           f"その明細を両方足しています  → 小計どうしを足す（={refs}）か、小計も SUBTOTAL にする")
+                continue
+            for k, side in ((bot + 1, "直下"), (top - 1, "直上")):
+                if k == r or k < r0 or is_agg(k, c) or total_row(k):
+                    continue
+                v = cell(grid_v, k, c)
+                if is_num(v) and plain:
+                    nb = (top, k) if side == "直下" else (k, bot)
+                    out.append(f"集計の取りこぼし {addr}: {_clip_fml(f)} の{side} {_col_letter(c)}{k}（{v:,.10g}）が入っていません"
+                               f"  → =SUM({_col_letter(c)}{nb[0]}:{_col_letter(c)}{nb[1]})")
+    return out
+
+
 def diagnose_notes(fa, fr, vals, r0, c0, limit=8):
     """診断の目のうち、数式の目（formula_notes）と表の汚れ（dirt_notes）に無い 2 つだけを 1 手目に足す。
 
@@ -2912,18 +4381,32 @@ def diagnose_notes(fa, fr, vals, r0, c0, limit=8):
     戻り値 (要修正の行, 気づきの行)。vbam_audit が無ければ ([], [])。
     """
     try:
-        from vbam_audit import check_circular_references, check_data_cleaner
+        from vbam_audit import check_circular_references, check_data_cleaner, check_values_in_formula_columns
     except Exception:
         return [], []
     blockers, notices = [], []
+    # 式の列に紛れた数字の直書き（formula_notes は式どうししか比べないので、ここで足す・2026-09-23）
+    try:
+        for it in check_values_in_formula_columns(fa, fr, vals, r0 - 1, c0 - 1):
+            notices.append(f"式の列 {it['cell']}: {it['msg']}  → 上下と同じ式に戻す（棚なら 選んだ列の途切れた式を戻す）")
+    except Exception:
+        pass
     try:
         for it in check_circular_references(fa, r0 - 1, c0 - 1):
             blockers.append(f"{it['cell']}: {it['msg']}")
     except Exception:
         pass
+    notices.extend(_sum_gap_and_double_notes(fa, vals, r0, c0))
+    # 外れ値は手で入れた値だけ言う。式のセル（金額＝数量×単価・税込）は元の値の外れを重ねて言うだけ
+    # （2026-09-23 通しの実測 2: 単価 G8 の桁違いに続けて H8・I8 も並べていた）
+    fml = set()
+    for i, row in enumerate(fa or []):
+        for j, v in enumerate(row or []):
+            if isinstance(v, str) and v.startswith('='):
+                fml.add(f"{_col_letter(c0 + j)}{r0 + i}")
     try:
         for it in check_data_cleaner(vals, r0 - 1, c0 - 1):
-            if it.get('type') == 'outlier_value':
+            if it.get('type') == 'outlier_value' and it['cell'] not in fml:
                 notices.append(f"{it['cell']}: {it['msg']}")
     except Exception:
         pass
@@ -3100,6 +4583,14 @@ __all__ = [
     'cmd_style_map', 'style_summary', 'diagnose_notes',
     'LAST_VIEW_FILE',
     'cmd_seiri',
+    'cmd_shelf',
+    'cmd_shelf_run',
+    'cmd_trace',
+    '_shelf_source',
+    '_parse_shelf_catalog',
+    '_trace_refs',
+    '_trace_range_cells',
+    '_trace_walk',
     'error_hint',
     '_macro_book',
     '_CELL_REF_RE',

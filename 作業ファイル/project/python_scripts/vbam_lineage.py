@@ -513,6 +513,9 @@ def cmd_grep_files(args):
     if not rest:
         print("使い方: grep-files \"文字\" <フォルダ|ファイル…> [--regex] [-i] [--max N] [--json]")
         return False
+    if len(rest) >= 2 and os.path.exists(rest[0]) and not any(os.path.exists(t) for t in rest[1:]):
+        # grep-files <ファイル> "文字" の順でも受ける（前は「文字」をファイルとして探し 0 冊を読んで黙った・2026-09-24）
+        rest = rest[1:] + rest[:1]
     needle = rest[0]
     targets = rest[1:] or ['.']
     flags = re.IGNORECASE if getattr(args, 'ignore_case', False) else 0
@@ -564,16 +567,15 @@ def cmd_grep_files(args):
 
 
 def cmd_export_file(args):
-    """閉じたブックのモジュールを書き出す: export-file <path.xlsm> [--dir 先] [--json]
+    """閉じたブックのモジュールを書き出す: export-file <path.xlsm> [モジュール名…] [--dir 先] [--json]
 
     既定の置き場は _exports/<ブック名>/<日時>/（export-all --history と同じ並び）。.bas/.cls/.frm はコードだけ＝
     フォームの見た目（.frx）は入っていない。文字コードは CP932（Excel の Export と同じ）。
+    モジュール名を続けるとそれだけを書き出す（前は「余分な引数」で断っていた＝台帳で 2 回・2026-09-24）。
     """
     rest = list(args.posargs or [])
     if not rest:
-        print("使い方: export-file <path.xlsm> [--dir 出力先] [--json]")
-        return False
-    if _reject_extra_args(rest, 1, 'ファイルは 1 つ'):
+        print("使い方: export-file <path.xlsm> [モジュール名…] [--dir 出力先] [--json]")
         return False
     path = _resolve_book(rest[0])
     if path is None:
@@ -586,6 +588,21 @@ def cmd_export_file(args):
     if not mods:
         print(f"{os.path.basename(path)}: マクロ無し（書き出す物がありません）")
         return True
+    want = [str(w) for w in rest[1:]]
+    # 2 つ目にパス（C:/tmp/xlam_check）＝書き出し先のつもり（台帳で 2 回「余分な引数」だった）。モジュール名に / \ : は入らない
+    dirs = [w for w in want if re.search(r'[\\/:]', w)]
+    if dirs and not getattr(args, 'dir_opt', None) and len(dirs) == 1:
+        args.dir_opt = dirs[0]
+        want = [w for w in want if w not in dirs]
+    if want:
+        have = {name.lower(): name for name, _e, _r in mods}
+        unknown = [w for w in want if w.lower() not in have]
+        if unknown:
+            print(f"エラー: モジュールが見つかりません: {', '.join(unknown)}")
+            print("  あるモジュール: " + ', '.join(name for name, _e, _r in mods))
+            return False
+        keep = {w.lower() for w in want}
+        mods = [m for m in mods if m[0].lower() in keep]
     stem = os.path.splitext(os.path.basename(path))[0]
     out_dir = getattr(args, 'dir_opt', None) or os.path.join(SCRIPT_DIR, '_exports', stem, time.strftime('%Y%m%d_%H%M%S'))
     out_dir = os.path.abspath(out_dir)

@@ -551,13 +551,13 @@ def changed_lines(before, after):
 
 
 # ----------------------------------------------------------------
-# 表を整える（表の整理.bas・約 700 行）も載せる（2026-09-17 夜）
+# 表の書き方と罫線と列幅をそろえる（表の整理.bas・約 700 行）も載せる（2026-09-17 夜）
 #
 # agent の先撃ちで毎回撃たれるいちばん大きいマクロ。鍛えた台帳には無いので、試験（vbam_exam）の 5 種の表を種で作り、
 # 元のマクロで撃った後の姿を正解にする（元のマクロは試験で 50 題合格済み＝正解として使える）。
 # ----------------------------------------------------------------
 
-_TIDY_SUB = '表を整える'
+_TIDY_SUB = '表の書き方と罫線と列幅をそろえる'
 _TIDY_SEED = 7
 
 
@@ -625,7 +625,7 @@ def _capture(code, sub, books):
 
 
 def _tidy_case(seed=_TIDY_SEED, log=print):
-    """表を整える を修理の試験に載せる台（置き場 _agent_mend\\_tidy_case_種 に作り、次からは読むだけ）。"""
+    """表の書き方と罫線と列幅をそろえる を修理の試験に載せる台（置き場 _agent_mend\\_tidy_case_種 に作り、次からは読むだけ）。"""
     import vbam_exam as ve
     import vbam_forge as fg
     cdir = os.path.join(_MEND_DIR, f"_tidy_case_{seed}")
@@ -645,7 +645,7 @@ def _tidy_case(seed=_TIDY_SEED, log=print):
         path = os.path.join(cdir, f"{ex['name']}.xlsx")
         ve.write_book(ex, path)
         books.append((ex['name'], path, ex['sheet']))
-    log(f"  表を整える の台を作ります（試験の表 {len(books)} 枚・種 {seed}・元のマクロで撃った姿を正解にする）")
+    log(f"  表の書き方と罫線と列幅をそろえる の台を作ります（試験の表 {len(books)} 枚・種 {seed}・元のマクロで撃った姿を正解にする）")
     snaps = _capture(code, _TIDY_SUB, books)
     (n0, p0, s0), e0 = books[0], snaps[0]
     case = {'name': _TIDY_SUB, 'sub': _TIDY_SUB, 'code': code, 'passed': True, 'prefire': [],
@@ -661,7 +661,7 @@ def _load_cases(only=None):
     d = _forge_load()
     names = [n.strip() for n in (only or '').replace('、', ',').split(',') if n.strip()]
     out = []
-    if _TIDY_SUB in names:                   # 表を整える は名指ししたときだけ（台づくりに Excel を 1 回起こす）
+    if _TIDY_SUB in names:                   # 表の書き方と罫線と列幅をそろえる は名指ししたときだけ（台づくりに Excel を 1 回起こす）
         tc = _tidy_case()
         if tc:
             out.append((_TIDY_SUB, tc))
@@ -671,7 +671,7 @@ def _load_cases(only=None):
         if not case.get('passed') or not case.get('code') or not case.get('sub'):
             continue
         if case.get('prefire'):
-            continue              # 先撃ち（表を整える）と組の弾は、植えるブックに 表の整理 全部が要る＝今回は外す
+            continue              # 先撃ち（表の書き方と罫線と列幅をそろえる）と組の弾は、植えるブックに 表の整理 全部が要る＝今回は外す
         if not os.path.isfile(case.get('before') or ''):
             continue
         out.append((name, case))

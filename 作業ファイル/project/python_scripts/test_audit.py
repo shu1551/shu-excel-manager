@@ -2,6 +2,7 @@
 """
 
 import os
+import re
 import sys
 import pytest
 
@@ -446,3 +447,101 @@ def test_formula_linter_does_not_flag_a_running_total_column():
     formulas[4][1] = "=SUM($A$2:A3)"
     issues = va.check_formula_linter(formulas, r1c1, values, 0, 0)
     assert [i["cell"] for i in issues if i["type"] == "omitted_sum_range"] == ["B5"]
+
+
+def test_value_in_formula_column_is_flagged():
+    """式の列（=E2*F2 …）に紛れた数字の直書きを出す（2026-09-23 の通しの実測で G7=5000 を誰も言わなかった）。
+    合計の行・文字（備考）・式の行の外は咎めない。"""
+    fa = [["金額"], ["=E2*F2"], ["=E3*F3"], [5000], ["=E5*F5"], ["=E6*F6"], ["=SUM(G2:G6)"], ["メモ"]]
+    fr = [["金額"], ["=RC[-2]*RC[-1]"], ["=RC[-2]*RC[-1]"], [5000], ["=RC[-2]*RC[-1]"], ["=RC[-2]*RC[-1]"],
+          ["=SUM(R[-5]C:R[-1]C)"], ["メモ"]]
+    vals = [["金額"], [4800], [6000], [5000], [7500], [3000], [26300], ["メモ"]]
+    hit = va.check_values_in_formula_columns(fa, fr, vals, 0, 6)
+    assert [i["cell"] for i in hit] == ["G4"]
+    assert any(i["type"] == "value_in_formula_column" for i in va.check_formula_linter(fa, fr, vals, 0, 6))
+    blk, ntc = vv.diagnose_notes(fa, fr, vals, 1, 7)
+    assert any(n.startswith("式の列 G4") for n in ntc)
+    # 式が 2 行しか無い列・文字の書き込みは咎めない
+    fa2 = [["=A1"], ["=A2"], ["手入力"]]
+    assert va.check_values_in_formula_columns(fa2, fa2, [[1], [2], ["手入力"]], 0, 0) == []
+
+
+def test_outliers_need_a_lonely_value():
+    """囲いの外でも、残りの端から 5 倍以上離れた「ぽつんと 1 つ」だけを外れ値とする（2026-09-23 の通しの実測で
+    単価 30〜12,000 のふつうの表に 4 件出ていた）。桁違い・マイナスは今までどおり拾う。"""
+    price = [[480], [120], [300], [1500], [250], [8500], [1200], [480], [30], [90], [700], [12000], [150]]
+    qty = [[10], [50], [20], [5], [12], [2], [30], [10], [100], [24], [3], [1], [12]]
+    for col in (price, qty):
+        assert [i for i in va.check_data_cleaner(col, 0, 0) if i["type"] == "outlier_value"] == []
+    typo = [row[:] for row in price]
+    typo[4][0] = 2500000                                         # 250 → 2,500,000（桁違い）
+    assert [i["cell"] for i in va.check_data_cleaner(typo, 0, 0) if i["type"] == "outlier_value"] == ["A5"]
+    minus = [[1200], [1300], [1250], [1400], [-1300], [1350], [1280]]
+    assert [i["cell"] for i in va.check_data_cleaner(minus, 0, 0) if i["type"] == "outlier_value"] == ["A5"]
+
+
+def test_measure2_noise_and_sign_rules():
+    """2026-09-23 通しの実測 2 で出た気づきの直し: 先頭 0 の番号は文字の数字と咎めない／正の列のマイナス 1 つは出す／
+    式のセルの外れ値は重ねて出さない（materials・seiri の目）。"""
+    vals = [["伝票番号", "数量", "単価", "金額"],
+            ["0001", 10, 1200, 12000], ["0002", 5, 3000, 15000], ["0003", 8, 1500, 12000],
+            ["0004", 3, 2000, 6000], ["0005", -5, 1200, -6000], ["0006", 2, 120000, 240000],
+            ["0007", 4, 3000, 12000], ["0008", 7, 1200, 8400], ["0009", 9, 1500, 13500], ["0010", 1, 5000, 5000]]
+    issues = va.check_data_cleaner(vals, 0, 0)
+    assert not [i for i in issues if i["type"] == "text_number"]
+    out = {i["cell"] for i in issues if i["type"] == "outlier_value"}
+    assert "B6" in out and "C7" in out
+    fa = [row[:3] + [("=B%d*C%d" % (k + 1, k + 1)) if k else row[3]] for k, row in enumerate(vals)]
+    blk, ntc = vv.diagnose_notes(fa, fa, vals, 1, 1)
+    cells = {n.split(":")[0] for n in ntc}
+    assert "C7" in cells and "D7" not in cells and "D6" not in cells
+    diff = [["増減"], [100], [120], [-30], [90], [110]]
+    assert not [i for i in va.check_data_cleaner(diff, 0, 0) if i["type"] == "outlier_value"]
+
+
+def test_dirt_notes_does_not_call_repeating_codes_duplicates():
+    """明細の取引先コードの繰り返しは「番号列の重複」と言わない。伝票番号の 1 件の重複は言う（2026-09-23）。"""
+    grid = [["伝票番号", "取引先コード", "金額"]] + [
+        [f"{i:04d}" if i != 11 else "0010", "C%03d" % (i % 4 + 1), i * 100] for i in range(1, 13)]
+    notes = " ".join(vv.dirt_notes(grid, 1, 1, 0, {}))
+    assert "A12 = A11" in notes
+    assert not re.search(r"B\d+ = B\d+", notes)
+
+
+def test_seiri_hints_point_to_shelf_macros():
+    """seiri が気づきごとに棚の手を出す（2026-09-23 通しの実測 2 の表の縮小版）: 空行・ゼロの消えた番号・空白の揺れ・
+    年の無い文字の日付・式のずれ・合計の行の循環参照。式を揃える手が行を消す手より先に並ぶ。"""
+    grid = [["伝票番号", "日付", "担当", "数量", "単価", "金額"],
+            ["0001", "2026/5/1", "佐藤一郎", 10, 1200, 12000],
+            ["0002", "2026/5/2", "鈴木花子", 5, 3000, 15000],
+            [4, "5月16日", "佐藤 一郎", 3, 2000, 6000],
+            [None, None, None, None, None, None],
+            ["0005", "2026/5/9", "佐藤一郎", 6, 3000, 18000],
+            ["0006", "2026/5/12", "鈴木花子", 2, 1500, 3000],
+            ["0007", "2026/5/13", "田中次郎", 1, 1500, 1500],
+            ["0008", "2026/5/14", "田中次郎", 2, 1500, 3000],
+            ["0009", "2026/5/15", "鈴木花子", 4, 1500, 6000],
+            [None, None, "合計", None, None, 0]]
+    fa = [r[:] for r in grid]
+    body = (1, 2, 3, 5, 6, 7, 8, 9)
+    for i in body:
+        fa[i][5] = f"=D{i + 1}*E{i + 1}"
+    fa[3][5] = "=D4*E3"
+    fa[10][5] = "=SUM(F2:F11)"
+    fr = [r[:] for r in fa]
+    for i in body:
+        fr[i][5] = "=RC[-2]*RC[-1]"
+    fr[3][5] = "=RC[-2]*R[-1]C[-1]"
+    fr[10][5] = "=SUM(R[-9]C:R[0]C)"
+    hints = []
+    notes = " ".join(vv.dirt_notes(grid, 1, 1, 0, {}, hints=hints))
+    assert "表の中の空行: 行5" in notes and "A4（4・列は 4 桁）" in notes and "C4（佐藤 一郎→佐藤一郎）" in notes
+    assert "B4" in notes.split("文字の日付:")[1]
+    hints += vv.seiri_formula_hints(fa, fr, grid, 1, 1, 0)
+    names = [h[1] for h in sorted(hints)]
+    for n in ("選んだ列の途切れた式を戻す", "表の中の空行を削除して詰める", "表の下に合計行を足す", "番号に先頭のゼロを付けてそろえる",
+              "空白の有無を多い方にそろえる", "選んだ列の文字の日付を日付にする"):
+        assert n in names, n
+    assert names.index("選んだ列の途切れた式を戻す") < names.index("表の中の空行を削除して詰める")
+    sel = [h[2] for h in hints if h[1] == "選んだ列の途切れた式を戻す"][0]
+    assert sel.startswith("F2:F")

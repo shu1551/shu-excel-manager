@@ -200,15 +200,19 @@ def _format_snapshot(ws):
                 'halign': _mixed(col.HorizontalAlignment, _XL_ALIGN),
                 'bold': _mixed(col.Font.Bold, {True: '太字', False: '並'}),
             }
-        borders = {}
-        for idx, name in _XL_BORDERS:
-            try:
-                borders[name] = _line_text(ur.Borders(idx).LineStyle)
-            except Exception:
-                pass
-        return {'addr': _addr(ur), 'cols': cols, 'borders': borders}
+        return {'addr': _addr(ur), 'cols': cols, 'borders': _borders_of(ur)}
     except Exception:
         return None
+
+
+def _borders_of(rng):
+    borders = {}
+    for idx, name in _XL_BORDERS:
+        try:
+            borders[name] = _line_text(rng.Borders(idx).LineStyle)
+        except Exception:
+            pass
+    return borders
 
 
 def _format_changes(before_fmt, ws):
@@ -227,10 +231,18 @@ def _format_changes(before_fmt, ws):
             if str(b.get(key)) != str(a.get(key)):
                 out.append({'sheet': name, 'addr': f"{col}列", 'what': label,
                             'before': str(b.get(key)), 'after': str(a.get(key))})
+    # 罫線は撃つ前の範囲で比べる。使用範囲が右に広がると（表の右に 1 列空けて表を作る）、間の空いた列で
+    # 「あり → なし」と出て、元の表の罫線が消えたように見えた（2026-09-23 選んだ列の項目別件数表を右に作る）
+    addr, after_borders = before_fmt.get('addr') or '', after.get('borders') or {}
+    if addr and addr != after.get('addr'):
+        try:
+            after_borders = _borders_of(ws.Range(addr))
+        except Exception:
+            after_borders = {}
     for _idx, nm in _XL_BORDERS:
-        b, a = (before_fmt.get('borders') or {}).get(nm), (after.get('borders') or {}).get(nm)
+        b, a = (before_fmt.get('borders') or {}).get(nm), after_borders.get(nm)
         if a is not None and b is not None and str(b) != str(a):
-            out.append({'sheet': name, 'addr': after.get('addr') or '', 'what': f"罫線・{nm}",
+            out.append({'sheet': name, 'addr': addr or after.get('addr') or '', 'what': f"罫線・{nm}",
                         'before': str(b), 'after': str(a)})
     return out
 
@@ -240,6 +252,17 @@ def _cell_pair(snap, key, i, j):
     if not grid or i >= len(grid) or j >= len(grid[i]):
         return None
     return grid[i][j]
+
+
+def _num_or_text(v):
+    """'文字' / '数' / ''（空・その他）。字面が同じ値の型の違いを見分ける（純 Python）。"""
+    if isinstance(v, bool) or v is None:
+        return ''
+    if isinstance(v, (int, float)):
+        return '数'
+    if isinstance(v, str) and v.strip():
+        return '文字'
+    return ''
 
 
 def _changes_of(before, ws, sheet_name=None):
@@ -268,10 +291,15 @@ def _changes_of(before, ws, sheet_name=None):
         a = _cell_pair(after, 'values', r - r0a, c - c0a) if r >= r0a and c >= c0a else None
         bf = _cell_pair(before, 'formulas', r - r0b, c - c0b) if before.get('formulas') and r >= r0b and c >= c0b else None
         af = _cell_pair(after, 'formulas', r - r0a, c - c0a) if after.get('formulas') and r >= r0a and c >= c0a else None
-        if _text_of(b) == _text_of(a) and _text_of(bf) == _text_of(af):
-            continue
+        bt, at = _text_of(b), _text_of(a)
+        if bt == at and _text_of(bf) == _text_of(af):
+            # 字面が同じでも「文字の数字 → 数」は直した所（"12" → 12。2026-09-23 の通しの実測で seiri の明細から漏れた）
+            kb, ka = _num_or_text(b), _num_or_text(a)
+            if not (kb and ka and kb != ka):
+                continue
+            bt, at = f"{bt}（{kb}）", f"{at}（{ka}）"
         rows.append({'sheet': name, 'addr': f"{_col_letter(c)}{r}",
-                     'before': _text_of(b), 'after': _text_of(a),
+                     'before': bt, 'after': at,
                      'before_formula': _text_of(bf), 'after_formula': _text_of(af)})
     return rows
 
@@ -414,6 +442,11 @@ def _report_addrs(report, limit=40):
 def _change_side(row, side):
     """明細の片側を文字にする。数式のあるセルは数式の字面を出す（値だけでは検分にならない）。"""
     f = row.get(side + '_formula') or ''
+    if f.startswith('=') and f == (row.get('before_formula') or '') == (row.get('after_formula') or ''):
+        # 式はそのままで値だけ変わった（明細の文字の数字を数に直して小計が変わった）。両側に同じ式を並べると
+        # 「=SUM(G4:G9) → =SUM(G4:G9)」で何が変わったか読めない（2026-09-24 通しの実測 4）＝値を出す
+        v = row.get(side) or ''
+        return f"{v}（式 {f} のまま）" if side == 'after' else v
     return f if f.startswith('=') else (row.get(side) or '')
 
 
@@ -550,7 +583,11 @@ def _agent_backup(wb, ws, sheet, request, run_id=None):
     stem, ext = os.path.splitext(str(wb.Name))
     if not ext.lower().startswith('.xls'):
         ext = '.xlsx'
-    path = os.path.join(BACKUP_DIR, f"{stem}{_AGENT_BACKUP_MARK}{time.strftime('%Y%m%d_%H%M%S')}{ext}")
+    base = os.path.join(BACKUP_DIR, f"{stem}{_AGENT_BACKUP_MARK}{time.strftime('%Y%m%d_%H%M%S')}")
+    path, n = base + ext, 1
+    while os.path.exists(path):                 # 同じ秒の 2 本目が 1 本目の控えを上書きしていた（2026-09-23 実測 3）
+        n += 1
+        path = f"{base}_{n}{ext}"
     try:
         wb.SaveCopyAs(path)
     except Exception as ex:
@@ -794,6 +831,32 @@ def _undo_add_sheet(wb, name):
     _save_undo_meta(meta)
 
 
+def _undo_add_sheets(names, shapes_by=None):
+    """控えの覚書に「このシートも戻す対象」を後から足す（shelf-run・2026-09-23）。
+
+    _undo_add_sheet は書く前に呼ぶ形（図形の位置をそのとき写す）。棚のマクロはどのシートに書くかが
+    撃つまで分からないので、撃つ前に全シートの図形の位置を写しておき（shapes_by）、撃った後に
+    書き換わっていたシートだけを足す。控えのファイルはブック全体なので、中身はそこから戻せる。
+    """
+    names = [str(n) for n in (names or []) if str(n or '').strip()]
+    if not names:
+        return
+    meta = _load_undo_meta()
+    if not isinstance(meta, dict):
+        return
+    have = _undo_sheets(meta)
+    by = dict(meta.get('shapes_by_sheet') or {})
+    for n in names:
+        if n in have:
+            continue
+        have.append(n)
+        if shapes_by and n in shapes_by:
+            by[n] = shapes_by[n]
+    meta['sheets'] = have
+    meta['shapes_by_sheet'] = by
+    _save_undo_meta(meta)
+
+
 def _mark_undo_stale(what, book=None):
     """控えの覚書に「この後で別の仕事をした」と印を付ける（2026-09-04）。
 
@@ -909,6 +972,9 @@ def _delete_created(xl, wb, items):
                 got.Delete()
             elif kind == 'chart':
                 wb.Sheets(sh).ChartObjects(name).Delete()
+            elif kind == 'shape':
+                # 棚のマクロが足した図形・画像・グラフ（shelf-run が撃つ前後の名前の違いで拾う・2026-09-23）
+                wb.Sheets(sh).Shapes(name).Delete()
             elif kind == 'query':
                 wb.Queries(name).Delete()
             elif kind == 'sheet':
@@ -940,41 +1006,6 @@ def _delete_created(xl, wb, items):
         except Exception as ex:
             failed.append(f"{kind} {name}: {ex}")
     return done, failed
-
-
-def _restore_formulas(ws, addr, snap):
-    """貼り戻した範囲の数式を、控えから読んだ字面で入れ直す（外部リンク化を消す）。
-
-    ブックをまたぐ貼り付けは、Excel が別シート参照を控えファイルへの外部リンクに書き換える
-    （='明細'!B2 → ='C:\\…\\[名簿_agent_before_….xlsx]明細'!B2）。控えは 5 個で間引かれるので、
-    そのままだといずれ #REF! になる（2026-09-04・別インスタンスの Excel で再現して確認）。
-    控えの UsedRange から読んだ .Formula は控えブックの中での字面＝外部リンクが付いていないので、
-    貼り付けの直後にそれで上書きすれば元に戻る。
-
-    **入れ直すのは数式のセルだけ**（2026-09-23）。前は範囲の全部を .Formula で書き直していたので、
-    文字で入っていた「1,000」「0021」「4-1」が数値・日付に化けた（.Formula で読むと先頭の ' が落ちる）。
-    戻すための道具が、マクロが触っていない列の合計まで変えていた。値のセルは貼り付けで正しく戻っている。
-    """
-    grid = (snap or {}).get('formulas')
-    if not grid:
-        return None                     # 控えが大きすぎて写せなかった（_SNAPSHOT_MAX_CELLS 超）
-    try:
-        rng = ws.Range(addr)
-        try:
-            cur = _rows_of(rng.Formula)
-        except Exception:
-            cur = None
-        r0, c0 = int(rng.Row), int(rng.Column)
-        for i0, j0, i1, j1 in _formula_blocks(grid, cur):
-            if i0 == i1 and j0 == j1:
-                ws.Cells(r0 + i0, c0 + j0).Formula = grid[i0][j0]
-            else:
-                ws.Range(ws.Cells(r0 + i0, c0 + j0), ws.Cells(r0 + i1, c0 + j1)).Formula = \
-                    tuple(tuple(grid[i][j0:j1 + 1]) for i in range(i0, i1 + 1))
-        return True
-    except Exception as ex:
-        print(f"  ⚠ 数式を控えの字面で入れ直せませんでした: {ex}")
-        return False
 
 
 def _formula_blocks(grid, cur=None):
@@ -1019,6 +1050,41 @@ def _formula_blocks(grid, cur=None):
     return blocks
 
 
+def _restore_formulas(ws, addr, snap):
+    """貼り戻した範囲の数式を、控えから読んだ字面で入れ直す（外部リンク化を消す）。
+
+    ブックをまたぐ貼り付けは、Excel が別シート参照を控えファイルへの外部リンクに書き換える
+    （='明細'!B2 → ='C:\\…\\[名簿_agent_before_….xlsx]明細'!B2）。控えは 5 個で間引かれるので、
+    そのままだといずれ #REF! になる（2026-09-04・別インスタンスの Excel で再現して確認）。
+    控えの UsedRange から読んだ .Formula は控えブックの中での字面＝外部リンクが付いていないので、
+    貼り付けの直後にそれで上書きすれば元に戻る。
+
+    **入れ直すのは数式のセルだけ**（2026-09-23）。前は範囲の全部を .Formula で書き直していたので、
+    文字で入っていた「1,000」「0021」「4-1」が数値・日付に化けた（.Formula で読むと先頭の ' が落ちる）。
+    戻すための道具が、マクロが触っていない列の合計まで変えていた。値のセルは貼り付けで正しく戻っている。
+    """
+    grid = (snap or {}).get('formulas')
+    if not grid:
+        return None                     # 控えが大きすぎて写せなかった（_SNAPSHOT_MAX_CELLS 超）
+    try:
+        rng = ws.Range(addr)
+        try:
+            cur = _rows_of(rng.Formula)
+        except Exception:
+            cur = None
+        r0, c0 = int(rng.Row), int(rng.Column)
+        for i0, j0, i1, j1 in _formula_blocks(grid, cur):
+            if i0 == i1 and j0 == j1:
+                ws.Cells(r0 + i0, c0 + j0).Formula = grid[i0][j0]
+            else:
+                ws.Range(ws.Cells(r0 + i0, c0 + j0), ws.Cells(r0 + i1, c0 + j1)).Formula = \
+                    tuple(tuple(grid[i][j0:j1 + 1]) for i in range(i0, i1 + 1))
+        return True
+    except Exception as ex:
+        print(f"  ⚠ 数式を控えの字面で入れ直せませんでした: {ex}")
+        return False
+
+
 def _drop_backup_link(wb, path):
     """貼り戻しの後、控えファイルへの外部リンクが残っていないか見て、残っていれば外す。
 
@@ -1040,6 +1106,93 @@ def _drop_backup_link(wb, path):
     except Exception as ex:
         print(f"  ⚠ 控えへの外部リンクが残りました（{hit[0]}）。数式を確かめてください: {ex}")
         return False
+
+
+_PAGE_PROPS = ('Orientation', 'PrintTitleRows', 'PrintTitleColumns', 'PrintArea', 'CenterHorizontally',
+               'LeftMargin', 'RightMargin', 'TopMargin', 'BottomMargin')
+_EXTRA_ROWS_MAX = 3000
+
+
+def _restore_sheet_extras(xl, src_ws, ws):
+    """値の貼り戻しでは戻らない物を控えのシートから戻す → 報告の行（2026-09-24・shu「④ の小さい残り」）。
+
+    行の高さ・非表示／印刷設定（向き・拡大縮小と 1 ページに収める・見出しの繰り返し・印刷範囲・余白）／絞り込み
+    （控えに無ければ外す・控えにあれば同じ範囲で付け直す。条件は写せないので、控えで絞り込み中なら言うだけ）。
+    それまでは 行の高さを1ページに収めてそろえる・縦横1ページに収めて印刷設定・絞り込み を撃った後に undo しても戻らなかった。
+    """
+    out = []
+    # 行の高さ・非表示
+    try:
+        last = max(int(src_ws.UsedRange.Row) + int(src_ws.UsedRange.Rows.Count),
+                   int(ws.UsedRange.Row) + int(ws.UsedRange.Rows.Count))
+        n = 0
+        for r in range(1, min(last, _EXTRA_ROWS_MAX) + 1):
+            s, d = src_ws.Rows(r), ws.Rows(r)
+            sh, dh = float(s.RowHeight), float(d.RowHeight)
+            if abs(sh - dh) > 0.01:
+                d.RowHeight = sh
+                n += 1
+            if bool(s.Hidden) != bool(d.Hidden) and not bool(src_ws.FilterMode):
+                d.Hidden = bool(s.Hidden)
+                n += 1
+        if n:
+            out.append(f"行の高さ・非表示を控えに戻しました: {n} 行")
+    except Exception as ex:
+        out.append(f"⚠ 行の高さを戻せませんでした: {ex}")
+    # 絞り込み
+    try:
+        sa, da = bool(src_ws.AutoFilterMode), bool(ws.AutoFilterMode)
+        if da and not sa:
+            ws.AutoFilterMode = False
+            out.append("絞り込みを外しました（控えには無かった）")
+        elif sa:
+            src_addr = str(src_ws.AutoFilter.Range.Address)
+            if not da or str(ws.AutoFilter.Range.Address) != src_addr:
+                if da:
+                    ws.AutoFilterMode = False
+                ws.Range(src_addr).AutoFilter()
+                out.append(f"絞り込みを控えと同じ範囲 {src_addr.replace('$', '')} に付け直しました")
+            elif bool(ws.FilterMode) and not bool(src_ws.FilterMode):
+                ws.ShowAllData()
+                out.append("絞り込みの条件を外しました（控えは全部表示）")
+            if bool(src_ws.FilterMode):
+                out.append("⚠ 控えは絞り込み中でした。条件までは戻せないので、見出しの ▼ から付け直してください")
+    except Exception as ex:
+        out.append(f"⚠ 絞り込みを戻せませんでした: {ex}")
+    # 印刷設定（変わっている所だけ・プリンターとのやり取りを止めて速くする）
+    try:
+        sp, dp = src_ws.PageSetup, ws.PageSetup
+        changed = []
+        try:
+            xl.PrintCommunication = False
+        except Exception:
+            pass
+        try:
+            for k in _PAGE_PROPS:
+                sv, dv = getattr(sp, k), getattr(dp, k)
+                if str(sv) != str(dv):
+                    setattr(dp, k, sv)
+                    changed.append(k)
+            sz, dz = sp.Zoom, dp.Zoom
+            if str(sz) != str(dz) or str(sp.FitToPagesWide) != str(dp.FitToPagesWide) \
+                    or str(sp.FitToPagesTall) != str(dp.FitToPagesTall):
+                if sz is False or str(sz) == 'False':
+                    dp.Zoom = False
+                    dp.FitToPagesWide = sp.FitToPagesWide
+                    dp.FitToPagesTall = sp.FitToPagesTall
+                else:
+                    dp.Zoom = sz
+                changed.append('拡大縮小')
+        finally:
+            try:
+                xl.PrintCommunication = True
+            except Exception:
+                pass
+        if changed:
+            out.append("印刷設定を控えに戻しました（" + "・".join(changed) + "）")
+    except Exception as ex:
+        out.append(f"⚠ 印刷設定を戻せませんでした: {ex}")
+    return out
 
 
 def undo_agent(target_file=None, dry_run=False, force=False, which=None):
@@ -1162,6 +1315,8 @@ def undo_agent(target_file=None, dry_run=False, force=False, which=None):
                     print(f"  ⚠ 控えが大きすぎて「{name}」の数式を写せませんでした"
                           "（外部リンクが残っていないか下の行を見てください）")
                 back_to.append(f"{name}!{addr}")
+                for ln in _restore_sheet_extras(xl, src_ws, ws):
+                    print("  " + ln)
                 try:
                     ws.Activate()             # 図形を貼り戻すには対象シートが前に出ている必要がある
                 except Exception:
@@ -1218,4 +1373,4 @@ def undo_agent(target_file=None, dry_run=False, force=False, which=None):
     return True
 
 
-__all__ = ['_AGENT_BACKUP_KEEP', '_AGENT_BACKUP_MARK', '_AGENT_BACKUP_META_EXT', '_CHANGES_HEADER', '_CHANGES_MAX_ROWS', '_CREATED_PATTERNS', '_EMPTY_SNAPSHOT', '_FORMAT_COLS_MAX', '_HEAVY_OPS', '_LAST_AGENT_CHANGES_FILE', '_LAST_AGENT_UNDO_FILE', '_NUMLIKE_RE', '_READONLY_HEAVY_ACTIONS', '_READONLY_OPS', '_REPORT_ADDR_RE', '_REPORT_DID_RE', '_REPORT_FORMULA_RE', '_REPORT_RANGE_RE', '_REPORT_SAID_BLANK_RE', '_REPORT_SAID_BLANK_WINDOW', '_SNAPSHOT_MAX_CELLS', '_XL_ALIGN', '_XL_BORDERS', '_act_sheet', '_act_writes', '_agent_backup', '_backup_meta_path', '_cell_pair', '_change_side', '_changes_of', '_changes_table', '_clip', '_created_from_results', '_delete_created', '_diff_sheet', '_drop_backup_link', '_find_listobject', '_format_changes', '_format_snapshot', '_format_table', '_formula_rate', '_line_text', '_list_backups', '_load_undo_meta', '_mark_undo_stale', '_mixed', '_other_sheets_in', '_pick_backup', '_pick_shape', '_pivot_sheets_in', '_prune_agent_backups', '_record_created', '_report_addrs', '_report_did_section', '_restore_formulas', '_runs_after', '_same_path', '_save_undo_meta', '_shapes_geometry', '_sheet_snapshot', '_unbound_shape_names', '_undo_add_sheet', '_undo_shapes', '_undo_sheets', '_will_write', '_write_changes_file', 'backups_list', 'backups_prune', 'show_changes', 'undo_agent']
+__all__ = ['_AGENT_BACKUP_KEEP', '_AGENT_BACKUP_MARK', '_AGENT_BACKUP_META_EXT', '_CHANGES_HEADER', '_CHANGES_MAX_ROWS', '_CREATED_PATTERNS', '_EMPTY_SNAPSHOT', '_FORMAT_COLS_MAX', '_HEAVY_OPS', '_LAST_AGENT_CHANGES_FILE', '_LAST_AGENT_UNDO_FILE', '_NUMLIKE_RE', '_READONLY_HEAVY_ACTIONS', '_READONLY_OPS', '_REPORT_ADDR_RE', '_REPORT_DID_RE', '_REPORT_FORMULA_RE', '_REPORT_RANGE_RE', '_REPORT_SAID_BLANK_RE', '_REPORT_SAID_BLANK_WINDOW', '_SNAPSHOT_MAX_CELLS', '_XL_ALIGN', '_XL_BORDERS', '_act_sheet', '_act_writes', '_agent_backup', '_backup_meta_path', '_cell_pair', '_change_side', '_changes_of', '_changes_table', '_clip', '_created_from_results', '_delete_created', '_diff_sheet', '_drop_backup_link', '_find_listobject', '_format_changes', '_format_snapshot', '_format_table', '_formula_blocks', '_formula_rate', '_line_text', '_list_backups', '_load_undo_meta', '_mark_undo_stale', '_mixed', '_other_sheets_in', '_pick_backup', '_pick_shape', '_pivot_sheets_in', '_prune_agent_backups', '_record_created', '_report_addrs', '_report_did_section', '_restore_formulas', '_runs_after', '_same_path', '_save_undo_meta', '_shapes_geometry', '_sheet_snapshot', '_unbound_shape_names', '_undo_add_sheet', '_undo_add_sheets', '_undo_shapes', '_undo_sheets', '_will_write', '_write_changes_file', 'backups_list', 'backups_prune', 'show_changes', 'undo_agent']

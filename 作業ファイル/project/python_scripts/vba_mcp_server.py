@@ -34,7 +34,11 @@ from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 # _last_proc.vba の置き場は vbam_core.LAST_PROC_FILE の 1 か所（get・replace-procedure と同じ物を見る）。
 # ここに別の定数を持つと、テストが vbam_core 側を差し替えても本物の _last_proc.vba を書いてしまう（2026-09-13）
-LAST_VALUES = os.path.join(SCRIPT_DIR, "_last_values.tsv")
+# write_grid・patch_procedure の作業ファイルは常駐ごとに分ける（2026-09-24: Claude と Gemini の常駐が同時に動くと、
+# 同じ _last_values.tsv を互いに上書きして、相手の表を書き込むことがあり得た）
+LAST_VALUES = os.path.join(SCRIPT_DIR, f"_last_values_{os.getpid()}.tsv")
+PATCH_TGT = os.path.join(SCRIPT_DIR, f"_patch_tgt_{os.getpid()}.vba")
+PATCH_REP = os.path.join(SCRIPT_DIR, f"_patch_rep_{os.getpid()}.vba")
 BLOCKED = {"shell", "batch"}  # 対話・標準入力前提のコマンドは MCP では使えない
 
 # 本物の標準入出力（JSON-RPC の通信線）を起動時に控えておく。
@@ -191,6 +195,11 @@ def _release_com_refs():
 
 
 def _tokenize(line):
+    # 切り分けは道具側（vbam_core.split_command_line）に置く＝reload_tools で直しが効く（2026-09-23）。
+    # "…" の中の "" を " 1 つと読む（shlex は引用符を落とし、条件付き書式の式が壊れた）
+    fn = getattr(vba_manager, "split_command_line", None)
+    if fn is not None:
+        return fn(line)
     import shlex
     lex = shlex.shlex(line, posix=True)
     lex.whitespace_split = True
@@ -208,6 +217,11 @@ def _wants_json(line):
 
 
 def _run_line(parser, table, line, buf):
+    # 字句分け・形の外れの受け止め・台帳は道具側（vba_manager.run_command_line）に置く＝reload_tools で直しが効く
+    # （2026-09-24 総点検: ここで parse_known_args していたので、無いコマンドに 130 個の一覧を返し、台帳にも残らなかった）
+    fn = getattr(vba_manager, "run_command_line", None)
+    if fn is not None:
+        return fn(parser, table, line, blocked=tuple(BLOCKED))
     tokens = _tokenize(line)
     sub_args, unknown = parser.parse_known_args(tokens)
     unknown = [u for u in unknown if u not in ("--visible", "-v")]
@@ -233,8 +247,23 @@ def _worker(jobs):
             if jobs is _jobs:
                 _release_com_refs()
             continue
-        if item is None:
-            # 世代交代の停止合図（タイムアウト後に復帰した旧ワーカーはここで退場）
+        if item is None or (isinstance(item, tuple) and len(item) == 2 and item[0] == "__retire__"):
+            # 世代交代の停止合図（タイムアウト後に復帰した旧ワーカーはここで退場）。
+            # 退場する前に、自分のスレッドで作った COM 参照を自分で手放す（2026-09-23）。
+            # 別のスレッド（MCP の本線）から捨てると参照が本当には外れず、サーバーが動いている間ずっと残る
+            # ＝使う人が×で閉じた Excel が終われず、窓の無いまま居座る（Windows を再起動するまで消えなかった）。
+            stash = item[1] if item is not None else []
+            item = None
+            try:
+                stash.clear()
+            except Exception:
+                pass
+            stash = None
+            gc.collect()
+            try:
+                pythoncom.CoUninitialize()
+            except Exception:
+                pass
             break
         line, box, done = item
         with _worker_lock:
@@ -295,11 +324,61 @@ _RELOAD_ORDER = ['vbam_core', 'vbam_view', 'vbam_edit', 'vbam_vba', 'vbam_form2v
                  'vba_manager']   # 依存の順（from X import はこの順で新しくなる）
 
 
+def _reload_order(folder=None):
+    """読み直す順を、各 .py の行頭の import（from X import * / import X）から組む＝依存される側が先。
+
+    手で並べた _RELOAD_ORDER は vbam_view を vbam_vba より前に置いていて、vbam_vba に足した関数が
+    vbam_view の from vbam_vba import * に届かなかった（2026-09-24 総点検: seiri が「run_book_macro is not defined」）。
+    関数の中の import（字下げあり）は数えない＝循環を作らない。並びの同点は _RELOAD_ORDER の順。
+    """
+    import glob
+    import re
+    folder = folder or os.path.dirname(os.path.abspath(__file__))
+    names = list(_RELOAD_ORDER)
+    for p in sorted(glob.glob(os.path.join(folder, "vbam_*.py"))):
+        n = os.path.splitext(os.path.basename(p))[0]
+        if n not in names and not n.startswith("vbam_test"):
+            names.insert(len(names) - 1, n)            # vba_manager は最後のまま
+    known = set(names)
+    pat = re.compile(r"^(?:from\s+(\w+)\s+import|import\s+([\w\s,]+?)(?:\s+as\s+\w+)?\s*(?:#.*)?$)", re.M)
+    deps = {}
+    for n in names:
+        try:
+            with open(os.path.join(folder, n + ".py"), encoding="utf-8") as f:
+                src = f.read()
+        except OSError:
+            deps[n] = []
+            continue
+        ds = []
+        for a, b in pat.findall(src):
+            for d in ([a] if a else [x.strip() for x in b.split(",")]):
+                if d in known and d != n:
+                    ds.append(d)
+        deps[n] = ds
+    order, state = [], {}
+
+    def visit(n):
+        if state.get(n):
+            return                                      # 済み・または辿っている途中（循環）
+        state[n] = 1
+        for d in deps.get(n, []):
+            visit(d)
+        order.append(n)
+
+    for n in names:
+        visit(n)
+    return order
+
+
 def _reload_modules():
     """道具のモジュールを依存の順に importlib.reload する → (ok, 報告文)。ワーカーのスレッドで呼ぶ。"""
     import importlib
     done, skipped, failed = [], [], []
-    for n in _RELOAD_ORDER:
+    try:
+        seq = _reload_order()
+    except Exception:
+        seq = list(_RELOAD_ORDER)
+    for n in seq:
         m = sys.modules.get(n)
         if m is None:
             skipped.append(n)
@@ -335,11 +414,17 @@ def _restart_worker():
     with _worker_lock:
         old = _jobs
         _jobs = queue.Queue()
-        old.put(None)
+        # 接続キャッシュの中身は旧ワーカーのスレッドで作った COM 参照。ここ（MCP の本線）で捨てると
+        # 参照が本当には外れず、Excel が終われなくなる（2026-09-23 のゾンビの正体）。
+        # 中身を包みに移して旧ワーカーに渡し、旧ワーカーが退場するときに自分のスレッドで手放す。
+        stash = []
         try:
-            vba_manager._wb_cache.clear()
+            stash = list(vba_manager._wb_cache.items())
+            vba_manager._wb_cache.clear()      # 包みが握っているので、ここでは参照は外れない
         except Exception:
             pass
+        old.put(("__retire__", stash))
+        stash = None
         threading.Thread(target=_worker, args=(_jobs,), daemon=True).start()
 
 
@@ -595,7 +680,23 @@ def _submit_async(line):
 
 # 2026-09-18 サーバーの名前を vba-manager → excel-manager に（秀エクセルマネージャーとして公開する準備）。
 # ファイル名・コマンド名（vba_manager.py／vba(...)）は変えていない。
-mcp = FastMCP("excel-manager")
+# 2026-09-23 つないだ AI に渡す説明（instructions）を足した。棚撃ち式（seiri → shelf-run）は Claude にだけ
+# 起動時のフックで流していて、Gemini や公開の読者の AI には見えていなかった。
+_INSTRUCTIONS = """秀エクセルマネージャー（excel-manager）。道具は今アクティブに開いている Excel ブックに効く（保存はしない）。
+シートを見るのは vba("materials")（read-range を重ねない）。表について答えるときは番地を添える。
+
+表を直す・整える・点検する依頼は、自分で書く前に「棚」を使う。棚＝秀コンボのモジュール「表の整理」「表の整理_作る」
+「表の整理_調べる」の、言葉で頼んで撃つマクロ（表の書き方と罫線と列幅をそろえる・全列が同じ重複行を削除する・空行を詰める・番号の列を連番に振り直す・表の下に合計行を足す・
+集計表やグラフを作る・点検の一覧 など）:
+ 1. vba("seiri") … 表を整えるマクロを撃ち、直したセル（前→後）・残り（エラーの式・気づき）と、最後に「棚で直せる手」を撃つ順に返す。
+ 2. その手を上から vba("shelf-run 名前 [--select 範囲]") で撃つ。撃つ前に控えを取り、撃った後に差分（番地: 前→後）を返す。
+    選ぶ列のあるマクロは列を 1 列ずつカンマで分ける（--select A1:A9,C1:C9）。戻すのは agent(undo=True)。
+ 3. 棚に無い所だけ vba("write-cells C7 値 …") / write_grid で直し、vba("tidy 表の範囲") で仕上げる。
+    マイナス・桁違い・番号の重複・式に直書きの数など、人の判断が要るものは直さずに番地で報告する。
+依頼文から棚を 1 本選ぶ: vba("shelf --ask 依頼文")。語で探す: vba("shelf --grep 語")（名前・選ぶ列・窓の有無・説明の目録）。
+式がどこから来ているか: vba("trace D31 --depth 3")（シートをまたいで番地・式・値の木）。
+棚が無い（秀コンボを読み込んでいない）ときは、seiri はマクロを撃たずに残りだけを返す＝手で直す。"""
+mcp = FastMCP("excel-manager", instructions=_INSTRUCTIONS)
 
 
 @mcp.tool()
@@ -612,6 +713,11 @@ def vba(command: str) -> str:
       "write-cells C7 値 C11 値 --show"（飛び飛びのセルを1回で） /
       "tidy A5:G13 I5:L11"（表の仕上げ＝見出し・罫線・番号列は左寄せ・数値列は#,##0・列幅。
       列を足したときは足した列だけでなく表全体の範囲を渡す）
+    表を直す・整える・点検する依頼（棚撃ち式・2026-09-23）は、自分で書く前に棚のマクロを使う:
+      "seiri"（表を整えるマクロを撃ち、直したセル・残り・「棚で直せる手」を撃つ順に返す）→ その手を上から
+      "shelf-run 名前 --select A1:A9,C1:C9"（控え→撃つ→差分。戻すのは agent(undo=True)）→ 棚に無い所だけ
+      write-cells / write_grid → "tidy"。棚を探す "shelf --ask 依頼文" / "shelf --grep 語"。
+      式の元をたどる "trace D31 --depth 3"。
     表・数式の列など TSV で書く範囲は write_grid（TSV を文字列で直接渡す。ファイル不要）。
     よく外す手の形（2026-09-19 Gemini の実射で、形を外して使い方が返るだけの往復が 11 回あった）:
       "pivot create Sheet1!A1:G13 --rows 部署 --cols 区分 --values 金額 --func sum --sheet 集計 --name P1" /
@@ -621,6 +727,9 @@ def vba(command: str) -> str:
       "slicer add P1 部署 --name S1 --at A11" / "slicer list" /
       "shape --list"（図形の名前と位置） / "shape G1 --left 216 --top 135 --width 300 --height 180"（動かす・大きさ） /
       "sheet add 新シート --before 既存" / "format-range B2:N2 --merge --bold --bg #1F4E79 --color #FFFFFF --size 16" /
+      "format-range E6:E19 --number-format yyyy/m/d"（日付の形をそろえる） / "fill D6:D17"（先頭のセルの式を下へ写す） /
+      cond-format A6:D17 --formula "=$B6<$C6" --bg #FFC7CE（条件付き書式。式に文字を入れるときは " を "" と重ねる。
+      2026-09-23 Gemini が使い方を引いた 3 つ） /
       "add-module Module1 -y" → set_procedure_code(全文) → "add-procedure Module1 -y"（新しい Sub を足す。直すのは replace_procedure）
     手数の多い組み立て（ダッシュボード・帳票の作り直しなど、10 手を超えそうなもの）は、一手ずつ撃たずに
     VBA のマクロ 1 本に書いて "compile" → "run-macro 名前" で撃つ（同じ仕事が 30 往復・数分 → 1 本・約 1 秒。二度目からは AI も要らない）。
@@ -714,8 +823,7 @@ def patch_procedure(name: str, target: str, replacement: str, module: str = "") 
     replacement: 置換後の新しいコード
     module: 対象モジュール名（同名プロシージャが複数ある場合）
     """
-    tgt_path = os.path.join(SCRIPT_DIR, "_patch_tgt.vba")
-    rep_path = os.path.join(SCRIPT_DIR, "_patch_rep.vba")
+    tgt_path, rep_path = PATCH_TGT, PATCH_REP
     with open(tgt_path, "w", encoding="utf-8") as f:
         f.write(target.replace("\r\n", "\n"))
     with open(rep_path, "w", encoding="utf-8") as f:
@@ -964,6 +1072,11 @@ def _shutdown():
         done.wait(10)
     except Exception:
         pass
+    for p in (LAST_VALUES, PATCH_TGT, PATCH_REP):      # 常駐ごとの作業ファイルを残さない
+        try:
+            os.remove(p)
+        except OSError:
+            pass
 
 
 if __name__ == "__main__":

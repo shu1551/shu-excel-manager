@@ -109,6 +109,27 @@ def cmd_chart(args):
             co.Delete()
             return False
         ch.ChartType = _XL_CHART_TYPE[ctype]
+        if not piv:
+            # 範囲に小計・合計の行や空行が入っていると、それも棒・点になる（2026-09-24 通しの実測 4 の表で
+            # 「総務課 小計」の棒が明細と並んだ）。黙って渡さない
+            try:
+                from vbam_view import _is_total_label
+                vals = rng.Value
+                bad, blank = [], []
+                if isinstance(vals, tuple):
+                    for i, row in enumerate(vals[1:], start=1):
+                        hit = next((v for v in row if _is_total_label(v)), None)
+                        if hit:
+                            bad.append(f"{int(rng.Row) + i}行目「{hit}」")
+                        elif all(v in (None, "") for v in row):
+                            blank.append(f"{int(rng.Row) + i}行目")
+                if bad:
+                    print("⚠ グラフの項目に集計の行が入っています: " + " ".join(bad[:6])
+                          + "  → 明細の行だけの範囲で作り直す（離れた行はカンマで A3:B10,A12:B18 のように）")
+                if blank:
+                    print("⚠ グラフの範囲に空の行があります（空の項目になる）: " + " ".join(blank[:6]))
+            except Exception:
+                pass
         if getattr(args, 'title', None):
             ch.HasTitle = True
             ch.ChartTitle.Text = args.title
@@ -646,6 +667,12 @@ def cmd_pivot(args):
 
         src = "データモデル" if is_model else f"{ws_s.Name}!{rng.Address}"
         print(f"ピボット作成: [{pt.Parent.Name}] {pt.Name}  ソース={src}")
+        if not is_model:
+            try:
+                for ln in _pivot_hide_total_rows(pt, rng):
+                    print(ln)
+            except Exception as ex:
+                print(f"（集計の行を調べられませんでした: {ex}）")
         try:
             caps = [str(pt.DataFields.Item(i).Name) for i in range(1, int(pt.DataFields.Count) + 1)]
         except Exception:
@@ -779,6 +806,62 @@ def _pivot_field_of(pt, field, is_olap):
         except Exception as ex:
             last = ex
     raise ValueError(f"フィールド '{field}' が見つかりません（データモデルのピボットは テーブル名.列名 かメジャー名。{last}）")
+
+
+def _coll_items(coll):
+    """COM の入れ物を番号で取り出す（pywin32 は入れ物を関数でなく物として返すことがある）。"""
+    if callable(coll):
+        coll = coll()
+    return [coll.Item(i) for i in range(1, int(coll.Count) + 1)]
+
+
+def _pivot_hide_total_rows(pt, rng):
+    """元の範囲の集計の行（「総務課 小計」「合計」）をピボットの項目から外す → 報告の行（2026-09-24）。
+
+    pivot create は渡された範囲をそのまま元にするので、明細のあいだの小計と下の合計まで部署の項目になり、
+    総計が 2 倍以上になっていた（通しの実測 4 の表で確かめた）。棚の「ピボットの集計の行を外す」と同じ規則:
+    集計の語の項目を隠し、明細の行でそのキーの列が空のものが 1 つも無ければ「(空白)」も隠す。
+    """
+    from vbam_view import _is_total_label
+    vals = rng.Value
+    if not isinstance(vals, tuple) or len(vals) < 2:
+        return []
+    head = [str(v).strip() if v is not None else "" for v in vals[0]]
+    body = vals[1:]
+    sum_rows = [i for i, row in enumerate(body) if any(_is_total_label(v) for v in row)]
+    lines, hidden = [], []
+    if sum_rows:
+        r0 = int(rng.Row) + 1
+        lines.append("⚠ 元の範囲に集計の行があります: " + " ".join(
+            f"{r0 + i}行目「{next(v for v in body[i] if _is_total_label(v))}」" for i in sum_rows[:6]))
+    for pf in _coll_items(pt.RowFields) + _coll_items(pt.ColumnFields):
+        try:
+            k = head.index(str(pf.SourceName))
+        except ValueError:
+            k = -1
+        blank_detail = k >= 0 and any(
+            (row[k] is None or str(row[k]).strip() == "") and any(v not in (None, "") for v in row)
+            for i, row in enumerate(body) if i not in sum_rows)
+        for pi in _coll_items(pf.PivotItems):
+            nm = str(pi.Name)
+            if _is_total_label(nm) or (nm in ("(空白)", "(blank)") and sum_rows and not blank_detail):
+                try:
+                    pi.Visible = False
+                    hidden.append(nm)
+                except Exception:
+                    pass
+    if hidden:
+        lines.append("  → ピボットの項目から外しました（総計に入りません）: " + "・".join(hidden[:8]))
+    try:
+        dfs = _coll_items(pt.DataFields)
+        if dfs:
+            body_rng = pt.DataBodyRange
+            g = body_rng.Cells(int(body_rng.Rows.Count), int(body_rng.Columns.Count)).Value
+            if isinstance(g, (int, float)):
+                lines.append(f"  総計（{dfs[0].Name}）= {g:,.10g}")
+    except Exception:
+        pass
+    return lines
 
 
 def _data_field_names(d):
@@ -2515,6 +2598,11 @@ def cmd_rehearse(args):
         _, pid = win32process.GetWindowThreadProcessId(xl2.Hwnd)
     except Exception:
         pass
+    if not vbam_core.is_fresh_instance(xl2):
+        # 使う人の Excel に合流した（2026-09-23）。ここで撃つと人のブックを触り、後始末で人の Excel を落とす
+        print(f"エラー: 演習用の Excel を起こせませんでした（使う人の Excel・PID {pid} に合流）。"
+              "Excel を開き直してからやり直してください")
+        return False
     inst = {"xl": xl2, "pid": pid}
     # 後始末の安全網として登録する（本線は下の finally で自前で畳む。
     # 万一そこへ辿り着けなくても cleanup_excel / アイドル解放が拾う）

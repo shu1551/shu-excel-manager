@@ -98,13 +98,6 @@ def test_coerce_cell():
 # form_layout: レイアウト計算の不変条件
 # ================================================================
 
-
-def test_coerce_cell_keeps_leading_zero_numbers_as_text():
-    """先頭が 0 の数字（伝票番号 0004・郵便番号 007）は文字のまま（2026-09-23 通しの実測 2 で A5 が 4 に化けた）。"""
-    from vbam_core import _coerce_cell
-    assert _coerce_cell("0004") == "0004" and _coerce_cell("007") == "007"
-    assert _coerce_cell("0") == 0 and _coerce_cell("10") == 10 and _coerce_cell("0.5") == 0.5
-
 def _std_rows():
     return [
         fl.row(fl.lbl("名前"), fl.txt("txtName")),
@@ -1134,6 +1127,7 @@ def test_injection_route_ledger():
         # 2026-07-12 分割: vba_manager.py の実装は vbam_core/vbam_vba 等へ移動（入口は不変）
         ('vbam_core.py', '_import_module_verified'),  # 取込の中央関数（名前衝突ガード）。内容の識別子検査は呼び元
         ('vbam_vba.py', 'cmd_replace_procedure'),     # validate_vba_code で識別子検査
+        ('vbam_vba.py', '_replace_body_keeping_decl'),  # cmd_replace_procedure の中（検査済みの new_code）・宣言の行は同じものだけ
         ('vbam_vba.py', 'cmd_add_procedure'),         # validate_vba_code で識別子検査
         ('vbam_vba.py', 'cmd_test'),                  # 機械固定名 VMT_n ハーネス＝安全
         # 2026-08-23: run-macro のハーネス（実行時エラーをダイアログにせず番号・説明で持ち帰る）。
@@ -1174,8 +1168,8 @@ def test_injection_route_ledger():
         # マクロを Python が 1〜2 行だけ壊したコードを入れて、macro モードに直させる。Sub 名・識別子は鍛えたとき
         # （_validate_code・check-bas を通った物）のまま変えない。人のブックには書かない（台本は _probe_source の中）
         ('vbam_mend.py', '_probe_source'),
-        # 同じ夜: 表を整える を修理の試験に載せる正解づくり。使い捨ての新しいブックに 表の整理.bas から抜いた元の Sub と
-        # 固定の台（鍛冶_撃つ・名前は Sub 宣言から取った 表を整える だけ）を入れ、試験の表の写しに撃つ。人のブックには書かない
+        # 同じ夜: 表の書き方と罫線と列幅をそろえる を修理の試験に載せる正解づくり。使い捨ての新しいブックに 表の整理.bas から抜いた元の Sub と
+        # 固定の台（鍛冶_撃つ・名前は Sub 宣言から取った 表の書き方と罫線と列幅をそろえる だけ）を入れ、試験の表の写しに撃つ。人のブックには書かない
         ('vbam_mend.py', '_capture'),
     }
     found = set()
@@ -3193,11 +3187,293 @@ def test_seiri_one_command_names_the_error_cause_and_takes_the_screen_book_20260
         def VBComponents(self, m):
             return type("C", (), {"CodeModule": _CM(self.mods[m])})()
 
-    projects = [_Proj("PERSONAL.XLSB", {}), _Proj("秀コンボ.xlam", {"表の整理": "Sub 表を整える()\nEnd Sub\nSub 重複行を消す()"})]
+    projects = [_Proj("PERSONAL.XLSB", {}), _Proj("秀コンボ.xlam", {"表の整理": "Sub 表の書き方と罫線と列幅をそろえる()\nEnd Sub\nSub 全列が同じ重複行を削除する()"})]
     xl = type("X", (), {"VBE": type("V", (), {"VBProjects": projects})()})()
     monkeypatch.setattr(vvba, "_project_book_name", lambda _xl, p: p.name)
-    assert vw._macro_book(xl, "表の整理", "表を整える") == "秀コンボ.xlam"
+    assert vw._macro_book(xl, "表の整理", "表の書き方と罫線と列幅をそろえる") == "秀コンボ.xlam"
     assert vw._macro_book(xl, "表の整理", "無いマクロ") is None
+
+
+def test_fresh_instance_tells_our_own_stage_from_the_users_excel_20260923():
+    """弱点 8・16（2026-09-23）: DispatchEx が使う人の Excel に合流したら「自分の台」と思わない。
+
+    合流したまま撃つと人のブックに書き込み（空の Book300/301 が溜まった）、後始末で人の Excel を落とす。
+    起こしたての台はブック 0 冊なので、そこで見分ける。読めない台は自分のものと決めつけない。
+    """
+    import vbam_core as vc
+    fresh = type("X", (), {"Workbooks": type("W", (), {"Count": 0})()})()
+    users = type("X", (), {"Workbooks": type("W", (), {"Count": 3})()})()
+
+    class _Dead:
+        @property
+        def Workbooks(self):
+            raise RuntimeError("COM が死んでいる")
+
+    assert vc.is_fresh_instance(fresh) is True
+    assert vc.is_fresh_instance(users) is False      # 人のブックを抱えている＝人の Excel
+    assert vc.is_fresh_instance(_Dead()) is False    # 読めない＝畳む側に倒さない
+
+
+def test_grep_takes_the_needle_from_a_file_when_quotes_would_split_it_20260923(tmp_path):
+    """grep / code-replace の --file: 引用符で割れる語（'Like "function *"'）をファイル経由で渡す。
+
+    2026-09-22 に 'Like "function *"' がシェルで 2 つに割れ、検索が外れたまま「無い」と答えていた。
+    """
+    from vbam_vba import _needle_from_file
+    p = tmp_path / "needle.txt"
+    p.write_text('Like "function *"\nこの行は読まない\n', encoding="utf-8")
+    assert _needle_from_file(str(p)) == 'Like "function *"'
+    assert _needle_from_file(None) is None                       # 指定なし＝位置引数を使う
+    assert _needle_from_file(str(tmp_path / "無い.txt")) is False  # 読めない＝止める
+    empty = tmp_path / "empty.txt"
+    empty.write_text("\n語\n", encoding="utf-8")
+    assert _needle_from_file(str(empty)) is False                # 1 行目が空＝全件置換の事故を防ぐ
+    args = vm.build_parser().parse_args(["code-replace", "--file", str(p), "--repl-file", str(p)])
+    assert args.needle_file and args.repl_file                    # 両方ファイルなら位置引数は 0 個でよい
+
+
+def test_shelf_catalog_folds_the_shelf_and_marks_macros_that_open_a_window_20260923(monkeypatch):
+    """棚の目録（shelf）: 名前・選ぶ列・扱う・説明を頭の注記から畳み、本文の MsgBox/InputBox に「窓」の印。
+
+    印が要るのは、窓を出すマクロは COM から押せないから（確認待ちで止まる）。撃つ前に目録で分かる。
+    """
+    import vbam_view as vw
+    import vbam_vba as vvba
+    src = "\n".join([
+        "Sub 表の下に合計行を足す()",
+        "'   扱う: 合計 集計",
+        "'   選ぶ列: -",
+        "'   表の下に合計行を追加する。",
+        "    Dim ws As Worksheet",
+        "    Set ws = ActiveSheet",
+        "End Sub",
+        "Sub 選んだ値に合う行を抜き出す()",
+        "'   扱う: 抽出 検索",
+        "'   選ぶ列: 1",
+        "'   選んでいるセルの値を条件にして抜き出す。",
+        "    cond = InputBox(\"条件は？\")",
+        "End Sub",
+    ])
+    rows = vw._parse_shelf_catalog(src.split("\n"))
+    assert [r["name"] for r in rows] == ["表の下に合計行を足す", "選んだ値に合う行を抜き出す"]
+    assert rows[0]["kind"] == "合計 集計" and rows[0]["sel"] == "-"
+    assert rows[0]["desc"].startswith("表の下に合計行")
+    assert rows[0]["window"] is False              # Dim / Set は窓ではない
+    assert rows[1]["sel"] == "1" and rows[1]["window"] is True
+
+    class _CM:
+        CountOfLines = 3
+
+        def Lines(self, a, b):
+            return "Sub 表の書き方と罫線と列幅をそろえる()\r\nEnd Sub\r\n"
+
+    class _Proj:
+        def __init__(self, name, mods):
+            self.name, self.mods = name, mods
+
+        def VBComponents(self, m):
+            if m not in self.mods:
+                raise RuntimeError("no such module")
+            return type("C", (), {"CodeModule": _CM()})()
+
+    xl = type("X", (), {"VBE": type("V", (), {"VBProjects": [
+        _Proj("PERSONAL.XLSB", {}), _Proj("秀コンボ.xlam", {"表の整理": 1})]})()})()
+    monkeypatch.setattr(vvba, "_project_book_name", lambda _xl, p: p.name)
+    owner, lines = vw._shelf_source(xl)
+    assert owner == "秀コンボ.xlam" and lines[0].startswith("Sub 表の書き方と罫線と列幅をそろえる")
+
+
+def test_trace_reads_refs_across_sheets_and_skips_function_names_20260923():
+    """trace の字面読み: 別シート・絶対参照・範囲は拾い、関数名（LOG10）と文字列の中は拾わない。"""
+    import vbam_view as vw
+    refs = vw._trace_refs("=SUM(明細!E4:E14)+$C$3-LOG10(B2)", "集計")
+    got = [r["text"] for r in refs]
+    assert "明細!E4:E14" in got                      # シートをまたぐ参照
+    assert "集計!C3" in got                          # シート名を書いていない参照は自分のシート
+    assert "集計!B2" in got                          # LOG10 の中の B2 は拾う（LOG10 自体は拾わない）
+    assert not any("LOG" in g for g in got)
+    assert vw._trace_refs('=IF(A1="B2なら",1,0)', "集計")[0]["text"] == "集計!A1"   # 文字列の中は見ない
+    assert vw._trace_refs("りんご", "集計") == []    # 式でなければ何も返さない
+    ext = vw._trace_refs("=[別.xlsx]明細!A1", "集計")
+    assert ext[0]["book"] == "別.xlsx"               # 別ブックは印を付けてたどらない
+    assert vw._trace_range_cells("C2", "C11") == (10, "C2", "C11")
+    assert vw._trace_range_cells("B2", "D3") == (6, "B2", "D3")
+
+
+def test_trace_walk_folds_ranges_and_stops_on_circular_reference_20260923():
+    """trace の木: 範囲は先頭と末尾と件数に畳み、同じ番地に戻ったら循環として止める。"""
+    import vbam_view as vw
+    cells = {("集計", "B2"): ("=SUM(明細!C2:C3)", "760"),
+             ("明細", "C2"): ("=B2*2", "360"), ("明細", "B2"): ("", "180"),
+             ("明細", "C3"): ("", "400"),
+             ("輪", "D1"): ("=D2*2", "0"), ("輪", "D2"): ("=D1+1", "0")}
+
+    class _Rng:
+        def __init__(self, f, t):
+            self.Formula, self.Text = f, t
+
+    class _WS:
+        def __init__(self, name):
+            self.name = name
+
+        def Range(self, a1):
+            f, t = cells[(self.name, a1)]
+            return _Rng(f, t)
+
+    wb = type("WB", (), {"Sheets": staticmethod(lambda n: _WS(n))})()
+    state = {"lines": [], "nodes": 0}
+    vw._trace_walk(wb, "集計", "B2", 3, frozenset(), state, indent=0)
+    text = "\n".join(state["lines"])
+    assert "明細!C2:C3  2 件（先頭 C2 / 末尾 C3）" in text
+    assert "明細!B2  （値）  → 180" in text          # 3 段目（範囲の先頭セルの元）まで降りる
+    state2 = {"lines": [], "nodes": 0}
+    vw._trace_walk(wb, "輪", "D1", 5, frozenset(), state2, indent=0)
+    assert "循環参照" in "\n".join(state2["lines"])
+    assert len(state2["lines"]) == 3                 # D1 → D2 → 循環で止まる（無限に降りない）
+
+
+def test_trace_sees_whole_columns_names_tables_and_what_is_inside_a_range_20260923():
+    """検証（2026-09-23）で黙って落ちていた元: 列まるごと（VLOOKUP の マスタ!A:C・SUMIF の 明細!D:D）・
+    名前（=B2*税率）・テーブルの参照。範囲は先頭と末尾しか見ず「E4 だけ文字の数字」が言えなかった。"""
+    import vbam_view as vw
+    refs = vw._trace_refs('=VLOOKUP("A01",マスタ!A:C,2,FALSE)', "集計")
+    assert [(r["text"], r["whole"]) for r in refs] == [("マスタ!A:C", "col")]
+    refs = vw._trace_refs('=SUMIF(明細!D:D,"消耗品",明細!E:E)+SUM($3:$5)', "集計")
+    assert [r["text"] for r in refs] == ["明細!D:D", "明細!E:E", "集計!3:5"]
+    assert refs[2]["whole"] == "row"
+    ext = vw._trace_refs("='C:\\dir\\[別.xlsx]明細'!A1", "集計")
+    assert ext[0]["book"] == "別.xlsx" and ext[0]["sheet"] == "明細"   # 閉じた別ブックの字面
+    names = {"税率": "=マスタ!$F$1", "rate": "=0.1"}
+    got, tabs = vw._trace_words("=B2*税率+SUM(売上[金額])+[@単価]*Rate", names, {"売上"})
+    assert got == ["税率", "Rate"]
+    assert tabs == ["売上[金額]", "[@単価]"]
+    assert vw._trace_words('=SUM(B2:B5)&"税率"', names, set()) == ([], [])   # 文字列の中は名前ではない
+    line = vw._trace_summary_line([[12000.0], ["1,000"], [None], [-2146826281], ["　２，５００円"]],
+                                  [[12000], ["1,000"], [""], ["=1/0"], ["　２，５００円"]], None, 2, 5)
+    assert "数 1" in line and "文字の数字 2（E3 \"1,000\"・E6" in line
+    assert "空 1" in line and "エラー 1（E5 #DIV/0!）" in line and "うち式 1" in line
+    assert "SUM・AVERAGE・COUNT は文字の数字を数えない" in line
+
+
+def test_diagnose_does_not_call_total_rows_copy_mistakes_and_errors_print_as_text_20260923():
+    """お試し版のテスト用1（2026-09-23）で出た 2 つ: diagnose が G27 =SUM(G6:G25)・G28 =AVERAGE(G6:G25) を
+    「コピペミス疑い」と出した／materials の値の格子に D31 の #DIV/0! が -2146826281 と出た。"""
+    import vbam_audit as au
+    import vbam_core as vc
+    assert au._is_column_total("=SUM(R[-21]C:R[-2]C)", 27) is True
+    assert au._is_column_total("=AVERAGE(R[-22]C:R[-3]C)", 28) is True
+    assert au._is_column_total("=SUBTOTAL(109,R6C:R25C)", 27) is True
+    assert au._is_column_total("=SUM(R[-21]C:R[-2]C[1])", 27) is False     # 別の列を足している
+    assert au._is_column_total("=SUM(R[1]C:R[5]C)", 27) is False           # 下を足している
+    assert au._is_column_total("=RC[-2]*RC[-1]", 27) is False
+    # G6:G25 が =E*F・G27 合計・G28 平均・G29 だけ本当に形の違う式（start_row/start_col は 0 始まり）
+    r1c1 = [["=RC[-2]*RC[-1]"]] * 20 + [[None], ["=SUM(R[-21]C:R[-2]C)"], ["=AVERAGE(R[-22]C:R[-3]C)"], ["=RC[-2]"]]
+    a1 = [[f"=E{6 + i}*F{6 + i}"] for i in range(20)] + [[None], ["=SUM(G6:G25)"], ["=AVERAGE(G6:G25)"], ["=E29"]]
+    vals = [[1.0]] * 20 + [[None], [20.0], [1.0], [1.0]]
+    issues = [i for i in au.check_formula_linter(a1, r1c1, vals, 5, 6) if i["type"] == "inconsistent_formula"]
+    assert [i["cell"] for i in issues] == ["G29"]                         # 本当に形の違う式だけ残る
+    assert vc._cell_str(-2146826281) == "#DIV/0!" and vc._cell_str(-2146826246) == "#N/A"
+    assert vc._cell_str(3) == "3" and vc._cell_str(True) == "True"
+
+
+def test_command_line_keeps_doubled_quotes_inside_quotes_20260923():
+    """入口の切り分け: "…" の中の "" は " 1 つ（Excel の式の書き方）。shlex は引用符を落としていた。
+    \\ はエスケープにしない（Windows のパス）、# はコメントにしない、空の "" は空の引数。"""
+    from vbam_core import split_command_line as sp
+    q = '"'
+    line = f'cond-format A6:D17 --formula {q}=$D6={q}{q}要発注{q}{q}{q} --bg #FFC7CE'
+    assert sp(line) == ["cond-format", "A6:D17", "--formula", '=$D6="要発注"', "--bg", "#FFC7CE"]
+    assert sp('find "" x') == ["find", "", "x"]
+    assert sp("grep 'Like \"f *\"'") == ["grep", 'Like "f *"']
+    assert sp(r'write-cells C7 "a b" C8 C:\x\y') == ["write-cells", "C7", "a b", "C8", r"C:\x\y"]
+    assert sp('shape --list --sheet "売上 2026"') == ["shape", "--list", "--sheet", "売上 2026"]
+    assert sp('tidy  A1:B2 ') == ["tidy", "A1:B2"]
+    import vba_manager as vm_
+    assert vm_.split_command_line is sp                      # MCP の入口が道具側の切り分けを使う
+
+
+def test_write_warns_when_a_value_is_only_blanks_20260923():
+    """テスト用5 で空欄のつもりの E9 に全角スペースを書いた。空白だけの値を書いたら番地で言う（純 Python）。"""
+    from vbam_edit import _blank_like_note, _grid_cells
+    cells = _grid_cells(8, 1, [["1", "2026/01/05", "佐藤", "", "　", "備考"], ["2", " ", "", "", "", "x"]])
+    note = _blank_like_note(cells)
+    assert "E8" in note and "B9" in note and "D8" not in note     # 空の "" は空欄＝言わない
+    assert _blank_like_note([("A1", "佐藤"), ("A2", ""), ("A3", None)]) == ""
+
+
+def test_cond_format_readback_flags_a_word_that_lost_its_quotes_20260923():
+    """テスト用3（2026-09-23）: --formula で渡した ="要発注" の引用符が引数の読み取りで落ち、=$D6=要発注 で
+    登録された（常に #NAME?＝1 セルも塗られない）。読み戻して、引用符の外の日本語の語を知らせる（純 Python）。"""
+    from vbam_edit import _cond_format_bare_word
+    assert _cond_format_bare_word("=$D6=要発注") == "要発注"
+    assert _cond_format_bare_word('=$D6="要発注"') == ""
+    assert _cond_format_bare_word("=$B6<$C6") == ""
+    assert _cond_format_bare_word('=AND($B6<$C6,$A6<>"")') == ""
+
+
+def test_write_unmerges_only_merges_whose_values_excel_would_drop_20260923():
+    """書く前の結合解除は、Excel が値を捨てる結合だけ（左上以外に空でない値を書くとき）。
+    9/23 朝に入った「無条件に解く」は、値の無い見出しの結合まで黙って消していた（純 Python）。"""
+    from vbam_edit import _merges_dropping_values
+    grid = [["売上表", "", ""],          # A1:C1 の結合＝左上だけに値 → 残す
+            ["品名", "数", "金額"],
+            ["用紙", "2", "1000"]]       # B3:C3 の結合に 2 つ値 → 解く
+    assert _merges_dropping_values(["A1:C1", "B3:C3"], grid, 1, 1) == ["B3:C3"]
+    # 結合の左上が書く範囲の外（B1 から書く）＝範囲の中は全部左上以外 → 値があれば解く
+    assert _merges_dropping_values(["A1:C1"], [["y", "z"]], 1, 2) == ["A1:C1"]
+    assert _merges_dropping_values(["A1:C1"], [["", ""]], 1, 2) == []
+    assert _merges_dropping_values([], grid, 1, 1) == []
+
+
+def test_shelf_catalog_falls_back_to_the_request_words_and_greps_them_20260923():
+    """説明の注記が無い Sub（118 本のうち 38 本）は「依頼の語」を説明の代わりに出す（空の説明では選べない）。"""
+    import vbam_view as vw
+    src = "\n".join([
+        "Sub 別シートと突合し差異を書く()",
+        "    ' 依頼の語: 突合|照合|突き合わせ",
+        "    ' 扱う: 突合 照合",
+        "    Dim ws As Object",
+        "End Sub",
+    ])
+    rows = vw._parse_shelf_catalog(src.split("\n"))
+    assert rows[0]["desc"] == "（依頼の語）突合・照合・突き合わせ"
+    assert rows[0]["ask"] == "突合|照合|突き合わせ"
+
+
+def test_shelf_book_changes_finds_what_undo_must_remove_and_other_sheets_20260923():
+    """shelf-run の撃つ前後のブックの違い: 足したシート・図形・テーブル・名前は undo で消す物に、
+    書き換わった別シートは undo で戻すシートに。消えたシート・名前は「戻らない」と言う（純 Python）。"""
+    import vbam_view as vw
+    # 書いた中身の指紋は文字の「21」と数の 21 を分け、式のセルは字面だけ（値は別の指紋＝再計算を見分ける）
+    assert vw._fingerprint_of((("21",),), (("21",),))[0] != vw._fingerprint_of((("21",),), ((21.0,),))[0]
+    same_f = vw._fingerprint_of((("=A1*2",),), ((10.0,),)), vw._fingerprint_of((("=A1*2",),), ((12.0,),))
+    assert same_f[0][0] == same_f[1][0] and same_f[0][1] != same_f[1][1]
+    before = {'order': ['明細', '集計', '別表'],
+              'fp': {'明細': ('A1:E11', 1, 1), '集計': ('A1:B6', 2, 2), '別表': ('A1:B2', 5, 6)},
+              'geom': {'明細': [], '集計': [{'name': 'ロゴ'}]}, 'tables': set(), 'pivots': set(),
+              'names': {'税率': '=マスタ!$F$1', '古い': '=#REF!'}, 'queries': set()}
+    after = {'order': ['明細', '集計', '別表', '調査_表の作り'],
+             'fp': {'明細': ('A1:G11', 9, 9), '集計': ('A1:B6', 3, 3), '別表': ('A1:B2', 5, 7),
+                    '調査_表の作り': ('A1:K10', 4, 4)},
+             'geom': {'明細': [{'name': 'Chart 1'}], '集計': [{'name': 'ロゴ'}],
+                      '調査_表の作り': [{'name': 'Chart 9'}]},
+             'tables': {('明細', 'テーブル1')}, 'pivots': set(),
+             'names': {'税率': '=マスタ!$F$1', '見出し_金額': '=明細!$E$2:$E$11'}, 'queries': set()}
+    bc = vw._shelf_book_changes(before, after, '明細')
+    assert bc['created'] == [{'kind': 'sheet', 'name': '調査_表の作り'},
+                             {'kind': 'shape', 'sheet': '明細', 'name': 'Chart 1'},
+                             {'kind': 'table', 'sheet': '明細', 'name': 'テーブル1'},
+                             {'kind': 'name', 'name': '見出し_金額'}]
+    assert bc['changed'] == ['集計']                 # 対象シート（明細）は控えの覚書に元から入っている
+    assert bc['recalc'] == ['別表']                  # 式はそのまま・値だけ変わった＝書き換えていない
+    assert bc['lost_names'] == ['古い'] and bc['removed'] == []
+    lines = vw._shelf_book_lines(bc)
+    assert "足されたシート: 調査_表の作り" in lines and "足された図形・グラフ: 明細!Chart 1" in lines
+    assert any(ln.startswith("書き換わった別のシート: 集計") for ln in lines)
+    assert any("消えた名前: 古い" in ln and "戻りません" in ln for ln in lines)
+    # 何も変わらなかったとき、選ぶ列のあるマクロには選び方の一言
+    assert "列は 1 列ずつカンマで分けて" in vw._shelf_nothing_hint({'sel': '2'})
+    assert "列は" not in vw._shelf_nothing_hint({'sel': '-'})
 
 
 def test_content_findings_catch_errors_sum_mismatch_and_broken_formula_column():
@@ -3493,7 +3769,7 @@ def _messy_rows_20260911():
             ["株式会社サンライズ ", "田中 太郎", "0312345678", "TANAKA@EXAMPLE.CO.JP", "1,500,000", "相談中"],
             ["株式会社スカイネット", "加藤 健", "03-1111-9999", "kato@example.jp", 3500000, "Active"],
             ["有限会社みらい工芸", "鈴木 健二", "045-111-2222", "suzuki@example.jp", 500000, "受注済み"],
-            ["株式会社ハートビート", "木村 拓", "03-8888-2222", "kimura@example.jp", 300000, "相談中"]]
+            ["株式会社ハートビート", "木村 拓", "03-1888-2222", "kimura@example.jp", 300000, "相談中"]]
 
 
 def test_duplicates_are_matched_through_spelling_and_lost_rows_are_seen_20260911():
@@ -3551,14 +3827,14 @@ def test_a_name_column_is_not_an_id_column_after_dedupe_20260911():
 
 
 def test_phone_rule_splits_only_what_it_can_know_20260911():
-    """名古屋の 052-333-4444 を AI の正規表現が 05-2333-4444 にした。区切りは道具が決め、決まらなければ残す。"""
+    """名古屋の 052-133-4444 を AI の正規表現が 05-2133-4444 にした。区切りは道具が決め、決まらなければ残す。"""
     import vbam_hands as vh
-    col = ["0523334444", "03-1234-5678", "0120555666", "+81-3-6666-5555", "+81-45-1111-2222",
-           "０３１１１１９９９９", "09012345678", "0612345678", "0182-32-1234", "0182325678", "0187123456"]
+    col = ["0521334444", "03-1234-5678", "0120555666", "+81-3-1666-5555", "+81-45-1111-2222",
+           "０３１１１１９９９９", "09002345678", "0612345678", "0182-12-1234", "0182125678", "0187123456"]
     rules = [("trim", None), ("phone", None)]
     out, counts, _ex = vh._normalize_column(col, rules)
-    assert out == ["052-333-4444", "03-1234-5678", "0120-555-666", "03-6666-5555", "045-1111-2222",
-                   "03-1111-9999", "090-1234-5678", "06-1234-5678", "0182-32-1234", "0182-32-5678", "0187123456"]
+    assert out == ["052-133-4444", "03-1234-5678", "0120-555-666", "03-1666-5555", "045-1111-2222",
+                   "03-1111-9999", "090-0234-5678", "06-1234-5678", "0182-12-1234", "0182-12-5678", "0187123456"]
     assert counts["phone"] == 8
     assert vh._phone_format("0920123456") == "0920123456"      # 0920（壱岐）を 092（福岡）で切らない
     assert "phone" in vh._NORMALIZE_RULES
@@ -3739,6 +4015,33 @@ def test_call_log_write_and_stats(monkeypatch, tmp_path, capsys):
     assert "記録がありません" in capsys.readouterr().out
 
 
+def test_call_log_keeps_the_options_that_tell_what_the_call_did(monkeypatch, tmp_path):
+    """台帳に --select・--formula などを残す（2026-09-23 Gemini の試し: shelf-run の選んだ列が台帳に無かった）。
+    本物の読み取り（build_parser）を通して、argparse の中の名前と台帳の名前がずれていないかも確かめる。"""
+    import json
+    import vbam_core as vc
+    import vba_manager as vmgr
+    log = tmp_path / "calls.jsonl"
+    monkeypatch.setattr(vc, "_CALL_LOG_FILE", str(log))
+    p = vmgr.build_parser()
+    lines = ["shelf-run 選んだ2列の項目別合計表を作る --select D5:D25,E5:E25 --sheet テスト用1",
+             "shelf --ask 担当ごとの数量合計を出して",
+             "trace D31 --depth 3",
+             'cond-format A6:D17 --formula "=$B6<$C6" --bg #FFC7CE',
+             "format-range E6:E19 --number-format yyyy/m/d",
+             "seiri --dedupe"]
+    for ln in lines:
+        a = p.parse_args(vc.split_command_line(ln))
+        vc.call_log_write(a.command, a, 0.1, True, via="mcp")
+    got = [json.loads(x)["args"] for x in log.read_text(encoding="utf-8").splitlines()]
+    assert got[0] == "選んだ2列の項目別合計表を作る --select D5:D25,E5:E25 --sheet テスト用1"
+    assert got[1] == "--ask 担当ごとの数量合計を出して"
+    assert got[2] == "D31 --depth 3"
+    assert got[3] == "A6:D17 --formula =$B6<$C6 --bg #FFC7CE"
+    assert got[4] == "E6:E19 --number-format yyyy/m/d"
+    assert got[5] == "--dedupe"
+
+
 def test_command_table_logs_outer_call_only(monkeypatch, tmp_path):
     """表の実装は台帳の包みつき。外側の 1 回だけ記録し、入れ子（batch／agent の中の手）は数えない。"""
     import json
@@ -3804,12 +4107,12 @@ def test_lost_rows_reads_serial_dates_against_date_column():
     import datetime as _dt
     from vbam_hands import _lost_rows
     before = [['会社', '電話', '登録日', '取引額'],
-              ['a社', '0187634853', '20250526', '4422000円'],
-              ['b社', '0185 62 4228', 43795, 4229000],
+              ['a社', '0187134853', '20250526', '4422000円'],
+              ['b社', '0185 12 4228', 43795, 4229000],
               ['c社', '03-1111-2222', _dt.date(2020, 1, 2), 100]]
     after = [['会社', '電話', '登録日', '取引額'],
-             ['a社', '0187-63-4853', _dt.datetime(2025, 5, 26), 4422000],
-             ['b社', '0185-62-4228', _dt.date(1899, 12, 30) + _dt.timedelta(days=43795), 4229000],
+             ['a社', '0187-13-4853', _dt.datetime(2025, 5, 26), 4422000],
+             ['b社', '0185-12-4228', _dt.date(1899, 12, 30) + _dt.timedelta(days=43795), 4229000],
              ['c社', '03-1111-2222', _dt.date(2020, 1, 2), 100]]
     assert _lost_rows(before, after, 0, 0) == []
     assert _lost_rows(before, after[:2] + after[3:], 0, 0) == [2]
@@ -3841,12 +4144,12 @@ def test_fired_ledger_counts_and_summary(tmp_path, monkeypatch):
     """2026-09-18 夜: 先撃ちで撃ったマクロの名前を残し、回数と「一度も撃たれていない本」を出す（引退の判断に使う）。"""
     import vbam_ledger as vl
     monkeypatch.setattr(vl, '_FIRED_FILE', str(tmp_path / 'f.jsonl'))
-    vl.fired_append('r1', 'a.xlsx', 'S', '合計行を足して', ['表を整える', '合計行を足す'], ['秀コンボ.xlam'])
-    vl.fired_append('r2', 'b.xlsx', 'S', '合計行', ['合計行を足す'])
+    vl.fired_append('r1', 'a.xlsx', 'S', '合計行を足して', ['表の書き方と罫線と列幅をそろえる', '表の下に合計行を足す'], ['秀コンボ.xlam'])
+    vl.fired_append('r2', 'b.xlsx', 'S', '合計行', ['表の下に合計行を足す'])
     c = vl.fired_counts()
-    assert c['合計行を足す'][0] == 2 and c['表を整える'][0] == 1
-    txt = vl.fired_summary(['合計行を足す', '散布図を作る'])
-    assert '2 回  合計行を足す' in txt and '一度も撃たれていない' in txt and '散布図を作る' in txt
+    assert c['表の下に合計行を足す'][0] == 2 and c['表の書き方と罫線と列幅をそろえる'][0] == 1
+    txt = vl.fired_summary(['表の下に合計行を足す', '散布図を作る'])
+    assert '2 回  表の下に合計行を足す' in txt and '一度も撃たれていない' in txt and '散布図を作る' in txt
     monkeypatch.setattr(vl, '_FIRED_FILE', str(tmp_path / 'none.jsonl'))
     assert '記録がありません' in vl.fired_summary()
 
@@ -3955,3 +4258,612 @@ def test_generated_vba_never_reads_err_after_on_error_goto_0_20260920():
             elif cleared and ('Err.Number' in t or 'Err.Description' in t):
                 bad.append('%s: %s' % (os.path.basename(path), t))
     assert not bad, 'On Error GoTo 0 の後で Err を読んでいる（常に 0 になる）: %s' % bad
+
+
+def test_changes_of_text_number_to_number_is_a_change():
+    """「文字の数字 → 数」（"12" → 12）は字面が同じでも直した所として出す（2026-09-23・seiri の明細から漏れた）。"""
+    import vbam_undo as vu
+    assert vu._num_or_text("12") == "文字" and vu._num_or_text(12.0) == "数"
+    assert vu._num_or_text(None) == "" and vu._num_or_text(True) == "" and vu._num_or_text("  ") == ""
+
+
+def test_coerce_cell_keeps_leading_zero_numbers_as_text():
+    """先頭が 0 の数字（伝票番号 0004・郵便番号 007）は文字のまま（2026-09-23 通しの実測 2 で A5 が 4 に化けた）。"""
+    from vbam_core import _coerce_cell
+    assert _coerce_cell("0004") == "0004" and _coerce_cell("007") == "007"
+    assert _coerce_cell("0") == 0 and _coerce_cell("10") == 10 and _coerce_cell("0.5") == 0.5
+
+
+def test_mcp_retired_worker_releases_its_own_com_refs(monkeypatch):
+    """世代交代で退場する旧ワーカーは、接続キャッシュの COM 参照を自分のスレッドで手放す（2026-09-23 のゾンビ）。
+    MCP の本線で捨てると参照が本当には外れず、×で閉じた Excel が終われずに居座った。"""
+    import queue as _q
+    import threading as _th
+    import vba_mcp_server as ms
+    released = []
+
+    class Ref:
+        def __del__(self):
+            released.append(_th.current_thread().name)
+
+    # _restart_worker: 本線では手放さず、包みに移して旧ワーカーへ渡す
+    started = []
+    monkeypatch.setattr(ms.threading, "Thread", lambda target, args, daemon: type(
+        "T", (), {"start": lambda self: started.append(args)})())
+    old_q = ms._jobs
+    cache = ms.vba_manager._wb_cache
+    cache.clear()
+    cache["book"] = (Ref(), 0)
+    ms._restart_worker()
+    assert released == [] and not cache and started
+    monkeypatch.undo()                        # ここから先は本物のスレッドで旧ワーカーを走らせる
+    item = old_q.get_nowait()
+    assert item[0] == "__retire__" and len(item[1]) == 1
+    # 旧ワーカー: 包みを受け取ったら自分のスレッドで手放して退場する
+    q = _q.Queue()
+    q.put(item)
+    item = None
+    t = _th.Thread(target=ms._worker, args=(q,), name="old-worker")
+    t.start()
+    t.join(5)
+    assert not t.is_alive() and released == ["old-worker"]
+
+
+# ================================================================
+# 2026-09-24 呼び出し台帳の失敗の型: 字下げ違いの patch・古いモジュール名・位置引数のモジュール名
+# ================================================================
+
+class _PCodeModule:
+    def __init__(self, procs):
+        self._procs = procs                       # 名前 → 本文の行のリスト
+
+    def ProcStartLine(self, name, kind):
+        if name not in self._procs:
+            raise Exception("not found")
+        return 1
+
+    def ProcCountLines(self, name, kind):
+        return len(self._procs[name])
+
+    def Lines(self, start, count):
+        return '\r\n'.join(next(iter(self._procs.values())))
+
+
+class _PComp:
+    def __init__(self, name, procs):
+        self.Name = name
+        self.CodeModule = _PCodeModule(procs)
+
+
+class _PWb:
+    def __init__(self, comps):
+        self.VBProject = type('P', (), {'VBComponents': comps})()
+
+
+@_needs_srv
+def test_reload_order_puts_every_top_level_import_first():
+    """reload_tools の順は、行頭の import で依存される側が先（手の並びで vbam_view が vbam_vba より前だった・2026-09-24）。"""
+    order = _srv._reload_order()
+    pos = {n: i for i, n in enumerate(order)}
+    assert pos['vbam_vba'] < pos['vbam_view'] and pos['vbam_core'] == 0
+    import re as _re
+    here = os.path.dirname(os.path.abspath(_srv.__file__))
+    pat = _re.compile(r"^(?:from\s+(\w+)\s+import|import\s+(\w+))", _re.M)
+    for n in order:
+        with open(os.path.join(here, n + ".py"), encoding="utf-8") as f:
+            for a, b in pat.findall(f.read()):
+                d = a or b
+                if d in pos and d != n:
+                    assert pos[d] < pos[n], f"{n} が {d} より先に読み直される"
+
+
+def test_book_holding_proc_moves_only_to_the_one_xlsm(monkeypatch):
+    """前に出ているのが試しの表で、マクロが秀コンボ.xlsm にだけあるなら移る。.xlam だけ・2 冊・手元にある なら移らない。"""
+    other = _PWb([_PComp('表の整理', {'表の書き方と罫線と列幅をそろえる': ['Sub 表の書き方と罫線と列幅をそろえる()', 'End Sub']})])
+    other.Name, other.FullName = '秀コンボ.xlsm', r'C:\x\秀コンボ.xlsm'
+    me = _PWb([_PComp('Sheet1', {})])
+    me.Name = '実測4.xlsx'
+    me.Application = type('A', (), {'Workbooks': staticmethod(lambda n: other)})()
+    hits = []
+    monkeypatch.setattr(vv, '_other_books_with_proc', lambda wb, name: hits)
+    hits[:] = [('秀コンボ.xlsm', '表の整理'), ('秀コンボ.xlam', '表の整理')]
+    assert vv._book_holding_proc(me, '表の書き方と罫線と列幅をそろえる') is other
+    hits[:] = [('秀コンボ.xlam', '表の整理')]
+    assert vv._book_holding_proc(me, '表の書き方と罫線と列幅をそろえる') is None
+    hits[:] = [('A.xlsm', 'M'), ('B.xlsm', 'M')]
+    assert vv._book_holding_proc(me, '表の書き方と罫線と列幅をそろえる') is None
+    hits[:] = [('秀コンボ.xlsm', '表の整理')]
+    assert vv._book_holding_proc(other, '表の書き方と罫線と列幅をそろえる') is None      # 手元にあれば移らない
+
+
+def test_project_book_name_does_not_pin_a_ghost_project_on_an_unsaved_book():
+    """ファイルの無い抜け殻（棚の古い写し）を、同じ VBAProject という名の未保存 Book20 と取り違えない。"""
+    class _Proj:
+        def __init__(self, names, fn=None):
+            self.Name = 'VBAProject'
+            self.VBComponents = [type('C', (), {'Name': n})() for n in names]
+            self._fn = fn
+
+        @property
+        def Filename(self):
+            if self._fn is None:
+                raise Exception('com_error')
+            return self._fn
+    book = type('W', (), {'Name': 'Book20', 'Path': '', 'VBProject': _Proj(['ThisWorkbook', 'Sheet1'])})()
+    xl = type('X', (), {'Workbooks': [book]})()
+    assert vv._project_book_name(xl, _Proj(['ThisWorkbook', '表の整理', '表の整理_作る'])) is None
+    assert vv._project_book_name(xl, _Proj(['Sheet1', 'ThisWorkbook'])) == 'Book20'
+    assert vv._project_book_name(xl, _Proj(['x'], fn=r'C:\a\秀コンボ.xlsm')) == '秀コンボ.xlsm'
+
+
+def test_patch_loose_ignores_indent_and_reindents_replacement():
+    code = "Sub A()\n    If x Then\n        y = 1\n    End If\nEnd Sub\n"
+    new, n = vv._patch_loose(code, "If x Then\n    y = 1\nEnd If", "If x Then\n    y = 2\nEnd If")
+    assert n == 1
+    assert "    If x Then\n        y = 2\n    End If" in new, new
+
+
+def test_patch_loose_counts_duplicates_and_misses():
+    code = "Sub A()\n    y = 1\n    y = 1\nEnd Sub"
+    assert vv._patch_loose(code, "y = 1", "y = 2") == (None, 2)
+    assert vv._patch_loose(code, "z = 1", "y = 2") == (None, 0)
+
+
+def test_print_nearest_lines_shows_the_line_that_differs(capsys):
+    code = "Sub A()\n    Dim 行 As Long\n    行 = 表の終わり(ws)\nEnd Sub"
+    vv._print_nearest_lines(code, "Dim 行 As Long\n行 = 表の最終行(ws)", "Mod1")
+    out = capsys.readouterr().out
+    assert "表の最終行" in out and "表の終わり(ws)" in out and "3 行目" in out
+    assert out.count("target の行") == 1, "実物にある行（Dim 行 As Long）は出さない"
+
+
+def test_extract_proc_falls_back_to_the_module_that_has_it(capsys):
+    wb = _PWb([_PComp("表の整理", {"表の書き方と罫線と列幅をそろえる": ["Sub 表の書き方と罫線と列幅をそろえる()", "End Sub"]}),
+               _PComp("表の整理_作る", {"平均の表": ["Sub 平均の表()", "End Sub"]})])
+    comp, code = vv._extract_proc(wb, "表の整理", "平均の表")
+    assert comp == "表の整理_作る" and "Sub 平均の表()" in code
+    assert "表の整理_作る にありました" in capsys.readouterr().out
+
+
+def test_extract_proc_fallback_refuses_when_ambiguous():
+    wb = _PWb([_PComp("M1", {"X": ["Sub X()", "End Sub"]}),
+               _PComp("M2", {"X": ["Sub X()", "End Sub"]}),
+               _PComp("M3", {"Y": ["Sub Y()", "End Sub"]})])
+    with _pytest.raises(ValueError):
+        vv._extract_proc(wb, "M3", "X")
+    assert vv._extract_proc(wb, "M3", "Z") == (None, None)
+
+
+def test_replace_procedure_reads_positional_module_name(monkeypatch, tmp_path, capsys):
+    code = tmp_path / "p.vba"
+    code.write_text("Sub FindBorders()\nEnd Sub\n", encoding="utf-8")
+    monkeypatch.setattr(vv, "LAST_PROC_FILE", str(code))
+
+    class _Stop(Exception):
+        pass
+
+    def _no_excel(*a, **k):
+        raise _Stop()
+    monkeypatch.setattr(vv, "get_workbook", _no_excel)
+    args = _ap.Namespace(posargs=["BorderFinder", "FindBorders"], code_file_opt=None,
+                         module_opt=None, yes=True, force=False)
+    with _pytest.raises(_Stop):
+        vv.cmd_replace_procedure(args)
+    assert args.module_opt == "BorderFinder"
+    assert "モジュール名と読みました" in capsys.readouterr().out
+
+
+def test_split_command_line_reads_backslash_quote_inside_quotes():
+    import vbam_core as _vc
+    s = _vc.split_command_line
+    assert s(r'grep "Like \"function *\""') == ['grep', 'Like "function *"']
+    assert s(r'write-cells A1 "=IF(B1=\"x\",1,0)"') == ['write-cells', 'A1', '=IF(B1="x",1,0)']
+    # \ で終わるパスの閉じは今までどおり
+    assert s(r'export-all --dir "C:\out\" -y') == ['export-all', '--dir', 'C:\\out\\', '-y']
+    assert s(r'export-all --dir "C:\out\"') == ['export-all', '--dir', 'C:\\out\\']
+    # Excel の書き方 "" も今までどおり
+    assert s('cond-format A1 --formula "=$D6=""要発注"""') == ['cond-format', 'A1', '--formula', '=$D6="要発注"']
+
+
+def test_call_log_keeps_why_a_call_failed(monkeypatch, tmp_path):
+    """失敗した手の理由の 1 行を台帳に残す（2026-09-24: ok=false しか無く、何で落ちたかを後から読めなかった）。
+    MCP と同じく、出力がスレッドのバッファ（_target が返す StringIO）に溜まる形で確かめる。"""
+    import io as _io
+    import json
+    import vbam_core as vc
+    log = tmp_path / "calls.jsonl"
+    monkeypatch.setattr(vc, "_CALL_LOG_FILE", str(log))
+    monkeypatch.setattr(vm, "call_log_write", vc.call_log_write)
+    buf = _io.StringIO("前の手の出力\n")
+
+    class _Routed:
+        def _target(self):
+            return buf
+
+        def write(self, s):
+            return buf.write(s)
+
+        def flush(self):
+            pass
+    monkeypatch.setattr(sys, "stdout", _Routed())
+
+    def cmd_fake(args):
+        print("モジュール指定: 表の整理")
+        print("エラー: プロシージャ 'X' が見つかりません")
+        return False
+
+    def cmd_fine(args):
+        print("エラーという語を含むが成功")
+        return True
+    vm._logged(cmd_fake)(_ap.Namespace(command="get", posargs=["表の整理", "X"]))
+    vm._logged(cmd_fine)(_ap.Namespace(command="list", posargs=[]))
+    rows = [json.loads(ln) for ln in log.read_text(encoding="utf-8").splitlines()]
+    assert rows[0]["ok"] is False and rows[0]["why"] == "エラー: プロシージャ 'X' が見つかりません"
+    assert "why" not in rows[1]
+    assert vc.call_log_why("") is None and vc.call_log_why("a\nb") == "b"
+    s = vc.call_log_summary([dict(r, _t=0) for r in rows * 2])
+    assert s["why_top"][0]["count"] == 2 and "見つかりません" in s["why_top"][0]["why"]
+    assert "'X'" not in s["why_top"][0]["why"], "名前はならして同じ理由にまとめる"
+
+
+def test_every_example_in_mcp_docs_parses():
+    """MCP の説明（vba の説明文と instructions）に書いた手本の手が、本物の読み取りを通る（2026-09-24:
+    「add-module Module1 -y」が「不明な引数: -y」で落ちていた＝読んだ AI が毎回 1 往復損する）。
+    サーバーを import すると sys.stdout を差し替えるので、ソースを ast で読む。"""
+    import ast
+    import contextlib
+    import io as _io
+    import vbam_core as vc
+    here = os.path.dirname(os.path.abspath(__file__))
+    tree = ast.parse(open(os.path.join(here, "vba_mcp_server.py"), encoding="utf-8").read())
+    docs = []
+    for n in ast.walk(tree):
+        if isinstance(n, ast.FunctionDef) and n.name == "vba":
+            docs.append(ast.get_docstring(n))
+        if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") == "_INSTRUCTIONS":
+            docs.append(n.value.value)
+    text = "\n".join(docs)
+    cands = set(_re.findall(r'"([a-z][a-z\-]+(?: [^"]*)?)"', text)) | set(_re.findall(r'vba\("([^"]+)"\)', text))
+    cands -= {"reload"}                                  # 常駐が自分で受け取る手
+    assert len(cands) > 30
+    p = vm.build_parser()
+    bad = []
+    for c in sorted(cands):
+        toks = vc.split_command_line(c.replace("…", "x"))
+        try:
+            with contextlib.redirect_stderr(_io.StringIO()):
+                _a, unk = p.parse_known_args(toks)
+        except SystemExit:
+            bad.append(c)
+            continue
+        if [u for u in unk if u not in ("--visible", "-v")]:
+            bad.append(c)
+    assert not bad, f"説明の手本が読み取りを通らない: {bad}"
+
+
+def test_every_example_in_skill_docs_parses():
+    """SKILL.md と参照（commands.md 等）に書いた手本の手が、本物の読み取りを通る（2026-09-24 総点検: 330 個中
+    「checkup --unack」が値なしで書かれていて通らなかった）。行末の「# 説明」は外し、<名前> は 1 に、[省略可] は外して形だけ見る。"""
+    import contextlib
+    import io as _io
+    import vbam_core as vc
+    root = None
+    for cand in (os.path.join(os.environ.get("USERPROFILE", ""), ".claude", "skills"),
+                 os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", ".claude", "skills")):
+        if os.path.isfile(os.path.join(cand, "excel-vba-manager", "SKILL.md")):
+            root = cand
+            break
+    if root is None:
+        _pytest.skip("スキルの置き場が見つからない")
+    docs = [r"excel-vba-manager\SKILL.md", r"excel-vba-manager\references\commands.md",
+            r"excel-vba-manager\references\agent.md", r"excel-vba-manager\references\userform.md",
+            r"excel-vba-manager\references\workflows.md", r"excel-userform-builder\SKILL.md", r"shu-addin-manager\SKILL.md"]
+    p = vm.build_parser()
+    cmds = set()
+    for a in p._subparsers._group_actions:
+        cmds |= set(a.choices)
+    bad, seen = [], set()
+    for rel in docs:
+        path = os.path.join(root, *rel.split("\\"))
+        if not os.path.isfile(path):
+            continue
+        text = open(path, encoding="utf-8").read()
+        cands = _re.findall(r"py\s+[\w\\/.]*vba_manager\.py\s+([^\n`|]+)", text)
+        cands += _re.findall(r'vba\("([^"]+)"\)', text)
+        cands += [m for m in _re.findall(r"`([a-z][a-z\-]+ [^`\n]+)`", text) if m.split()[0] in cmds]
+        for c in cands:
+            c = _re.split(r"\s+#\s", c)[0].strip().rstrip("。、）)")
+            if c in seen or " " not in c or c.split()[0] not in cmds:
+                continue
+            seen.add(c)
+            c2 = _re.sub(r"<[^>]*>", "1", _re.sub(r"\[[^\]]*\]", "", c)).replace("…", "x").replace("...", "x").split("|")[0]
+            try:
+                with contextlib.redirect_stderr(_io.StringIO()):
+                    _a, unk = p.parse_known_args(vc.split_command_line(c2))
+            except SystemExit:
+                bad.append(f"[{rel}] {c}")
+                continue
+            if [u for u in unk if u not in ("--visible", "-v")]:
+                bad.append(f"[{rel}] {c}")
+    assert len(seen) > 200
+    assert not bad, "説明書の手本が読み取りを通らない:\n" + "\n".join(bad)
+
+
+def test_total_label_with_prefix_is_not_body_20260924():
+    """「総務課 小計」の行を本文に数えて「表の中の空欄」と言っていた（2026-09-24 通しの実測 4）。"""
+    import vbam_view as vv
+    assert vv._is_total_label("総務課 小計") and vv._is_total_label("合計（税込）") and vv._is_total_label("小計")
+    assert vv._is_total_label("平均") and not vv._is_total_label("合計請求書の送付") and not vv._is_total_label("会計")
+    assert not vv._is_total_label(300) and not vv._is_total_label("")
+    rows = [["No", "部署", "摘要", "金額"],
+            [1, "総務課", "用紙", 100], [2, "総務課", "切手", 200], [None, None, "総務課 小計", 300],
+            [3, "企画課", "茶菓", 50], [4, "企画課", "封筒", 70], [None, None, "企画課 小計", 120]]
+    notes = "\n".join(vv.dirt_notes(rows, r0=3, c0=1, header_idx=0))
+    assert "表の中の空欄" not in notes
+
+def test_sum_gap_and_double_count_notes_20260924():
+    """小計の取りこぼし（=SUM(G4:G9) の G10）と、合計が小計まで足す二重計上を黙って通していた（2026-09-24 通しの実測 4）。"""
+    import vbam_view as vv
+    fa = [[None, None], [None, 100], [None, 200], [None, 300], [None, "=SUM(B2:B3)"],
+          [None, 50], [None, 70], [None, "=SUM(B6:B7)"], [None, "=SUM(B2:B8)"]]
+    va = [[None, None], [None, 100], [None, 200], [None, 300], ["総務課 小計", 300],
+          [None, 50], [None, 70], ["企画課 小計", 120], ["合計", 1020]]
+    notes = vv._sum_gap_and_double_notes(fa, va, 1, 1)
+    text = "\n".join(notes)
+    assert "集計の取りこぼし B5" in text and "=SUM(B2:B4)" in text
+    assert "集計の二重計上 B9" in text and "=B5+B8" in text
+    assert "B8" not in text.split("集計の二重計上")[0]          # 企画課の小計は正しい＝言わない
+    # 小計ごとの表の正しい形（すぐ上が前の小計）は取りこぼしと言わない
+    fa_ok = [[None, 100], [None, 200], [None, "=SUM(B1:B2)"], [None, 50], [None, "=SUM(B4:B4)"], [None, "=B3+B5"]]
+    va_ok = [[None, 100], [None, 200], ["小計", 300], [None, 50], ["小計", 50], ["合計", 350]]
+    assert vv._sum_gap_and_double_notes(fa_ok, va_ok, 1, 1) == []
+
+
+def test_outlier_far_above_rest_in_wide_column_20260924():
+    """2,800〜88,000 の金額の列の 1,100,000 を、桁（対数）の囲いの中として黙って通していた（2026-09-24 通しの実測 4）。"""
+    import vbam_audit as va
+    col = [4800, 12650, 35420, 18700, 3500, 3500, 22000, 5000, 88000, 1100000, 8400, 2800]
+    vals = [["金額"]] + [[v] for v in col]
+    hits = [it for it in va.check_data_cleaner(vals, 0, 0) if it["type"] == "outlier_value"]
+    assert [it["cell"] for it in hits] == ["A11"]
+
+def test_change_side_shows_value_when_formula_same_20260924():
+    """式が同じで値だけ変わったセルを「=SUM(G4:G9) → =SUM(G4:G9)」と並べていた（2026-09-24 通しの実測 4）。"""
+    import vbam_undo as vu
+    row = {"addr": "G11", "before": "75070", "after": "78570",
+           "before_formula": "=SUM(G4:G9)", "after_formula": "=SUM(G4:G9)"}
+    assert vu._change_side(row, "before") == "75070"
+    assert vu._change_side(row, "after") == "78570（式 =SUM(G4:G9) のまま）"
+    row2 = dict(row, after_formula="=SUM(G4:G10)")
+    assert vu._change_side(row2, "before") == "=SUM(G4:G9)" and vu._change_side(row2, "after") == "=SUM(G4:G10)"
+
+def test_module_name_of_file_reads_vb_name_20260924(tmp_path):
+    """replace-module に .bas のパスだけを渡すと「使い方」が返っていた（2026-09-24 台帳の失敗の理由 2 位）。"""
+    import vbam_vba as vv
+    f = tmp_path / "x.bas"
+    f.write_bytes('Attribute VB_Name = "表の整理"\r\nSub a()\r\nEnd Sub\r\n'.encode("cp932"))
+    assert vv._module_name_of_file(str(f)) == "表の整理"
+    g = tmp_path / "名前だけ.bas"
+    g.write_bytes(b"Sub a()\r\nEnd Sub\r\n")
+    assert vv._module_name_of_file(str(g)) == "名前だけ"
+
+def test_two_row_header_and_row_formula_drift_20260924():
+    """二段見出しの 2 段目を本文と見ていた・年計の列の 9 行中 2 行のずれを黙っていた（2026-09-24 通しの実測 5）。"""
+    import vbam_view as vv
+    import vbam_audit as va
+    grid = [["令和8年度", None, None, None, None],
+            [None, None, None, None, None],
+            ["コード", "品目", "上期", None, "年計"],
+            [None, None, "4月", "5月", None],
+            ["A001", "用紙", 120, 130, 250],
+            ["A002", "トナー", 30, 25, 55]]
+    assert vv._guess_header_idx(grid) == 3
+    names = [["番号", "氏名", "住所"], ["001", "佐藤", "秋田市"], ["002", "鈴木", "能代市"]]
+    assert vv._guess_header_idx(names) == 0                     # 文字だけの明細は 2 段目にしない
+    # 年計の列: 7 行が =SUM(RC[-12]:RC[-1])、2 行がずれ、合計の行は数えない
+    std = "=SUM(RC[-12]:RC[-1])"
+    fr = [[std]] * 3 + [["=SUM(RC[-12]:RC[-7])"]] + [[std]] * 2 + [["=SUM(R[1]C[-12]:R[1]C[-1])"]] + [[std]] * 2 + [["=SUM(R[-9]C:R[-1]C)"]]
+    fa = [[x[0]] for x in fr]
+    vals = [[1]] * len(fr)
+    bad = [it["cell"] for it in va.check_formula_linter(fa, fr, vals, 4, 14) if it["type"] == "inconsistent_formula"]
+    assert bad == ["O8", "O11"]
+
+def test_run_harness_removed_from_reopened_book():
+    """マクロの引っ越しでブックが入れ替わると、ハーネスが新しいブックへ運ばれて残っていた（2026-09-24）。"""
+    import vbam_vba as vv
+
+    class Comp:
+        def __init__(self, name):
+            self.Name = name
+
+    class Comps(list):
+        def Remove(self, c):
+            list.remove(self, c)
+
+    class Book:
+        def __init__(self, name, comps):
+            self.Name = name
+            self.VBProject = type("P", (), {})()
+            self.VBProject.VBComponents = Comps(comps)
+            self.saved = 0
+
+        def Save(self):
+            self.saved += 1
+
+    class Books:
+        def __init__(self, books):
+            self.books = books
+            self.Count = len(books)
+
+        def Item(self, i):
+            return self.books[i - 1]
+
+    class DeadBook:
+        @property
+        def VBProject(self):
+            raise Exception("gone")
+
+    new = Book("Combo.xlsm", [Comp("shu003"), Comp(vv._RUN_HARNESS)])
+    xl = type("X", (), {})()
+    xl.Workbooks = Books([Book("PERSONAL.XLSB", [Comp("m")]), new])
+    h = {"wb": DeadBook(), "comp": None, "xl": xl, "book_name": "Combo.xlsm", "was_saved": True}
+    vv._remove_run_harness(h)
+    assert [c.Name for c in new.VBProject.VBComponents] == ["shu003"]
+    assert new.saved == 1
+
+
+def _fake_book_with_procs(mods):
+    """mods = {モジュール名: [(Sub名, 行数), …]} の VBProject もどき（delete-procedure の試験用）。"""
+    class CM:
+        def __init__(self, procs):
+            self.lines = []
+            for nm, n in procs:
+                self.lines += [f"Sub {nm}()"] + [f"  ' {nm}"] * (n - 2) + ["End Sub"]
+        def _find(self, nm):
+            for i, ln in enumerate(self.lines):
+                if ln == f"Sub {nm}()":
+                    j = i
+                    while self.lines[j] != "End Sub":
+                        j += 1
+                    return i + 1, j - i + 1
+            raise Exception("not found")
+        def ProcStartLine(self, nm, k):
+            return self._find(nm)[0]
+        def ProcCountLines(self, nm, k):
+            return self._find(nm)[1]
+        def Lines(self, s, c):
+            return "\r\n".join(self.lines[s - 1:s - 1 + c])
+        def DeleteLines(self, s, c):
+            del self.lines[s - 1:s - 1 + c]
+    class Comp:
+        def __init__(self, name, procs):
+            self.Name, self.CodeModule = name, CM(procs)
+    class WB:
+        FullName = "x.xlsm"
+        saved = 0
+        def Save(self):
+            WB.saved += 1
+    wb = WB()
+    wb.VBProject = type("P", (), {})()
+    wb.VBProject.VBComponents = [Comp(k, v) for k, v in mods.items()]
+    return wb
+
+
+def test_delete_procedure_module_form_and_many(monkeypatch, capsys):
+    """delete-procedure は「モジュール Sub名」と Sub名の複数を受け、控え 1 冊・保存 1 回（2026-09-24）。"""
+    import argparse
+    import vbam_vba as vv
+    wb = _fake_book_with_procs({"shu003": [("A", 3), ("B", 4), ("C", 3)], "shu004": [("AIのマクロ一覧", 3)]})
+    backups = []
+    monkeypatch.setattr(vv, "get_workbook", lambda t=None: (None, wb))
+    monkeypatch.setattr(vv, "make_backup", lambda p, tag: backups.append(tag) or "b")
+    monkeypatch.setattr(vv, "make_module_backup", lambda w, m: None)
+    monkeypatch.setattr(vv, "_narrow_proc_range", lambda cm, s, c: (s, c))
+    ns = argparse.Namespace(posargs=["shu004", "AIのマクロ一覧"], module_opt=None, yes=True, force=False)
+    assert vv.cmd_delete_procedure(ns) is True
+    assert wb.VBProject.VBComponents[1].CodeModule.lines == []
+    ns = argparse.Namespace(posargs=["A", "C"], module_opt=None, yes=True, force=False)
+    assert vv.cmd_delete_procedure(ns) is True
+    assert wb.VBProject.VBComponents[0].CodeModule.lines == ["Sub B()", "  ' B", "  ' B", "End Sub"]
+    assert len(backups) == 2 and type(wb).saved == 2
+    ns = argparse.Namespace(posargs=["B", "無い"], module_opt=None, yes=True, force=False)
+    monkeypatch.setattr(vv, "_suggest_similar", lambda *a, **k: None)
+    monkeypatch.setattr(vv, "_all_procedure_names", lambda w: [])
+    assert vv.cmd_delete_procedure(ns) is False
+    assert wb.VBProject.VBComponents[0].CodeModule.lines[0] == "Sub B()", "1 本でも決まらなければ何も消さない"
+
+
+def test_call_log_why_takes_exception_text(monkeypatch):
+    """例外で落ちた手は例外の文を理由に残す（前は空・または「モジュール指定: …」だけ・2026-09-24）。"""
+    import io
+    import vba_manager as vmm
+    got = {}
+    monkeypatch.setattr(vmm, "call_log_write", lambda name, a, s, ok, via="cli", why=None: got.update(ok=ok, why=why))
+    monkeypatch.setattr(vmm, "cmd_progress_write", lambda *a, **k: None)
+    def boom(args):
+        print("モジュール指定: AI作業窓フォーム")
+        raise Exception("Excel が起動していません。\n  ・Excel で対象ブックを開いてから再実行してください。")
+    vmm._LOGGED_CACHE.pop(boom, None)
+    import argparse
+    with pytest.raises(Exception):
+        vmm._logged(boom)(argparse.Namespace(command="get"))
+    assert got["ok"] is False and got["why"].startswith("Excel が起動していません")
+
+
+def test_shelf_run_sheet_moves_to_the_book_that_has_it():
+    """--sheet のシートが前のブックに無ければ、それを持つ 1 冊へ移る（2026-09-24 17:25 秀コンボが前に出て Book2!明細 に撃てなかった）。"""
+    import vbam_view as vw
+
+    class Book:
+        def __init__(self, name, sheets, addin=False, visible=True):
+            self.Name, self._s, self.IsAddin, self._v = name, sheets, addin, visible
+            outer = self
+
+            class Sheets:                     # COM の Sheets と同じく、呼べば 1 枚・回せば全部
+                def __call__(self, nm):
+                    if nm not in outer._s:
+                        raise Exception("bad index")
+                    return nm
+
+                def __iter__(self):
+                    return iter([type("S", (), {"Name": s})() for s in outer._s])
+            self.Sheets = Sheets()
+        def Windows(self, i):
+            return type("W", (), {"Visible": self._v})()
+
+    class Books:
+        def __init__(self, bs):
+            self.bs, self.Count = bs, len(bs)
+        def Item(self, i):
+            return self.bs[i - 1]
+
+    combo = Book("秀コンボ.xlsm", ["目次"])
+    book2 = Book("Book2", ["明細", "メモ"])
+    xl = type("X", (), {})()
+    xl.Workbooks = Books([combo, Book("秀コンボ.xlam", ["明細"], addin=True), book2])
+    wb, msg = vw._book_with_sheet(xl, combo, "明細")
+    assert wb is book2 and "Book2 を対象にします" in msg
+    assert vw._book_with_sheet(xl, book2, "明細") == (book2, "")
+    wb, msg = vw._book_with_sheet(xl, combo, "無い")
+    assert wb is None and "目次" in msg
+    xl.Workbooks = Books([combo, book2, Book("Book3", ["明細"])])
+    wb, msg = vw._book_with_sheet(xl, combo, "明細")
+    assert wb is None and "Book2 / Book3" in msg
+
+
+def test_parse_command_tokens_takes_common_slips(monkeypatch):
+    """形の外れの受け止め（2026-09-24 会話記録 30 日の外れから）。直せるものは直して撃ち、残りは選択肢と近い名前を返す。"""
+    import vba_manager as vmm
+    monkeypatch.setattr(vmm, "call_log_write", lambda *a, **k: None)
+    p = vmm.build_parser()
+
+    def ok(line):
+        ns, msg, notes = vmm.parse_command_tokens(p, vmm.split_command_line(line))
+        assert msg is None, (line, msg)
+        return ns, notes
+    ns, notes = ok("remove-module X -y")
+    assert ns.command == "delete-module" and ns.yes and notes
+    assert ok("row 16 --delete")[0].posargs == ["delete", "16"]
+    assert ok("run-macro M --yes")[0].auto_dialog == "yes"
+    assert ok("read-range A1:B2 --formulas")[0].formula is True
+    ns, _ = ok('format-range A1 --font-name "游ゴシック" --font-size 11 --no-bold')
+    assert ns.font == "游ゴシック" and ns.size == "11" and ns.unbold
+    assert ok("clear-range A1 -y")[0].posargs == ["A1"]
+    ns, _ = ok('add-procedure --module M1 --file "C:/a b/x.vba" -y')
+    assert ns.posargs == ["M1"] and ns.code_file_opt == "C:/a b/x.vba"
+    assert ok('grep-files "語" --file "C:/x/b.xlam"')[0].posargs == ["語", "C:/x/b.xlam"]
+    assert ok("activate-sheet S")[0].posargs == ["activate", "S"]
+    assert ok("screenshot --sheet 図形")[0].sheet_opt == "図形"
+    assert ok("sheet-info --sheet 図形")[0].sheet_opt == "図形"
+    assert ok("grep 語 --all")[0].all is True
+    _, msg, _ = vmm.parse_command_tokens(p, ["tidy", "A1", "--no-borders"])
+    assert "--no-border" in msg and "tidy が受ける引数" in msg
+    _, msg, _ = vmm.parse_command_tokens(p, ["delet-procedure", "X"])
+    assert "delete-procedure" in msg and len(msg) < 300, "130 個の一覧を返さない"
+
+
+def test_cp932_safe_swaps_only_what_vba_cannot_hold():
+    import vbam_core as vc
+    text, swapped = vc.cp932_safe("' ⑴ 手順 — 済み ✓ ①")
+    assert text == "' (1) 手順 ― 済み ○ ①" and ("⑴", "(1)") in swapped
+    assert vc.cp932_safe("そのまま")[1] == []

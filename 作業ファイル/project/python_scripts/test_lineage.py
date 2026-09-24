@@ -258,3 +258,15 @@ def test_lineage_commands_are_wired():
     assert ns.posargs == ["x", "a", "b"] and ns.ignore_case and ns.regex
     ns = p.parse_args(["versions", "ポスター", "--dir", "a", "--dir", "b", "--all"])
     assert ns.dir_opt == ["a", "b"] and ns.all is True and ns.max_hits is None
+
+
+@_needs_fixture
+def test_export_file_only_named_modules(tmp_path, capsys):
+    """export-file <ファイル> <モジュール> でそれだけ書き出す（前は「余分な引数」で断った・2026-09-24）。"""
+    ns = argparse.Namespace(posargs=[FIXTURE, "写真貼り付け"], dir_opt=str(tmp_path / "out"), json=True)
+    assert lg.cmd_export_file(ns) is True
+    doc = json.loads(capsys.readouterr().out)
+    assert doc['files'] == ["写真貼り付け.bas"]
+    ns = argparse.Namespace(posargs=[FIXTURE, "無いモジュール"], dir_opt=str(tmp_path / "out2"), json=False)
+    assert lg.cmd_export_file(ns) is False
+    assert "無いモジュール" in capsys.readouterr().out

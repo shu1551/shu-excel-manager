@@ -68,10 +68,24 @@ vba_manager.py / form_builder.py は **アクティブな開いているブッ�
 1セットにし、後ろを省かない。道具の中の処理そのものは数秒で終わる。時間を食うのは往復のあいだの
 考え込みなので、型は「往復 3 回・決め直さない既定・時計は道具が持つ」で固める。
 
-0. **表の修正・点検を頼まれたら**:
-   - 表の体裁修正は **`seiri`**（表を整えるマクロ＋残りだけの報告）。
+0. **表の修正・点検を頼まれたら**（「間違えているところを直して」もここから）:
+   - 表の体裁修正は **`seiri`**（表を整えるマクロ＋残りだけの報告）。報告の最後の **「棚で直せる手」を上から順に
+     そのまま撃つ**（式を揃える手が行を消す手より先に並んでいる＝消した行を指す式が #REF! にならない）。
+     人の判断が要るもの（マイナス・桁違い・番号の重複・式の中の数）は撃たずに番地で報告。
    - 数式・データの点検は **`diagnose`**（循環参照・集計漏れ・外れ値。`--fix -y` は依頼に承認の語があるときだけ＝
      空白除去と文字列の数字の数値化だけ書き戻す。集計漏れの式は提案だけ・先頭ゼロは触らない・控えを取る）。
+   - **残りは自分で書く前に棚を見る**: 依頼文から選ぶなら `shelf --ask 依頼文`（Excelコンボの先撃ちと同じ採点で 1 本。頼みが 2 つ以上で全部が棚に当たれば撃つ順の並び）、
+     語で探すなら `shelf --grep 語`（棚＝秀コンボのモジュール「表の整理」「表の整理_作る」「表の整理_調べる」122 本の目録。名前・選ぶ列・窓の有無・扱う・説明）
+     → 当たりがあれば **`shelf-run 名前 [--select 範囲] [--sheet 名]`** で撃つ。選ぶ列のあるマクロは列を 1 列ずつ
+     カンマで分けて渡す（`--select A1:A6,B1:B6`。ひと続きの A1:B6 だと何もせずに終わる）。
+     撃つ前に控えを取り、撃った後に差分（番地: 前→後・上限 30 件＋件数・書式の変化・足された行/列）と、ブックの違い
+     （足されたシート・図形・グラフ・テーブル・ピボット・名前／書き換わった別シート）が出る。
+     戻すのは `agent --undo`（作った物も別シートもまとめて戻る。消えたシート・名前は「戻らない」と出る）。
+     **棚に無い所だけ** `write-cells`／`write_grid` で手で直す。
+     目録に「窓あり」と付いたマクロは確認の窓を出す。答えるなら `--input-text 値`（無ければ安全側で閉じ、本文が報告に出る）。
+   - 式のどこが元か分からないときは **`trace セル [--depth N]`**（番地・式・値の木。シートをまたぐ参照も追い、
+     範囲は先頭と末尾と件数に畳んで中身の内訳（数・文字の数字・空・エラーの番地）を添える。列まるごと（A:C）は
+     使っている所に絞り、名前（税率）は参照先へたどる。循環は印を付けて止める。何も書き換えない）。
 1. **見る（1往復）**: **`materials`** だけ（見出しの結合の親子・二重下線の合計行・塗りの有無・循環参照・外れ値も
    materials が出す。番地の細部が要るときだけ 2 手目に `style-map`／`diagnose`）。開いているシートは **Excel に聞く。推測しない**（materials が
    アクティブシートを出す。sheet-info を前置しない）。小さい表（40行×30列まで）は全体が出て、格子で
@@ -121,6 +135,8 @@ vba_manager.py / form_builder.py は **アクティブな開いているブッ�
 - 文字列の化け（"1-2"→日付、"1,000"→数値）は道具が戻す。`--raw` を付けるかは考えない。
 - 依存する道具の呼び出しも同じ返答に並べる（順に実行される）。TSV の置き場も考えない（write_grid）。
 - 報告は結果数行＋経過秒。往復は 4 回が上限（見る・やる・仕上げる・screenshot で目視）。
+- **表について答えるときは番地を添える**（「C15 の合計は E4:E14 の和・E9 だけ文字の数字」）。「合計が合いません」
+  のように番地の無い言い方をしない。番地が分からないなら `trace` か `diagnose` で確かめてから答える。
 - **`vba_help` を引かない。** 引数がうろ覚えでも help を挟まずに撃つ。外れれば usage が返る＝それが help。
 
 **シートを触る手の引数（これだけ覚えて help を引かない）**:
@@ -151,7 +167,7 @@ vba_manager.py / form_builder.py は **アクティブな開いているブッ�
 list [--detail] [--module 名] [--all] [--json]         # マクロ一覧（--module で絞る）
 get <Sub名> | get <モジュール> <Sub名> | get A.x B.y     # コード取得 → _last_proc.vba（3 個以上は連結）
 replace-procedure -y [--module 名] [--code-file f]    # _last_proc.vba で置換（控え・自動保存）
-add-procedure <モジュール> -y / delete-procedure <Sub名> -y   # 追加・削除
+add-procedure <モジュール> -y / delete-procedure [モジュール] <Sub名> [Sub名…] -y   # 追加・削除（複数は控え 1 冊・保存 1 回）
 add-module <名> [--type std|class|form] / delete-module <名> -y
 replace-module <モジュール> <basファイル>                 # Remove+Import（VB_Name 照合・.frm は .frx 同伴）
 code-replace "旧" "新" [--module 名] [--regex] -y       # 全マクロ横断の一括置換（変更行だけ ReplaceLine・寛容な探し直し）
@@ -168,7 +184,7 @@ reorder-macro <マクロ> <up|down|top|bottom|番号>         # メニュー表�
 list-backups [語] / restore <控え.bas> / backup-prune [--days 30] [--keep 1] [--force]   # 控えの一覧・復元・間引き（2026-09-16）
 repair <マクロ> [--module 名]                          # 修理の材料を 1 手で＝本文（_last_proc.vba にも保存）・入口・呼び元呼び先・コンパイルの落ちた行・check の error 級・控えとの差分（2026-09-17）
 versions <ブック名> [--dir 追加] / history <マクロ> [--book 名] [--deep]   # 同名ブックの写しを日時順に（最新との差・開いている印）・マクロ本文の歴史（同じ本文は畳む）。Excel を開かない（2026-09-17）
-list-file <path.xlsm> / grep-files "文字" <フォルダ|ファイル…> [--regex] [-i] / export-file <path.xlsm> [--dir 先]   # 閉じたブックを読む（oletools＝Workbook_Open もアドインも起きない。50 冊でも 1 手・2026-09-17）
+list-file <path.xlsm> / grep-files "文字" <フォルダ|ファイル…> [--regex] [-i] / export-file <path.xlsm> [モジュール…] [--dir 先]   # 閉じたブックを読む（oletools＝Workbook_Open もアドインも起きない。50 冊でも 1 手・2026-09-17）
 check [excel_file] [--all-warnings] / check-bas <f.bas> [--fix] / rules  # 静的診断（VBM001〜014。ラベル無し・On Err・存在しない呼び先は error。VBM003 は件数だけ＝--all-warnings で行）
 compile / gate [絞り込み] [--timeout 秒] / test [絞り込み]   # 全体コンパイル（落ちた行を [モジュール] Sub:行: 本文 で名指し）・関所（コピーで check＋compile＋test）・テスト Sub 一括
 run-macro <マクロ> [引数…] [--input-text 値] [--raw]   # 実行（ハーネス経由＝実行時エラーが文字で返る）
@@ -185,6 +201,8 @@ batch cmds.txt / shell                                  # 1 接続で連続実�
 # --- 目（読むだけ）---
 materials [シート] [--rows 5]     # 1 手目。使用範囲・値・結合・テーブル・名前・数式の型と気づき・図形・###・列幅を 1 回で
 seiri [--dedupe]                  # 表の修正の 1 手目＝整えるマクロ＋残りだけの報告
+shelf [--grep 語] [--ask 依頼文]  # 棚（表の整理・_作る・_調べる 122 本）の目録＝名前・選ぶ列・窓の有無・扱う・説明／依頼文から 1 本選ぶ
+trace <セル> [--depth 3]          # 式の元を番地・式・値の木で（シートをまたぐ・範囲は畳んで内訳・列まるごと・名前・循環は止める）
 read-range 範囲… [--formula] [--tsv] / read-selection / sheet-info [--preview 3] / table read <名> [--tsv]
 screenshot [範囲] [--out f.png]   # 範囲を PNG に（Undo 履歴が消える）
 snapshot [--sheet 名] [--no-format] / snapshot-diff <before.json> [after.json]   # 意味構造 JSON と機械的差分
@@ -196,6 +214,10 @@ write-range 範囲 値 | --tsv f [--raw] [--show] [--append]   # MCP は write_g
 write-cells C7 値 C11 値 … [--show] / clear-range 範囲 [--contents|--formats]
 format-range 範囲 [--bold --bg --color --align --number-format --border --merge --unmerge --autofit …]
 tidy 範囲… [--header-from セル] [--bg]     # 仕上げ（見出し・罫線・列の型・列幅・###・経過秒）
+shelf-run <名前> [--select 範囲] [--sheet 名] [--input-text 値]   # 棚のマクロを選んで撃つ＝控え→撃つ→差分。戻すのは agent --undo
+register-addin [ブック] [-y]              # 前に出ているブックを .xlam に焼き直してアドイン登録（別名 更新登録。
+#   アドインの VBA を直したら**人に頼まず自分でこれを撃つ**。焼く先・空のブック・表示中フォームは道具が確かめ、
+#   素の Run で撃って（ハーネスは xlam に焼き付く）、焼けた .xlam の日時と大きさを報告する（2026-09-23）
 sheet add|rename|copy|delete|activate|show|hide|very-hide|visibility|tab-color
 table create|list|delete|ref|column add|rename|format|filter|filter-values|filters|filter-clear|sort|sort-multi
 name add|list|delete / row insert|delete 行 [本数] / col insert|delete 列 [本数]

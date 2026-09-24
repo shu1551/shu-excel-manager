@@ -23,8 +23,18 @@ _AGENT_LOGS_KEEP = 40        # 残す記録の本数（新しい方から）
 #   記録（往復の全文）も走行ごとに控えるので、後から `agent --replay 記録のパス` で撃ち直せる。
 # ----------------------------------------------------------------
 
+_LAST_RUN_ID = ['', 0]
+
+
 def _run_id():
-    return time.strftime('%Y%m%d_%H%M%S')
+    """走行の名札＝日時。同じ秒に続けて撃つと名札がぶつかり、控えも台帳も前の走行を上書きした
+    （2026-09-23 実測 3・shelf-run 2 本が 184635 に重なった）ので、2 本目からは _2・_3 を付ける。"""
+    rid = time.strftime('%Y%m%d_%H%M%S')
+    if rid == _LAST_RUN_ID[0]:
+        _LAST_RUN_ID[1] += 1
+        return f"{rid}_{_LAST_RUN_ID[1]}"
+    _LAST_RUN_ID[0], _LAST_RUN_ID[1] = rid, 1
+    return rid
 
 
 def _save_run_log(run_id, mode):

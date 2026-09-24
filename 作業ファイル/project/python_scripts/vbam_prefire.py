@@ -1,28 +1,28 @@
 # -*- coding: utf-8 -*-
-"""vbam_prefire.py — vba_manager 分割パート: マクロの先撃ち（agent の入口で、AI より先に「表を整える」を撃つ）
+"""vbam_prefire.py — vba_manager 分割パート: マクロの先撃ち（agent の入口で、AI より先に「表の書き方と罫線と列幅をそろえる」を撃つ）
 
 2026-09-11 深夜。試験（agent --exam）で、表の整理はマクロ（表の整理.bas・AI なし）が 45 題全問合格・1 題 0.1〜0.5 秒、
 agent（Sonnet）は 1 題平均 22 秒だった。shu と決めた形: 入口は agent のまま、中の順番を「マクロが先、Sonnet は例外」に。
   1. 依頼が書き方をそろえる整理（そろえ・統一・整え・整理・表記・きれい…）で、開いているブックかアドインに
-     「表を整える」があれば、道具が撃つ（依頼が重複を消すことを承認していれば「重複行を消す」も）。控えは本番と同じ。
+     「表の書き方と罫線と列幅をそろえる」があれば、道具が撃つ（依頼が重複を消すことを承認していれば「全列が同じ重複行を削除する」も）。控えは本番と同じ。
   2. 道具の tidy で仕上げ、終わりの検査（仕上げ検査・中身・依頼の語の列の残り・消えた行・頼んでいない変化）を当てる。
   3. 残りが無く、依頼にマクロの扱わない仕事（合計・並べ替え・グラフ…）も無ければ、そこで合格（AI は呼ばない）。
      残りがあれば、その指摘を材料に足して Sonnet の往復へ（控え・関所・undo はそのまま効く）。
 どちらを撃つかは依頼の語で機械的に決まる（AI にも会話の Claude にも判断させない）。
 
 2026-09-17 鍛える回路（vbam_forge）: モジュール「表の整理」の Sub の頭 2 行（' 依頼の語: 正規表現 ／ ' 扱う: 語 語）が
-登録簿。依頼に「依頼の語」が当たる Sub は「表を整える」の後に撃ち、その「扱う」の語は AI に回す仕事（_ASK_OTHER_RE）
+登録簿。依頼に「依頼の語」が当たる Sub は「表の書き方と罫線と列幅をそろえる」の後に撃ち、その「扱う」の語は AI に回す仕事（_ASK_OTHER_RE）
 から外す。登録簿は .bas そのもの（別の台帳を持たない＝データはファイル自身）。
 """
 import contextlib
 import re
 import time
-from vbam_core import _col_letter
+from vbam_core import _col_letter, shelf_text, shelf_texts, shelf_module_of
 
 import vbam_agent as va
 
-_MACRO_TIDY = '表を整える'
-_MACRO_DEDUPE = '重複行を消す'
+_MACRO_TIDY = '表の書き方と罫線と列幅をそろえる'
+_MACRO_DEDUPE = '全列が同じ重複行を削除する'
 _MACRO_MODULE = '表の整理'
 _ASK_TIDY_RE = re.compile(r'そろえ|揃え|統一|整え|整理|きれいに|綺麗に|掃除|書き方|表記')
 # マクロの扱わない仕事（あれば、マクロの後に Sonnet の往復へ回す）
@@ -36,6 +36,7 @@ _NO_DELETE_RE = re.compile(r'(消|削除)さない|(消|削除)しない|残し�
 
 
 _REG_ASK_RE = re.compile(r"^\s*'\s*依頼の語\s*[:：]\s*(.+?)\s*$")
+_REG_COMBO_RE = re.compile(r"^\s*'\s*依頼の組\s*[:：]\s*(.+?)\s*$")
 _REG_HANDLE_RE = re.compile(r"^\s*'\s*扱う\s*[:：]\s*(.+?)\s*$")
 _REG_HEAD_RE = re.compile(r"^\s*'\s*見出し\s*[:：]\s*(.+?)\s*$")
 _REG_SELECT_RE = re.compile(r"^\s*'\s*選ぶ列\s*[:：]\s*(\d+)\s*(?:[-〜~]\s*(\d+))?\s*$")
@@ -53,7 +54,7 @@ _REG_HEAD_LINES = 6        # Sub の行の下、この行数までにある頭�
 
 def registry_from_text(text, owner=None):
     """モジュールの本文 → 登録簿 [{'name','owner','ask'(正規表現の文字),'handles'([語]),'headers'([語])}]（純 Python）。
-    「表を整える」「重複行を消す」は道具が持つ既定なので入れない。頭の 2 行が無い Sub も入れない。
+    「表の書き方と罫線と列幅をそろえる」「全列が同じ重複行を削除する」は道具が持つ既定なので入れない。頭の 2 行が無い Sub も入れない。
     ' 見出し: の行（任意）＝そのマクロが要る見出しの語。シートに全部あるときだけ撃つ（2026-09-17 夕）。
     ' 見出し: なし ＝語に頼らないマクロ（2026-09-18）。headers は []。"""
     out = []
@@ -63,6 +64,7 @@ def registry_from_text(text, owner=None):
         if not m or m.group(1) in (_MACRO_TIDY, _MACRO_DEDUPE):
             continue
         ask = handles = None
+        combo = None
         headers = []
         select = None
         shape = []
@@ -72,8 +74,12 @@ def registry_from_text(text, owner=None):
             c = _REG_HEAD_RE.match(h)
             s = _REG_SELECT_RE.match(h)
             k = _REG_SHAPE_RE.match(h)
+            g = _REG_COMBO_RE.match(h)
             if a:
                 ask = a.group(1)
+            elif g:
+                # ' 依頼の組: A,B+C,D-E ＝語の組（+ で組・, で言い換え・- で除外）。VBA の先撃ちだけが読んでいた（2026-09-23）
+                combo = g.group(1)
             elif b:
                 handles = b.group(1).split()
             elif c:
@@ -94,7 +100,31 @@ def registry_from_text(text, owner=None):
         except re.error:
             continue
         out.append({'name': m.group(1), 'owner': owner, 'ask': ask, 'handles': handles, 'headers': headers,
-                    'select': select, 'shape': shape})
+                    'select': select, 'shape': shape, 'combo': combo})
+    return out
+
+
+def shelf_entries_from_text(text):
+    """モジュールの本文 → 先撃ちの採点に使う登録 [{'name','ask','combo'}]（純 Python・2026-09-23）。
+
+    registry_from_text と違って**絞り込まない**（「表の書き方と罫線と列幅をそろえる」も頭の 2 行が無い Sub も入れる）。
+    VBA の コンボ道具.棚を読む と同じものを読む＝Python 側の先撃ちが VBA と同じ答えを出せるようにする。
+    """
+    out, name = [], None
+    for ln in str(text or '').splitlines():
+        m = _REG_SUB_RE.match(ln)
+        if m:
+            name = m.group(1)
+            out.append({'name': name, 'ask': None, 'combo': None})
+            continue
+        if not out:
+            continue
+        a = _REG_ASK_RE.match(ln)
+        g = _REG_COMBO_RE.match(ln)
+        if a:
+            out[-1]['ask'] = a.group(1)
+        elif g:
+            out[-1]['combo'] = g.group(1)
     return out
 
 
@@ -286,14 +316,13 @@ def registry_of(xl):
     out = []
     for p in projects:
         try:
-            cm = p.VBComponents(_MACRO_MODULE).CodeModule
-            n = int(cm.CountOfLines)
-            if not n:
+            text = shelf_text(p)            # 「表の整理_〜」に分かれていても全部（2026-09-23）
+            if not text:
                 continue
             owner = _owner_name(xl, p)
             if not owner:
                 continue
-            out += registry_from_text(cm.Lines(1, n), owner)
+            out += registry_from_text(text, owner)
         except Exception:
             continue
     books = []
@@ -435,7 +464,11 @@ def plan_full(request, registry=(), words=None, shape=None):
     dedupe = bool(tidy and _DUP_WORD_RE.search(req) and va._has_approval(req) and not _NO_DELETE_RE.search(req))
     extras, skipped = [], []
     for e in registry or ():
-        strength = _ask_strength(e['ask'], req)
+        # 依頼の組（VBA の先撃ちだけが読んでいた）もここで採る。除外の語が当たったら撃たない（2026-09-23）
+        combo_pt, combo_ban = combo_score(e.get('combo'), req)
+        if combo_ban:
+            continue
+        strength = max(_ask_strength(e['ask'], req), combo_pt)
         if not strength:
             continue
         # 要る見出しがシートに無い表には撃たない（「集計」の語だけで別の表に撃ち、集計を AI に回さなくなる誤爆を防ぐ）
@@ -498,6 +531,133 @@ def _ask_strength(ask, req):
     return best
 
 
+# 棚に当てない依頼（VBA の コンボ道具.先撃ち候補 と同じ止め・2026-09-23）:
+#   コードや案を頼む依頼＝AI の役目／使い方・意味・考え方の質問＝作業ではない
+_SHELF_NOT_WORK = ("マクロを書", "マクロを作", "書き直", "案を", "案は", "の案")
+_SHELF_QUESTION = ("とは何", "とは？", "とは?", "って何", "の違いは", "違いを教え", "関数を教え", "関数は",
+                   "どうやって", "どうしたら", "どうすれば", "やり方", "方法を", "方法は", "使い方を教",
+                   "使い方は", "使い方が分", "使い方がわ", "相談", "コツ", "作り方", "分析して", "傾向",
+                   "考え方", "何が言え", "何が分か", "した方がいい", "しない方がいい", "使わない方がいい")
+
+
+def _ask_points(ask, req):
+    """' 依頼の語: A|B|C のうち依頼文に当たった語の長さの**合計**（VBA と同じ点・純 Python）。
+
+    _ask_strength（いちばん長い 1 語）とは別物。VBA の先撃ちは当たった語を全部足す。
+    """
+    low = str(req or '').lower()
+    return sum(len(w) for w in (a.strip() for a in str(ask or '').split('|')) if w and w.lower() in low)
+
+
+def combo_score(combo, req):
+    """' 依頼の組: A,B+C,D-E → (点, 除外か)（純 Python・2026-09-23）。
+
+    + で区切った組の**どれにも** 1 語ずつ当たったときだけ点が付き、各組で当たったいちばん長い語の長さを足す
+    （言い方が変わっても当たる。例「重複,ダブ + 消,削除」）。- で始まる組の語が 1 つでもあれば除外
+    （似たマクロとの取り合いを止める）。組が 1 つも当たらなければ 0 点。
+    """
+    low = str(req or '').lower()
+    total, ok, banned = 0, True, False
+    for group in str(combo or '').split('+'):
+        group = group.strip()
+        if not group:
+            continue
+        if group.startswith('-'):
+            if any(w and w.lower() in low for w in (x.strip() for x in group[1:].split(','))):
+                banned = True
+            continue
+        best = max((len(w) for w in (x.strip() for x in group.split(',')) if w and w.lower() in low), default=0)
+        if best:
+            total += best
+        else:
+            ok = False
+    return (total if ok else 0), banned
+
+
+def shelf_pick(request, entries=()):
+    """依頼文 → 棚のマクロ名（当たらなければ ''＝AI に回す）。VBA の コンボ道具.先撃ち候補 の Python 版。
+
+    entries は shelf_entries_from_text の並び（登録簿の順＝モジュールの順。同点なら先に出てくる方が勝つ）。
+    点＝依頼の語（当たった語の長さの合計）＋依頼の組（各組の最長の語の長さの和）。
+    マクロ名そのものを言った依頼（4 字以上）は名前の長さの 2 倍で当てる（手順書の依頼文は除く）。
+    """
+    req = str(request or '').strip()
+    if not req:
+        return ''
+    # 音声の聞き違いをならす・手順書は名前で撃ち、本文の語では採点しない（2026-09-24・VBA の 先撃ち候補 と同じ）
+    req = re.sub(r'(?<![伝投得帳開])票', '表', req)          # 伝票・投票・得票・帳票・開票は残す
+    p = req.find('【手順書：')
+    if p >= 0:
+        m = re.match(r'【手順書：([^】]*)】', req[p:])
+        name = m.group(1).strip() if m else ''
+        if name and any(e.get('name') == name for e in entries or ()):
+            return name
+        req = req[:p].strip()
+        if not req:
+            return ''
+    low = req.lower()
+    if any(w in req for w in _SHELF_NOT_WORK) or any(w.lower() in low for w in _SHELF_QUESTION):
+        return ''
+    points, banned, order = {}, set(), []
+    for e in entries or ():
+        name = e.get('name')
+        if not name:
+            continue
+        pt, ban = combo_score(e.get('combo'), req)
+        pt += _ask_points(e.get('ask'), req)
+        if ban:
+            banned.add(name)
+        if pt:
+            if name not in points:
+                order.append(name)
+            points[name] = points.get(name, 0) + pt
+    best, top = '', 0
+    for name in order:
+        if name not in banned and points[name] > top:
+            top, best = points[name], name
+    if '【手順書：' not in req:
+        for e in entries or ():
+            n = str(e.get('name') or '')
+            if len(n) >= 4 and n.lower() in low and len(n) * 2 > top:
+                top, best = len(n) * 2, n
+    # 「直して」の頼みに、調べて一覧にするだけの棚は当てない（2026-09-24・エラーの原因を探して直して→ エラー値のセルを一覧にする だった）
+    # （「直すとどこまで影響する」は調べる頼み＝「直して」「修正して」と頼んだときだけ）
+    if best and _LOOK_ONLY_RE.search(best) and any(w in req for w in ('直して', '修正して')):
+        best = ''
+    return best
+
+
+_LOOK_ONLY_RE = re.compile(r'(一覧にする|調べる|点検する|監査する|探す|検算する|報告する|確かめる|の一覧)$')
+
+
+def shelf_plan(request, entries=()):
+    """依頼文 → 撃つ順の棚の並び（純 Python・VBA の コンボ道具.先撃ちの並び と同じ・2026-09-24）。
+
+    2 つ以上の空白・改行・「。」で節に分け、全部の節が棚に当たれば並びを返す（同じマクロは 1 回・表の書き方と罫線と列幅をそろえる は先頭）。
+    節が 1 つ・当たらない節がある・撃つのが 1 本だけなら []＝今までどおり shelf_pick が 1 本を選ぶ。「、」では分けない。
+    """
+    s = str(request or '').replace('\r\n', '\n').replace('\r', '\n').replace('。', '\n').replace('　', ' ')
+    while '  ' in s:
+        s = s.replace('  ', '\n')
+    parts = [x.strip(' ') for x in s.split('\n') if x.strip(' ')]
+    if len(parts) < 2:
+        return []
+    out, tidy = [], False
+    for x in parts:
+        n = shelf_pick(x, entries)
+        if not n:
+            return []
+        if n == '住所と郵便番号の形をそろえる':       # 並びの中では 表の書き方と罫線と列幅をそろえる に任せる（罫線・列幅まで仕上げる・2026-09-24）
+            n = '表の書き方と罫線と列幅をそろえる'
+        if n == '表の書き方と罫線と列幅をそろえる':
+            tidy = True
+        elif n not in out:
+            out.append(n)
+    if tidy:
+        out.insert(0, '表の書き方と罫線と列幅をそろえる')
+    return out if len(out) >= 2 else []
+
+
 def _ask_best_word(ask, req):
     """依頼の語のうち、依頼文に当たったいちばん長い語（純 Python）。無ければ ''。"""
     best = ''
@@ -520,7 +680,7 @@ def plan_of(request, registry=()):
 
 
 def _macro_owner(xl):
-    """「表を整える」を持つブックの名前（モジュール「表の整理」を先に探す＝全モジュールを読まない）。無ければ None。"""
+    """「表の書き方と罫線と列幅をそろえる」を持つブックの名前（モジュール「表の整理」を先に探す＝全モジュールを読まない）。無ければ None。"""
     try:
         projects = list(xl.VBE.VBProjects)
     except Exception:
@@ -528,9 +688,7 @@ def _macro_owner(xl):
     from vbam_vba import _project_book_name
     for p in projects:
         try:
-            cm = p.VBComponents(_MACRO_MODULE).CodeModule
-            n = int(cm.CountOfLines)
-            if n and re.search(r'^\s*Sub\s+' + _MACRO_TIDY + r'\b', cm.Lines(1, n), re.M):
+            if shelf_module_of(p, _MACRO_TIDY):
                 name = _owner_name(xl, p)
                 if name:
                     return name
@@ -542,7 +700,7 @@ def _macro_owner(xl):
 def _owner_name(xl, p):
     """プロジェクト → Run で名指しできるブック名。名前が指すブックに本当に「表の整理」があるかまで確かめる
     （2026-09-17: 未保存の Book4 が開いていると _project_book_name が別プロジェクトの名前を Book4 と取り違え、
-    'Book4'!表を整える を撃って「マクロを実行できません」で先撃ちが止まった）。"""
+    'Book4'!表の書き方と罫線と列幅をそろえる を撃って「マクロを実行できません」で先撃ちが止まった）。"""
     from vbam_vba import _project_book_name
     try:
         cm = p.VBComponents(_MACRO_MODULE).CodeModule
@@ -687,7 +845,7 @@ def _continues_above(ws, region, others, gap=3):
 
 def _rehearse(xl, wb, sheet, plan, owner, sel_cols=None):
     """登録簿のマクロを写しで先に撃つ。→ (撃たない登録簿の行, 理由)。全部よければ ([], '')。
-    撃つ順（表を整える → 重複行を消す → 登録簿）は本番と同じ。写しは wb.SaveCopyAs（未保存の変更も入る・人のブックの
+    撃つ順（表の書き方と罫線と列幅をそろえる → 全列が同じ重複行を削除する → 登録簿）は本番と同じ。写しは wb.SaveCopyAs（未保存の変更も入る・人のブックの
     保存状態とパスは変わらない）。"""
     import os
     import tempfile
@@ -700,8 +858,9 @@ def _rehearse(xl, wb, sheet, plan, owner, sel_cols=None):
         return extras, "持ち主のブックが複数で試せませんでした"
     own = next(iter(by_owner))
     try:
-        cm = xl.Workbooks(own).VBProject.VBComponents(_MACRO_MODULE).CodeModule
-        text = cm.Lines(1, int(cm.CountOfLines))
+        text = shelf_texts(xl.Workbooks(own).VBProject)      # 「表の整理_〜」に分かれていてもモジュールごとに（2026-09-23）
+        if not text:
+            raise ValueError(f"「{_MACRO_MODULE}」がありません")
     except Exception as ex:
         return extras, f"マクロの本文を読めませんでした（{ex}）"
     names = ([_MACRO_TIDY] + ([_MACRO_DEDUPE] if plan['dedupe'] else []) if plan['tidy'] and owner == own else [])
@@ -826,7 +985,7 @@ def macro_first(request, sheet, wb, max_turns, run_id):
     dedupe, other = plan['dedupe'], plan['other']
     owner = _macro_owner(xl) if plan['tidy'] else None
     if plan['tidy'] and not owner:
-        # 整理の語はあるが「表を整える」が無い＝登録簿の Sub だけで撃てるならそれだけ、無ければ AI へ
+        # 整理の語はあるが「表の書き方と罫線と列幅をそろえる」が無い＝登録簿の Sub だけで撃てるならそれだけ、無ければ AI へ
         if not plan['extras']:
             return None
     if not plan['tidy'] and not plan['extras']:
@@ -876,7 +1035,8 @@ def macro_first(request, sheet, wb, max_turns, run_id):
     for o, nm in shots:
         if sel_cols.get(nm):
             select_columns(ws, sel_cols[nm])         # 列を選ぶ仕事は、選んでから撃つ（マクロは Selection を見る）
-        xl.Run(f"'{o.replace(chr(39), chr(39) * 2)}'!{nm}")
+        from vbam_vba import run_book_macro
+        run_book_macro(xl, o, nm)                     # ハーネス経由＝実行時エラーで窓を出して止まらない（2026-09-24 総点検）
     tool_sec['マクロ'] = time.time() - t0
     owner = owner or shots[0][0]
     owners_txt = '・'.join(sorted({o for o, _n in shots}))

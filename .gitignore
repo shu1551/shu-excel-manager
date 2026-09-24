@@ -1,5 +1,6 @@
 # 道具が実行のたびに置く作業ファイル・記録・控え（研究の記録は公開しない）
 _last_*
+_patch_*
 _agent_*
 _calls.jsonl
 _cmd_progress.json

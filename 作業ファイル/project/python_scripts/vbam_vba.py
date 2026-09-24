@@ -964,6 +964,8 @@ _CAPABILITIES = {
         ("process", "Excel プロセスの点呼"),
         ("diagnose", "表・シートの数式＆データ総合診断（集計漏れ・定数直書き・隠れ空白・外れ値検知）"),
         ("style-map", "表・シートの視覚レイアウト＆書式マップ（背景色・フォント・二重罫線・複合見出しツリー）"),
+        ("shelf", "棚（表の整理）の目録（モジュールのコードを読むだけ。--grep で絞る）"),
+        ("trace", "式の元をシートをまたいでたどる（番地・式・値の木。式の字面を読むだけ）"),
     ],
     "write": [
         ("replace-procedure", "プロシージャ置換（バックアップあり）"),
@@ -980,11 +982,11 @@ _CAPABILITIES = {
         ("backup-prune", "backups の間引き（既定は数えるだけ。--force で消す。ブックには触らない）"),
         ("write-range", "セル書き込み"), ("write-cells", "飛び飛びのセル書き込み（1往復）"),
         ("format-range", "書式"),
-        ("tidy", "表を整える（見出し・罫線・番号列左寄せ・数値カンマ・列幅→見え方の読み戻し）"),
+        ("tidy", "表の書き方と罫線と列幅をそろえる（見出し・罫線・番号列左寄せ・数値カンマ・列幅→見え方の読み戻し）"),
         ("clean-table", "表を掃除する（AI なし・数秒。空白の全角半角・半角カナ・全角英数・文字の日付→規則で直し、"
                         "重複行は --delete-dups のときだけ削除、空欄は埋めず報告、最後に tidy）"),
         ("表の掃除", "clean-table と同じ"),
-        ("seiri", "表を直す 1 手目（materials の代わり）：「表を整える」マクロを撃ち、残り（エラーセルと原因・気づき・指示文・###）"
+        ("seiri", "表を直す 1 手目（materials の代わり）：「表の書き方と罫線と列幅をそろえる」マクロを撃ち、残り（エラーセルと原因・気づき・指示文・###）"
                   "だけを出す（2026-09-13）"),
         ("表の整理", "seiri と同じ"),
         ("build-sheet", "設計図（JSON）からシートを一枚組み上げる（新規シート／--overwrite で既存を消して組み直す）"),
@@ -1022,6 +1024,9 @@ _CAPABILITIES = {
         ("gate", "関所（コピーで構文検査＋テスト実行）"),
         ("batch", "コマンド列の連続実行（中身しだい）"),
         ("shell", "対話セッション（中身しだい）"),
+        ("shelf-run", "棚（表の整理）のマクロを選んで撃つ（何が起きるかは静的に読めない。撃つ前に控えを取り差分を返す）"),
+        ("register-addin", "前に出ているブックを .xlam に焼き直してアドイン登録（「アドインの更新登録」を撃つ＝xlam を作り直す）"),
+        ("更新登録", "register-addin と同じ"),
     ],
 }
 
@@ -1831,13 +1836,192 @@ def _all_procedure_names(wb):
     return names
 
 
-def _suggest_similar(name, candidates, label="もしかして"):
-    """タイポ候補の提示（difflib による機械的な近似のみ・判断はしない）"""
+def _suggest_similar(name, candidates, label="もしかして", wb=None):
+    """タイポ候補の提示（difflib による機械的な近似のみ・判断はしない）。
+
+    wb を渡すと、ほかに開いているブックにその名前があるかも見て名指しする（.xlsm 等の 1 冊に決まるときは
+    get / patch / replace が _book_holding_proc で自分から移るので、ここに来るのは .xlam だけ・2 冊以上のとき）。秀コンボ.xlsm を直すつもりで 実測4.xlsx が前に出ていて
+    「見つかりません」だけが返り、どこにあるかを自分で探した（2026-09-24）。
+    """
     import difflib
     close = difflib.get_close_matches(name, candidates, n=3, cutoff=0.6)
     if close:
         print(f"  {label}: {' / '.join(close)}")
+    if wb is not None:
+        for book, mod in _other_books_with_proc(wb, name):
+            how = ("アドイン＝直すなら元の .xlsm を前に出して直し、更新登録する" if book.lower().endswith('.xlam')
+                   else "そのブックを前に出してから撃ち直す")
+            print(f"  ほかに開いているブックにあります: {book}（{mod}）→ {how}")
     print("  py vba_manager.py list で一覧を確認できます。")
+
+
+def _other_books_with_proc(wb, name):
+    """アクティブ以外の開いているブック（アドインを含む）で name のプロシージャを持つもの → [(ブック名, モジュール名)]。"""
+    pat = re.compile(r'^\s*(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?(?:Sub|Function)\s+' + re.escape(name) + r'\s*\(',
+                     re.IGNORECASE | re.MULTILINE)
+    out = []
+    try:
+        me = str(wb.Name)
+        projects = wb.Application.VBE.VBProjects
+    except Exception:
+        return out
+    for p in projects:
+        try:
+            fn = str(p.FileName or '')
+            book = os.path.basename(fn)
+            if not book or book.lower() == me.lower():
+                continue
+            for comp in p.VBComponents:
+                cm = comp.CodeModule
+                n = cm.CountOfLines
+                if n and pat.search(cm.Lines(1, n)):
+                    out.append((book, str(comp.Name)))
+                    break
+        except Exception:
+            continue
+    return out
+
+
+def _has_proc(wb, name):
+    """wb のどこかのモジュールに name のプロシージャがあるか。"""
+    for comp in wb.VBProject.VBComponents:
+        try:
+            comp.CodeModule.ProcStartLine(name, 0)
+            return True
+        except Exception:
+            pass
+    return False
+
+
+def _book_holding_proc(wb, name):
+    """アクティブの wb に name が無く、ほかに開いている .xlsm 等（.xlam を除く）の 1 冊にだけあれば、そのブックを返す。
+
+    棚のマクロを直すとき、前に出ているのは試しの表（実測4.xlsx）で、マクロは秀コンボ.xlsm にある。
+    ブックを名指しする口が MCP の patch_procedure に無く、「見つかりません」→ 前に出す手が要った
+    （2026-09-24 台帳: 失敗の理由の 1 位）。1 冊に決まるときだけ移る。.xlam は元の .xlsm で直して焼くので移らない。
+    """
+    try:
+        if _has_proc(wb, name):
+            return None
+        hits = [b for b, _ in _other_books_with_proc(wb, name) if not b.lower().endswith('.xlam')]
+        if len(hits) != 1:
+            return None
+        other = wb.Application.Workbooks(hits[0])
+        print(f"（'{name}' は {wb.Name} ではなく {other.Name} にありました。{other.Name} を対象にします）")
+        return other
+    except Exception:
+        return None
+
+
+def _decl_span(lines, i):
+    """lines[i] から始まる宣言の行（行継続 " _" で折り返した分も含む）の終わりの添字。"""
+    j = i
+    while j + 1 < len(lines) and re.search(r'\s_\s*$', lines[j]):
+        j += 1
+    return j
+
+
+def _norm_decl(lines):
+    return re.sub(r'\s+', ' ', ' '.join(ln.rstrip().rstrip('_') for ln in lines)).strip().lower()
+
+
+def _replace_body_keeping_decl(cm, macro_name, new_code, attr_block, end_pattern):
+    """宣言の行が新旧で同じなら、宣言の下から End Sub までだけを差し替える → 差し替えたら True。
+
+    同じでない・1 行完結の Sub・形が読めない、は False（呼び元が従来の Remove＋Import に回す）。
+    差し替えた後に書き出して Attribute が残っているかを確かめ、消えていれば元の本文に戻して False。
+    """
+    try:
+        start = cm.ProcStartLine(macro_name, 0)
+        count = cm.ProcCountLines(macro_name, 0)
+        body = cm.ProcBodyLine(macro_name, 0)
+    except Exception:
+        return False
+    total = cm.CountOfLines
+    mod_lines = cm.Lines(1, total).split('\r\n')
+    d0 = body - 1
+    d1 = _decl_span(mod_lines, d0)
+    decl_old = mod_lines[d0:d1 + 1]
+    if re.search(r'\bEnd\s+(?:Sub|Function)\b', _strip_vba_comment(re.sub(r'"[^"]*"', '""', decl_old[-1])), re.I):
+        return False                                   # 1 行完結
+    end_idx = None
+    for k in range(min(start + count - 2, total - 1), d1, -1):
+        if end_pattern.match(mod_lines[k]):
+            end_idx = k
+            break
+    if end_idx is None:
+        return False
+    new_lines = new_code.replace('\r\n', '\n').split('\n')
+    decl_pat = re.compile(r'^\s*(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?(?:Sub|Function)\s+'
+                          + re.escape(macro_name) + r'\s*[\(\s]', re.I)
+    n0 = next((i for i, ln in enumerate(new_lines) if decl_pat.match(ln)), None)
+    if n0 is None:
+        return False
+    n1 = _decl_span(new_lines, n0)
+    if _norm_decl(new_lines[n0:n1 + 1]) != _norm_decl(decl_old):
+        return False
+    rest = new_lines[n1 + 1:]
+    while rest and not rest[-1].strip():
+        rest.pop()
+    if not rest or not end_pattern.match(rest[-1]):
+        return False
+    old_body = mod_lines[d1 + 1:end_idx + 1]
+    if n0 > 0:
+        print("  (宣言より上のコメント行は、Attribute のあるマクロでは既存の行を維持します)")
+    cm.DeleteLines(d1 + 2, end_idx - d1)
+    cm.InsertLines(d1 + 2, '\r\n'.join(rest))
+    # Attribute が残ったかを書き出して確かめる（残らなければ元の本文に戻して従来の経路へ）
+    try:
+        import tempfile
+        p = os.path.join(tempfile.gettempdir(), f"_vbam_attr_check_{os.getpid()}.bas")
+        cm.Parent.Export(p)
+        with open(p, 'rb') as f:
+            text = f.read().decode('cp932', errors='replace')
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+        if all(a.strip() in text for a in attr_block):
+            return True
+    except Exception:
+        pass
+    cm.DeleteLines(d1 + 2, len(rest))
+    cm.InsertLines(d1 + 2, '\r\n'.join(old_body))
+    print("  (本文だけの差し替えで Attribute が残らなかったため、元に戻して replace-module 方式に回します)")
+    return False
+
+
+def _book_holding_module(wb, module_name, include_addins=False):
+    """wb にモジュール module_name が無く、ほかに開いているブックの 1 冊にだけあれば、そのブックを返す（_book_holding_proc のモジュール版）。
+
+    前に出ているのが試しの表で、足す先のモジュール（表の整理・コンボ道具）は秀コンボ.xlsm にある、の形で
+    add-procedure が「モジュールが見つかりません」と 3 回落ちていた（2026-09-24 総点検・会話記録 30 日）。
+    .xlam は元の .xlsm で直して焼くので、書く手では移らない（読むだけの手は include_addins=True）。
+    """
+    try:
+        if any(c.Name.lower() == module_name.lower() for c in wb.VBProject.VBComponents):
+            return None
+        xl = wb.Application
+        hits = []
+        for vp in xl.VBE.VBProjects:
+            try:
+                bn = _project_book_name(xl, vp)
+                if not bn or bn == wb.Name or (bn.lower().endswith('.xlam') and not include_addins):
+                    continue
+                if any(c.Name.lower() == module_name.lower() for c in vp.VBComponents):
+                    hits.append(bn)
+            except Exception:
+                continue
+        hits = list(dict.fromkeys(hits))
+        if len(hits) > 1:                            # 読むだけの手で xlsm と焼いた xlam の両方にある＝元の xlsm を採る
+            hits = [h for h in hits if not h.lower().endswith('.xlam')]
+        if len(hits) != 1:
+            return None
+        other = xl.Workbooks(hits[0])
+        print(f"（モジュール '{module_name}' は {wb.Name} ではなく {other.Name} にありました。{other.Name} を対象にします）")
+        return other
+    except Exception:
+        return None
 
 
 def _extract_proc(wb, module_name, macro_name):
@@ -1892,6 +2076,22 @@ def _extract_proc(wb, module_name, macro_name):
             else:
                 break
         return comp.Name, '\n'.join(lines) + '\n'
+    if module_name:
+        # 指したモジュールに無い＝モジュールを分けた・移したあとの古い名前（2026-09-24 台帳: 棚を 4 つに分けた後の
+        # 「get 表の整理 選んだ2列の平均最大最小を作る」が 表の整理_作る にあるのに「見つかりません」で落ちていた）。
+        # ほかの 1 か所にだけあれば、そこを取る。2 か所以上なら選ばせる
+        others = []
+        for comp in wb.VBProject.VBComponents:
+            try:
+                comp.CodeModule.ProcStartLine(macro_name, 0)
+                others.append(comp.Name)
+            except Exception:
+                pass
+        if len(others) > 1:
+            raise ValueError(others)
+        if len(others) == 1:
+            print(f"（'{macro_name}' はモジュール {module_name} ではなく {others[0]} にありました。{others[0]} を使います）")
+            return _extract_proc(wb, others[0], macro_name)
     return None, None
 
 
@@ -2006,6 +2206,8 @@ def cmd_get(args):
 
     # コードを読むだけ → 読み取り専用で開く（Workbook_Open を起こさない）
     xl, wb = get_workbook(target_file, readonly=True)
+    if not target_file and len(requests) == 1:
+        wb = _book_holding_proc(wb, requests[0][1]) or wb
 
     results = []
     for module_name, macro_name in requests:
@@ -2019,7 +2221,7 @@ def cmd_get(args):
             return False
         if comp_name is None:
             print(f"エラー: プロシージャ '{macro_name}' が見つかりません")
-            _suggest_similar(macro_name, _all_procedure_names(wb))
+            _suggest_similar(macro_name, _all_procedure_names(wb), wb=wb)
             return False
         results.append({'module': comp_name, 'name': macro_name, 'code': clean})
 
@@ -2050,6 +2252,17 @@ def cmd_get(args):
 def cmd_replace_procedure(args):
     """プロシージャを置換 (コードファイル省略時は _last_proc.vba を使用)"""
     target_file, rest = parse_target_and_rest(args.posargs)
+
+    # 「replace-procedure モジュール名 [プロシージャ名]」と撃たれたとき（2026-09-24 台帳: BorderFinder FindBorders で
+    # 「コードファイルが見つかりません: BorderFinder」と落ち、撃ち直しが 4 回）。位置引数がファイルとして無く、
+    # パスにも見えなければモジュール名と読み、コードは _last_proc.vba から取る
+    if (rest and not getattr(args, 'code_file_opt', None)
+            and not os.path.exists(smart_path_resolve(rest[0]) or rest[0])
+            and not re.search(r'[\\/]|\.(?:vba|bas|txt|cls|frm)$', rest[0], re.IGNORECASE)):
+        if not getattr(args, 'module_opt', None):
+            args.module_opt = rest[0]
+            print(f"（{rest[0]} をモジュール名と読みました。コードは {os.path.basename(LAST_PROC_FILE)} から）")
+        rest = []
 
     # コードファイルの決定: --code-file > 位置引数 > _last_proc.vba
     code_file = (getattr(args, 'code_file_opt', None)
@@ -2118,6 +2331,8 @@ def cmd_replace_procedure(args):
         return False
 
     xl, wb = get_workbook(target_file)
+    if not target_file:
+        wb = _book_holding_proc(wb, macro_name) or wb
 
     # --module 未指定時：同名プロシージャが複数モジュールにある場合はエラー
     module_opt = getattr(args, 'module_opt', None)
@@ -2160,7 +2375,7 @@ def cmd_replace_procedure(args):
 
     if not target_comp:
         print(f"エラー: プロシージャ '{macro_name}' が見つかりません")
-        _suggest_similar(macro_name, _all_procedure_names(wb))
+        _suggest_similar(macro_name, _all_procedure_names(wb), wb=wb)
         print("  新規追加なら add-procedure を使ってください。")
         return False
 
@@ -2297,6 +2512,17 @@ def cmd_replace_procedure(args):
             note_if_macro_free_book(wb)
             return True
 
+        # Attribute行あり、でも宣言の行が変わらないなら、宣言の下（本文〜End Sub）だけを差し替える（2026-09-24）。
+        # 隠れた Attribute（ショートカット）は宣言の行に付いているので残る（試しのブックで確かめた）。
+        # Remove＋Import を通らない＝「実行中のコードがあって旧モジュールが消えず shu0051 として入る」
+        # 名前衝突（会話記録 30 日で 3 回・手で改名するしかなかった）が起きない。モジュールの並びも動かない
+        if _replace_body_keeping_decl(cm, macro_name, new_code, attr_block, end_pattern):
+            _remove_export_artifacts(tmp_bas)
+            wb.Save()
+            print(f"置換完了: [{comp.Name}] '{macro_name}' → 保存しました（宣言の行とショートカットはそのまま・本文だけ差し替え）")
+            note_if_macro_free_book(wb)
+            return True
+
         # Attribute行あり → .bas編集 → replace-module 方式
         print(f"  (Attribute行検出 → replace-module方式で処理)")
 
@@ -2410,6 +2636,55 @@ def cmd_replace_procedure(args):
     return False
 
 
+def _patch_loose(code, target, replacement):
+    """字下げ・行末の空白を無視して target の行の並びを code から探し、1 か所なら置き換える → (新しいコード, 見つかった数)。
+
+    見つからない・2 か所以上なら (None, 数)。replacement の字下げは、見つかった先頭行と target の先頭行の差だけ足す
+    （target を字下げなしで渡した AI は、replacement も字下げなしで渡すため）。
+    """
+    t_lines = target.strip('\n').split('\n')
+    t_key = [ln.strip() for ln in t_lines]
+    if not any(t_key):
+        return None, 0
+    c_lines = code.split('\n')
+    c_key = [ln.strip() for ln in c_lines]
+    n = len(t_key)
+    hits = [i for i in range(len(c_key) - n + 1) if c_key[i:i + n] == t_key]
+    if len(hits) != 1:
+        return None, len(hits)
+    i = hits[0]
+    first = next(k for k in range(n) if t_key[k])
+    indent = lambda s: len(s) - len(s.lstrip(' \t'))
+    shift = indent(c_lines[i + first]) - indent(t_lines[first])
+    r_lines = replacement.strip('\n').split('\n') if replacement.strip('\n') else []
+    if shift > 0:
+        r_lines = [(' ' * shift + ln) if ln.strip() else ln for ln in r_lines]
+    return '\n'.join(c_lines[:i] + r_lines + c_lines[i + n:]), 1
+
+
+def _print_nearest_lines(code, target, comp_name):
+    """target の各行にいちばん近い実物の行を、行番号つきで見せる（どこがずれているかを AI が 1 手で知れるように）。"""
+    import difflib
+    c_lines = code.split('\n')
+    keys = [ln.strip() for ln in c_lines]
+    shown = 0
+    for t in [ln.strip() for ln in target.split('\n') if ln.strip()]:
+        if t in keys:
+            continue                               # この行は実物にある＝ずれているのは別の行
+        best = difflib.get_close_matches(t, keys, n=1, cutoff=0.5)
+        if best:
+            k = keys.index(best[0])
+            print(f"  target の行: {t}")
+            print(f"  実物の近い行（{comp_name} のプロシージャ内 {k + 1} 行目）: {c_lines[k].strip()}")
+        else:
+            print(f"  target の行: {t}  ← 近い行がありません")
+        shown += 1
+        if shown >= 3:
+            break
+    if not shown:
+        print("  各行は実物にありますが、並び（間の行・空行）が違います。get で今のコードを取り直してください。")
+
+
 def cmd_patch_procedure(args):
     """プロシージャ内の指定コードをピンポイントで置換（差分置換）"""
     target_file, rest = parse_target_and_rest(args.posargs)
@@ -2419,6 +2694,13 @@ def cmd_patch_procedure(args):
 
     macro_name = rest[0]
     module_opt = getattr(args, 'module_opt', None)
+    # get と同じく「モジュール プロシージャ」「モジュール.プロシージャ」も受ける（2026-09-24。前は 1 つ目をプロシージャ名と読み、
+    # SKILL.md の手本「patch-procedure モジュール Sub --old … --new …」がモジュール名を探して「見つかりません」になった）
+    if len(rest) >= 2:
+        module_opt = module_opt or rest[0]
+        macro_name = rest[1]
+    elif '.' in macro_name and not module_opt:
+        module_opt, macro_name = macro_name.split('.', 1)
     target_str = getattr(args, 'target', None)
     replacement_str = getattr(args, 'replacement', None)
     target_file_opt = getattr(args, 'target_file_opt', None)
@@ -2442,6 +2724,10 @@ def cmd_patch_procedure(args):
     replacement_str = replacement_str.replace('\r\n', '\n')
 
     xl, wb = get_workbook(target_file)
+    if not target_file:
+        other = _book_holding_proc(wb, macro_name)
+        if other is not None:
+            wb, target_file = other, str(other.FullName)   # 下の replace-procedure にも同じブックを渡す
     try:
         comp_name, current_code = _extract_proc(wb, module_opt, macro_name)
     except ValueError as matched:
@@ -2451,24 +2737,36 @@ def cmd_patch_procedure(args):
 
     if not comp_name or not current_code:
         print(f"エラー: プロシージャ '{macro_name}' が見つかりません")
-        _suggest_similar(macro_name, _all_procedure_names(wb))
+        _suggest_similar(macro_name, _all_procedure_names(wb), wb=wb)
         return False
 
     current_norm = current_code.replace('\r\n', '\n')
 
     # 出現回数の確認
     count = current_norm.count(target_str)
+    new_code = None
     if count == 0:
-        print(f"エラー: target 文字列がプロシージャ '{macro_name}' 内に見つかりません。")
-        print("  コードの改行やインデント（スペース数）が一致しているか確認してください。")
-        return False
+        # 字下げ・行末の空白だけが違うなら、行の中身で突き合わせて当てる（2026-09-24 台帳: patch-procedure の
+        # 失敗 29 回の多くが字下げ違いで、同じ手を 5 回撃ち直していた＝「見つかりません」しか返さなかったため）
+        new_code, loose = _patch_loose(current_norm, target_str, replacement_str)
+        if new_code is not None:
+            print("（字下げ・行末の空白の違いを無視して当てました）")
+        elif loose > 1:
+            print(f"エラー: target 文字列が（字下げを無視すると）プロシージャ '{macro_name}' 内に {loose} 箇所あります。")
+            print("  前後の行も含めて、置換対象が一意に特定できる範囲を指定してください。")
+            return False
+        else:
+            print(f"エラー: target 文字列がプロシージャ '{macro_name}' 内に見つかりません（字下げを無視しても）。")
+            _print_nearest_lines(current_norm, target_str, comp_name)
+            return False
     elif count > 1:
         print(f"エラー: target 文字列がプロシージャ '{macro_name}' 内に複数（{count}箇所）見つかりました。")
         print("  前後の行も含めて、置換対象が一意に特定できる範囲を指定してください。")
         return False
 
     # 置換実行
-    new_code = current_norm.replace(target_str, replacement_str, 1)
+    if new_code is None:
+        new_code = current_norm.replace(target_str, replacement_str, 1)
 
     # _last_proc.vba に書き込んで、実績ある cmd_replace_procedure で適用
     with open(LAST_PROC_FILE, 'w', encoding='utf-8') as f:
@@ -2529,13 +2827,16 @@ def cmd_add_procedure(args):
             return False
 
     xl, wb = get_workbook(target_file)
+    if not target_file:
+        wb = _book_holding_module(wb, module_name) or wb
     comp = None
     for c in wb.VBProject.VBComponents:
         if c.Name.lower() == module_name.lower():
             comp = c
             break
     if comp is None:
-        print(f"エラー: モジュール '{module_name}' が見つかりません（list-modules で確認）")
+        print(f"エラー: モジュール '{module_name}' が {wb.Name} に見つかりません（list-modules で確認・"
+              f"新しく作るなら add-module {module_name} -y）")
         return False
     cm = comp.CodeModule
     # 同名の重複挿入を防止（ブック全体はマクロ実行時の曖昧さになるだけだが、
@@ -2646,58 +2947,79 @@ def cmd_delete_procedure(args):
     """
     target_file, rest = parse_target_and_rest(args.posargs)
     if not rest:
-        print("使い方: delete-procedure [excel_file] <Sub名> [--module 名] [-y]")
-        return False
-    macro_name = rest[0]
-    if _reject_extra_args(rest, 1, '使い方: delete-procedure [excel_file] <Sub名> [--module 名]'):
+        print("使い方: delete-procedure [excel_file] [モジュール] <Sub名> [Sub名…] [--module 名] [-y]")
         return False
     module_opt = getattr(args, 'module_opt', None)
 
     xl, wb = get_workbook(target_file)
 
-    # 対象特定（同名複数はエラーで候補列挙＝対象取り違え防止）
-    matches = []
-    for comp in wb.VBProject.VBComponents:
-        if module_opt and comp.Name.lower() != module_opt.lower():
-            continue
-        try:
-            start = comp.CodeModule.ProcStartLine(macro_name, 0)
-            count = comp.CodeModule.ProcCountLines(macro_name, 0)
-            matches.append((comp, start, count))
-        except Exception:
-            continue
-    if not matches:
-        print(f"エラー: プロシージャ '{macro_name}' が見つかりません")
-        _suggest_similar(macro_name, _all_procedure_names(wb))
-        return False
-    if len(matches) > 1:
-        print(f"エラー: '{macro_name}' は複数のモジュールにあります。--module で指定してください:")
-        for comp, _, _ in matches:
-            print(f"  {comp.Name}")
-        return False
+    # 並びの読み方（2026-09-24）: 「モジュール Sub名」（get と同じ・前は余分な引数で断っていた）／「モジュール.Sub名」／
+    # Sub名を複数（13 本を 1 本ずつ消して控えを 13 冊取った＝まとめて 1 回の控えと保存にする）
+    comp_names = {c.Name.lower() for c in wb.VBProject.VBComponents}
+    if not module_opt and len(rest) == 2 and rest[0].lower() in comp_names:
+        module_opt, rest = rest[0], rest[1:]
+    wanted = []
+    for tok in rest:
+        mn, pn = (tok.split('.', 1) if '.' in tok and tok.split('.', 1)[0].lower() in comp_names else (module_opt, tok))
+        wanted.append((mn, pn))
 
-    comp, start, count = matches[0]
-    cm = comp.CodeModule
-    # 領域に食い込んだ「次プロシージャの宣言行」を削除範囲から外す。
-    # 外さないと 1行完結 Sub の直後のプロシージャが宣言を失って壊れる
-    # （get / replace-procedure は同じ絞り込みを既に持っている）
-    start, count = _narrow_proc_range(cm, start, count)
-    print(f"--- 削除するプロシージャ: [{comp.Name}] {macro_name} ({count}行) ---")
-    print(cm.Lines(start, count).rstrip())
-    print("-" * 40)
+    # 対象特定（同名複数はエラーで候補列挙＝対象取り違え防止）。1 本でも決まらなければ何も消さない
+    found = []
+    for mn, macro_name in wanted:
+        matches = []
+        for comp in wb.VBProject.VBComponents:
+            if mn and comp.Name.lower() != mn.lower():
+                continue
+            try:
+                comp.CodeModule.ProcStartLine(macro_name, 0)
+                matches.append(comp)
+            except Exception:
+                continue
+        if not matches:
+            print(f"エラー: プロシージャ '{macro_name}' が見つかりません")
+            _suggest_similar(macro_name, _all_procedure_names(wb), wb=wb)
+            return False
+        if len(matches) > 1:
+            print(f"エラー: '{macro_name}' は複数のモジュールにあります。--module で指定してください:")
+            for comp in matches:
+                print(f"  {comp.Name}")
+            return False
+        found.append((matches[0], macro_name))
+
+    def _range_of(comp, macro_name):
+        cm = comp.CodeModule
+        start = cm.ProcStartLine(macro_name, 0)
+        count = cm.ProcCountLines(macro_name, 0)
+        # 領域に食い込んだ「次プロシージャの宣言行」を削除範囲から外す。
+        # 外さないと 1行完結 Sub の直後のプロシージャが宣言を失って壊れる
+        # （get / replace-procedure は同じ絞り込みを既に持っている）
+        return _narrow_proc_range(cm, start, count)
+
+    for comp, macro_name in found:
+        start, count = _range_of(comp, macro_name)
+        print(f"--- 削除するプロシージャ: [{comp.Name}] {macro_name} ({count}行) ---")
+        print(comp.CodeModule.Lines(start, count).rstrip())
+        print("-" * 40)
+    label = found[0][1] if len(found) == 1 else f"{found[0][1]} ほか {len(found) - 1} 本"
     if not getattr(args, 'yes', False):
-        ans = input(f"[{comp.Name}] から '{macro_name}' を削除しますか？ (y/N): ")
+        ans = input(f"'{label}' を削除しますか？ (y/N): ")
         if ans.strip().lower() not in ('y', 'yes'):
             print("キャンセルされました。")
             return False
-    if make_backup(wb.FullName, f"delete_{macro_name}") is None and not getattr(args, 'force', False):
+    tag = found[0][1] if len(found) == 1 else f"{found[0][1]}_ほか{len(found) - 1}本"
+    if make_backup(wb.FullName, f"delete_{tag}") is None and not getattr(args, 'force', False):
         print("エラー: バックアップが取れないため中止しました（--force で強行可）。")
         return False
-    make_module_backup(wb, comp.Name)
+    for mod in dict.fromkeys(comp.Name for comp, _ in found):
+        make_module_backup(wb, mod)
 
-    cm.DeleteLines(start, count)
+    for comp, macro_name in found:
+        start, count = _range_of(comp, macro_name)      # 前の削除で行がずれるので、消す直前に位置を取り直す
+        comp.CodeModule.DeleteLines(start, count)
     wb.Save()
-    print(f"削除完了: [{comp.Name}] '{macro_name}' → 保存しました")
+    for comp, macro_name in found:
+        print(f"削除完了: [{comp.Name}] '{macro_name}'")
+    print("→ 保存しました" + (f"（{len(found)} 本・控えは 1 冊）" if len(found) > 1 else ""))
     return True
 
 
@@ -2773,12 +3095,35 @@ def cmd_delete_module(args):
     return True
 
 
+def _module_name_of_file(path):
+    """.bas/.cls/.frm の Attribute VB_Name（読めなければファイル名の拡張子抜き）。"""
+    p = smart_path_resolve(path) or path
+    for enc in ('cp932', 'utf-8'):
+        try:
+            with open(p, encoding=enc) as f:
+                for _ in range(40):
+                    ln = f.readline()
+                    if not ln:
+                        break
+                    m = re.match(r'\s*Attribute\s+VB_Name\s*=\s*"([^"]+)"', ln)
+                    if m:
+                        return m.group(1)
+            break
+        except (OSError, UnicodeDecodeError):
+            continue
+    return os.path.splitext(os.path.basename(path))[0]
+
+
 def cmd_replace_module(args):
     """モジュール全体を Remove+Import で置換 (Attribute を正しく処理)"""
     target_file, rest = parse_target_and_rest(args.posargs)
 
+    # .bas のパスだけなら、モジュール名はファイルの Attribute VB_Name（無ければファイル名）から取る
+    # （2026-09-24・パスだけを渡して「使い方」が返った＝台帳の失敗の理由の 2 位）
+    if len(rest) == 1 and rest[0].lower().endswith(('.bas', '.cls', '.frm')):
+        rest = [_module_name_of_file(rest[0]), rest[0]]
     if len(rest) < 2:
-        print("使い方: replace-module [excel_file] <module_name> <bas_file>")
+        print("使い方: replace-module [excel_file] [<module_name>] <bas_file>（名前を省くとファイルの VB_Name）")
         return False
     module_name, code_file = rest[0], rest[1]
 
@@ -3197,6 +3542,8 @@ def cmd_export_module(args):
 
     # 書き出すだけ（ブックは変更しない） → 読み取り専用で開く
     xl, wb = get_workbook(target_file, readonly=True)
+    if not target_file:
+        wb = _book_holding_module(wb, module_name, include_addins=True) or wb
 
     # export-all と同じ Type 別拡張子を使う。フォームを .bas で書き出すと、
     # replace-module の「.frm なのに .frx が無い」ガードをすり抜けてしまう
@@ -3213,7 +3560,7 @@ def cmd_export_module(args):
             print(f"エクスポート完了: {out_path}")
             return True
 
-    print(f"エラー: モジュール '{module_name}' が見つかりません")
+    print(f"エラー: モジュール '{module_name}' が {wb.Name} に見つかりません")
     print("  存在するモジュール: " + ', '.join(c.Name for c in wb.VBProject.VBComponents))
     return False
 
@@ -5170,6 +5517,8 @@ def cmd_impact(args):
         return False
     focus = rest[0]
     xl, wb = get_workbook(target_file, readonly=True)   # 健診モード（読むだけ）
+    if not target_file:
+        wb = _book_holding_proc(wb, focus) or wb      # （2026-09-24 総点検）
     inv = _inventory_or_explain(xl, wb)
     if inv is None:
         return False
@@ -5178,7 +5527,7 @@ def cmd_impact(args):
     hit = known.get(focus.lower())
     if not hit:
         print(f"エラー: マクロ '{focus}' が見つかりません")
-        _suggest_similar(focus, [v[0] for v in known.values()])
+        _suggest_similar(focus, [v[0] for v in known.values()], wb=wb)
         return False
     root = hit[0]
     mod_of = {v[0]: v[1] for v in known.values()}
@@ -5266,6 +5615,28 @@ def cmd_impact(args):
     return True
 
 
+def _needle_from_file(path):
+    """--file で渡された検索語（1 行目の改行だけ落とす）。指定が無ければ None・読めなければ False（2026-09-23）。
+
+    シェルの引用符で割れる語（'Like "function *"' が 2 つに割れて検索が外れた・2026-09-22）を、
+    引用符を経由せずに渡す口。ファイルの中身をそのまま検索語にする（前後の空白は落とさない＝
+    行頭のインデントごと探せる）。複数行のファイルは 1 行目だけ使う（行またぎの検索はできないため）。
+    """
+    if not path:
+        return None
+    try:
+        with open(str(path), encoding='utf-8-sig') as f:
+            text = f.read()
+    except OSError as ex:
+        print(f"エラー: --file を読めません: {ex}")
+        return False
+    needle = text.split('\n')[0].rstrip('\r')
+    if not needle:
+        print(f"エラー: --file の 1 行目が空です: {path}")
+        return False
+    return needle
+
+
 def cmd_grep(args):
     """全モジュール横断のVBAコード検索: grep [excel_file] <検索文字列>
 
@@ -5273,12 +5644,18 @@ def cmd_grep(args):
     出力: [モジュール] プロシージャ名:行番号: 該当行
     """
     target_file, rest = parse_target_and_rest(args.posargs)
-    if not rest:
-        print("使い方: grep [excel_file] <検索文字列> [--regex] [-i] [--module 名] [--max N] [--json]")
+    needle = _needle_from_file(getattr(args, 'needle_file', None))
+    if needle is False:
         return False
-    needle = rest[0]
-    if _reject_extra_args(rest, 1, '検索文字列は1つ。スペースを含むならクォートで囲む'):
-        return False
+    if needle is None:
+        if not rest:
+            print("使い方: grep [excel_file] <検索文字列> [--regex] [-i] [--module 名] [--max N] [--json]"
+                  "\n  引用符で割れる文字（' \" 等）を探すときは --file 検索語.txt（中身をそのまま検索語にする）")
+            return False
+        needle = rest[0]
+        if _reject_extra_args(rest, 1, '検索文字列は1つ。スペースを含むならクォートで囲む'
+                                       '（引用符で割れるなら --file 検索語.txt）'):
+            return False
     flags = re.IGNORECASE if getattr(args, 'ignore_case', False) else 0
     if getattr(args, 'regex', False):
         try:
@@ -5298,31 +5675,57 @@ def cmd_grep(args):
 
     # コードを読むだけ → 読み取り専用で開く（Workbook_Open を起こさない）
     xl, wb = get_workbook(target_file, readonly=True)
-    hits = []
-    total = 0
-    _scanned = []        # 0件のときの「寛容に数え直し」用（COM を読み直さない）
-    for comp in wb.VBProject.VBComponents:
-        if mod_filter and comp.Name.lower() != mod_filter.lower():
-            continue
-        cm = comp.CodeModule
-        n = cm.CountOfLines
-        if n == 0:
-            continue
-        code = cm.Lines(1, n)
-        _scanned.append(code)
-        for i, line in enumerate(code.split('\r\n'), 1):
-            if pat.search(line):
-                total += 1
-                if len(hits) < max_hits:
-                    try:
-                        proc = cm.ProcOfLine(i, 0) or ''
-                        # dynamic Dispatch は out引数付きメソッドをタプルで返すことがある
-                        if isinstance(proc, tuple):
-                            proc = proc[0] or ''
-                    except Exception:
-                        proc = ''
-                    hits.append({'module': comp.Name, 'proc': proc,
-                                 'line': i, 'text': line.rstrip()})
+    # --all: 開いている全部のブック・アドイン（PERSONAL・秀コンボ.xlam も）を横に探す（2026-09-24: 会話記録で
+    # grep … --all が不明な引数で落ちていた。list --all と同じ口）
+    projects = [(None, wb.VBProject)]
+    if getattr(args, 'all', False):
+        projects = []
+        for vp in xl.VBE.VBProjects:
+            try:
+                projects.append((_project_book_name(xl, vp) or vp.Name, vp))
+            except Exception:
+                continue
+
+    def _scan(p):
+        hits, total, scanned = [], 0, []
+        for label, vp in projects:
+            try:
+                comps = list(vp.VBComponents)
+            except Exception:
+                continue                       # 保護されたプロジェクト
+            for comp in comps:
+                if mod_filter and comp.Name.lower() != mod_filter.lower():
+                    continue
+                cm = comp.CodeModule
+                n = cm.CountOfLines
+                if n == 0:
+                    continue
+                code = cm.Lines(1, n)
+                scanned.append(code)
+                for i, line in enumerate(code.split('\r\n'), 1):
+                    if p.search(line):
+                        total += 1
+                        if len(hits) < max_hits:
+                            try:
+                                proc = cm.ProcOfLine(i, 0) or ''
+                                # dynamic Dispatch は out引数付きメソッドをタプルで返すことがある
+                                if isinstance(proc, tuple):
+                                    proc = proc[0] or ''
+                            except Exception:
+                                proc = ''
+                            hits.append({'book': label, 'module': comp.Name, 'proc': proc,
+                                         'line': i, 'text': line.rstrip()})
+        return hits, total, scanned
+
+    hits, total, _scanned = _scan(pat)   # _scanned は 0件のときの「寛容に数え直し」用（COM を読み直さない）
+    if total == 0 and not getattr(args, 'regex', False) and '|' in needle.strip('|'):
+        # 「A|B|C」は「どれか」のつもり（2026-09-24: grep "選択セル図削除|非表示の行列を全表示|…" が 0 件と答え、
+        # 会話記録でも「CreateObject|GetObject|…」を --regex 無しで撃っていた）。字面で 0 件のときだけ「どれか」で探し直す
+        alts = [a for a in needle.split('|') if a]
+        pat = re.compile('|'.join(re.escape(a) for a in alts), flags)
+        hits, total, _scanned = _scan(pat)
+        if total:
+            print(f"（'|' を「どれか」と読んで探しました: {' / '.join(alts)}。字面の '|' を探すなら --regex で \\| と書く）")
 
     if getattr(args, 'json', False):
         import json
@@ -5342,10 +5745,11 @@ def cmd_grep(args):
         return True
     for h in hits:
         proc_part = f" {h['proc']}" if h['proc'] else ""
-        print(f"[{h['module']}]{proc_part}:{h['line']}: {h['text'].strip()}")
+        book_part = f"[{h['book']}]" if h.get('book') else ""
+        print(f"{book_part}[{h['module']}]{proc_part}:{h['line']}: {h['text'].strip()}")
     if total > len(hits):
         print(f"…他 {total - len(hits)}件（--max で上限変更可）")
-    print(f"--- {total}件 ヒット ---")
+    print(f"--- {total}件 ヒット ---" + (f"（{len(projects)} 冊を探した）" if getattr(args, 'all', False) else ""))
     return True
 
 
@@ -5381,12 +5785,23 @@ def cmd_code_replace(args):
     完全一致が0行のときだけ、大小文字→空白の順に寛容に探し直す（VBA の保存時整形の吸収）。
     """
     target_file, rest = parse_target_and_rest(args.posargs)
-    if len(rest) < 2:
-        print("使い方: code-replace [excel_file] <検索> <置換> [--regex] [--module 名] [-y]")
+    needle = _needle_from_file(getattr(args, 'needle_file', None))
+    repl = _needle_from_file(getattr(args, 'repl_file', None))
+    if needle is False or repl is False:
         return False
-    needle, repl = rest[0], rest[1]
-    if _reject_extra_args(rest, 2, 'スペースを含む場合はクォートで囲んでください'):
+    want = (1 if needle is None else 0) + (1 if repl is None else 0)
+    if len(rest) < want:
+        print("使い方: code-replace [excel_file] [モジュール] [マクロ] <検索> <置換> [--regex] [--module 名] [-y]"
+              "\n  引用符で割れる文字（' \" 等）は --file 検索語.txt / --repl-file 置換語.txt で渡す")
         return False
+    # 検索・置換は後ろから取る。前に残った語がモジュール名・マクロ名なら絞り込み（2026-09-24: 会話記録で
+    # 「code-replace マクロフォーム VBEコードへジャンプ "旧" "新"」が余分な引数で 2 回落ちていた）
+    lead, tail = rest[:len(rest) - want], rest[len(rest) - want:]
+    idx = 0
+    if needle is None:
+        needle, idx = tail[idx], idx + 1
+    if repl is None:
+        repl, idx = tail[idx], idx + 1
     use_regex = getattr(args, 'regex', False)
     if use_regex:
         try:
@@ -5401,6 +5816,31 @@ def cmd_code_replace(args):
     mod_filter = getattr(args, 'module_opt', None)
 
     xl, wb = get_workbook(target_file)
+    proc_filter = None
+    if lead:
+        comps = {c.Name.lower(): c.Name for c in wb.VBProject.VBComponents}
+        procs = {p.lower() for p in _all_procedure_names(wb)}
+        for t in lead:
+            if t.lower() in comps and not mod_filter:
+                mod_filter = comps[t.lower()]
+            elif t.lower() in procs and not proc_filter:
+                proc_filter = t
+            else:
+                print(f"エラー: 余分な引数があります: {t}（モジュール名でもマクロ名でもありません）")
+                print("  スペースを含む場合はクォートで囲んでください（引用符で割れるなら --file / --repl-file）")
+                return False
+        print("絞り込み: " + " / ".join(x for x in (f"モジュール {mod_filter}" if mod_filter else "",
+                                                   f"マクロ {proc_filter}" if proc_filter else "") if x))
+
+    def _in_proc(cm, i):
+        if not proc_filter:
+            return True
+        try:
+            p = cm.ProcOfLine(i, 0)
+            p = p[0] if isinstance(p, tuple) else p
+            return str(p or '').lower() == proc_filter.lower()
+        except Exception:
+            return False
 
     # 変更計画の作成（この段階では何も書き換えない）。戻り値 (plans, 変更行数, 一致行数)。
     # 中止すべき不正があれば (None, 0, 0)。一致しても置換後が同じ内容の行は plans に入れない
@@ -5417,7 +5857,7 @@ def cmd_code_replace(args):
                 continue
             changes = []
             for i, line in enumerate(cm.Lines(1, n).split('\r\n'), 1):
-                if not p.search(line):
+                if not p.search(line) or not _in_proc(cm, i):
                     continue
                 matched += 1
                 try:
@@ -5577,7 +6017,9 @@ def _start_dialog_watcher(xl, mode=None, input_texts=None):
 
         def _child(ch, _):
             try:
-                if win32gui.GetClassName(ch) == 'Button':
+                # 押せないボタンは数えない（VBA の実行時エラーの窓は先頭が灰色の［継続］で、
+                # それを押し続けて 600 秒固まった・2026-09-23）
+                if win32gui.GetClassName(ch) == 'Button' and win32gui.IsWindowEnabled(ch):
                     cid = win32gui.GetDlgCtrlID(ch)
                     txt = win32gui.GetWindowText(ch).replace('&', '').strip()
                     found.append((cid, txt))
@@ -5695,6 +6137,14 @@ def _start_dialog_watcher(xl, mode=None, input_texts=None):
             for cid, txt in btns:                # 文字でキャンセル/いいえ系
                 tl = txt.lower()
                 if any(h in tl for h in ('cancel', 'キャンセル', '中止', 'いいえ', 'no')):
+                    return cid
+            for cid, txt in btns:                # VBA の実行時エラー＝［終了］でマクロを止める
+                tl = txt.lower()
+                if '終了' in tl or tl.startswith('end'):
+                    return cid
+            for cid, txt in btns:                # デバッグ（中断モードに入る）とヘルプは押さない
+                tl = txt.lower()
+                if not any(h in tl for h in ('デバッグ', 'debug', 'ヘルプ', 'help')):
                     return cid
             return btns[0][0]                    # OK専用等はその1つで閉じる
         # 1) 望む標準IDが実在すればそれ（通常の OK+キャンセル・Yes/No 等）
@@ -5938,12 +6388,16 @@ def _project_book_name(xl, p):
         return os.path.basename(fn)
     try:
         pname = p.Name
+        comps = sorted(str(c.Name) for c in p.VBComponents)
     except Exception:
         return None
     try:
         for w in xl.Workbooks:
             try:
-                if not w.Path and w.VBProject.Name == pname:
+                # 名前（VBAProject）だけで当てると、ファイルの無い抜け殻のプロジェクト（アドインの更新登録の残り）が
+                # 未保存の Book20 と取り違えられ、棚を Book20 で撃って「マクロを実行できません」（2026-09-24）。モジュールの顔ぶれも見る
+                if (not w.Path and w.VBProject.Name == pname
+                        and sorted(str(c.Name) for c in w.VBProject.VBComponents) == comps):
                     return w.Name
             except Exception:
                 continue
@@ -6092,6 +6546,166 @@ def _start_call_watchdog(seconds, owned_pid=None):
                     pass
 
     return _Watchdog()
+
+
+_ADDIN_REGISTER_MACRO = 'アドインの更新登録'
+
+
+def _find_addin(xl, file_name):
+    """AddIns コレクションから .xlam を名前で引く（Item("名前.xlam") は引けずに落ちる）。"""
+    try:
+        for a in xl.AddIns:
+            try:
+                if str(a.Name).lower() == file_name.lower():
+                    return a
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
+
+
+def _addin_project_loaded(xl, addin_path):
+    """その .xlam の VBA プロジェクトが今の Excel に載っているか。
+
+    登録一覧の Installed は True のままでも、プロジェクトだけ外れていることがある
+    （読み込み中の .xlam を上書きしたとき）。こちらが本当の可否。
+    """
+    want = os.path.normcase(os.path.abspath(addin_path))
+    try:
+        for p in xl.VBE.VBProjects:
+            try:
+                fn = str(p.FileName or '')
+                if fn and os.path.normcase(os.path.abspath(fn)) == want:
+                    return True
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return False
+
+
+def cmd_register_addin(args):
+    """`register-addin [ブック]`: 開いているブックを .xlam に焼き直してアドインに登録し直す（2026-09-23）。
+
+    「アドインの更新登録」は **ActiveWorkbook** を xlam にするマクロなので、撃つ前に道具が三つ確かめる:
+      ・焼く先が本当にそのブックか（前に出ているブックを名指しで報告する）
+      ・ほかに空のブック（保存していない Book1 など）が開いていないか＝間違ってそれを焼かない
+      ・表示中のフォームが無いか（Designer を取れずマクロが MsgBox で止まる）→ 出ていれば閉じてから撃つ
+    撃つのは**素の Run**（ハーネスの一時モジュールを置くと、そのまま xlam に焼き付く）。
+    撃った後に .xlam の日時と大きさを読んで、本当に焼けたかを報告する。
+
+    **焼く前にアドインを外し、焼いた後に入れ直す。** 読み込み中の .xlam を上書きすると、
+    登録一覧は Installed=True のままなのに VBA プロジェクトだけ外れ、どのブックからも
+    アドインのマクロが使えなくなる（2026-09-23 に実害）。最後に VBProjects を見て、
+    本当に載っているかまで確かめる。
+    """
+    target_file, rest = parse_target_and_rest(args.posargs)
+    xl, wb = get_workbook(target_file, load_addins=True)
+    book = str(wb.Name)
+    stem, ext = os.path.splitext(book)
+    if ext.lower() not in ('.xlsm', '.xlsb'):
+        print(f"エラー: {book} はマクロを持てる形式ではありません（.xlsm / .xlsb を前に出してください）")
+        return False
+    blanks = []
+    for other in xl.Workbooks:
+        try:
+            if str(other.Name) != book and not str(other.Path or ''):
+                blanks.append(str(other.Name))
+        except Exception:
+            continue
+    if blanks and not getattr(args, 'yes', False):
+        print(f"エラー: 保存していない空のブックが開いています: {'・'.join(blanks)}")
+        print("  更新登録は前に出ているブックを xlam にします。間違って空のブックを焼かないよう、"
+              "先に閉じてください（それでも撃つなら -y）")
+        return False
+    try:
+        from vbam_edit import _list_form_windows, cmd_close_form   # 遅延 import（vbam_edit はこちらを読む側）
+        shown = _list_form_windows()
+    except Exception:
+        shown = []
+    if shown:
+        # 表示中のフォームがあると Designer を取れず、マクロが MsgBox を出して止まる。人に頼まず自分で閉じる
+        print(f"表示中のフォームを閉じます（{len(shown)} 件）")
+        cmd_close_form(argparse.Namespace(posargs=[], list_flag=False))
+    addin_file = f"{stem}.xlam"
+    addin_path = os.path.join(os.environ.get('AppData', ''), 'Microsoft', 'AddIns', addin_file)
+    before = os.path.getmtime(addin_path) if os.path.isfile(addin_path) else 0
+    print(f"更新登録: {book} → {addin_path}")
+    # 読み込み中の .xlam をそのまま上書きすると、登録一覧は Installed=True のままなのに
+    # VBA プロジェクトだけ Excel から外れる＝どのブックからもアドインのマクロが使えなくなる。
+    # 焼く前に外し、焼いた後に入れ直す（2026-09-23 に実害）。
+    unloaded = False
+    addin = _find_addin(xl, addin_file)
+    if addin is not None:
+        try:
+            if bool(addin.Installed):
+                addin.Installed = False
+                unloaded = True
+                print(f"  焼く前にアドインを外しました: {addin_file}")
+        except Exception as ex:
+            print(f"  ⚠ 外せませんでした（このまま焼きます）: {ex}")
+    try:
+        try:
+            wb.Activate()
+            q = book.replace("'", "''")
+            xl.Application.Run(f"'{q}'!{_ADDIN_REGISTER_MACRO}")    # 素の Run（ハーネスを置かない）
+        except Exception as ex:
+            print(f"エラー: 更新登録を撃てませんでした: {ex}")
+            return False
+        if not os.path.isfile(addin_path):
+            print(f"エラー: .xlam ができていません（{addin_path}）")
+            return False
+        after = os.path.getmtime(addin_path)
+        when = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(after))
+        if after <= before:
+            print(f"⚠ .xlam の日時が変わっていません（{when}）。フォームが開いていた・別のブックが前に出ていた等で"
+                  "途中で止まったかもしれません")
+            return False
+        print(f"焼けました: {addin_path}  {os.path.getsize(addin_path):,} バイト  {when}")
+        return True
+    finally:
+        if unloaded:
+            back = _find_addin(xl, addin_file)      # 焼き直しでコレクションが入れ替わることがある
+            try:
+                if back is not None:
+                    back.Installed = True
+                    print(f"  アドインを入れ直しました: {addin_file}")
+            except Exception as ex:
+                print(f"⚠ アドインを入れ直せませんでした: {ex}")
+        if _addin_project_loaded(xl, addin_path):
+            print(f"読み込み確認: {addin_file} は今の Excel に載っています"
+                  "（このままどのブックからもショートカットが効きます）")
+        else:
+            print(f"⚠ {addin_file} が今の Excel に載っていません。Excel を開き直すか、"
+                  "［ファイル］→［オプション］→［アドイン］でチェックを入れ直してください")
+        # 抜け殻（ファイルとのつながりが切れた VBA プロジェクト）を数える（2026-09-23 のゾンビ）。
+        # 古いアドインが閉じきれずに残ると、ショートカットやボタンがそちらへ向かう
+        ghosts = _ghost_projects(xl)
+        if ghosts:
+            print(f"⚠ 抜け殻の VBA プロジェクトが {ghosts} 個残っています（ファイル名なし）。"
+                  "Excel を閉じて開き直すと消えます（閉じても EXCEL.EXE が残るなら道具の常駐が参照を握っている）")
+        else:
+            print("抜け殻: なし（古いアドインはきれいに閉じました）")
+
+
+def _ghost_projects(xl):
+    """ファイルとのつながりが切れた VBA プロジェクト（閉じたのに Excel に残った抜け殻）の数。読めなければ 0。"""
+    n = 0
+    try:
+        for p in xl.VBE.VBProjects:
+            try:
+                if not str(p.FileName or ''):
+                    n += 1
+            except Exception:
+                n += 1
+    except Exception:
+        return 0
+    try:                                  # 保存前の新しいブック（Book1 等）もファイル名が無い＝抜け殻ではない
+        n -= sum(1 for b in xl.Workbooks if not str(b.Path or ''))
+    except Exception:
+        pass
+    return max(n, 0)
 
 
 def cmd_run_macro(args):
@@ -6366,7 +6980,60 @@ def _prepare_run_harness(xl, full_macro_path, macro_name):
         return None
     quoted = book_name.replace("'", "''")
     return {"wb": owner, "comp": comp, "entry": f"'{quoted}'!{_RUN_HARNESS}.VMR",
-            "was_saved": was_saved}
+            "was_saved": was_saved, "xl": xl, "book_name": book_name}
+
+
+def run_book_macro(xl, owner, name):
+    """owner（ブック名）の引数なし Sub name をハーネス経由で撃つ。実行時エラーは _VbaRuntimeError で上げる。
+
+    素の xl.Run だと実行時エラーが「終了／デバッグ」の窓になり、窓の見張りは閉じないので Excel ごと止まる
+    （2026-09-23 shelf-run で 671 秒）。棚を撃つ入口（shelf-run・seiri・先撃ち）はここを通す（2026-09-24 総点検）。
+    ハーネスを置けない（識別子でない名前・持ち主が見えない）ときは素の Run。
+    """
+    q = owner.replace("'", "''")
+    h = _prepare_run_harness(xl, f"'{q}'!{name}", name)
+    try:
+        if h is None:
+            return xl.Run(f"'{q}'!{name}")
+        ret = str(xl.Run(h["entry"]) or "")
+        if ret.startswith("ERR|"):
+            parts = ret.split("|", 2)
+            raise _VbaRuntimeError(parts[1] if len(parts) > 1 else "?", parts[2] if len(parts) > 2 else "")
+        return ret[3:] if ret.startswith("OK|") else ret
+    finally:
+        if h is not None:
+            _remove_run_harness(h)
+
+
+def _remove_carried_harness(h, wait=15.0):
+    """入れ替わった同名のブックからハーネスを外して保存する。外せたら True。
+
+    開き直しは外の .vbs が閉じるのを待ってから行うので、数秒遅れて現れる。wait 秒まで待つ。
+    保存しないとハーネス入りのファイルが残る（マクロの引っ越しで運ばれた分はもうファイルに書かれている）。
+    """
+    import time as _time
+    xl, name = h.get("xl"), h.get("book_name")
+    if xl is None or not name:
+        return False
+    deadline = _time.monotonic() + wait
+    while True:
+        try:
+            for i in range(1, int(xl.Workbooks.Count) + 1):
+                wb = xl.Workbooks.Item(i)
+                if str(wb.Name).lower() != str(name).lower():
+                    continue
+                comps = wb.VBProject.VBComponents
+                for c in comps:
+                    if c.Name == _RUN_HARNESS:
+                        comps.Remove(c)
+                        wb.Save()
+                        return True
+                return True        # 開き直したブックにハーネスは無い＝片付ける物が無い
+        except Exception:
+            pass
+        if _time.monotonic() > deadline:
+            return False
+        _time.sleep(1)
 
 
 def _remove_run_harness(h):
@@ -6374,6 +7041,10 @@ def _remove_run_harness(h):
     try:
         h["wb"].VBProject.VBComponents.Remove(h["comp"])
     except Exception:
+        # 撃ったマクロがブック自身を閉じて入れ替えた（マクロの引っ越し）＝ハーネスも新しいブックへ運ばれ、
+        # ファイルに書かれている（2026-09-24）。同じ名前で開き直ったブックから外し、保存して消す
+        if _remove_carried_harness(h):
+            return
         print(f"警告: ハーネスの撤去に失敗しました（モジュール '{_RUN_HARNESS}' が残っていたら"
               "手で削除してください）", file=sys.stderr)
     if h.get("was_saved"):
@@ -6893,7 +7564,23 @@ def cmd_compile(args):
         return False
     is_json = getattr(args, 'json', False)
     xl, wb = get_workbook(target_file, readonly=True)
+    try:
+        was_saved = bool(wb.Saved) and bool(str(wb.Path or '')) and not bool(wb.ReadOnly)
+    except Exception:
+        was_saved = False
     res = _compile_vbproject(xl, wb)
+    # コンパイルで作られる中間コードの分だけ「未保存」になり、閉じるときに保存を聞かれていた（中身は変わっていない・
+    # 2026-09-24）。撃つ前に保存済みだったブックだけ、今コンパイルして通ったときに保存済みの印を戻す。
+    # 保存し直してはいけない＝中間コードがファイルに入って 1.2MB → 1.9MB に膨らむ（マクロの引っ越しで軽くした分が戻る・
+    # 2026-09-24 shu）。印だけ戻せば、ファイルは軽いまま・閉じるときも聞かれない
+    resaved = False
+    if was_saved and res.get("state") == "compiled":
+        try:
+            if not bool(wb.Saved):
+                wb.Saved = True
+                resaved = True
+        except Exception:
+            pass
     if is_json:
         import json as _json
         doc = {"pass": res["ok"], "book": wb.Name, "state": res["state"], "detail": res["detail"]}
@@ -6907,6 +7594,8 @@ def cmd_compile(args):
     print("全体コンパイル: %s" % wb.Name)
     print("  %s" % label.get(res["state"], res["state"]))
     print("  %s" % res["detail"])
+    if resaved:
+        print("  （コンパイルの前は保存済みだったので保存済みの印を戻しました＝ファイルは書かない・閉じるときに保存を聞かれません）")
     if res["state"] == "error":
         print("  " + _compile_fix_hint(res if res.get("module") else None, res["detail"]))
     return res["ok"]
@@ -6977,6 +7666,11 @@ def cmd_gate(args):
         _, pid = win32process.GetWindowThreadProcessId(xl2.Hwnd)
     except Exception:
         pass
+    if not vbam_core.is_fresh_instance(xl2):
+        # 使う人の Excel に合流した（2026-09-23）。ここで撃つと人のブックを触り、後始末で人の Excel を落とす
+        print(f"エラー: 演習用の Excel を起こせませんでした（使う人の Excel・PID {pid} に合流）。"
+              "Excel を開き直してからやり直してください")
+        return False
     inst = {"xl": xl2, "pid": pid}
     vbam_core._created_instances.append(inst)      # 安全網（本線は下の finally で畳む）
     cache_key = os.path.abspath(copy_path).lower()
@@ -7183,6 +7877,7 @@ __all__ = [
     '_prepare_run_harness',
     '_project_book_name',
     '_remove_run_harness',
+    'run_book_macro',
     '_save_checkup_ack',
     '_save_checkup_history',
     '_select_addin_project',
@@ -7228,6 +7923,7 @@ __all__ = [
     'cmd_replace_procedure',
     'cmd_patch_procedure',
     'cmd_restore',
+    'cmd_register_addin',
     'cmd_run_macro',
     'cmd_setup_check',
     'cmd_test',

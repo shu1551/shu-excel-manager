@@ -36,6 +36,13 @@ VBAマネージャー (アクティブブック対応版)
   grep-files      "文字" <フォルダ|ファイル…> [-i]     閉じたブック横断の検索（Excel を開かない）
   export-file     <path.xlsm> [--dir 先]             閉じたブックのモジュールを .bas に書き出す
 
+【棚（表の整理）を自由に使う（2026-09-23）】
+  shelf          [--grep 語] [--ask 依頼文]          棚（表の整理）の目録（名前・選ぶ列・窓の有無・扱う・説明）／依頼文から選ぶ
+  shelf-run      <名前> [--select 範囲][--sheet 名]  選んで撃つ。控え→差分（番地:前→後・書式・足された物・別シート）まで1手
+                 [--input-text 値]                  窓ありのマクロの InputBox に答える
+  trace          <セル> [--depth N]                  式の元をシートをまたいでたどる（番地・式・値の木。読むだけ）
+  register-addin [ブック] [-y]                       前に出ているブックを .xlam に焼き直してアドイン登録（別名: 更新登録）
+
 【目コマンド（シート状態の読み取り）】
   materials      [excel_file] [シート名]            シートを触る前の材料（使用範囲・全体の値・結合・数式・図形・列幅を1回で）
   read-range     [excel_file] [range] [--formula]  セル値（--formulaで数式）をテキスト格子で読む
@@ -109,6 +116,7 @@ VBAマネージャー (アクティブブック対応版)
 """
 
 import sys
+import io
 import os
 import re
 import shutil
@@ -234,8 +242,9 @@ def build_parser():
     # patch-procedure [excel_file] <macro_name> --target "..." --replacement "..."
     p = sub.add_parser("patch-procedure", help="プロシージャ内の指定コードをピンポイント置換（差分置換）")
     p.add_argument("posargs", nargs="*")
-    p.add_argument("--target", dest="target", default=None, help="置換前の文字列")
-    p.add_argument("--replacement", dest="replacement", default="", help="置換後の文字列")
+    # --old／--new は SKILL.md の手本の名前（2026-09-24 手本を読み取りに通して、手本どおりだと通らないと分かった）
+    p.add_argument("--target", "--old", dest="target", default=None, help="置換前の文字列")
+    p.add_argument("--replacement", "--new", dest="replacement", default="", help="置換後の文字列")
     p.add_argument("--target-file", dest="target_file_opt", default=None, help="置換前の文字列を記述したファイル")
     p.add_argument("--replacement-file", dest="replacement_file_opt", default=None, help="置換後の文字列を記述したファイル")
     p.add_argument("--module", dest="module_opt", default=None, help="対象モジュール名（同名が複数ある場合に必須）")
@@ -258,6 +267,9 @@ def build_parser():
                    help="モジュール種別 std|class|form（既定 std）")
     p.add_argument("--force", action="store_true", dest="force",
                    help="バックアップ失敗時も強行する")
+    # 確認は出さないが、説明の手本（add-module Module1 -y → add-procedure Module1 -y）どおりに撃つと
+    # 「不明な引数: -y」で落ちていた（2026-09-24 説明文の手本 45 本を本物の読み取りに通して見つけた）
+    p.add_argument("-y", "--yes", action="store_true", help="（確認は出さない。ほかの手とそろえて受け付けるだけ）")
 
     # delete-procedure [excel_file] <macro_name> [--module name] [-y]
     p = sub.add_parser("delete-procedure", help="プロシージャを削除（削除コードを表示して確認）")
@@ -330,12 +342,20 @@ def build_parser():
     p.add_argument("--module", dest="module_opt", default=None, help="検索対象モジュールを限定")
     p.add_argument("--max", dest="max_hits", type=int, default=None, help="表示件数の上限（既定200）")
     p.add_argument("--json", action="store_true", help="結果をJSON形式で出力")
+    p.add_argument("--file", dest="needle_file", default=None,
+                   help="検索語をファイルの1行目から読む（引用符で割れる ' \" を含む語はこれで渡す）")
+    p.add_argument("--all", action="store_true",
+                   help="開いているすべてのブック・アドイン（PERSONAL・.xlam も）を探す")
 
     # code-replace [excel_file] <検索> <置換>
     p = sub.add_parser("code-replace", help="全マクロ横断の一括置換（diffプレビュー・バックアップ・確認つき）")
     p.add_argument("posargs", nargs="*")
     p.add_argument("--regex", action="store_true", help="正規表現として置換")
     p.add_argument("--module", dest="module_opt", default=None, help="対象モジュールを限定")
+    p.add_argument("--file", dest="needle_file", default=None,
+                   help="検索語をファイルの1行目から読む（引用符で割れる ' \" を含む語はこれで渡す）")
+    p.add_argument("--repl-file", dest="repl_file", default=None,
+                   help="置換語をファイルの1行目から読む")
     p.add_argument("-y", "--yes", action="store_true", dest="yes", help="確認プロンプトをスキップ")
     p.add_argument("--force", action="store_true", dest="force", help="バックアップ失敗時も強行する")
 
@@ -614,14 +634,49 @@ def build_parser():
                    help="各シート使用範囲の先頭N行も表示（ブック俯瞰・1接続）")
     p.add_argument("--fast", action="store_true",
                    help="結合セル走査をスキップして高速表示（瞬時にシート構成とサイズのみ確認）")
+    p.add_argument("--sheet", dest="sheet_opt", default=None, help="このシートだけ表示する")
 
     # materials [excel_file] [sheet] [--rows N]
     p = sub.add_parser("seiri", aliases=["表の整理"],
-                       help="表を直す 1 手目（materials の代わり）：「表を整える」マクロを撃ち、残り（エラーセルと式・"
+                       help="表を直す 1 手目（materials の代わり）：「表の書き方と罫線と列幅をそろえる」マクロを撃ち、残り（エラーセルと式・"
                             "数式と表の気づき・指示文・###）だけを出す。直す手は残りの分だけ（2026-09-13）")
     p.add_argument("posargs", nargs="*")
     p.add_argument("--dedupe", action="store_true",
-                   help="「重複行を消す」も撃つ（依頼かシートの指示文が重複行の削除を頼んでいるときだけ）")
+                   help="「全列が同じ重複行を削除する」も撃つ（依頼かシートの指示文が重複行の削除を頼んでいるときだけ）")
+    p = sub.add_parser("register-addin", aliases=["更新登録"],
+                       help="前に出ているブックを .xlam に焼き直してアドインに登録し直す（「アドインの更新登録」を、"
+                            "焼く先・空のブック・表示中フォームを確かめてから素の Run で撃つ。2026-09-23）")
+    p.add_argument("posargs", nargs="*")
+    p.add_argument("-y", "--yes", action="store_true", dest="yes",
+                   help="空のブックが開いていても撃つ")
+    p = sub.add_parser("shelf",
+                       help="棚（表の整理）の目録を1手で返す。--grep 語で絞る（2026-09-23）")
+    p.add_argument("posargs", nargs="*")
+    p.add_argument("--grep", dest="grep", default=None,
+                   help="名前・扱う・説明・依頼の語のどれかにこの文字を含むものだけ")
+    p.add_argument("--ask", dest="ask", default=None,
+                   help="依頼文から撃つマクロを選ぶ（Excelコンボの先撃ちと同じ採点。当たらなければ「棚に無い」）")
+    p = sub.add_parser("shelf-run",
+                       help="棚のマクロを選んで撃つ：対象ブック/シートを前に出し(--sheet)、--select で選んでから"
+                            "撃つ。控えを取り、差分（番地:前→後・上限30件＋件数・足された行/列/シート）を返す"
+                            "（戻すのは agent --undo。2026-09-23）")
+    p.add_argument("posargs", nargs="*", help="[excel_file] <棚のマクロ名>")
+    p.add_argument("--select", dest="select", default=None,
+                   help="撃つ前に選ぶ範囲（例 A1:D20。カンマで複数 A1:B2,D1:D5）")
+    p.add_argument("--sheet", dest="sheet_opt", default=None,
+                   help="対象シート名（省略時はアクティブシート）")
+    p.add_argument("--inplace", dest="inplace", action="store_true",
+                   help="右側に出力された結果で元の表を直接置き換え、別表を消去する（2026-09-23）。"
+                        "結果の式は値にしてから動かす（元の表を消すと、元を指す式が狂うため）")
+    p.add_argument("--input-text", dest="input_text", action="append", default=None,
+                   help="窓ありのマクロの InputBox にこの値を入れて OK で確定（複数回指定で出た順に1つずつ）")
+    p = sub.add_parser("trace",
+                       help="式の元をシートをまたいでたどる：番地・式・値の木。範囲は先頭と末尾と件数に畳み、"
+                            "循環は印を付けて止める。何も書き換えない（2026-09-23）")
+    p.add_argument("posargs", nargs="*", help="[excel_file] <セル（シート名!A1 も可）>")
+    p.add_argument("--depth", dest="depth", default=None, help="たどる深さ（既定3）")
+    p.add_argument("--sheet", dest="sheet_opt", default=None,
+                   help="対象シート名（省略時はアクティブシート）")
     p = sub.add_parser("materials",
                        help="先回り材料：1シートの使用範囲・値（小さい表は全体＋長文セルの全文）・結合・テーブル・名前・"
                             "数式の型・エラー・図形・###・列幅を1回で出し、仕事の時計を押す（手を動かす前に見る）")
@@ -665,6 +720,8 @@ def build_parser():
     p.add_argument("posargs", nargs="*")
     p.add_argument("--out", dest="out_opt", default=None,
                    help="出力PNGパス（省略時は _last_view.png）")
+    p.add_argument("--sheet", dest="sheet_opt", default=None,
+                   help="対象シート名（範囲を省くとそのシートの使用範囲）")
 
     # --- 手コマンド (シートの編集・整形・構造操作) ---
     # write-range [excel_file] <range> [値] [--tsv file]
@@ -737,7 +794,7 @@ def build_parser():
 
     # tidy [excel_file] <範囲|セル> [--header-from セル] [--bg 色] [--no-header] [--no-border] [--no-col-format] [--no-autofit]
     p = sub.add_parser("tidy",
-                       help="表を整える（見出し書式・罫線・番号列は左寄せ・数値列は#,##0・列幅の自動調整）"
+                       help="表の書き方と罫線と列幅をそろえる（見出し書式・罫線・番号列は左寄せ・数値列は#,##0・列幅の自動調整）"
                             "→ 見え方と経過秒を読み戻す。範囲は複数可、セル1つなら表全体")
     p.add_argument("posargs", nargs="*")
     p.add_argument("--header-from", dest="header_from", default=None,
@@ -869,7 +926,7 @@ def build_parser():
                         "本番と同じ道で撃って、終わった表を正解の表とセルの値で突き合わせる（道具の合格判定・採点係とは別）。"
                         "--seed で同じお題・--only で絞る・--dry-run はお題を作って見せるだけ。点数は _agent_exam.jsonl（2026-09-11 夜）")
     p.add_argument("--by-macro", dest="by_macro", default=None, metavar=".bas",
-                   help="--exam を AI の代わりにマクロで撃つ（.bas の「表を整える」、依頼が消すことを承認していれば続けて「重複行を消す」）")
+                   help="--exam を AI の代わりにマクロで撃つ（.bas の「表の書き方と罫線と列幅をそろえる」、依頼が消すことを承認していれば続けて「全列が同じ重複行を削除する」）")
     p.add_argument("--with-macro", dest="with_macro", default=None, metavar=".bas",
                    help="--exam を、その .bas を読み込んだ Excel で agent に撃たせる（入口のマクロの先撃ちが効くか＝秀コンボと同じ姿）")
     p.add_argument("--imagine", type=int, default=0, metavar="N",
@@ -902,10 +959,10 @@ def build_parser():
     p.add_argument("--from", dest="mend_from", default=None, metavar="置き場",
                    help="--mend を前の回の置き場（_agent_mend\\日時）と同じお題で撃ち直す（--only で題の id かマクロ名に絞る）")
     p.add_argument("--register", action="store_true",
-                   help="--forge と: 合格したマクロを「表を整える」を持つ開いているブック（--to で名指し）の標準モジュール"
+                   help="--forge と: 合格したマクロを「表の書き方と罫線と列幅をそろえる」を持つ開いているブック（--to で名指し）の標準モジュール"
                         "「表の整理」の末尾に足し、全体コンパイルまで")
     p.add_argument("--to", dest="register_to", default=None, metavar="ブック名",
-                   help="--forge --register の登録先（開いているブック。省略時は「表を整える」を持つブックが 1 冊のときだけそこ）")
+                   help="--forge --register の登録先（開いているブック。省略時は「表の書き方と罫線と列幅をそろえる」を持つブックが 1 冊のときだけそこ）")
     p.add_argument("--truth", default=None, metavar="正解.xlsx",
                    help="--forge と: 人が直した正解のブック（同じシート名）。AI の後の姿の代わりにこれを正解にする")
     p.add_argument("--before", dest="forge_before", default=None, metavar="直す前.xlsx",
@@ -1005,6 +1062,8 @@ def build_parser():
     p.add_argument("--desc", dest="desc", action="store_true", help="sort を降順に")
     p.add_argument("--tsv", dest="tsv_out", nargs="?", const="_DEFAULT_", default=None,
                    help="table read の結果をTSVに書き出す（省略時 _last_values.tsv）")
+    p.add_argument("--name", dest="name", default=None,
+                   help="table create のテーブル名（pivot・chart・slicer と同じ形。3 つ目の引数でもよい・2026-09-24）")
 
     # name [excel_file] <add|list|delete> ...
     p = sub.add_parser("name")
@@ -1325,6 +1384,221 @@ def build_parser():
     return parser
 
 
+# ================================================================
+# 形を外した手の受け止め（2026-09-24 総点検）
+#   30 日の会話記録で excel-manager の失敗 234 回のうち、形の外れ（不明な引数・無いコマンド）が 30 回ほど。
+#   しかも形の外れはコマンドの中に入る前に落ちるので、呼び出し台帳に 1 件も残っていなかった。
+#   ① 意図が一つに決まる言い換えはここで直して撃つ（remove-module → delete-module、row 16 --delete → row delete 16 …）
+#   ② 決まらないものは、そのコマンドの選択肢と近い名前を返す（vba_help を引く往復を無くす）
+#   ③ どちらも台帳に残す（stats の「失敗の理由」に出る）
+# ================================================================
+
+# 無いコマンド → 本物（意図が一つに決まるものだけ）
+_COMMAND_ALIASES = {
+    "remove-module": ["delete-module"],
+    "remove-procedure": ["delete-procedure"],
+    "page-setup": ["print-setup"],
+    "pagesetup": ["print-setup"],
+    "shortcut": ["list-shortcuts"],
+    "shortcuts": ["list-shortcuts"],
+    "list-sheets": ["sheet-info", "--fast"],
+    "activate-sheet": ["sheet", "activate"],
+    "add-sheet": ["sheet", "add"],
+    "delete-sheet": ["sheet", "delete"],
+    "rename-sheet": ["sheet", "rename"],
+    "insert-row": ["row", "insert"],
+    "delete-row": ["row", "delete"],
+    "insert-col": ["col", "insert"],
+    "delete-col": ["col", "delete"],
+    "run": ["run-macro"],
+    "compile-all": ["compile"],
+}
+
+# コマンドごとの引数の言い換え（意図が一つに決まるものだけ）
+_OPTION_ALIASES = {
+    "read-range": {"--formulas": "--formula"},
+    "read-selection": {"--formulas": "--formula"},
+    "format-range": {"--font-name": "--font", "--font-size": "--size", "--font-color": "--color",
+                     "--no-bold": "--unbold", "--background": "--bg", "--fill": "--bg",
+                     "--numberformat": "--number-format", "--format": "--number-format",
+                     "--width": "--col-width", "--height": "--row-height"},
+    "add-procedure": {"--file": "--code-file"},
+    "replace-procedure": {"--file": "--code-file"},
+}
+
+
+def _sub_parsers(parser):
+    """build_parser の子（コマンド名 → 子の parser）。"""
+    for a in parser._actions:
+        if isinstance(a, argparse._SubParsersAction):
+            return a.choices
+    return {}
+
+
+def _sub_options(sp):
+    """子の parser が受ける引数の名前（-h 以外）。"""
+    return sorted(o for o in sp._option_string_actions if o not in ("-h", "--help"))
+
+
+def normalize_command_tokens(parser, tokens):
+    """形の外れのうち、意図が一つに決まるものを直す → (tokens, 直した旨の注記のリスト)。"""
+    toks = list(tokens)
+    notes = []
+    if not toks:
+        return toks, notes
+    subs = _sub_parsers(parser)
+    head = toks[0]
+    if head not in subs and not head.startswith("-"):
+        if head.lower() == "help":
+            return (toks[1:2] + ["--help"]) if len(toks) > 1 else ["--help"], notes
+        alias = _COMMAND_ALIASES.get(head.lower())
+        if alias:
+            if head.lower() == "shortcut" or head.lower() == "shortcuts":
+                toks = [t for t in toks if t != "--list"]
+            toks = alias + toks[1:]
+            notes.append(f"（{head} は無いので {' '.join(alias)} として撃ちました）")
+    cmd = toks[0]
+    sp = subs.get(cmd)
+    if sp is None:
+        return toks, notes
+    opts = set(sp._option_string_actions)
+    # コマンドごとの言い換え
+    for i, t in enumerate(toks):
+        new = _OPTION_ALIASES.get(cmd, {}).get(t)
+        if new and new not in toks:
+            toks[i] = new
+    # row 16 --delete → row delete 16（col も）
+    if cmd in ("row", "col"):
+        for verb in ("delete", "insert"):
+            if f"--{verb}" in toks and (len(toks) < 2 or toks[1].lower() not in ("delete", "insert")):
+                toks.remove(f"--{verb}")
+                toks.insert(1, verb)
+                notes.append(f"（--{verb} は {cmd} {verb} … の形で撃ちました）")
+    # run-macro -y ＝ 窓に「はい」で答える（run-macro に -y は無い・2026-09-24 マクロの引っ越しで外した）
+    if cmd in ("run-macro", "rehearse", "test", "テスト", "予行演習", "gate", "関所") and "--auto-dialog" not in toks:
+        for y in ("-y", "--yes"):
+            if y in toks:
+                i = toks.index(y)
+                toks[i:i + 1] = ["--auto-dialog", "yes"]
+                notes.append("（-y は --auto-dialog yes＝出た窓に「はい」で答える、として撃ちました）")
+                break
+    # add-procedure --module X ＝ モジュール X（位置引数が無いとき）
+    if cmd == "add-procedure" and "--module" in toks:
+        i = toks.index("--module")
+        if i + 1 < len(toks):
+            mod = toks[i + 1]
+            del toks[i:i + 2]
+            positional = [t for j, t in enumerate(toks[1:], 1)
+                          if not t.startswith("-") and toks[j - 1] != "--code-file"]
+            if not positional:
+                toks.insert(1, mod)
+    # grep-files --file X ＝ 探すファイル X（grep の --file は「検索語をファイルから」なので grep-files だけ）
+    if cmd == "grep-files":
+        while "--file" in toks:
+            i = toks.index("--file")
+            val = toks[i + 1:i + 2]
+            del toks[i:i + 2]
+            toks.extend(val)
+    # -y は要らない手にも付けてよい（確認を出さない手が「不明な引数: -y」で落ちていた＝clear-range・replace-module）
+    if "-y" not in opts:
+        toks = [t for t in toks if t not in ("-y", "--yes")]
+    return toks, notes
+
+
+def _unknown_option_help(parser, cmd, unknown):
+    """不明な引数への返事＝そのコマンドの選択肢と近い名前（vba_help を引く往復を無くす）。"""
+    import difflib
+    sp = _sub_parsers(parser).get(cmd)
+    lines = [f"不明な引数/オプション: {' '.join(unknown)}"]
+    if sp is None:
+        return "\n".join(lines)
+    opts = _sub_options(sp)
+    near = []
+    for u in unknown:
+        if u.startswith("-"):
+            near += difflib.get_close_matches(u, opts, n=2, cutoff=0.6)
+    if near:
+        lines.append(f"  近いもの: {' / '.join(dict.fromkeys(near))}")
+    lines.append(f"  {cmd} が受ける引数: {' '.join(opts) if opts else '（オプション無し）'}")
+    return "\n".join(lines)
+
+
+def _unknown_command_help(parser, head):
+    """無いコマンドへの返事＝近い名前だけ（argparse は 130 個の一覧を丸ごと返していた）。"""
+    import difflib
+    names = list(_sub_parsers(parser))
+    near = difflib.get_close_matches(head, names, n=4, cutoff=0.5)
+    if not near:
+        near = [n for n in names if head.split("-")[0] in n][:4]
+    return (f"不明なコマンド: {head}" + (f"（近いもの: {' / '.join(near)}）" if near else "")
+            + "\n  一覧は vba_help（引数なし）")
+
+
+def parse_command_tokens(parser, tokens):
+    """1 行ぶんの字句 → (引数, エラーの文 or None, 注記)。形を外した手の受け止め（上の説明）をここに集める。
+
+    MCP サーバー・batch・shell・CLI の main が同じ物を使う。失敗は呼び出し台帳にも残す（形の外れは
+    コマンドの中に入る前に落ちるので、前は台帳に 1 件も残らなかった）。
+    """
+    import contextlib
+    toks, notes = normalize_command_tokens(parser, tokens)
+    subs = _sub_parsers(parser)
+    msg = None
+    ns = None
+    if toks and not toks[0].startswith("-") and toks[0] not in subs:
+        msg = _unknown_command_help(parser, toks[0])
+    else:
+        err = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(err):
+                ns, unknown = parser.parse_known_args(toks)
+            unknown = [u for u in unknown if u not in ("--visible", "-v")]
+            if unknown:
+                msg = _unknown_option_help(parser, getattr(ns, "command", None), unknown)
+                ns = None
+        except SystemExit as e:
+            if e.code in (0, None):                  # --help は表示済み（正常）
+                return None, "", notes
+            text = err.getvalue().strip().splitlines()
+            last = text[-1] if text else "引数エラー"
+            last = re.sub(r"^[^:]*: error: ", "", last)
+            cmd = toks[0] if toks else ""
+            msg = f"引数エラー: {last}"
+            sp = subs.get(cmd)
+            if sp is not None:
+                msg += "\n  " + sp.format_usage().strip()
+    if msg:
+        try:
+            call_log_write(toks[0] if toks else "?", argparse.Namespace(posargs=toks[1:4]), 0.0, False,
+                           via=_call_via(), why=msg.splitlines()[0][:120])
+        except Exception:
+            pass
+    return ns, msg, notes
+
+
+def _call_via():
+    _main = getattr(sys.modules.get('__main__'), '__file__', '') or ''
+    return "mcp" if os.path.basename(_main).startswith('vba_mcp_server') else "cli"
+
+
+def run_command_line(parser, table, line, blocked=("shell", "batch")):
+    """MCP サーバーの 1 行（vba_mcp_server._run_line が呼ぶ）。字句に分け・受け止め・撃つ。
+    戻り値はコマンドの戻り値（失敗は False）。ここを道具側に置く＝reload_tools で直しが効く。"""
+    tokens = split_command_line(line)
+    ns, msg, notes = parse_command_tokens(parser, tokens)
+    for n in notes:
+        print(n)
+    if msg is not None:
+        if msg:
+            print(msg)
+            return False
+        return True                                  # --help（表示済み）
+    if not ns.command or ns.command in blocked:
+        print("このコマンドは MCP セッション内では実行できません")
+        return False
+    return table[ns.command](ns)
+
+
 def cmd_batch(args):
     """コマンド列を1プロセス・1COM接続で連続実行: batch <file|->
 
@@ -1372,35 +1646,23 @@ def cmd_batch(args):
         total += 1
         print(f"----- [batch:{lineno}] {line} -----")
         try:
-            # Windows パスの \ をエスケープ扱いしない（クォートは通常どおり効く）
-            lex = shlex.shlex(line, posix=True)
-            lex.whitespace_split = True
-            lex.escape = ''
-            # shlex 既定のコメント文字 '#' を無効化。行頭 # は上で処理済みで、
-            # 行中の # を生かすと「テスト#1」「--bg #FF0000」の # 以降が黙って消える
-            lex.commenters = ''
-            tokens = list(lex)
+            # \ はエスケープにしない・行中の # はコメントにしない・"…" の中の "" は " 1 つ（split_command_line）
+            tokens = split_command_line(line)
         except ValueError as e:
             print(f"[batch:{lineno}] 引数の解析に失敗: {e}")
             if keep_going:
                 continue
             print("[batch] 停止（--keep-going で続行可）")
             return False
-        try:
-            sub_args, unknown = parser.parse_known_args(tokens)
-        except SystemExit as e:
-            if e.code in (0, None):
+        sub_args, msg, notes = parse_command_tokens(parser, tokens)
+        for n in notes:
+            print(n)
+        if msg is not None:
+            if not msg:
                 # 行内の -h/--help はヘルプ表示済み。エラーではない
                 ok_n += 1
                 continue
-            print(f"[batch:{lineno}] 引数エラー")
-            if keep_going:
-                continue
-            print("[batch] 停止（--keep-going で続行可）")
-            return False
-        unknown = [u for u in unknown if u not in ("--visible", "-v")]
-        if unknown:
-            print(f"[batch:{lineno}] 不明な引数/オプション: {' '.join(unknown)}")
+            print(f"[batch:{lineno}] {msg}")
             if keep_going:
                 continue
             print("[batch] 停止（--keep-going で続行可）")
@@ -1486,21 +1748,16 @@ def cmd_shell(args):
             print(f"vba> {line}")
         hist_cmds.append(line)
         try:
-            lex = shlex.shlex(line, posix=True)
-            lex.whitespace_split = True
-            lex.escape = ''                      # Windows パスの \ をエスケープ扱いしない
-            lex.commenters = ''                  # 行中の # をコメント扱いしない（#FF0000 等が消える）
-            tokens = list(lex)
+            tokens = split_command_line(line)    # \ はエスケープにしない・# はコメントにしない・"" は " 1 つ
         except ValueError as e:
             print(f"引数の解析に失敗: {e}")
             continue
-        try:
-            sub_args, unknown = parser.parse_known_args(tokens)
-        except SystemExit:
-            continue                             # 引数エラーは argparse が表示済み
-        unknown = [u for u in unknown if u not in ("--visible", "-v")]
-        if unknown:
-            print(f"不明な引数/オプション: {' '.join(unknown)}")
+        sub_args, msg, notes = parse_command_tokens(parser, tokens)
+        for n in notes:
+            print(n)
+        if msg is not None:
+            if msg:
+                print(msg)
             continue
         if not sub_args.command or sub_args.command in ('shell',):
             print("このコマンドはセッション内で実行できません")
@@ -1546,20 +1803,37 @@ def _logged(fn):
         name = getattr(args, 'command', None) or fn.__name__.replace('cmd_', '', 1).replace('_', '-')
         if name != 'status':
             cmd_progress_write('run', cmd=name, args=args)          # `status` が読む「始めた」（2026-09-16）
+        # MCP では出力がスレッドごとのバッファに溜まる＝失敗の理由を台帳に拾える（2026-09-24。CLI の画面は読み戻せない）
+        bufs = []
+        for s in (sys.stdout, sys.stderr):
+            tgt = getattr(s, '_target', None)
+            b = tgt() if callable(tgt) else None
+            if isinstance(b, io.StringIO):
+                bufs.append((b, len(b.getvalue())))
+        exc_why = None
         try:
             ok = fn(args)
             return ok
         except SystemExit as e:
             ok = e.code in (0, None)
             raise
-        except BaseException:
+        except BaseException as e:
             ok = False
+            # 例外で落ちた手は、理由が外側で書かれる＝バッファにまだ無い（「Excel が起動していません」の get 6 本・
+            # get <フォーム> <名前> が「モジュール指定: …」だけを理由に残していた・2026-09-24）。例外の文を先に採る
+            exc_why = (next((ln.strip() for ln in str(e).splitlines() if ln.strip()), '') or type(e).__name__)[:120]
             raise
         finally:
             _CALL_LOCAL.depth = 0
             _main = getattr(sys.modules.get('__main__'), '__file__', '') or ''
             via = "mcp" if os.path.basename(_main).startswith('vba_mcp_server') else "cli"
-            call_log_write(name, args, time.perf_counter() - t0, ok, via=via)
+            why = exc_why
+            if why is None and ok is not True and bufs:
+                try:
+                    why = call_log_why("\n".join(b.getvalue()[pos:] for b, pos in bufs))
+                except Exception:
+                    why = None
+            call_log_write(name, args, time.perf_counter() - t0, ok, via=via, why=why)
             if name != 'status':
                 cmd_progress_write('done', cmd=name, args=args, ok=ok, sec=time.perf_counter() - t0)
 
@@ -1641,6 +1915,11 @@ def _raw_command_table():
         "sheet-info":        cmd_sheet_info,
         "seiri":             cmd_seiri,
         "表の整理":            cmd_seiri,
+        "register-addin":    cmd_register_addin,
+        "更新登録":            cmd_register_addin,
+        "shelf":             cmd_shelf,
+        "shelf-run":         cmd_shelf_run,
+        "trace":             cmd_trace,
         "materials":         cmd_materials,
         "snapshot":          cmd_snapshot,
         "snapshot-diff":     cmd_snapshot_diff,
@@ -1709,16 +1988,20 @@ def _raw_command_table():
 def main():
     setup_encoding()
     parser = build_parser()
-    args, unknown = parser.parse_known_args()
-
+    if len(sys.argv) <= 1:
+        parser.print_help()
+        return
     # 未知オプションの黙殺はタイポを事故に変える（例: clear-range --content が
     # 「値のみクリア」でなく既定の全消し Clear() に化ける）。グローバルの
-    # --visible/-v だけ許容し、それ以外の残留はエラーで止める。
-    unknown = [u for u in unknown if u not in ("--visible", "-v")]
-    if unknown:
-        print(f"エラー: 不明な引数/オプションです: {' '.join(unknown)}")
-        print("  タイプミスの可能性があります。--help で正しいオプションを確認してください。")
-        sys.exit(1)
+    # --visible/-v だけ許容し、それ以外の残留はエラーで止める（parse_command_tokens・MCP と同じ受け止め）。
+    args, msg, notes = parse_command_tokens(parser, sys.argv[1:])
+    for n in notes:
+        print(n)
+    if msg is not None:
+        if msg:
+            print(f"エラー: {msg}")
+            sys.exit(1)
+        sys.exit(0)
 
     cmds = _command_table()
 

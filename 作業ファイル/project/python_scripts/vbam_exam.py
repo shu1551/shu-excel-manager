@@ -872,11 +872,11 @@ for item in plan["items"]:
         if mwb is not None and plan.get("macro_only"):
             try:
                 t1 = time.time()
-                xl.Run("'%s'!表を整える" % mwb.Name)
+                xl.Run("'%s'!表の書き方と罫線と列幅をそろえる" % mwb.Name)
                 if item.get("dedupe"):
-                    xl.Run("'%s'!重複行を消す" % mwb.Name)
+                    xl.Run("'%s'!全列が同じ重複行を削除する" % mwb.Name)
                 row["macro_sec"] = round(time.time() - t1, 2)
-                buf.write("マクロ: 表を整える%s（%.2f 秒）\n" % ("・重複行を消す" if item.get("dedupe") else "", row["macro_sec"]))
+                buf.write("マクロ: 表の書き方と罫線と列幅をそろえる%s（%.2f 秒）\n" % ("・全列が同じ重複行を削除する" if item.get("dedupe") else "", row["macro_sec"]))
             except Exception as ex:
                 err = "%s: %s" % (type(ex).__name__, ex)
                 buf.write(traceback.format_exc())
@@ -987,7 +987,7 @@ def _line(row, g):
 def exam(seed=None, only=None, dry_run=False, ai=None, model=None, grade_always=False, timeout=3600, macro_bas=None,
          with_macro=None):
     """agent --exam の本体。戻り値は「全部のお題が合格したか」。
-    macro_bas＝AI の代わりにマクロで撃つ（.bas の「表を整える」、依頼が消すことを承認していれば続けて「重複行を消す」）。
+    macro_bas＝AI の代わりにマクロで撃つ（.bas の「表の書き方と罫線と列幅をそろえる」、依頼が消すことを承認していれば続けて「全列が同じ重複行を削除する」）。
     with_macro＝その .bas を読み込んだ Excel で agent を撃つ（入口の先撃ちが効くか＝本番の秀コンボと同じ姿）。"""
     import vbam_agent as va
     macro_only = bool(macro_bas)
