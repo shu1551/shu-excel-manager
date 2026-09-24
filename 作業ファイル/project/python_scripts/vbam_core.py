@@ -228,6 +228,21 @@ def _any_excel_process():
         return True
 
 
+def is_fresh_instance(xl):
+    """起こしたての Excel が本当に「空の自分の台」か（ブック 0 冊か）を見る（2026-09-23）。
+
+    DispatchEx は普通は新しいプロセスを作るが、Excel の都合で**使う人の Excel に合流する**ことがある。
+    合流したまま「自分が起こした台」として記録すると、後始末が使う人の Excel を畳む／落とす
+    （2026-09-22〜23 実害: 撃つ試験が使う人の Excel で走り、空の Book300/301 が使う人側に溜まって、
+    片付けの kill で使う人の Excel ごと落ちた）。起こした直後はブック 0 冊なので、そこで見分ける。
+    読めないときは False（判定できない台を「自分のもの」と決めつけない＝畳む側に倒さない）。
+    """
+    try:
+        return int(xl.Workbooks.Count) == 0
+    except Exception:
+        return False
+
+
 def release_created_instances(only_saved=True):
     """自動起動した Excel インスタンスのうち、後始末してよいものを閉じて終了する。
 
@@ -750,22 +765,41 @@ def _get_workbook_uncached(target_file_arg=None, load_addins=False, readonly=Fal
                 "Excel が起動していません。\n"
                 "  ・Excel で対象ブックを開いてから再実行してください。")
         # ROT 全インスタンス横断で、実ブックを持つ Excel を選ぶ(ゾンビ自動回避)
+        # Excel が「今は応答できない」と断ってきたとき（未コンパイルで保存したブックを開いた直後に VBA が裏で
+        # コンパイルしている間など）は、見つからないと言わずに少し待って聞き直す（2026-09-24）。
+        # 前は断りを黙って飛ばし「開いているブックが見つかりません」と言っていた
+        import time as _time
         wb = None
-        for cand in _running_excel_workbooks():
-            try:
-                app = cand.Application
-                if app.Visible and app.ActiveWorkbook is not None:
-                    wb = _screen_book(app)    # 可視インスタンスの「画面に出ている窓」のブックを最優先（2026-09-13）
-                    break
-                if wb is None:
-                    try:
-                        if cand.IsAddin or not cand.Windows(1).Visible:
-                            continue           # アドイン／非表示ブック(PERSONAL.XLSB 等)は暫定候補にしない
-                    except Exception:
-                        pass
-                    wb = cand                  # 暫定: 実ブックを持つ最初のもの
-            except Exception:
-                continue
+        busy = False
+        deadline = _time.monotonic() + 20
+        while True:
+            busy = False
+            for cand in _running_excel_workbooks():
+                try:
+                    app = cand.Application
+                    if app.Visible and app.ActiveWorkbook is not None:
+                        wb = _screen_book(app)    # 可視インスタンスの「画面に出ている窓」のブックを最優先（2026-09-13）
+                        break
+                    if wb is None:
+                        try:
+                            if cand.IsAddin or not cand.Windows(1).Visible:
+                                continue           # アドイン／非表示ブック(PERSONAL.XLSB 等)は暫定候補にしない
+                        except Exception:
+                            pass
+                        wb = cand                  # 暫定: 実ブックを持つ最初のもの
+                except Exception as ex:
+                    if _com_is_busy(ex):
+                        busy = True
+                    continue
+            if wb is not None or not busy or _time.monotonic() > deadline:
+                break
+            _time.sleep(1)
+        if wb is None and busy:
+            raise Exception(
+                "Excel が呼び出しを断っています（20 秒待っても応答なし）。\n"
+                "  ・未コンパイルで保存したブックを開いた直後は、VBA が裏でコンパイルしていて断られることがあります。\n"
+                "  ・Excel で VBA の画面（Alt+F11）→ デバッグ → コンパイル を押すと戻ります（保存は要りません）。\n"
+                "  ・窓（メッセージ・入力中のセル）が出ていれば閉じてから再実行してください。")
         if wb is None:
             # ROT に出ない稀ケース(未保存ブック等)は GetActiveObject で再挑戦
             try:
@@ -788,6 +822,25 @@ def _get_workbook_uncached(target_file_arg=None, load_addins=False, readonly=Fal
         return xl, wb
 
     target_path = smart_path_resolve(target_file_arg)
+    if not target_path and not re.search(r'[\\/]', target_file_arg):
+        # パスでなくブックの名前だけ（get 秀コンボ.xlsm 表の整理 …）なら、開いているブックを名前で探す。
+        # 前は作業フォルダからファイルを探して「ファイルが見つかりません」＝台帳 30 日で get・add-procedure・
+        # export-module・replace-procedure・grep が同じ形で 10 回ほど落ちていた（2026-09-24 総点検）
+        hits = []
+        for wb in _running_excel_workbooks():
+            try:
+                if str(wb.Name).lower() == target_file_arg.lower():
+                    hits.append(wb)
+            except Exception:
+                continue
+        if len(hits) == 1:
+            wb = hits[0]
+            xl = wb.Application
+            _remember_excel_pid(xl)
+            print(f"対象ブック: {wb.Name}  (既に開いています)")
+            if load_addins:
+                load_excel_addins_and_personal(xl)
+            return xl, wb
     if not target_path:
         raise Exception(f"ファイルが見つかりません: {target_file_arg}")
 
@@ -842,8 +895,15 @@ def _get_workbook_uncached(target_file_arg=None, load_addins=False, readonly=Fal
     except Exception as ex:
         _created_xl_pid = None
         print(f"[DEBUG] Failed to detect Excel PID: {ex}")
-    # 起動した全台を記録（batch/shell で複数起動しても cleanup で全部閉じるため）
-    _created_instances.append({"xl": xl, "pid": _created_xl_pid})
+    # 起動した全台を記録（batch/shell で複数起動しても cleanup で全部閉じるため）。
+    # ただし DispatchEx が使う人の Excel に合流していたら記録しない（後始末で人の Excel を畳まない・2026-09-23）
+    if is_fresh_instance(xl):
+        _created_instances.append({"xl": xl, "pid": _created_xl_pid})
+    else:
+        _created_xl = None
+        print(f"[WARNING] DispatchEx が既存の Excel（PID {_created_xl_pid}・ブック "
+              f"{getattr(getattr(xl, 'Workbooks', None), 'Count', '?')} 冊）に合流しました。"
+              "自分が起こした台としては扱いません（後始末で畳みません）", file=sys.stderr)
     xl.Visible = "--visible" in sys.argv or "-v" in sys.argv
 
     if load_addins:
@@ -915,6 +975,11 @@ def get_or_start_excel(visible=True):
         _created_xl_pid = pid
     except Exception:
         _created_xl_pid = None
+    if not is_fresh_instance(xl):
+        # 使う人の Excel に合流した＝実射の練習台を人の窓に出し入れしてしまう。撃たずに止める（2026-09-23）
+        _created_xl = None
+        raise RuntimeError(f"実射の Excel を起こせませんでした（使う人の Excel・PID {_created_xl_pid} に合流）。"
+                           "人の Excel で撃つと人のブックを書き換えます。Excel を開き直してやり直してください")
     _created_instances.append({"xl": xl, "pid": _created_xl_pid})
     try:
         xl.Visible = bool(visible)
@@ -994,8 +1059,60 @@ def read_code_file(path):
         except Exception:
             continue
         # \r\n / \r\r\n / lone \r をすべて \n に畳む（従来のテキストモード読みと互換）
-        return re.sub(r'\r+\n?', '\n', text)
+        text, swapped = cp932_safe(re.sub(r'\r+\n?', '\n', text))
+        if swapped:
+            print("（VBA に入らない文字を近い字に置き換えました: "
+                  + "、".join(f"'{a}'→'{b}'" for a, b in swapped) + "）")
+        return text
     raise Exception(f"ファイルを読み込めません: {path}")
+
+
+# CP932 に無いが、AI の書くコード・コメントによく出る字 → 近い字（NFKC で決まらないものだけ）
+_CP932_NEAR = {
+    '—': '―', '–': '-', '−': '－', '•': '・', '·': '・', '…': '…',
+    '‘': "'", '’': "'", '“': '"', '”': '"', ' ': ' ', '→': '→',
+    '✓': '○', '✔': '○', '✗': '×', '✘': '×', '⚠': '！', '★': '★',
+    '〜': '～', '‐': '-', '‑': '-', '×': '×', '÷': '÷',
+}
+
+
+def cp932_safe(text):
+    """CP932 に無い字だけを近い字に置き換える → (text, [(元の字, 置き換えた字), …])。
+
+    2026-09-24 総点検: replace_procedure が「CP932 でエンコードできない文字 '⑴'」で止まり、AI が字を探して
+    書き直す往復になっていた。NFKC（⑴→(1)・全角記号の互換字）で決まればそれ、だめなら上の表、
+    それでも無理な字はそのまま残す（後の検査が今までどおり止める）。CP932 に入る字は一切触らない。
+    """
+    import unicodedata as _ud
+    try:
+        text.encode('cp932')
+        return text, []
+    except UnicodeEncodeError:
+        pass
+    out, swapped, seen = [], [], set()
+    for ch in text:
+        try:
+            ch.encode('cp932')
+            out.append(ch)
+            continue
+        except UnicodeEncodeError:
+            pass
+        rep = _CP932_NEAR.get(ch)
+        if rep is None:
+            n = _ud.normalize('NFKC', ch)
+            try:
+                n.encode('cp932')
+                rep = n if n else None
+            except UnicodeEncodeError:
+                rep = None
+        if rep is None:
+            out.append(ch)
+            continue
+        out.append(rep)
+        if ch not in seen:
+            seen.add(ch)
+            swapped.append((ch, rep))
+    return ''.join(out), swapped
 
 
 def validate_bas_encoding(path):
@@ -1496,10 +1613,67 @@ def _reject_extra_args(rest, used, usage):
         return True
     return False
 
+def split_command_line(line):
+    """道具の 1 行を引数に切る（MCP・shell・batch 共通・2026-09-23）。
+
+    shlex（posix）と同じく空白で切り、"…" と '…' の中の空白は切らない。\\ はエスケープにしない（Windows のパス）、
+    # はコメントにしない（#FF0000）。違いは 1 つ: **"…" の中の "" は " 1 つ**（Excel の式の書き方）。
+    shlex は "" を「閉じて開く」と読むので、式の中の "要発注" の引用符が落ちて =$D6=要発注 になり、
+    条件付き書式が #NAME? で 1 セルも塗られなかった（2026-09-23 のテスト用3）。閉じていない引用符は行末まで。
+    """
+    out, cur, have, i, n = [], [], False, 0, len(line or '')
+    line = line or ''
+    while i < n:
+        ch = line[i]
+        if ch.isspace():
+            if have:
+                out.append(''.join(cur))
+                cur, have = [], False
+            i += 1
+        elif ch == '"':
+            have, i = True, i + 1
+            while i < n:
+                # \" は " 1 つ（JSON に慣れた AI の書き方・2026-09-24 台帳: grep "Like \"function *\"" が切れて 0 秒で落ちた）。
+                # ただし直後が空白・行末の \" は、\ で終わるパス（"C:\out\"）の閉じとして読む
+                if line[i] == '\\' and i + 1 < n and line[i + 1] == '"' and i + 2 < n and not line[i + 2].isspace():
+                    cur.append('"')
+                    i += 2
+                    continue
+                if line[i] == '"':
+                    if i + 1 < n and line[i + 1] == '"':
+                        cur.append('"')
+                        i += 2
+                        continue
+                    i += 1
+                    break
+                cur.append(line[i])
+                i += 1
+        elif ch == "'":
+            have, i = True, i + 1
+            while i < n and line[i] != "'":
+                cur.append(line[i])
+                i += 1
+            i += 1
+        else:
+            cur.append(ch)
+            have, i = True, i + 1
+    if have:
+        out.append(''.join(cur))
+    return out
+
+
+_XL_ERROR_TEXT = {-2146826281: '#DIV/0!', -2146826246: '#N/A', -2146826259: '#NAME?', -2146826288: '#NULL!',
+                  -2146826252: '#NUM!', -2146826265: '#REF!', -2146826273: '#VALUE!'}
+
+
 def _cell_str(v):
     """セル値を表示用文字列に"""
     if v is None:
         return ''
+    if isinstance(v, int) and not isinstance(v, bool) and v in _XL_ERROR_TEXT:
+        # COM はエラー値を int（-2146826281 等）で返す。数のまま出すと materials の値の格子に
+        # 「D31 = -2146826281」と出て、#DIV/0! だと読めなかった（2026-09-23 のテスト）
+        return _XL_ERROR_TEXT[v]
     if isinstance(v, float) and v.is_integer():
         return str(int(v))
     if isinstance(v, datetime.datetime):
@@ -1590,6 +1764,10 @@ def job_clock_note():
 # 前の呼び出しが終わってから次を撃つまでの「間」として同じ台帳から出る
 _CALL_LOG_FILE = os.path.join(SCRIPT_DIR, '_calls.jsonl')
 _CALL_LOG_ARGS_MAX = 80        # 引数は頭だけ（セルの値をだらだら残さない）
+# 台帳に残す選択肢（argparse の dest → 書くときの名前）。手の中身が分かるものだけ（2026-09-23）
+_CALL_LOG_OPTS = {'select': 'select', 'sheet_opt': 'sheet', 'ask': 'ask', 'grep': 'grep', 'depth': 'depth',
+                  'input_text': 'input-text', 'formula_opt': 'formula', 'number_format': 'number-format', 'bg': 'bg',
+                  'dedupe': 'dedupe'}
 _CALL_GAP_MAX = 600            # 「間」に数える上限（秒）。これより空いたら別の仕事
 
 # ---- コマンドの進み具合（2026-09-16）----
@@ -1667,17 +1845,39 @@ def _pid_alive(pid):
         return False
 
 
-def call_log_write(cmd, args, sec, ok, via="cli"):
-    """呼び出し台帳に 1 行足す。失敗しても何も起こさない（台帳のために仕事を止めない）。"""
+def call_log_why(text):
+    """失敗した手の出力から、理由の 1 行を拾う（エラー・使い方・見つからない の行。無ければ最後の行）。"""
+    lines = [ln.strip() for ln in (text or '').splitlines() if ln.strip()]
+    for ln in lines:
+        if re.search(r'エラー|使い方|usage:|見つかりません|できません|失敗|不明な', ln, re.IGNORECASE):
+            return ln[:120]
+    return lines[-1][:120] if lines else None
+
+
+def call_log_write(cmd, args, sec, ok, via="cli", why=None):
+    """呼び出し台帳に 1 行足す。失敗しても何も起こさない（台帳のために仕事を止めない）。
+
+    why: 失敗したときの理由の 1 行（2026-09-24: 台帳に ok=false しか無く、patch-procedure の失敗 29 回・
+    add-procedure の失敗 8 回が何で落ちたのかを後から読めなかった）。"""
     import json
     try:
         pos = list(getattr(args, 'posargs', None) or [])
-        head = " ".join(str(p) for p in pos[:3])
+        # 手の中身が分かる選択肢も残す（2026-09-23 Gemini の試しで、shelf-run の --select が台帳に無く、
+        # 正しい列を選んだかを会話記録まで読みに行った）。既定のままの値は書かない
+        opts = []
+        for k in _CALL_LOG_OPTS:
+            v = getattr(args, k, None)
+            if v in (None, False, '', []):
+                continue
+            opts.append(f"--{_CALL_LOG_OPTS[k]}" + ("" if v is True else f" {v}"))
+        head = " ".join([str(p) for p in pos[:3]] + opts)
         if len(head) > _CALL_LOG_ARGS_MAX:
             head = head[:_CALL_LOG_ARGS_MAX] + "…"
         rec = {"time": time.strftime('%Y-%m-%d %H:%M:%S'), "cmd": str(cmd), "args": head,
                "sec": round(float(sec), 3), "ok": (None if ok is None else bool(ok)),
                "book": _last_book_name, "via": via}
+        if why and ok is not True:
+            rec["why"] = str(why)[:120]
         with open(_CALL_LOG_FILE, 'a', encoding='utf-8') as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
     except Exception:
@@ -1727,7 +1927,14 @@ def call_log_summary(recs, top=20, slow=8):
             gaps.append(g)
     gaps.sort()
     med = gaps[len(gaps) // 2] if gaps else None
-    return {"count": len(recs), "fail": sum(1 for r in recs if r.get("ok") is False),
+    # 失敗の理由の多い順（2026-09-24 から台帳に why がある）。同じ理由で何度も落ちている手が、道具で拾うべき穴
+    whys = {}
+    for r in recs:
+        if r.get("ok") is False and r.get("why"):
+            k = (r.get("cmd", "?"), re.sub(r"'[^']*'|「[^」]*」|\d+", "…", r["why"]))
+            whys[k] = whys.get(k, 0) + 1
+    why_top = [{"cmd": c, "why": w, "count": n} for (c, w), n in sorted(whys.items(), key=lambda kv: -kv[1])][:8]
+    return {"count": len(recs), "fail": sum(1 for r in recs if r.get("ok") is False), "why_top": why_top,
             "tool_sec": sum(float(r.get("sec") or 0) for r in recs),
             "books": sorted({r["book"] for r in recs if r.get("book")}),
             "commands": cmds[:top], "slowest": slowest,
@@ -1757,6 +1964,10 @@ def cmd_stats(args):
     print("  コマンド" + " " * 12 + "   回数   平均秒   最長秒  失敗")     # 全角は 2 桁幅＝手で揃える
     for e in s["commands"]:
         print(f"  {e['cmd']:<20} {e['count']:>5} {e['avg']:>7.2f} {e['max']:>7.2f} {e['fail']:>4}")
+    if s["why_top"]:
+        print("失敗の理由（多い順・名前と数はならした）:")
+        for w in s["why_top"]:
+            print(f"  {w['count']:>3} 回  {w['cmd']}: {w['why']}")
     print(f"遅かった呼び出し（上位 {len(s['slowest'])}）:")
     for r in s["slowest"]:
         book = f"  [{r['book']}]" if r.get("book") else ""
@@ -2063,7 +2274,82 @@ def protect_safe(cmd_func):
     return wrapper
 
 
-__all__ = [
+# ----------------------------------------------------------------
+# 棚＝モジュール「表の整理」と「表の整理_〜」（2026-09-23 分割の下ごしらえ）
+#   1 モジュール 19,466 行・123 本になったので、表の整理（整える・直す）／表の整理_作る（集計・グラフ・転記）／
+#   表の整理_調べる（調べる・一覧）／表の整理_下請け（Option Private Module の共通の下請け）に分けられるようにする。
+#   読み手は名前を決め打ちせずここを通す。並びは名前順（「表の整理」が先頭）＝VBComponents の列挙は追加順なので並べ替える。
+# ----------------------------------------------------------------
+SHELF_MODULE = '表の整理'
+
+
+def is_shelf_module(name):
+    name = str(name or '')
+    return name == SHELF_MODULE or name.startswith(SHELF_MODULE + '_')
+
+
+SHELF_HELPER_SUFFIX = '_下請け'
+
+
+def shelf_components(vbproject, helpers=False):
+    """その VBProject の棚のモジュール（VBComponent）を「表の整理」→ 残りを名前順で。無ければ []。
+
+    helpers=False では「表の整理_下請け」（共通の下請け＝引数なしの Sub「表の仕上げ」もある）を入れない
+    ＝目録・依頼の語・一覧に下請けが棚のマクロとして出ない。写しで撃つ・コードを丸ごと入れるときは helpers=True。
+    """
+    try:
+        comps = list(vbproject.VBComponents)
+    except Exception:
+        try:                                    # 回せないときは「表の整理」だけを名前で引く（分ける前の形）
+            return [vbproject.VBComponents(SHELF_MODULE)]
+        except Exception:
+            return []
+    out = []
+    for c in comps:
+        try:
+            nm = str(c.Name)
+            if is_shelf_module(nm) and (helpers or not nm.endswith(SHELF_HELPER_SUFFIX)):
+                out.append(c)
+        except Exception:
+            continue
+    return sorted(out, key=lambda c: (str(c.Name) != SHELF_MODULE, str(c.Name)))
+
+
+def shelf_texts(vbproject, helpers=True):
+    """[(モジュール名, コード全文)] を棚の並びで（既定は下請けも入れる＝写しに入れて撃てる形）。"""
+    out = []
+    for c in shelf_components(vbproject, helpers=helpers):
+        try:
+            cm = c.CodeModule
+            n = int(cm.CountOfLines)
+            out.append((str(getattr(c, 'Name', SHELF_MODULE)), cm.Lines(1, n) if n else ''))
+        except Exception:
+            continue
+    return out
+
+
+def shelf_text(vbproject):
+    """棚のコードを 1 本の文字にしてつなぐ（依頼の語・目録を読む側向け。下請けは入れない。行番号は使わない）。"""
+    return '\r\n'.join(t for _n, t in shelf_texts(vbproject, helpers=False))
+
+
+def shelf_module_of(vbproject, sub):
+    """Sub sub を持つ棚のモジュール名。無ければ None。"""
+    pat = re.compile(r'^\s*(?:Public\s+)?Sub\s+' + re.escape(sub) + r'\b', re.M)
+    for name, text in shelf_texts(vbproject):
+        if pat.search(text):
+            return name
+    return None
+
+
+__all__ = ['split_command_line',
+    'SHELF_MODULE',
+    'is_shelf_module',
+    'SHELF_HELPER_SUFFIX',
+    'shelf_components',
+    'shelf_texts',
+    'shelf_text',
+    'shelf_module_of',
     'BACKUP_DIR',
     'LAST_PROC_FILE',
     'ModuleNameCollisionError',
@@ -2085,6 +2371,7 @@ __all__ = [
     '_remember_excel_pid',
     '_note_book',
     'call_log_write',
+    'call_log_why',
     'call_log_read',
     'call_log_summary',
     'cmd_stats',
@@ -2113,6 +2400,7 @@ __all__ = [
     '_reprotect_sheets',
     '_active_guards',
     '_com_is_busy',
+    'cp932_safe',
     '_pid_is_excel',
     '_ws_name',
     'forget_protection',
@@ -2121,6 +2409,7 @@ __all__ = [
     'argparse',
     'check_vba_identifier',
     'cleanup_excel',
+    'is_fresh_instance',
     'release_created_instances',
     'get_or_start_excel',
     'pin_active_workbook',

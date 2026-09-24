@@ -1081,7 +1081,7 @@ def test_agent_replay_runs_the_whole_loop_in_real_excel_and_undo_restores_it(tmp
     with open(book, "rb") as f:
         digest = hashlib.sha1(f.read()).hexdigest()
 
-    plan = [{"item": "合計行を足す", "state": "未"}, {"item": "表を整える", "state": "未"}]
+    plan = [{"item": "表の下に合計行を足す", "state": "未"}, {"item": "表の書き方と罫線と列幅をそろえる", "state": "未"}]
     first = {"say": "合計行を書いて整えます", "plan": plan,
              "actions": [{"op": "write_cells", "cells": {"A6": "合計", "C6": "=SUM(C2:C5)"}},
                          {"op": "tidy", "ranges": ["A1:C6"]}], "done": False}

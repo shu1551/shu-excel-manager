@@ -41,7 +41,7 @@ py vba_manager.py 健康診断 --note "直した内容"    # カルテのメモ�
 py vba_manager.py 健康診断 --history             # 経過観察＝過去の診断履歴を表で表示（診断はしない）
 py vba_manager.py checkup --ack-all              # 現在の所見を「確認済み」にする（以後の診断で既知として扱う）
 py vba_manager.py checkup --show-ack             # 確認済みにした所見の一覧
-py vba_manager.py checkup --unack                # 確認済みの印を外す（また未確認として出る）
+py vba_manager.py checkup --unack "文字列"       # 文字列を含む確認済みの所見から印を外す（また未確認として出る）
 py vba_manager.py 健康診断 --history --detail    # 各回の間の所見/マクロ増減も表示（メモと合わせてカルテになる）
 #  終了コードは「診断完了=0」（所見があっても失敗ではない）。所見の有無で合否を取りたい
 #  自動化ゲートだけ --strict を付ける（所見1件以上で終了コード1）
@@ -249,7 +249,7 @@ py vba_manager.py replace-module <モジュール名> <basファイル>
 
 # 新規プロシージャの追加 / 削除（get→replace と対称の軽量経路）
 py vba_manager.py add-procedure <モジュール名> -y      # _last_proc.vba のコードを末尾に追加（同名重複は停止）
-py vba_manager.py delete-procedure <Sub名> -y          # 削除コードを表示して確認。--module で対象明示
+py vba_manager.py delete-procedure [モジュール] <Sub名> [Sub名…] -y   # 削除コードを表示して確認。--module で対象明示。複数は控え 1 冊・保存 1 回
 
 # モジュールを .bas にエクスポート
 py vba_manager.py export-module <モジュール名>
@@ -294,7 +294,7 @@ py vba_manager.py history <マクロ名> [--book ブック名] [--deep] [--max N
 # 閉じたブックを読む（2026-09-17・Excel を開かない＝Workbook_Open もアドインも起きない。50 冊でも 1 手）
 py vba_manager.py list-file <path.xlsm> [--json]            # モジュール（種別・行数）とプロシージャ名。.xlsx は「マクロ無し」
 py vba_manager.py grep-files "文字" <フォルダ|ファイル…> [--regex] [-i] [--max N]   # [ファイル名][モジュール] プロシージャ:行: 本文（行番号は VBE と同じ）
-py vba_manager.py export-file <path.xlsm> [--dir 先]        # .bas/.cls/.frm に書き出す（既定 _exports/<ブック>/<日時>/。.frx は無い）
+py vba_manager.py export-file <path.xlsm> [モジュール…] [--dir 先]   # .bas/.cls/.frm に書き出す（モジュール名を続けるとそれだけ）（既定 _exports/<ブック>/<日時>/。.frx は無い）
 #  .xlsb も読める（vbaProject.bin）。フォームのコードは .frm として出るがレイアウト（.frx）は付かない
 
 # コマンド列を1接続で連続実行（一括作業の高速化。実測: 18本export 数分→約2秒級）

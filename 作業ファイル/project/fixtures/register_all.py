@@ -1,13 +1,19 @@
 # -*- coding: utf-8 -*-
-"""鍛え直したマクロを「表の整理」へ 1 回で登録する（2026-09-18）。
+"""鍛え直したマクロを棚（表の整理・表の整理_作る・表の整理_調べる）へ 1 回で登録する（2026-09-18・9/24 作り直し）。
 
 なぜ 1 回か: 9/18 未明に add-procedure＋compile を数時間で 30 回ほど続けたら、Excel が VBE7.DLL で落ちた。
-モジュールの本文を Python で組み立て、replace-module 1 回＋compile 1 回にする。
+モジュールの本文を Python で組み立て、変わるモジュールごとに replace-module 1 回＋最後に compile 1 回にする。
 
-  py register_all.py            … 何をするか見せるだけ（Excel には書かない）
-  py register_all.py --write    … 実際に入れ替える（控えは道具が取る）
+  py register_all.py            … 何をするか見せるだけ（Excel にも台帳にも書かない）
+  py register_all.py --write    … 実際に入れ替える（控えは道具が取る）・台帳に「登録した本文」を記す
   py register_all.py --write --to 秀コンボ.xlsm
-残す Sub: 表を整える・重複行を消す・台帳に無い Sub。消す Sub: 台帳の古い名前（作り直しで名前が変わったもの）。
+
+決まり（9/24 作り直し）:
+- 正はブックの今の本文。棚は 9/23 に 3 つへ分かれ、9/24 の総点検の直しはブックにだけ入っている。
+  台帳の本文（code）で上書きするのは、回路が作り直した仕事＝ code が「前回登録した本文」（registered）と違うものだけ。
+- registered がまだ無い仕事は、ブックの本文を台帳に取り込む（code と registered をブックの本文にする）＝上書きしない。
+- 置き換えは、その Sub が今いるモジュールで行う。どこにも無い Sub は名前で置き場を決める（_調べる／_作る／表の整理）。
+- 引退した仕事・名前が変わった古い Sub は、いるモジュールから消す。
 """
 import os
 import re
@@ -21,12 +27,13 @@ import vbam_core   # noqa: E402
 vbam_core.setup_encoding()
 import vbam_forge as vf   # noqa: E402
 
-MODULE = '表の整理'
-KEEP = ('表を整える', '重複行を消す')
-OLD_LEDGER = os.path.join(PY, '_agent_forge.json.bak_20260918_gen')
+MAIN, MAKE, LOOK = '表の整理', '表の整理_作る', '表の整理_調べる'
+MODULES = (MAIN, MAKE, LOOK)
 # 1 本にまとめて要らなくなった仕事（その Sub は消す）
 DROP_JOBS = ('課別棒グラフ', '推移折れ線')
 _SUB_RE = re.compile(r'^[ \t]*(?:Public\s+|Private\s+)?Sub\s+([^\s\(]+)\s*\(', re.M)
+_LOOK_RE = re.compile(r'(一覧にする|確かめる|報告する|調べる|探す|検算する)$')
+_MAKE_RE = re.compile(r'(作る|足す|グラフ|ピボット|クエリ|集計|転記|差し込む|分ける|展開する|挿入する|抜き出す|印刷設定)')
 
 
 def blocks(text):
@@ -48,10 +55,42 @@ def blocks(text):
     return out
 
 
+def norm(code):
+    return (code or '').replace('\r\n', '\n').strip('\n')
+
+
+def home_of(sub):
+    """どこにも無い Sub の置き場（名前の終わり・語で決める）。"""
+    if _LOOK_RE.search(sub):
+        return LOOK
+    if _MAKE_RE.search(sub):
+        return MAKE
+    return MAIN
+
+
+def vm(*args):
+    r = subprocess.run([sys.executable, os.path.join(PY, 'vba_manager.py')] + list(args),
+                       capture_output=True, text=True, encoding='utf-8', errors='replace', cwd=PY,
+                       stdin=subprocess.DEVNULL)
+    return r.returncode, (r.stdout or '') + (r.stderr or '')
+
+
+def export(to, mod):
+    p = os.path.join(PY, f"{mod}.bas")
+    if os.path.isfile(p):
+        os.remove(p)
+    _c, out = vm('export-module', to, mod)
+    if not os.path.isfile(p):
+        raise SystemExit(f'エラー: モジュール {mod} を書き出せませんでした:\n{out}')
+    with open(p, encoding='cp932') as f:
+        text = f.read()
+    return re.sub(r'^\s*Attribute\s+VB_Name\s*=.*\r?\n', '', text, count=1)   # 属性行は _write_bas が付ける
+
+
 def main():
     write = '--write' in sys.argv
     to = sys.argv[sys.argv.index('--to') + 1] if '--to' in sys.argv else '秀コンボ.xlsm'
-    if not os.path.sep in to:
+    if os.path.sep not in to:
         # 開いているブックから名前でパスを引く（CLI の対象はパスで渡す）
         import vbam_agent as va
         xl, _wb = va.get_workbook(None)
@@ -62,104 +101,125 @@ def main():
             return 1
         to = hit[0]
         print(f"対象: {to}")
+
+    mod_blocks = {m: blocks(export(to, m)) for m in MODULES}
+    where = {}                                   # Sub 名 → モジュール
+    book_code = {}                               # Sub 名 → ブックの今の本文
+    for m, bs in mod_blocks.items():
+        for n, b in bs:
+            if n:
+                where[n] = m
+                book_code[n] = norm(b)
+
     d = vf._forge_load()
-    old = {}
-    if os.path.isfile(OLD_LEDGER):
-        import json
-        with open(OLD_LEDGER, encoding='utf-8') as f:
-            oldd = json.load(f)
-        old = {k: (v.get('sub') or '') for k, v in oldd.items()}
-        old_code = {k: (v.get('code') or '') for k, v in oldd.items()}
-    new_subs, drop, not_passed, kept_old = {}, set(), [], []
-    for name in DROP_JOBS:
-        if old.get(name):
-            drop.add(old[name])                           # 1 本にまとめた古い仕事の Sub は消す
-    retired = []
+    put = {}          # Sub 名 → 新しい本文（置き換え・足す）
+    drop = set()      # 消す Sub
+    adopt, same, not_passed, retired = [], [], [], []
     for name, c in d.items():
-        if name in DROP_JOBS:
+        sub = c.get('sub') or ''
+        if name in DROP_JOBS or c.get('retired'):
+            if sub:
+                drop.add(sub)
+                retired.append((name, sub))
             continue
-        if c.get('retired'):
-            # 引退した仕事（2026-09-18 shu「作りすぎ・役に立たないものは消す」）: 台帳とお題は残し、登録簿からだけ外す
-            if c.get('sub'):
-                drop.add(c['sub'])
-                retired.append((name, c['sub']))
+        if not (c.get('passed') and c.get('code') and sub):
+            if sub:
+                not_passed.append((name, sub))
             continue
-        rebuilt = (c.get('code') or '') != old_code.get(name, '')
-        if c.get('passed') and c.get('code') and c.get('sub') and rebuilt:
-            new_subs[c['sub']] = c['code'].replace('\r\n', '\n').strip('\n')
-            if old.get(name) and old[name] != c['sub']:
-                drop.add(old[name])                       # 作り直しで名前が変わった＝古い Sub は消す
-        elif c.get('sub') and not rebuilt:
-            kept_old.append((name, c['sub']))
-        elif c.get('sub'):
-            not_passed.append((name, c['sub']))
-    # 書き出し（開いているブックの今の本文）
-    out_bas = os.path.join(PY, f"{MODULE}.bas")
-    if os.path.isfile(out_bas):
-        os.remove(out_bas)
-    r = subprocess.run([sys.executable, os.path.join(PY, 'vba_manager.py'), 'export-module', to, MODULE],
-                       capture_output=True, text=True, encoding='utf-8', errors='replace', cwd=PY)
-    if not os.path.isfile(out_bas):
-        print('エラー: モジュールを書き出せませんでした:\n' + (r.stdout or '') + (r.stderr or ''))
-        return 1
-    with open(out_bas, encoding='cp932') as f:
-        text = f.read()
-    text = re.sub(r'^\s*Attribute\s+VB_Name\s*=.*\r?\n', '', text, count=1)   # 属性行は _write_bas が付ける
-    bs = blocks(text)
-    have = [n for n, _b in bs if n]
-    keep_blocks, replaced = [], []
-    for n, b in bs:
-        if n is None:
-            keep_blocks.append(b)
+        old_sub = c.get('registered_sub') or ''
+        if old_sub and old_sub != sub and old_sub in where:
+            drop.add(old_sub)                    # 作り直しで名前が変わった＝古い Sub は消す
+        reg = c.get('registered')
+        if reg is None:
+            if sub in book_code:
+                adopt.append(name)               # 初回: ブックの本文を正として台帳に取り込む
+            else:
+                put[sub] = norm(c['code'])       # ブックに無い＝足す
             continue
-        if n in drop and n not in new_subs:
-            print(f"  消す（{'引退' if any(s == n for _j, s in retired) else '名前が変わった古い Sub'}）: {n}")
-            continue
-        if n in new_subs:
-            keep_blocks.append(new_subs.pop(n))
-            replaced.append(n)
-            continue
-        keep_blocks.append(b)
-    added = list(new_subs)
-    body = "\n\n".join(x.strip('\n') for x in keep_blocks if x.strip())
-    if added:
-        body += "\n\n" + "\n\n".join(new_subs[n] for n in added)
-    body = body.rstrip('\n') + "\n"
-    print(f"今の Sub {len(have)} 本 → 置き換え {len(replaced)} 本・新しく足す {len(added)} 本・消す {len(drop & set(have))} 本")
-    print("  置き換え: " + "・".join(replaced))
-    print("  足す: " + "・".join(added))
-    if retired:
-        print("  引退（台帳とお題は残す・登録簿から外す）: " + "・".join(f"{n}={s}" for n, s in retired))
+        if norm(c['code']) != norm(reg):
+            put[sub] = norm(c['code'])           # 回路が作り直した
+        elif sub not in book_code:
+            put[sub] = norm(c['code'])           # 登録済みのはずがブックに無い＝足し直す
+        else:
+            same.append(name)
+
+    # モジュールごとに本文を組み直す
+    new_body, report = {}, {}
+    added = {sub: (where.get(sub) or home_of(sub)) for sub in put}
+    for m in MODULES:
+        keep, rep, gone = [], [], []
+        for n, b in mod_blocks[m]:
+            if n is None:
+                keep.append(b)
+            elif n in drop and n not in put:
+                gone.append(n)
+            elif n in put:
+                keep.append(put[n])
+                rep.append(n)
+            else:
+                keep.append(b)
+        add = [s for s, mm in added.items() if mm == m and s not in where]
+        keep += [put[s] for s in add]
+        if rep or gone or add:
+            new_body[m] = "\n\n".join(x.strip('\n') for x in keep if x.strip()).rstrip('\n') + "\n"
+            report[m] = (rep, add, gone)
+
+    print(f"棚の Sub {len(where)} 本（{'・'.join(f'{m} {sum(1 for v in where.values() if v == m)}' for m in MODULES)}）")
+    for m, (rep, add, gone) in report.items():
+        print(f"[{m}] 置き換え {len(rep)}・足す {len(add)}・消す {len(gone)}")
+        for lab, xs in (("置き換え", rep), ("足す", add), ("消す", gone)):
+            if xs:
+                print(f"  {lab}: " + "・".join(xs))
+    if not report:
+        print("入れ替えるモジュールはありません（ブックと台帳の登録済みの本文が一致）")
+    if adopt:
+        print(f"ブックの本文を台帳に取り込む（上書きしない）: {len(adopt)} 本")
+    if same:
+        print(f"（登録済みと同じ: {len(same)} 本）")
     if not_passed:
-        print("  （合格していない弾は触りません: " + "・".join(f"{n}={s}" for n, s in not_passed) + "）")
-    if kept_old:
-        print("  （まだ作り直していない仕事はそのまま: " + "・".join(f"{n}={s}" for n, s in kept_old) + "）")
-    path = os.path.join(PY, '_表の整理_新.bas')
-    err = vf._write_bas(path, MODULE, body)
-    if err:
-        print('エラー: ' + err)
-        return 1
-    print(f"  新しい本文: {path}（{len(body.splitlines())} 行）")
-    if not vf._check_bas(path):
-        print('エラー: check-bas に落ちました')
-        return 1
-    if not write:
-        print("（--write を付けると replace-module で入れ替えます）")
-        return 0
-    for args in (['replace-module', to, MODULE, path], ['compile', to]):
-        r = subprocess.run([sys.executable, os.path.join(PY, 'vba_manager.py')] + args,
-                           capture_output=True, text=True, encoding='utf-8', errors='replace', cwd=PY)
-        print((r.stdout or '').strip()[-1500:])
-        if r.returncode:
-            print('エラー: ' + (r.stderr or '')[-500:])
+        print("（合格していない弾は触りません: " + "・".join(f"{n}={s}" for n, s in not_passed) + "）")
+
+    paths = {}
+    for m, body in new_body.items():
+        path = os.path.join(PY, f'_{m}_新.bas')
+        err = vf._write_bas(path, m, body)
+        if err:
+            print('エラー: ' + err)
             return 1
-    gone = [n for n in DROP_JOBS if n in d]
-    if gone:
-        for n in gone:
-            d.pop(n, None)
-        vf._forge_save(d)
-        print("台帳から外しました（1 本にまとめた古い仕事）: " + "・".join(gone))
-    print("登録しました（replace-module がブックを保存済み）。次は run-macro アドインの更新登録 --raw で .xlam へ")
+        if not vf._check_bas(path):
+            print(f'エラー: check-bas に落ちました: {path}')
+            return 1
+        paths[m] = path
+        print(f"  新しい本文: {path}（{len(body.splitlines())} 行）")
+    if not write:
+        print("（--write を付けると replace-module で入れ替え、台帳に登録した本文を記します）")
+        return 0
+
+    for m, path in paths.items():
+        code, out = vm('replace-module', to, m, path)
+        print(out.strip()[-600:])
+        if code:
+            return 1
+    if paths:
+        code, out = vm('compile', to)
+        print(out.strip()[-800:])
+        if code:
+            return 1
+    # 台帳に「登録した本文」を記す（ブックに入った形＝次からはこれと比べる）
+    for name, c in d.items():
+        sub = c.get('sub') or ''
+        if name in adopt:
+            c['code'] = book_code[sub]
+            c['registered'], c['registered_sub'] = book_code[sub], sub
+        elif sub in put:
+            c['registered'], c['registered_sub'] = put[sub], sub
+        elif name in same:
+            c['registered_sub'] = sub
+    for n in DROP_JOBS:
+        d.pop(n, None)
+    vf._forge_save(d)
+    print("登録しました（replace-module がブックを保存済み）・台帳に登録した本文を記しました。"
+          "次は run-macro アドインの更新登録 --raw で .xlam へ")
     return 0
 
 

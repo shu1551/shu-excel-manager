@@ -2420,7 +2420,7 @@ def run_agent(request, sheet, wb, ai=_CC_AI, model=None, max_turns=_DEFAULT_MAX_
     if resume:
         print(f"前回の続き: 往復 {len(resume) // 2} 回ぶんの会話を引き継ぎます（報告した候補と別のことをしないため）")
     run_id = _run_id()                 # この走行の名札（控えの覚書と走行台帳を結ぶ＝undo された走行が分かる）
-    # マクロの先撃ち（2026-09-11 深夜・shu と決めた形）: 書き方の整理の依頼で「表を整える」が開いていれば、
+    # マクロの先撃ち（2026-09-11 深夜・shu と決めた形）: 書き方の整理の依頼で「表の書き方と罫線と列幅をそろえる」が開いていれば、
     # AI より先に道具が撃つ。残りが無ければここで終わる（AI は呼ばない）。残りがあれば控えを引き継いで往復へ。
     # 実射（backup=False）・--replay（ask）・--cont・統合ループ（rules／execute）では撃たない
     pre = None

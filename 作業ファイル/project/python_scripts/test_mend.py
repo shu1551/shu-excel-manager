@@ -252,7 +252,7 @@ class _FakeWB:
         self.VBProject = _Proj
 
 
-_BIG = "\n".join(["Sub 表を整える()", "    GoSub 数を読む", "    Exit Sub", "数を読む:", "    t = Left(t, Len(t) - 2)",
+_BIG = "\n".join(["Sub 表の書き方と罫線と列幅をそろえる()", "    GoSub 数を読む", "    Exit Sub", "数を読む:", "    t = Left(t, Len(t) - 2)",
                   "    Return", "End Sub"])
 
 
@@ -265,7 +265,7 @@ def test_get_on_a_gosub_label_returns_the_block_and_lines_reads_a_range():
     assert ok and lab == 'lines 2-3' and out.startswith('   2:     GoSub 数を読む') and '4 行目から先' in out
     assert vmac._read_lines_act({'op': 'lines', 'from': 'x'}, wb, '表の整理')[1] is False
     res = vmac._execute_macro([{'op': 'get', 'name': '数を読む'}, {'op': 'lines', 'from': 5, 'to': 5}], False, wb,
-                              existing=['表を整える'], default_module='表の整理')
+                              existing=['表の書き方と罫線と列幅をそろえる'], default_module='表の整理')
     assert [r[1] for r in res] == [True, True] and 'Len(t) - 2' in res[1][2]
 
 

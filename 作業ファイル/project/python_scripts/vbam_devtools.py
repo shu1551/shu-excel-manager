@@ -34,7 +34,8 @@ from vbam_core import (SCRIPT_DIR, BACKUP_DIR, LAST_PROC_FILE, get_workbook, par
                        _AGENT_PROGRESS_PATH, _pid_alive, job_clock_note)
 from vbam_vba import (_com_error_text, cmd_replace_module, _all_procedure_names, _suggest_similar,
                       _extract_proc, _collect_book_inventory, _analyze_calls, _compile_vbproject, _split_procedures,
-                      _diag_missing_labels, _diag_on_err_typo, _extra_code_scans, _clean_vba_line, _parse_module_blocks)
+                      _diag_missing_labels, _diag_on_err_typo, _extra_code_scans, _clean_vba_line, _parse_module_blocks,
+                      _book_holding_proc)
 
 _EXT_MAP = {1: '.bas', 2: '.cls', 3: '.frm', 100: '.cls'}
 _PROC_DECL = re.compile(r'^\s*(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?(?:Sub|Function|Property\s+(?:Get|Let|Set))\s+',
@@ -341,6 +342,8 @@ def cmd_rename_procedure(args):
     dry = getattr(args, 'dry_run', False)
 
     xl, wb = get_workbook(target_file, readonly=dry)
+    if not target_file:
+        wb = _book_holding_proc(wb, old) or wb      # 前に出ていない秀コンボ.xlsm 等の 1 冊にだけあればそこ（2026-09-24 総点検）
 
     # 宣言の持ち主を探す（同名が複数のモジュールにあれば --module で名指し）
     owners = []
@@ -354,7 +357,7 @@ def cmd_rename_procedure(args):
             pass
     if not owners:
         print(f"エラー: プロシージャ '{old}' が見つかりません" + (f"（モジュール {mod_filter}）" if mod_filter else ""))
-        _suggest_similar(old, _all_procedure_names(wb))
+        _suggest_similar(old, _all_procedure_names(wb), wb=wb)
         return False
     if len(owners) > 1:
         print(f"エラー: '{old}' が複数のモジュールにあります: " + ", ".join(str(c.Name) for c in owners))
@@ -802,6 +805,8 @@ def cmd_set_shortcut(args):
             return False
     mod_filter = getattr(args, 'module_opt', None)
     xl, wb = get_workbook(target_file)
+    if not target_file:
+        wb = _book_holding_proc(wb, name) or wb     # （2026-09-24 総点検）
     owners = []
     for comp in wb.VBProject.VBComponents:
         if mod_filter and str(comp.Name).lower() != mod_filter.lower():
@@ -813,7 +818,7 @@ def cmd_set_shortcut(args):
             pass
     if not owners:
         print(f"エラー: マクロ '{name}' が見つかりません")
-        _suggest_similar(name, _all_procedure_names(wb))
+        _suggest_similar(name, _all_procedure_names(wb), wb=wb)
         return False
     if len(owners) > 1:
         print(f"エラー: '{name}' が複数のモジュールにあります: " + ", ".join(str(c.Name) for c in owners) + "（--module で名指し）")
@@ -1443,6 +1448,8 @@ def cmd_repair(args):
         return False
     mod_filter = getattr(args, 'module_opt', None)
     xl, wb = get_workbook(target_file, readonly=True)
+    if not target_file:
+        wb = _book_holding_proc(wb, macro) or wb    # （2026-09-24 総点検）
 
     # ① 本文
     try:
@@ -1452,7 +1459,7 @@ def cmd_repair(args):
         return False
     if comp_name is None:
         print(f"エラー: プロシージャ '{macro}' が見つかりません" + (f"（モジュール {mod_filter}）" if mod_filter else ""))
-        _suggest_similar(macro, _all_procedure_names(wb))
+        _suggest_similar(macro, _all_procedure_names(wb), wb=wb)
         return False
     with open(LAST_PROC_FILE, 'w', encoding='utf-8') as f:
         f.write(code)

@@ -2446,6 +2446,203 @@ def test_agent_prune_backups_is_per_book(tmp_path, monkeypatch):
     assert keep.name in left                    # 別のブックの控えは消さない
 
 
+def test_same_second_runs_get_their_own_backup_and_run_id(tmp_path, monkeypatch):
+    """同じ秒に 2 本撃つと控えも名札も同じ名前になり、1 本目の控えが消えていた（2026-09-23 実測 3）。"""
+    import vbam_ledger as vl
+    monkeypatch.setattr(vu, "BACKUP_DIR", str(tmp_path))
+    monkeypatch.setattr(vu.time, "strftime", lambda fmt, *a: "20260923_184635" if "%H" in fmt and "_" in fmt
+                        else "2026-09-23 18:46:35")
+    monkeypatch.setattr(vl.time, "strftime", lambda fmt, *a: "20260923_184635")
+    monkeypatch.setattr(vl, "_LAST_RUN_ID", ['', 0])
+    monkeypatch.setattr(vu, "_save_undo_meta", lambda meta: True)
+    monkeypatch.setattr(vu, "_shapes_geometry", lambda ws: [])
+
+    class WB:
+        Name = "実測3.xlsx"
+
+        def SaveCopyAs(self, p):
+            open(p, "w").close()
+    p1 = vu._agent_backup(WB(), None, "名簿", "一本目")
+    p2 = vu._agent_backup(WB(), None, "名簿", "二本目")
+    assert p1 != p2 and os.path.exists(p1) and p2.endswith("_2.xlsx")
+    assert [vl._run_id(), vl._run_id(), vl._run_id()] == ["20260923_184635", "20260923_184635_2", "20260923_184635_3"]
+
+
+def test_format_changes_compares_borders_on_the_before_range():
+    """右に表を足して使用範囲が広がっても、元の表の罫線を「あり → なし」と言わない（2026-09-23 選んだ列の項目別件数表を右に作る）。"""
+    class B:
+        def __init__(self, v):
+            self.LineStyle = v
+
+    class Col:
+        NumberFormatLocal, HorizontalAlignment = 'G/標準', 1
+
+        class Font:
+            Bold = False
+
+    class Rng:
+        def __init__(self, addr, line):
+            self.Address, self._line = addr, line
+            self.Column = 1
+            self.Columns = type('Cs', (), {'Count': 11, '__call__': lambda s, j: Col()})()
+
+        def Borders(self, idx):
+            return B(self._line)
+
+    class WS:
+        Name = '名簿'
+        UsedRange = Rng('$A$1:$H$14', 1)
+        Columns = staticmethod(lambda c: type('C', (), {'ColumnWidth': 8.0})())
+
+        def Range(self, a):
+            return Rng(a, 1 if a == 'A1:H14' else None)
+    ws = WS()
+    before = vu._format_snapshot(ws)
+    assert before['addr'] == 'A1:H14' and before['borders']['下'] == 'あり'
+    ws.UsedRange = Rng('$A$1:$K$14', None)            # 広がった範囲は I 列が空＝まちまち
+    assert [r for r in vu._format_changes(before, ws) if r['what'].startswith('罫線')] == []
+
+
+def test_seiri_notes_do_not_misread_title_rows_side_tables_and_memo_rows_20260923():
+    """Gemini の試し（お試し版 テスト用1・4）で出た seiri の誤報 3 つ。
+
+    ① 見出しの行の端にメモ用の式（=COUNTA(会員名簿)＝45）があるだけで見出しを見失い、例の文と見出しの間の空行を
+       「表の中の空行」と言って「表の中の空行を削除して詰める」を勧めた（撃てば表が 1 行ずれる）
+    ② 左右に並んだ長さの違う表で、右の表の下（表の外）を「表の中の空欄」と言った
+    ③ 表の下の合計・平均の行とメモの行の空きを「表の中の空欄」と言った
+    """
+    import vbam_view as vv
+    t4 = [["テスト用データ4", None, None, None, None, None, None],
+          [None] * 7,
+          ["例：「郵便番号をハイフンつきに…」", None, None, None, None, None, None],
+          [None] * 7,
+          ["会員番号", "氏名", "郵便番号", None, "会員番号", "コース", 45],
+          ["2001", "青木 誠", "000-0001", None, "2001", "年間", "↑ 名前を使った式"],
+          ["2002", "石川 恵", "000-0002", None, "2003", "半年", None],
+          ["2003", "上田 学", "000-0003", None, None, None, None],
+          ["2004", "江藤 茜", "000-0004", None, None, None, None]]
+    assert vv._guess_header_idx(t4) == 4
+    hints = []
+    text = "\n".join(vv.dirt_notes(t4, 1, 1, vv._guess_header_idx(t4), hints=hints))
+    assert "表の中の空行" not in text and not any(h[1] == "表の中の空行を削除して詰める" for h in hints)
+    assert "表の中の空欄" not in text                         # 右の表（E:F）は 7 行目で終わる
+    t1 = [["日付", "商品", "担当", "数量", "金額"],
+          ["2026/8/1", "えんぴつ", "佐藤", 120, 7200],
+          ["2026/8/2", "ノート", "鈴木", 45, 6750],
+          ["2026/8/3", "消しゴム", "田中", 80, 8000],
+          ["2026/8/4", "ふせん", "佐藤", 30, 3000],
+          ["2026/8/5", "のり", "鈴木", 20, 2000],
+          [None] * 5,
+          [None, None, "合計", 295, 26950],
+          [None, None, "平均", 59, 5390],
+          [None] * 5,
+          ["↓ わざと壊してある式です", None, None, None, None],
+          ["1個あたり平均単価 →", None, None, "#DIV/0!", None]]
+    text1 = "\n".join(vv.dirt_notes(t1, 5, 1, 0))
+    assert "表の中の空欄" not in text1 and "表の中の空行" not in text1   # 合計の前の空行も表の中ではない
+    # 本当の空欄（明細の中）と表の中の空行（下に明細が続く）は今までどおり言う
+    t1[2][2] = None
+    t1.insert(3, [None] * 5)
+    text2 = "\n".join(vv.dirt_notes(t1, 5, 1, 0))
+    assert "表の中の空欄: C7" in text2 and "表の中の空行: 行8" in text2 and "行12" not in text2
+
+
+def test_shelf_plan_fires_every_clause_and_pick_reads_handbooks_and_mishearing_20260924():
+    """② 外れた依頼を棚へ（2026-09-24）: 頼みが 2 つ以上なら節ごとに棚を引いて並べる・手順書は名前で撃つ・
+    「票」を「表」と読む（帳票・伝票は残す）・「直して」に調べるだけの棚を当てない。VBA の先撃ちと同じ答え。"""
+    import vbam_prefire as vp
+    E = [{'name': '表の書き方と罫線と列幅をそろえる', 'ask': '表を整え|整ってない|表記を統一|全角半角', 'combo': None},
+         {'name': '全列が同じ重複行を削除する', 'ask': '重複している行を削除|重複行を消', 'combo': None},
+         {'name': '住所と郵便番号の形をそろえる', 'ask': '郵便番号をハイフン|住所の全角半角', 'combo': None},
+         {'name': '左右に並んだ表を突き合わせる', 'ask': '突き合わせ', 'combo': None},
+         {'name': 'エラー値のセルを一覧にする', 'ask': 'エラーになる|エラー値', 'combo': None},
+         {'name': '帳票を右に1行1件の一覧にする', 'ask': '帳票形式|帳票を', 'combo': None}]
+    q4 = "郵便番号をハイフンつきに統一して  住所の全角半角をそろえて  左の名簿と右の申込一覧を会員番号で突き合わせて"
+    assert vp.shelf_plan(q4, E) == ['表の書き方と罫線と列幅をそろえる', '左右に並んだ表を突き合わせる']   # 住所・郵便の整えは 表の書き方と罫線と列幅をそろえる に任せる
+    q2 = "重複している会員を探して、重複している行を削除して\n表記を統一して"
+    assert vp.shelf_plan(q2, E) == ['表の書き方と罫線と列幅をそろえる', '全列が同じ重複行を削除する']              # 表の書き方と罫線と列幅をそろえる は先頭
+    assert vp.shelf_plan("重複している会員を探して、重複している行を削除して", E) == []   # 「、」では分けない
+    assert vp.shelf_plan("表記を統一して\n全角半角をそろえて", E) == []        # 撃つのが 1 本なら並びにしない
+    assert vp.shelf_plan("表記を統一して\nグラフを作って", E) == []            # 当たらない節があれば並びにしない
+    assert vp.shelf_pick("ええ、票が整ってないですね", E) == '表の書き方と罫線と列幅をそろえる'
+    assert vp.shelf_pick("帳票形式を一覧にして", E) == '帳票を右に1行1件の一覧にする'       # 帳票は読み替えない
+    assert vp.shelf_pick("【手順書：表の書き方と罫線と列幅をそろえる】ゴール: … 全列が同じ重複行を削除する …", E) == '表の書き方と罫線と列幅をそろえる'
+    assert vp.shelf_pick("【手順書：重複チェック】削除は頼まれるまでしない", E) == ''   # 棚に無い名前の手順書は本文で採点しない
+    assert vp.shelf_pick("D31の式がエラーになる原因を探して直して", E) == ''
+    assert vp.shelf_pick("エラー値を一覧にして", E) == 'エラー値のセルを一覧にする'
+
+
+def test_shelf_run_reports_page_setup_row_height_and_filter_changes_20260924():
+    """印刷設定・行の高さだけを変えるマクロで shelf-run が「何も変わりませんでした」と言っていた（2026-09-24）。"""
+    import vbam_view as vv
+    b = {'page': {'Zoom': '100', 'FitToPagesWide': '1', 'FitToPagesTall': '1', 'Orientation': '1.0',
+                  'PrintTitleRows': '', 'PrintArea': ''},
+         'rows': [(18.0, False)] * 5, 'filter': (False, False)}
+    a = {'page': dict(b['page'], Zoom='False'), 'rows': [(18.0, False), (201.3, False), (201.3, True), (18.0, False), (18.0, False)],
+         'filter': (True, False)}
+    lines = vv._sheet_extras_changes(b, a)
+    assert any(ln.startswith("印刷設定の変化: 拡大縮小 100→False") for ln in lines)
+    assert any("行の高さの変化: 2 行（2 行目 18.0→201.3" in ln for ln in lines)
+    assert any("表示・非表示の変わった行: 1 行（3）" in ln for ln in lines)
+    assert any(ln.startswith("絞り込み: なし→あり") for ln in lines)
+    assert vv._sheet_extras_changes(b, b) == [] and vv._sheet_extras_changes({}, {}) == []
+
+
+def test_shelf_reads_split_modules_in_name_order():
+    """棚が「表の整理_〜」に分かれても読む（2026-09-23 分割の下ごしらえ）。並びは名前順・下請けは目録に入れない。"""
+    import vbam_core as vc
+
+    class CM:
+        def __init__(self, t):
+            self.t = t
+            self.CountOfLines = t.count("\r\n") + 1
+
+        def Lines(self, a, n):
+            return self.t
+
+    class C:
+        def __init__(self, name, t):
+            self.Name, self.CodeModule, self.Type = name, CM(t), 1
+
+    class P:
+        # VBComponents の列挙は足した順＝名前順ではない
+        comps = [C("表の整理_調べる", "Sub 表のおかしい所を右に報告する()\r\nEnd Sub"), C("shu003", "Sub 表の書き方と罫線と列幅をそろえる()\r\nEnd Sub"),
+                 C("表の整理_下請け", "Sub 表の仕上げ()\r\nEnd Sub"), C("表の整理", "Sub 表の書き方と罫線と列幅をそろえる()\r\nEnd Sub"),
+                 C("表の整理_作る", "Sub 項目と金額の円グラフを作る()\r\nEnd Sub")]
+
+        @property
+        def VBComponents(self):
+            return self.comps
+    p = P()
+    assert [c.Name for c in vc.shelf_components(p)] == ["表の整理", "表の整理_作る", "表の整理_調べる"]
+    assert [c.Name for c in vc.shelf_components(p, helpers=True)][1] == "表の整理_下請け"
+    assert "表の仕上げ" not in vc.shelf_text(p) and "項目と金額の円グラフを作る" in vc.shelf_text(p)
+    assert [n for n, _t in vc.shelf_texts(p)] == ["表の整理", "表の整理_下請け", "表の整理_作る", "表の整理_調べる"]
+    assert vc.shelf_module_of(p, "表のおかしい所を右に報告する") == "表の整理_調べる"
+    assert vc.shelf_module_of(p, "表の書き方と罫線と列幅をそろえる") == "表の整理"          # 棚でない shu003 の同名は見ない
+    assert vc.shelf_module_of(p, "無い") is None
+    assert vc.is_shelf_module("表の整理_作る") and not vc.is_shelf_module("表の整理の一覧")
+
+
+def test_seiri_notes_for_a_roster():
+    """名簿で言えなかった 4 つ（実測 3）: 番号の抜け・未来の生年月日・電話の桁・同姓同名。郵便番号の同じ値は重複と言わない。"""
+    import datetime as dt
+    import vbam_view as vv
+    grid = [["No", "氏名", "郵便番号", "電話", "生年月日"],
+            [1, "山田　太郎", "010-0951", "018-160-1111", dt.datetime(1980, 5, 12)],
+            [2, "伊藤　健太", "010-0951", "018-16-1111", dt.datetime(2031, 2, 1)],
+            [4, "佐藤　一郎", "010-0921", "090-0234-5678", dt.datetime(1975, 1, 1)],
+            [5, "伊藤 健太", "015-0013", "0184-12-3456", dt.datetime(1992, 10, 10)]]
+    hints = []
+    text = "\n".join(vv.dirt_notes(grid, 1, 1, header_idx=0, hints=hints))
+    assert "番号の抜け・飛び: A4（2 の次が 4）" in text
+    assert "生年月日が今日より後" in text and "E3" in text
+    assert "電話の桁が合わない" in text and "D3（9 桁）" in text and "D4" not in text.split("電話の桁")[1].split("\n")[0]
+    assert "同じ氏名で中身が別の行" in text and "B5 と B3" in text
+    assert "番号列の重複" not in text                     # 郵便番号 010-0951 の 2 人は当たり前
+    assert any(h[1] == "番号の列を連番に振り直す" for h in hints)
+
+
 def test_agent_materials_warns_about_calc_mode_and_protection():
     """手動計算・保護シートは「書いたのに直らない」の正体。材料に出す。"""
     import vbam_agent as va
@@ -4118,10 +4315,10 @@ def test_plan_can_hold_a_question_for_the_human_without_blocking_done():
     import vbam_agent as va
     _s, _a, done, _r, plan = va._parse_reply(
         '{"plan":[{"item":"色分け","state":"済"},'
-        '{"item":"重複行を消す","state":"要判断","ask":"0002 と 0005 が二重です。消してよいですか"}],'
+        '{"item":"全列が同じ重複行を削除する","state":"要判断","ask":"0002 と 0005 が二重です。消してよいですか"}],'
         '"actions":[],"done":true,"report":"色分けしました"}')
     assert done is True and va._plan_pending(plan) == []          # 要判断は done を塞がない
-    assert va._plan_asks(plan) == ['重複行を消す　→ 聞きたいこと: 0002 と 0005 が二重です。消してよいですか']
+    assert va._plan_asks(plan) == ['全列が同じ重複行を削除する　→ 聞きたいこと: 0002 と 0005 が二重です。消してよいですか']
     assert '要判断 1' in va._plan_line(plan) and '消してよいですか' in va._plan_line(plan)
     # 未が残っていれば今までどおり塞ぐ
     _s, _a, _d, _r, plan2 = va._parse_reply('{"plan":[{"item":"並べ替え","state":"未"}],"actions":[],"done":true}')
@@ -7412,7 +7609,7 @@ def test_regex_dollar_backrefs_and_validation_aliases_20260911():
     _rng, rules, *_ = vh._normalize_spec({"op": "normalize", "range": "D6:D56", "overwrite": True,
                                           "rules": [{"regex": {"search": r"^(\d{2})(\d{4})(\d{4})$",
                                                                "replace": "$1-$2-$3"}}]})
-    assert vh._normalize_value("0322221111", rules)[0] == "03-2222-1111"
+    assert vh._normalize_value("0312221111", rules)[0] == "03-1222-1111"
     import pytest
     with pytest.raises(ValueError, match="replace"):
         vh._normalize_spec({"op": "normalize", "range": "D6:D9", "overwrite": True,

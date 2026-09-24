@@ -30,7 +30,7 @@ def _log(tmp_path, prompt1, replies):
 
 def test_hands_of_log_skips_reads_and_reads_prefire_names(tmp_path):
     prompt = ("材料…\n--- 道具が先に撃ったマクロ（AI より先に・1.2 秒） ---\n"
-              "表を整える → 重複行を消す を実行し、tidy で仕上げました。")
+              "表の書き方と罫線と列幅をそろえる → 全列が同じ重複行を削除する を実行し、tidy で仕上げました。")
     reply = json.dumps({'say': 'x', 'actions': [
         {'op': 'read', 'range': 'A1:C3'},
         {'op': 'normalize', 'range': 'D6:D45', 'rules': ['phone'], 'overwrite': True},
@@ -38,7 +38,7 @@ def test_hands_of_log_skips_reads_and_reads_prefire_names(tmp_path):
         {'op': 'write_cells', 'cells': {'G47': '=SUM(G6:G45)'}},
     ]}, ensure_ascii=False)
     hands, prefire = vf._hands_of_log(_log(tmp_path, prompt, [reply, '{"say":"done","actions":[],"done":true}']))
-    assert prefire == ['表を整える', '重複行を消す']
+    assert prefire == ['表の書き方と罫線と列幅をそろえる', '全列が同じ重複行を削除する']
     assert len(hands) == 3 and hands[0].startswith('normalize range=D6:D45') and 'overwrite' not in hands[0]
     assert 'Active' in hands[1] and 'SUM' in hands[2]
 
@@ -93,7 +93,7 @@ def test_table_text_shows_head_and_remaining_count():
 # AI の返事 → コード → 規則
 # ----------------------------------------------------------------
 
-_GOOD = """Sub 合計行を足す()
+_GOOD = """Sub 表の下に合計行を足す()
     ' 依頼の語: 合計|集計
     ' 扱う: 合計 集計
     ' 見出し: a
@@ -113,16 +113,16 @@ def test_extract_code_strips_fences_and_prose():
 
 def test_validate_code_reads_header_and_rejects_rule_breaks():
     name, ask, handles = vf._validate_code(_GOOD + "\n")
-    assert (name, ask, handles) == ('合計行を足す', '合計|集計', ['合計', '集計'])
+    assert (name, ask, handles) == ('表の下に合計行を足す', '合計|集計', ['合計', '集計'])
     assert vf._validate_code(None)[0] is None
     assert 'Function' in vf._validate_code("Function f()\nEnd Function\n" + _GOOD)[1]
-    assert '引数' in vf._validate_code(_GOOD.replace('合計行を足す()', '合計行を足す(n As Long)'))[1]
+    assert '引数' in vf._validate_code(_GOOD.replace('表の下に合計行を足す()', '表の下に合計行を足す(n As Long)'))[1]
     assert 'Option Explicit' in vf._validate_code("Option Explicit\n" + _GOOD)[1]
     assert '頭の 2 行' in vf._validate_code(_GOOD.replace("    ' 扱う: 合計 集計\n", ''))[1]
-    assert '既にある' in vf._validate_code(_GOOD.replace('合計行を足す', '表を整える'))[1]
+    assert '既にある' in vf._validate_code(_GOOD.replace('表の下に合計行を足す', '表の書き方と罫線と列幅をそろえる'))[1]
     assert 'MsgBox' in vf._validate_code(_GOOD.replace('Set ws = ActiveSheet', 'MsgBox "x"'))[1]
     assert '正規表現' in vf._validate_code(_GOOD.replace('合計|集計', '合計('))[1]
-    assert '1 本だけ' in vf._validate_code(_GOOD + "\n" + _GOOD.replace('合計行を足す', '別'))[1]
+    assert '1 本だけ' in vf._validate_code(_GOOD + "\n" + _GOOD.replace('表の下に合計行を足す', '別'))[1]
 
 
 def test_write_bas_is_cp932_with_attribute_and_crlf(tmp_path):
@@ -160,13 +160,13 @@ def test_compare_reports_cells_and_size():
 def _case():
     return {'name': 'n', 'time': 't', 'from_book': 'b.xlsx', 'sheet': 's', 'request': '合計を出して',
             'before': 'x.xlsx', 'expect': _snap([['a'], ['1'], ['1']]), 'before_values': _snap([['a'], ['1'], ['']]),
-            'hands': ['write_cells cells={"A7": "=SUM(A6:A6)"}'], 'prefire': ['表を整える'], 'passed': False}
+            'hands': ['write_cells cells={"A7": "=SUM(A6:A6)"}'], 'prefire': ['表の書き方と罫線と列幅をそろえる'], 'passed': False}
 
 
 def test_prompt_contains_rules_request_hands_prefire_and_feedback():
     c = _case()
     p = vf._prompt(c)
-    assert p.startswith(vf.FORGE_RULES) and '合計を出して' in p and 'write_cells' in p and '表を整える' in p
+    assert p.startswith(vf.FORGE_RULES) and '合計を出して' in p and 'write_cells' in p and '表の書き方と罫線と列幅をそろえる' in p
     assert '前回のマクロの不一致' not in p
     p2 = vf._prompt(c, "A7: 期待 '1' ／ マクロ後 ''", "Sub x()\nEnd Sub")
     assert '前回のマクロの不一致' in p2 and 'Sub x()' in p2
@@ -178,12 +178,12 @@ def test_forge_ledger_roundtrip_and_list(tmp_path, monkeypatch, capsys):
     assert vf.forged_list() is True
     assert '鍛えたマクロはありません' in capsys.readouterr().out
     c = _case()
-    c.update({'passed': True, 'sub': '合計行を足す', 'ask': '合計', 'registered_to': 'b.xlsx'})
+    c.update({'passed': True, 'sub': '表の下に合計行を足す', 'ask': '合計', 'registered_to': 'b.xlsx'})
     assert vf._forge_save({'n': c})
-    assert vf._forge_load()['n']['sub'] == '合計行を足す'
+    assert vf._forge_load()['n']['sub'] == '表の下に合計行を足す'
     assert vf.forged_list() is True
     out = capsys.readouterr().out
-    assert '合格' in out and 'Sub 合計行を足す' in out and '登録: b.xlsx' in out
+    assert '合格' in out and 'Sub 表の下に合計行を足す' in out and '登録: b.xlsx' in out
 
 
 def test_forge_dry_run_prints_prompt_without_ai(tmp_path, monkeypatch, capsys):
@@ -219,7 +219,7 @@ def test_forge_loop_feeds_mismatch_back_and_records_pass(tmp_path, monkeypatch, 
     assert vf._check_bas.__name__ == '_check_bas'              # 本物の check-bas を通す（差し替えない）
     assert vf.forge('n', max_turns=3) is True
     rec = vf._forge_load()['n']
-    assert rec['passed'] and rec['sub'] == '合計行を足す' and rec['turns'] == 3 and rec['mismatch'] == 0
+    assert rec['passed'] and rec['sub'] == '表の下に合計行を足す' and rec['turns'] == 3 and rec['mismatch'] == 0
     assert os.path.isfile(rec['bas'])
     assert '規則違反' in prompts[1] and '前回のマクロの不一致' in prompts[2]
     raw = open(rec['bas'], 'rb').read()
@@ -250,14 +250,14 @@ def test_forge_gives_up_after_max_turns(tmp_path, monkeypatch, capsys):
 
 _MODULE_TEXT = """Attribute VB_Name = "表の整理"
 ' 表の整理 - …
-Sub 表を整える()
+Sub 表の書き方と罫線と列幅をそろえる()
     ' 依頼の語: これは既定なので読まない
     ' 扱う: x
 End Sub
-Sub 重複行を消す()
+Sub 全列が同じ重複行を削除する()
 End Sub
 
-Sub 合計行を足す()
+Sub 表の下に合計行を足す()
     ' 依頼の語: 合計|集計
     ' 扱う: 合計 集計
     Dim ws As Worksheet
@@ -282,21 +282,52 @@ End Sub
 
 def test_registry_from_text_reads_header_pairs_only():
     reg = vp.registry_from_text(_MODULE_TEXT, owner='秀コンボ.xlsm')
-    assert [e['name'] for e in reg] == ['合計行を足す', '状態語をそろえる']
-    assert reg[0] == {'name': '合計行を足す', 'owner': '秀コンボ.xlsm', 'ask': '合計|集計', 'handles': ['合計', '集計'],
-                      'headers': [], 'select': None, 'shape': []}
+    assert [e['name'] for e in reg] == ['表の下に合計行を足す', '状態語をそろえる']
+    assert reg[0] == {'name': '表の下に合計行を足す', 'owner': '秀コンボ.xlsm', 'ask': '合計|集計', 'handles': ['合計', '集計'],
+                      'headers': [], 'select': None, 'shape': [], 'combo': None}
     assert reg[1]['ask'] == '状態|ステータス' and reg[1]['handles'] == ['判定']
+
+
+def test_python_prefire_reads_the_word_combos_like_the_vba_entry_20260923():
+    """弱点 7（2026-09-23）: 「依頼の組」を読んでいたのは VBA の先撃ちだけで、Python 側は素通りしていた。
+
+    組＝+ で区切った組のどれにも 1 語ずつ当たって初めて点が付き、- の語が当たれば撃たない。
+    """
+    text = "\n".join([
+        "Sub 重複行を消す2()",
+        "' 依頼の語: 重複",
+        "' 依頼の組: 重複,ダブ+消,削除+-一覧,洗い出し",
+        "' 扱う: 重複",
+        "End Sub",
+        "Sub 選んだ列の重複する値を一覧にする()",
+        "' 依頼の語: 重複キー",
+        "' 依頼の組: 重複,ダブ+一覧,洗い出し",
+        "' 扱う: 重複",
+        "End Sub",
+    ])
+    reg = vp.registry_from_text(text)
+    assert reg[0]['combo'] == '重複,ダブ+消,削除+-一覧,洗い出し'
+    assert vp.combo_score('重複,ダブ+消,削除', '重複行を消して') == (3, False)   # 重複(2)+消(1)＝各組の最長の和
+    assert vp.combo_score('重複,ダブ+消,削除', '重複を一覧に') == (0, False)     # 片方の組が当たらない＝0 点
+    assert vp.combo_score('重複,ダブ+消,削除+-一覧', '重複を消して一覧に')[1] is True   # +- の組＝除外
+    entries = vp.shelf_entries_from_text(text)
+    assert vp.shelf_pick('重複行を消して', entries) == '重複行を消す2'
+    assert vp.shelf_pick('重複キーを洗い出して一覧に', entries) == '選んだ列の重複する値を一覧にする'  # 「消」の方は除外の語で落ちる
+    assert vp.shelf_pick('ピボットテーブルとは何ですか', entries) == ''          # 質問は棚に当てない
+    assert vp.shelf_pick('重複を消すマクロを書いて', entries) == ''              # コードの依頼は AI の役目
+    p = vp.plan_full('重複キーを洗い出して一覧に', reg)
+    assert [e['name'] for e in p['extras']] == ['選んだ列の重複する値を一覧にする']          # 除外の語が効いて取り合いにならない
 
 
 def test_plan_full_fires_registered_macro_and_removes_its_words_from_ai():
     reg = vp.registry_from_text(_MODULE_TEXT)
     p = vp.plan_full("表を整えて、下に合計を出して", reg)
-    assert p['fire'] and p['tidy'] and [e['name'] for e in p['extras']] == ['合計行を足す']
+    assert p['fire'] and p['tidy'] and [e['name'] for e in p['extras']] == ['表の下に合計行を足す']
     assert p['left'] == [] and p['other'] is False            # 合計は登録済みの Sub が片づける＝AI に回さない
     p = vp.plan_full("表を整えて、下に合計を出して、グラフも", reg)
     assert p['left'] == ['グラフ'] and p['other'] is True
     p = vp.plan_full("合計を出して", reg)                       # 整える語が無くても登録簿の語で撃つ
-    assert p['fire'] and not p['tidy'] and [e['name'] for e in p['extras']] == ['合計行を足す']
+    assert p['fire'] and not p['tidy'] and [e['name'] for e in p['extras']] == ['表の下に合計行を足す']
     p = vp.plan_full("この表を見て", reg)
     assert not p['fire'] and p['extras'] == []
 
@@ -319,11 +350,11 @@ def test_dedupe_registry_prefers_open_book_over_addin():
            + vp.registry_from_text(_MODULE_TEXT, owner='秀コンボ.xlsm'))
     assert len(reg) == 4
     got = vp.dedupe_registry(reg, prefer=['秀コンボ.xlsm', 'Book1'])
-    assert [(e['name'], e['owner']) for e in got] == [('合計行を足す', '秀コンボ.xlsm'), ('状態語をそろえる', '秀コンボ.xlsm')]
+    assert [(e['name'], e['owner']) for e in got] == [('表の下に合計行を足す', '秀コンボ.xlsm'), ('状態語をそろえる', '秀コンボ.xlsm')]
     got = vp.dedupe_registry(reg)                               # 開いているブックが無ければ先に読んだ方
     assert [e['owner'] for e in got] == ['秀コンボ.xlam', '秀コンボ.xlam']
     p = vp.plan_full("合計を出して", got)
-    assert [e['name'] for e in p['extras']] == ['合計行を足す']  # 1 回だけ撃つ
+    assert [e['name'] for e in p['extras']] == ['表の下に合計行を足す']  # 1 回だけ撃つ
 
 
 def test_pick_register_target_names_or_single_owner():
@@ -404,8 +435,8 @@ def test_forge_before_without_truth_is_refused(tmp_path, monkeypatch, capsys):
 
 def test_prefire_names_follow_request_words():
     assert vf._prefire_names('科目を振り直して区分ごとに集計して') == []
-    assert vf._prefire_names('書き方をそろえて、合計を出して') == ['表を整える']
-    assert vf._prefire_names('書き方をそろえて。重複行は削除してよい') == ['表を整える', '重複行を消す']
+    assert vf._prefire_names('書き方をそろえて、合計を出して') == ['表の書き方と罫線と列幅をそろえる']
+    assert vf._prefire_names('書き方をそろえて。重複行は削除してよい') == ['表の書き方と罫線と列幅をそろえる', '全列が同じ重複行を削除する']
 
 
 _FURI = """Sub 決算統計区分に振り直す()
@@ -491,7 +522,7 @@ def test_tests_feedback_shows_other_sheets_and_stall_on_tables(tmp_path, monkeyp
     assert vf.forge('n', max_turns=5) is False
     assert len(calls) == 2 and '同じ表が同じ所で 2 往復続けて外れました（G）' in capsys.readouterr().out
     assert vf.forge('n', max_turns=1) is False
-    assert '前回のマクロの不一致' in calls[2] and 'Sub 合計行を足す' in calls[2]
+    assert '前回のマクロの不一致' in calls[2] and 'Sub 表の下に合計行を足す' in calls[2]
     # 同じ規則違反が続いても止める
     calls.clear()
     monkeypatch.setattr(vf, '_ask_once', lambda ai, model, prompt: (calls.append(prompt), _GOOD.replace('ActiveSheet', 'ThisWorkbook.Sheets(1)'))[1])
@@ -504,7 +535,7 @@ def test_validate_code_rejects_thisworkbook_and_dotnet_objects():
     bad = _GOOD.replace('Set ws = ActiveSheet', 'Set ws = ActiveSheet\n    Set o = CreateObject("System.Collections.ArrayList")')
     assert 'Scripting.Dictionary' in vf._validate_code(bad)[1]
     ok = _GOOD.replace('Set ws = ActiveSheet', 'Set ws = ActiveSheet\n    Set d = CreateObject("Scripting.Dictionary")')
-    assert vf._validate_code(ok)[0] == '合計行を足す'
+    assert vf._validate_code(ok)[0] == '表の下に合計行を足す'
 
 
 def test_extract_code_unwraps_json_reply():
@@ -515,18 +546,18 @@ def test_extract_code_unwraps_json_reply():
 
 
 def test_drop_sub_removes_only_the_named_block():
-    text = ("Attribute VB_Name = \"表の整理\"\r\nSub 表を整える()\r\n    x = 1\r\nEnd Sub\r\n"
-            "Sub 合計行を足す()\r\n    ' 依頼の語: 合計\r\n    y = 2\r\nEnd Sub\r\nSub 重複行を消す()\r\nEnd Sub\r\n")
-    cut = vf._drop_sub(text, '合計行を足す')
-    assert 'Sub 合計行を足す' not in cut and 'y = 2' not in cut
-    assert 'Sub 表を整える()' in cut and 'Sub 重複行を消す()' in cut and cut.count('End Sub') == 2
+    text = ("Attribute VB_Name = \"表の整理\"\r\nSub 表の書き方と罫線と列幅をそろえる()\r\n    x = 1\r\nEnd Sub\r\n"
+            "Sub 表の下に合計行を足す()\r\n    ' 依頼の語: 合計\r\n    y = 2\r\nEnd Sub\r\nSub 全列が同じ重複行を削除する()\r\nEnd Sub\r\n")
+    cut = vf._drop_sub(text, '表の下に合計行を足す')
+    assert 'Sub 表の下に合計行を足す' not in cut and 'y = 2' not in cut
+    assert 'Sub 表の書き方と罫線と列幅をそろえる()' in cut and 'Sub 全列が同じ重複行を削除する()' in cut and cut.count('End Sub') == 2
     assert vf._drop_sub(text, '無い') == text
 
 
 def test_harness_calls_each_macro_and_returns_error_text():
-    code = vf._harness_code(['表を整える', '合計行を足す'])
+    code = vf._harness_code(['表の書き方と罫線と列幅をそろえる', '表の下に合計行を足す'])
     assert code.startswith('Function 鍛冶_撃つ() As String') and 'On Error GoTo eh' in code
-    assert code.index('    表を整える') < code.index('    合計行を足す')
+    assert code.index('    表の書き方と罫線と列幅をそろえる') < code.index('    表の下に合計行を足す')
     assert '"ERR|" & 段' in code and code.endswith('End Function\r\n')
 
 
@@ -633,19 +664,19 @@ def test_rehearse_drops_extras_on_error_or_no_change(monkeypatch):
         seen['names'] = names
         return steps
     monkeypatch.setattr(vbam_forge, 'rehearse_steps', fake)
-    steps = [{'name': '表を整える', 'ok': True, 'changed': True, 'why': ''},
+    steps = [{'name': '表の書き方と罫線と列幅をそろえる', 'ok': True, 'changed': True, 'why': ''},
              {'name': '決算統計区分に振り直す', 'ok': True, 'changed': True, 'why': ''}]
     assert vp._rehearse(xl, wb, '支出明細', plan, '秀コンボ.xlam') == ([], '')
-    assert seen['names'] == ['表を整える', '決算統計区分に振り直す']
-    steps = [{'name': '表を整える', 'ok': True, 'changed': False, 'why': ''},
+    assert seen['names'] == ['表の書き方と罫線と列幅をそろえる', '決算統計区分に振り直す']
+    steps = [{'name': '表の書き方と罫線と列幅をそろえる', 'ok': True, 'changed': False, 'why': ''},
              {'name': '決算統計区分に振り直す', 'ok': False, 'changed': False, 'why': '実行時エラー 9 インデックスが有効範囲にありません。'}]
     dropped, why = vp._rehearse(xl, wb, '支出明細', plan, '秀コンボ.xlam')
     assert [e['name'] for e in dropped] == ['決算統計区分に振り直す'] and '実行時エラー 9' in why
-    steps = [{'name': '表を整える', 'ok': True, 'changed': True, 'why': ''},
+    steps = [{'name': '表の書き方と罫線と列幅をそろえる', 'ok': True, 'changed': True, 'why': ''},
              {'name': '決算統計区分に振り直す', 'ok': True, 'changed': False, 'why': ''}]
     assert '何も変えずに' in vp._rehearse(xl, wb, '支出明細', plan, '秀コンボ.xlam')[1]
-    steps = [{'name': '表を整える', 'ok': False, 'changed': False, 'why': 'コンパイルエラー'}]
-    assert '表を整える がコンパイルエラー' in vp._rehearse(xl, wb, '支出明細', plan, '秀コンボ.xlam')[1]
+    steps = [{'name': '表の書き方と罫線と列幅をそろえる', 'ok': False, 'changed': False, 'why': 'コンパイルエラー'}]
+    assert '表の書き方と罫線と列幅をそろえる がコンパイルエラー' in vp._rehearse(xl, wb, '支出明細', plan, '秀コンボ.xlam')[1]
 
 
 def test_release_instance_closes_only_that_excel(monkeypatch):
@@ -967,7 +998,7 @@ def test_old_findings_are_cells_the_macro_did_not_change():
 
 
 def test_plan_full_generic_word_on_skipped_job_does_not_shadow():
-    reg = vp.registry_from_text("Sub 合計行を足す()\n    ' 依頼の語: 合計|集計\n    ' 扱う: 合計 集計\n    ' 見出し: 品名 数量 金額\nEnd Sub\n"
+    reg = vp.registry_from_text("Sub 表の下に合計行を足す()\n    ' 依頼の語: 合計|集計\n    ' 扱う: 合計 集計\n    ' 見出し: 品名 数量 金額\nEnd Sub\n"
                                 "Sub 課別シートを集約する()\n    ' 依頼の語: 集約|各課\n    ' 扱う: 集約 合計\n    ' 見出し: 課名 事業名\nEnd Sub\n")
     p = vp.plan_full("各課シートの事業を集めて合計も出して", reg, {'課名', '事業名'})
     assert [e['name'] for e in p['extras']] == ['課別シートを集約する'] and p['other'] is False
@@ -1002,7 +1033,7 @@ def test_check_fit_keeps_valid_words_of_passed_version():
 
 
 def test_check_fit_dropping_word_covered_by_shorter_word_is_fine():
-    code = "Sub 帳票を一覧に直す()\n    ' 依頼の語: 受付簿|帳票\n    ' 扱う: 一覧\n    ' 見出し: 受付番号\nEnd Sub\n"
+    code = "Sub 帳票を右に1行1件の一覧にする()\n    ' 依頼の語: 受付簿|帳票\n    ' 扱う: 一覧\n    ' 見出し: 受付番号\nEnd Sub\n"
     case = {'request': '受付簿の帳票を一覧に直して', 'before_values': {'values': [['受付番号']]}, 'tests': [],
             'keep_ask': '受付簿|帳票|受付簿をリスト|帳票を一覧|一覧に直'}
     heads, why = vf._check_fit(case, code, '受付簿|帳票')
@@ -1215,7 +1246,7 @@ def test_header_none_line_fires_on_any_table(monkeypatch):
     """' 見出し: なし ＝語に頼らないマクロ。登録簿の headers は []・見出しの検査もぶつかりの検査もしない。"""
     monkeypatch.setattr(vf, '_OTHER_JOB_TEXTS', {})
     monkeypatch.setattr(vf, '_OTHER_JOB_WORDS', {'月次集計': {'所属', '金額'}})
-    code = "Sub 合計行を足す()\n    ' 依頼の語: 合計行\n    ' 扱う: 合計\n    ' 見出し: なし\nEnd Sub\n"
+    code = "Sub 表の下に合計行を足す()\n    ' 依頼の語: 合計行\n    ' 扱う: 合計\n    ' 見出し: なし\nEnd Sub\n"
     reg = vp.registry_from_text(code)
     assert reg[0]['headers'] == []
     assert vp.plan_full('合計行を足して', reg, {'所属', '金額'})['extras']
@@ -1272,7 +1303,7 @@ def test_forge_loop_does_not_pass_macro_with_table_words(tmp_path, monkeypatch, 
               'tests': [{'label': 'A', 'before': str(bed), 'expect': {'row': 1, 'col': 1, 'values': [['所属', '金額']],
                                                                      'kinds': ['ss'], 'sheet': 'データ'}}]})
     vf._forge_save({'n': c})
-    bad = ("Sub 合計行を足す()\n    ' 依頼の語: 合計の行\n    ' 扱う: 合計\n    ' 見出し: なし\n"
+    bad = ("Sub 表の下に合計行を足す()\n    ' 依頼の語: 合計の行\n    ' 扱う: 合計\n    ' 見出し: なし\n"
            "    If ws.Cells(1, 1).Value = \"課名\" Then ws.Cells(3, 1).Value = \"合計\"\nEnd Sub\n")
     good = bad.replace('ws.Cells(1, 1).Value = "課名"', 'VarType(ws.Cells(2, 2).Value) = vbDouble')
     replies = iter([bad, good])
@@ -1351,7 +1382,7 @@ def test_check_fit_rejects_words_not_in_request_or_phrases(monkeypatch):
     """2026-09-18: 依頼の語に「月次_試験」（お題の別の表の名前）が入った＝人の依頼には出ない語は外す。"""
     monkeypatch.setattr(vf, '_OTHER_JOB_TEXTS', {})
     monkeypatch.setattr(vf, '_OTHER_JOB_WORDS', {})
-    code = "Sub 月次集計表を作る()\n    ' 依頼の語: 月次集計表|月次_試験\n    ' 扱う: 月次集計\n    ' 見出し: なし\nEnd Sub\n"
+    code = "Sub 選んだ3列で月次集計表を作る()\n    ' 依頼の語: 月次集計表|月次_試験\n    ' 扱う: 月次集計\n    ' 見出し: なし\nEnd Sub\n"
     case = {'name': '月次集計', 'request': '月次集計表を作って', 'phrases': ['月別の集計表を'], 'keep_ask': '',
             'before_values': {'values': [['課名', '支出日', '支出額']]}, 'tests': []}
     heads, why = vf._check_fit(case, code, '月次集計表|月次_試験')
@@ -1540,7 +1571,7 @@ def test_ensure_shape_line_is_written_by_the_tool(tmp_path):
     """' 形: は道具が入れる（AI には書かせない）。' 選ぶ列: があればその次・無ければ ' 見出し: の次。"""
     plain = _book(tmp_path / 'plain.xlsx', [['所属', '金額'], ['財政', 5]])
     case = {'before': plain, 'sheet': '明細', 'tests': []}
-    code = "Sub 合計行を足す()\n    ' 依頼の語: 合計行\n    ' 扱う: 合計\n    ' 見出し: なし\n    Dim a\nEnd Sub\n"
+    code = "Sub 表の下に合計行を足す()\n    ' 依頼の語: 合計行\n    ' 扱う: 合計\n    ' 見出し: なし\n    Dim a\nEnd Sub\n"
     got, changed = vf.ensure_shape_line(case, code)
     assert changed and got.split('\n')[4] == "    ' 形: 数の列"
     assert vf.ensure_shape_line(case, got) == (got, False)          # 同じ形なら触らない
@@ -1569,7 +1600,7 @@ def test_check_fit_rejects_a_shape_missing_in_one_table(tmp_path, monkeypatch):
             'before_values': {'values': [['課名', '受付日', '金額'], ['総務課', '2026/4/1', '1000']]},
             'tests': [{'label': 'A', 'before': plain, 'sheet': '明細',
                        'expect': {'values': [['所属', '金額'], ['財政', '5'], ['合計', '5']]}}]}
-    head = "Sub 合計行を足す()\n    ' 依頼の語: 合計行\n    ' 扱う: 合計\n    ' 見出し: なし\n"
+    head = "Sub 表の下に合計行を足す()\n    ' 依頼の語: 合計行\n    ' 扱う: 合計\n    ' 見出し: なし\n"
     assert vf._check_fit(case, head + "End Sub\n", '合計行') == ([], None)          # 行が無い＝違反にしない
     assert vf._check_fit(case, head + "    ' 形: 数の列\nEnd Sub\n", '合計行') == ([], None)
     _h, why = vf._check_fit(case, head + "    ' 形: 数の列 テーブル\nEnd Sub\n", '合計行')
@@ -1653,7 +1684,7 @@ def test_ask_words_never_cross_punctuation():
     """2026-09-18 第二期: 語の候補に「出す。表」「式を、今」のような句読点をまたぐ切れ端が出た。"""
     c = vf._ask_candidates('累計を出す。表の右に足して', [])
     assert c and not any(ch in w for w in c for ch in '、。')
-    code = "Sub 累計列を挿入する()\n    ' 依頼の語: 累計列|出す。表\n    ' 扱う: 累計\n    ' 見出し: なし\nEnd Sub\n"
+    code = "Sub 選んだ列の右に累計列を足す()\n    ' 依頼の語: 累計列|出す。表\n    ' 扱う: 累計\n    ' 見出し: なし\nEnd Sub\n"
     case = {'request': '累計列を足して。累計を出す。表の右に', 'phrases': [], 'before_values': {'values': [['a', 'b']]},
             'tests': [], 'keep_ask': ''}
     _h, why = vf._check_fit(case, code, '累計列|出す。表')
@@ -1778,7 +1809,7 @@ def test_forge_file_writer_one_turn_per_call_writes_next_prompt(tmp_path, monkey
     monkeypatch.setattr(vf, '_try_macro', lambda case, bas, sub: next(tries))
     assert vf.forge('n', ai='file', model=str(ans), max_turns=1, prompt_out=str(q)) is False
     nxt = q.read_text(encoding='utf-8')
-    assert '前回のマクロの不一致' in nxt and "A7: 期待 '1'" in nxt and 'Sub 合計行を足す' in nxt
+    assert '前回のマクロの不一致' in nxt and "A7: 期待 '1'" in nxt and 'Sub 表の下に合計行を足す' in nxt
     assert vf.forge('n', ai='file', model=str(ans), max_turns=1, prompt_out=str(q)) is True
     assert vf._forge_load()['n']['passed']
     assert '合格' in q.read_text(encoding='utf-8')

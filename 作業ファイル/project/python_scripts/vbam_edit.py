@@ -275,6 +275,24 @@ def _count_existing_cells(rng):
         return 0
 
 
+def _blank_like_note(cells):
+    """[(番地, 書いた値)] → 空白だけの値を書いたセルの注意（無ければ ''・純 Python・2026-09-23）。
+
+    テスト用5 で、返却担当を空欄にするつもりの所に全角スペースを書いた（E9）。見た目は空なので読み戻しの
+    格子では気づきにくく、後で「空欄の行」を数える手・並べ替え・突き合わせが狂う。書いた本人に言う。
+    """
+    hit = [a for a, v in cells if isinstance(v, str) and v != '' and v.strip() == '']
+    if not hit:
+        return ''
+    return (f"⚠ 空白だけの値を書きました: {' '.join(hit[:8])}" + ("…" if len(hit) > 8 else "")
+            + "（空欄にするなら何も書かない＝clear-range 番地 --contents）")
+
+
+def _grid_cells(r0, c0, grid):
+    """書いた格子 → [(番地, 値)]（純 Python）。"""
+    return [(f"{_col_letter(c0 + j)}{r0 + i}", v) for i, row in enumerate(grid or []) for j, v in enumerate(row)]
+
+
 def _report_write_result(ws, rng):
     """書込後の検証読み戻し：書いた範囲のエラーセル（#REF!等）や ### 表示を数えて報告する。
 
@@ -324,6 +342,59 @@ def _report_write_result(ws, rng):
         tail = "（" + " ".join(hash_samples) + ("…" if n_hash > len(hash_samples) else "") + "）"
         print(f"⚠ 【表示崩れ】列幅不足により '###' 表示になっているセルがあります: {n_hash}件 {tail}")
         print("  対処: 列幅を広げるか、vba(\"tidy 範囲\") で仕上げてください。")
+
+
+def _merges_dropping_values(areas, grid, r0, c0):
+    """結合の番地の並び → 書くと Excel に値を捨てられる結合（純 Python・2026-09-23）。
+
+    Excel は結合に掛かる範囲へ 2 次元で書くと、結合の左上以外のセルの値を黙って捨てる（'y'・'z' が消えた・実測）。
+    捨てられるのは、結合の左上以外のセルに空でない値を書くときだけ。値の無い結合（見出しの飾り）は残してよい。
+    """
+    from vbam_view import _col_num_of
+    out = []
+    for a in areas or ():
+        m = re.match(r'^\$?([A-Z]+)\$?(\d+):\$?([A-Z]+)\$?(\d+)$', str(a))
+        if not m:
+            continue
+        mr, mc = int(m.group(2)), _col_num_of(m.group(1))
+        mr2, mc2 = int(m.group(4)), _col_num_of(m.group(3))
+        hit = False
+        for i in range(mr, mr2 + 1):
+            for j in range(mc, mc2 + 1):
+                if (i, j) == (mr, mc):
+                    continue                              # 左上の値は結合のまま入る
+                gi, gj = i - r0, j - c0
+                if 0 <= gi < len(grid) and 0 <= gj < len(grid[gi]) and str(grid[gi][gj] or '').strip():
+                    hit = True
+                    break
+            if hit:
+                break
+        if hit:
+            out.append(a)
+    return out
+
+
+def _unmerge_where_values_drop(ws, target, grid, r0, c0):
+    """書く前に、値を捨てられる結合だけ解いて言う（2026-09-23）。
+
+    その朝に「書く前に範囲の結合を無条件に解く」が入り、値の無い見出しの結合まで黙って消えていた。
+    結合を数えきれない大きな範囲だけは従来どおり全部解く（値が捨てられるより見た目が変わる方がまし）。
+    """
+    areas, _total = _merged_areas_in_range(target)
+    if areas is None:
+        try:
+            target.UnMerge()
+        except Exception:
+            pass
+        return
+    drop = _merges_dropping_values(areas, grid, r0, c0)
+    for a in drop:
+        try:
+            ws.Range(a).UnMerge()
+        except Exception:
+            pass
+    if drop:
+        print(f"結合を解きました（左上以外のセルにも値を書くため。解かないと Excel が値を捨てる）: {', '.join(drop)}")
 
 
 def cmd_write_range(args):
@@ -454,6 +525,7 @@ def cmd_write_range(args):
                 ncols = len(grid[0])
                 target = ws.Range(top, ws.Cells(rng.Row + nrows - 1,
                                                 rng.Column + ncols - 1))
+                _unmerge_where_values_drop(ws, target, grid, rng.Row, rng.Column)
                 _n既存 = _count_existing_cells(target)
                 if _n既存 > 0:
                     print(f"上書き: 書込先に既存データ {_n既存} セルがあります")
@@ -500,6 +572,12 @@ def cmd_write_range(args):
         print(note, file=sys.stderr)
     if kept:
         print(_KEPT_NOTE + " ".join(kept))
+    try:
+        _bn = _blank_like_note(_grid_cells(rng.Row, rng.Column, grid)) if grid else ''
+    except NameError:
+        _bn = ''
+    if _bn:
+        print(_bn)
     if written_rng is not None:
         _report_write_result(ws, written_rng)
         if getattr(args, 'show', False):
@@ -592,6 +670,9 @@ def cmd_write_cells(args):
         print(note, file=sys.stderr)
     if kept:
         print(_KEPT_NOTE + " ".join(kept))
+    _bn = _blank_like_note([(f"{ws.Name}!{c.Address.replace('$', '')}", val) for ws, c, val in targets])
+    if _bn:
+        print(_bn)
     # 書込後の検証（write-range の _report_write_result と同じ思想。単セルの SpecialCells は
     # 使用範囲全体に化けるので、セルごとに IsError で見る）
     errs = []
@@ -642,13 +723,29 @@ def cmd_clear_range(args):
         return False
     ws, rng = _resolve_range(xl, wb, spec, sheet_opt)
     _unfilter_for_write(ws)
+    note = ''
     if getattr(args, 'contents', False):
-        rng.ClearContents(); what = "値"
-    elif getattr(args, 'formats', False):
-        rng.ClearFormats(); what = "書式"
+        # 値だけ消すときは結合を残す（2026-09-23: 無条件に解いていて、見出しの結合まで消えた）。
+        # 結合を丸ごと含む範囲は Excel がそのまま消せる。拒むのは結合の一部だけに掛かるときだけ
+        try:
+            rng.ClearContents()
+        except Exception:
+            if rng.MergeCells is False:
+                raise
+            rng.UnMerge()
+            rng.ClearContents()
+            note = '（範囲が結合の一部だけに掛かっていたので、その結合を解きました）'
+        what = "値"
     else:
-        rng.Clear(); what = "すべて"
-    print(f"クリア({what}): {ws.Name}!{rng.Address}")
+        try:
+            rng.UnMerge()               # 書式ごと消す＝結合も書式のうち
+        except Exception:
+            pass
+        if getattr(args, 'formats', False):
+            rng.ClearFormats(); what = "書式"
+        else:
+            rng.Clear(); what = "すべて"
+    print(f"クリア({what}): {ws.Name}!{rng.Address}{note}")
     print("（保存はしていません）")
     return True
 
@@ -1811,7 +1908,7 @@ def _border_blocks(rows):
 
 
 def cmd_tidy(args):
-    """表を整える（仕上げ）: tidy <範囲|セル> [<範囲|セル> ...] [--header-from セル] [--bg 色]
+    """表の書き方と罫線と列幅をそろえる（仕上げ）: tidy <範囲|セル> [<範囲|セル> ...] [--header-from セル] [--bg 色]
                               [--no-header] [--no-border] [--no-col-format] [--no-autofit]
                               [--min-width N] [--max-width N]
 
@@ -1867,6 +1964,18 @@ def cmd_tidy(args):
         applied = []
         ncols = int(rng.Columns.Count)
         header = ws.Range(rng.Cells(1, 1), rng.Cells(1, ncols))
+        # 二段見出し（上期・下期の下に 4月・5月…）は 2 行目も見出し。列の型は 2 行目を見出しにして 3 行目から見る
+        # （2026-09-24 通しの実測 5: 月の行を本文と見て左寄せにしていた）
+        two_row = False
+        try:
+            from vbam_view import _is_second_header_row
+            v2 = ws.Range(rng.Cells(1, 1), rng.Cells(2, ncols)).Value
+            if int(rng.Rows.Count) >= 3 and isinstance(v2, tuple) and len(v2) == 2:
+                two_row = _is_second_header_row(list(v2[0]), list(v2[1]))
+        except Exception:
+            two_row = False
+        if two_row:
+            header = ws.Range(rng.Cells(1, 1), rng.Cells(2, ncols))
         if not getattr(args, 'no_header', False):
             src_ws, src_cell = None, None
             if src_opt:
@@ -1881,13 +1990,27 @@ def cmd_tidy(args):
                 # （2025・2026）でも同じ。見出しらしさ（太字・塗り・罫線・寄せ）だけを複写する。
                 keep_fmt = _numeric_formats(header)
                 try:
-                    src_cell.Copy()
-                    header.PasteSpecial(-4122)        # xlPasteFormats
-                finally:
+                    merged = header.MergeCells          # True / False / None（混在）
+                except Exception:
+                    merged = False
+                if merged is not False or src_cell.MergeCells:
+                    # 結合のある見出し（二段見出しの 上期 C3:H3・コード A3:A4）に書式を貼ると、結合の形ごと貼られて
+                    # 結合がほどける（2026-09-24 通しの実測 5）＝太字・塗り・寄せだけを写す
                     try:
-                        xl.CutCopyMode = False
+                        header.Font.Bold = src_cell.Font.Bold
+                        header.Interior.Color = src_cell.Interior.Color
+                        header.HorizontalAlignment = src_cell.HorizontalAlignment
                     except Exception:
                         pass
+                else:
+                    try:
+                        src_cell.Copy()
+                        header.PasteSpecial(-4122)        # xlPasteFormats
+                    finally:
+                        try:
+                            xl.CutCopyMode = False
+                        except Exception:
+                            pass
                 kept = _restore_formats(header, keep_fmt)
                 applied.append(f"見出し=書式を{src_ws.Name}!{src_cell.Address.replace('$', '')}から複写"
                                + (f"（数値{kept}セルの表示形式は残した）" if kept else ""))
@@ -1933,7 +2056,8 @@ def cmd_tidy(args):
             applied.append("罫線=細・格子" + (f"（{bnote}）" if bnote else ""))
         if not getattr(args, 'no_col_format', False):
             # 列幅の自動調整より先（12000→12,000 で幅が変わる）
-            notes = _tidy_column_styles(ws, rng)
+            notes = _tidy_column_styles(ws, ws.Range(rng.Cells(2, 1), rng.Cells(int(rng.Rows.Count), ncols))
+                                        if two_row else rng)
             applied.append("列の型=" + ("／".join(notes) if notes else "変更なし"))
         if not getattr(args, 'no_autofit', False):
             # 幅は列全体に効く＝表の外（上・下）のセルまで細くなる。細くしすぎて範囲外を '###' に
@@ -2170,9 +2294,30 @@ def cmd_table(args):
         except Exception:
             pass
         lo = ws.ListObjects.Add(1, rng, None, has_headers)             # xlSrcRange=1
-        if len(rest) >= 3:
-            lo.Name = rest[2]
+        tname = getattr(args, 'name', None) or (rest[2] if len(rest) >= 3 else None)
+        if tname:
+            lo.Name = tname
         print(f"テーブル作成: [{ws.Name}] {lo.Name}  範囲={lo.Range.Address}")
+        # 範囲に集計の行・題の行が入っていると、並べ替え・絞り込みで明細と混ざる（2026-09-24）。黙って渡さない
+        try:
+            from vbam_view import _is_total_label
+            hv = lo.HeaderRowRange.Value[0] if lo.HeaderRowRange is not None else ()
+            auto = [v for v in hv if isinstance(v, str) and re.match(r'^列\d+$', v)]
+            if auto and len(auto) * 2 >= len(hv):
+                print(f"⚠ 見出しの行に空欄が多く、Excel が「列1」「列2」…と名前を付けました。範囲の 1 行目が見出しか"
+                      "（題の行・二段見出しでないか）を確かめてください")
+            if lo.DataBodyRange is not None:
+                bad = []
+                vals = lo.DataBodyRange.Value
+                for i, row in enumerate(vals if isinstance(vals, tuple) else ()):
+                    hit = next((v for v in row if _is_total_label(v)), None)
+                    if hit:
+                        bad.append(f"{int(lo.DataBodyRange.Row) + i}行目「{hit}」")
+                if bad:
+                    print("⚠ テーブルの明細に集計の行が入っています: " + " ".join(bad[:6])
+                          + "  → 並べ替えると明細に混ざる。合計はテーブルの集計行（ShowTotals）で出すのが素直")
+        except Exception:
+            pass
         print("（保存はしていません）")
         return True
 
@@ -2599,6 +2744,13 @@ def cmd_copy_range(args):
         return False
     ws_s, rng_s = _resolve_range(xl, wb, rest[0], sheet_opt)
     ws_d, rng_d = _resolve_range(xl, wb, rest[1])
+    try:
+        r0, c0 = int(rng_d.Row), int(rng_d.Column)
+        nr = max(int(rng_s.Rows.Count), int(rng_d.Rows.Count))
+        nc = max(int(rng_s.Columns.Count), int(rng_d.Columns.Count))
+        ws_d.Range(ws_d.Cells(r0, c0), ws_d.Cells(r0 + nr - 1, c0 + nc - 1)).UnMerge()
+    except Exception:
+        pass
     if getattr(args, 'values', False):
         try:
             rng_s.Copy()
@@ -3931,11 +4083,17 @@ def cmd_cond_format(args):
     formula = getattr(args, 'formula_opt', None)
     if formula:
         # 数式ベースのルール（xlExpression=2）。'=' 始まりの数式が TRUE のセルに書式。
-        # 相対参照は範囲の左上セル基準（Excel の条件付き書式と同じ規約）
+        # 相対参照は範囲の左上セル基準（Excel の条件付き書式と同じ規約）。
+        # ※ Excel COM は「現在の ActiveCell」を基準に相対参照を計算するため、
+        #   事前に左上セルをアクティブにして参照ズレを防止する（2026-09-23 修正）。
+        try:
+            ws.Activate()
+            rng.Select()
+            rng.Cells(1, 1).Activate()
+        except Exception:
+            pass
         if not formula.startswith('='):
             formula = '=' + formula
-        # xlExpression は名前付き引数だと DISP_E_PARAMNOTOPTIONAL になるため位置渡し
-        # （Operator は式タイプでは無視されるがスロットとして必要。1=xlBetween をダミーに）
         fc = rng.FormatConditions.Add(2, 1, formula)
     else:
         op = None; f1 = None; f2 = None
@@ -3961,8 +4119,59 @@ def cmd_cond_format(args):
     if getattr(args, 'bold', False):
         fc.Font.Bold = True
     print(f"条件付き書式を追加: {ws.Name}!{rng.Address}")
+    for line in _cond_format_readback(ws, rng, fc, formula):
+        print(line)
     print("（保存はしていません）")
     return True
+
+
+_COND_BARE_WORD_RE = re.compile(r'[=<>]\s*([^\x00-\x7f"][^"=<>(),&+\-*/]*)')
+
+
+def _cond_format_bare_word(formula):
+    """引用符の外にある日本語の語（=$D6=要発注 の 要発注）。無ければ ''（純 Python）。
+
+    引数で渡した ""要発注"" の引用符が道具の読み取りで落ちると、Excel は 要発注 を名前と読んで
+    式は常に #NAME?＝1 セルも塗られない（2026-09-23 のテスト用3）。
+    """
+    body = re.sub(r'"[^"]*"', '', str(formula or ''))
+    m = _COND_BARE_WORD_RE.search(body)
+    return m.group(1).strip() if m else ''
+
+
+def _cond_format_readback(ws, rng, fc, requested=None, cap=2000):
+    """付けた条件付き書式を読み戻す → 報告の行（2026-09-23）。
+
+    登録された式（Formula1）と、いま条件が当たっているセルの数（画面の見え方＝DisplayFormat で数える）。
+    式が壊れていても Excel は黙って受け付けるので、書いた本人が気づけるように必ず出す。
+    """
+    out = []
+    try:
+        f1 = str(fc.Formula1)
+    except Exception:
+        f1 = ''
+    if f1:
+        out.append(f"登録した式: {f1}")
+    word = _cond_format_bare_word(f1)
+    if word:
+        out.append(f"⚠ 式の中の「{word}」が引用符で囲まれていません（名前と読まれて #NAME?＝1 セルも塗られない）。"
+                   "引数で引用符が落ちるときは、=$B6<$C6 のように文字を使わない式で付け直してください")
+    try:
+        n = int(rng.Cells.CountLarge)
+        want = float(fc.Interior.Color)
+        if n > cap or want == 16777215.0:           # 塗りを付けていない規則は見え方で数えられない
+            return out
+        hit = 0
+        for c in rng.Cells:
+            try:
+                if float(c.DisplayFormat.Interior.Color) == want:
+                    hit += 1
+            except Exception:
+                pass
+        out.append(f"いま条件が当たっているセル: {hit} / {n}" + ("（1 セルも当たっていません。式を確かめてください）" if hit == 0 else ""))
+    except Exception:
+        pass
+    return out
 
 
 @protect_safe

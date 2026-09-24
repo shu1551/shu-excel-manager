@@ -316,6 +316,10 @@ def check_formula_linter(
         for r in range(num_rows):
             f_r1c1 = str(formulas_r1c1[r][c] or "")
             if f_r1c1.startswith("="):
+                # 合計・平均の行（同じ列の上を集計する式）は数に入れない。入れると多数派の割合が薄まり、
+                # 9 行中 2 行のずれ（年計の =SUM(C6:H6)・=SUM(C10:N10)）を黙って通した（2026-09-24 通しの実測 5）
+                if _is_column_total(f_r1c1, start_row + r + 1):
+                    continue
                 col_patterns.setdefault(f_r1c1, []).append(r)
 
         if len(col_patterns) > 1:
@@ -323,11 +327,14 @@ def check_formula_linter(
             if total_formula_cells >= 3:
                 # 最多パターンを特定
                 majority_pat, majority_rows = max(col_patterns.items(), key=lambda item: len(item[1]))
-                if len(majority_rows) >= total_formula_cells * 0.7:
+                # 多数派が 3 つ以上・6 割以上なら少数派を言う（7 割では 9 行中 2 行のずれを言えなかった）
+                if len(majority_rows) >= 3 and len(majority_rows) >= total_formula_cells * 0.6:
                     # 少数派のセルを非一貫性として警告
                     for pat, rows in col_patterns.items():
                         if pat != majority_pat:
                             for r in rows:
+                                if _is_column_total(pat, start_row + r + 1):   # start_row は 0 始まり
+                                    continue      # 合計・平均の行（同じ列の上を集計する式）は形が違って当たり前
                                 addr = _rowcol_to_a1(start_row + r, start_col + c)
                                 # warning＝気づき。9/9 の数式の目（formula_notes）でも「列の中で形の違う式」は気づき扱い。
                                 # 小計行・最終行の式は正当に形が違うので、critical で agent の done を止めない（2026-09-17）
@@ -339,7 +346,72 @@ def check_formula_linter(
                                     "formula": str(formulas[r][c])
                                 })
 
+    # 4. 式の列に数字の直書き（上下は =E2*F2 なのに G7 だけ 5000）
+    issues.extend(check_values_in_formula_columns(formulas, formulas_r1c1, values, start_row, start_col))
     return issues
+
+
+def check_values_in_formula_columns(formulas, formulas_r1c1, values, start_row, start_col, min_rows=3):
+    """式の列の中に紛れた数字の直書き（純 Python）。
+
+    2026-09-23 の通しの実測: 金額の列（=E2*F2 …）の G7 に 5000 が直書きされていたのを、
+    materials も diagnose も言わなかった（上の 3 番は式どうしの形しか比べない）。
+    列の本文の式（合計・平均の行を除く）が同じ形で min_rows 行以上あり、その式の行の最初〜最後の間に
+    数が直に入ったセルがあれば出す。文字・空のセルは咎めない（備考などの書き込み）。
+    """
+    out = []
+    num_rows = len(formulas or [])
+    if not num_rows:
+        return out
+    num_cols = len(formulas[0])
+    for c in range(num_cols):
+        pats = {}
+        for r in range(num_rows):
+            fr = str(formulas_r1c1[r][c] or "") if r < len(formulas_r1c1) and c < len(formulas_r1c1[r]) else ""
+            if fr.startswith("=") and not _is_column_total(fr, start_row + r + 1):
+                pats.setdefault(fr, []).append(r)
+        if not pats:
+            continue
+        top, rows = max(pats.items(), key=lambda kv: len(kv[1]))
+        if len(rows) < min_rows:
+            continue
+        first_a1 = str(formulas[rows[0]][c])
+        for r in range(rows[0], rows[-1] + 1):
+            f = formulas[r][c]
+            if isinstance(f, str) and f.startswith("="):
+                continue
+            v = values[r][c] if r < len(values) and c < len(values[r]) else None
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                out.append({
+                    "cell": _rowcol_to_a1(start_row + r, start_col + c),
+                    "severity": "warning",
+                    "type": "value_in_formula_column",
+                    "msg": f"式の列に数字 {v:g} が直書きされています（他 {len(rows)} 行は {first_a1} の形）",
+                    "formula": str(f),
+                })
+    return out
+
+
+# 列は相対（C）と絶対（C7。棚の「表の下に合計行を足す」は =SUM($G$4:$G$9) と書く）の両方を読む
+# （2026-09-24 通しの確かめ: 絶対参照の合計を「コピペミス疑い」と言っていた）
+_COL_TOTAL_RE = re.compile(r'^=(?:(?:SUM|AVERAGE|COUNTA?|MAX|MIN|MEDIAN)\(|SUBTOTAL\(\d+,)'
+                           r'R(\[-\d+\]|\d+)C(?:\d+)?:R(\[-\d+\]|\d+)C(?:\d+)?\)$', re.I)
+
+
+def _is_column_total(f_r1c1, abs_row):
+    """同じ列の上の範囲だけを集計する式（合計・平均・小計の行）か（R1C1 の字面・純 Python）。
+
+    2026-09-23: G27 =SUM(G6:G25)・G28 =AVERAGE(G6:G25) を「同列の標準数式パターンと異なります（コピペミス疑い）」
+    と出していた。明細の =E6*F6 と形が違うのは当たり前で、表の点検を頼んだ人に誤りの印を見せていた。
+    """
+    m = _COL_TOTAL_RE.match(str(f_r1c1 or '').replace(' ', ''))
+    if not m:
+        return False
+
+    def row_of(tok):
+        return abs_row + int(tok[1:-1]) if tok.startswith('[') else int(tok)
+
+    return row_of(m.group(1)) < abs_row and row_of(m.group(2)) < abs_row
 
 
 def check_data_cleaner(
@@ -381,7 +453,10 @@ def check_data_cleaner(
 
                 # B. 文字列型数字の検知
                 # 数値のように見えるが型が string のもの
-                if _RE_TEXT_NUMBER.match(trimmed) and len(trimmed) <= 15:
+                # 先頭が 0 の番号（伝票番号 0001・郵便番号 007）は文字で持つのが正しい＝咎めない
+                # （2026-09-23 通しの実測 2 で伝票番号 11 セルを「SUM 集計対象外リスク」と並べていた）
+                if (_RE_TEXT_NUMBER.match(trimmed) and len(trimmed) <= 15
+                        and not re.fullmatch(r"0\d+", trimmed)):
                     issues.append({
                         "cell": addr,
                         "severity": "warning",
@@ -412,6 +487,25 @@ def check_data_cleaner(
             if isinstance(v, (int, float)) and not isinstance(v, bool):
                 num_entries.append((r, float(v)))
 
+        # 正の値の列に、マイナスがぽつんと 1〜2 個（符号の打ち間違い）。囲いの中に収まっていても出す
+        # （2026-09-23 通しの実測 2: 数量 1〜10 の列の -5 を、IQR の囲いの中なので黙って通していた）
+        head = next((values[r][c] for r in range(num_rows) if isinstance(values[r][c], str) and values[r][c].strip()), "")
+        signed = any(w in str(head) for w in ("増減", "差", "損益", "収支", "残高", "調整", "前年比", "比較"))
+        neg = [(r, v) for r, v in num_entries if v < 0]
+        pos = [v for _, v in num_entries if v > 0]
+        flagged = set()
+        if not signed and len(pos) >= 4 and 1 <= len(neg) <= max(1, len(num_entries) // 10):
+            for r, v in neg:
+                flagged.add(r)
+                issues.append({
+                    "cell": _rowcol_to_a1(start_row + r, start_col + c),
+                    "severity": "warning",
+                    "type": "outlier_value",
+                    "msg": f"正の値の列にマイナス {v:,.4g} が {len(neg)} 個だけあります（符号の打ち間違い疑い）",
+                    "value": v
+                })
+        num_entries = [(r, v) for r, v in num_entries if r not in flagged]
+
         # データが4件以上あれば外れ値検査
         if len(num_entries) >= 4:
             sorted_vals = sorted(v for _, v in num_entries)
@@ -425,9 +519,36 @@ def check_data_cleaner(
                 lower_bound = q1 - 3.0 * iqr
                 upper_bound = q3 + 3.0 * iqr
                 median = sorted_vals[int(n * 0.5)]
+                # 桁違いは「ぽつんと 1 つだけ離れた値」。囲いの外でも、残りの値のいちばん端から 5 倍以上
+                # 離れていなければ出さない（2026-09-23 の通しの実測: 単価 30〜12,000 のふつうの表で
+                # トナー 8,500・ホワイトボード 12,000・クリップ 100 個・金額 36,000 の 4 件を出していた）
+                inside = [v for _, v in num_entries if lower_bound <= v <= upper_bound]
+                hi_in = max(inside) if inside else None
+                lo_in = min(inside) if inside else None
+                # 正の値だけの列は、桁（対数）でも囲いの外かを見る。単価・数量は 30〜12,000 のように
+                # 桁をまたいで散らばるのがふつうで、実の値の幅だけで見ると上の方がみな外れに見える
+                log_bounds = None
+                if sorted_vals[0] > 0:
+                    lv = [math.log10(x) for x in sorted_vals]
+                    lq1, lq3 = lv[int(n * 0.25)], lv[int(n * 0.75)]
+                    if lq3 > lq1:
+                        log_bounds = (lq1 - 3.0 * (lq3 - lq1), lq3 + 3.0 * (lq3 - lq1))
+
+                def _far(v):
+                    if log_bounds is not None and v > 0:
+                        if not (log_bounds[0] <= math.log10(v) <= log_bounds[1]):
+                            return True
+                        # 桁の幅が広い列でも、残りのいちばん上から 10 倍以上ぽつんと離れた値は桁違い
+                        # （2026-09-24 通しの実測 4: 2,800〜88,000 の金額の列の 1,100,000 を対数の囲いの中として黙って通した）
+                        return v > upper_bound and hi_in is not None and hi_in > 0 and v >= hi_in * 10
+                    if v > upper_bound:
+                        return hi_in is not None and hi_in > 0 and v >= hi_in * 5
+                    if v < 0 <= (lo_in if lo_in is not None else 0):
+                        return not signed                   # 正の列にマイナス＝符号の打ち間違い（増減・差の列は当たり前）
+                    return lo_in is not None and v > 0 and v * 5 <= lo_in
 
                 for r, v in num_entries:
-                    if v < lower_bound or v > upper_bound:
+                    if (v < lower_bound or v > upper_bound) and _far(v):
                         addr = _rowcol_to_a1(start_row + r, start_col + c)
                         issues.append({
                             "cell": addr,
@@ -450,9 +571,13 @@ def format_audit_report(
     n_warn = sum(1 for i in issues if i["severity"] == "warning")
     n_info = sum(1 for i in issues if i["severity"] == "info")
 
-    # 100点満点のスコア算出
-    penalty = (n_crit * 15) + (n_warn * 5) + (n_info * 2)
+    # 100点満点のスコア算出。同じ中身の警告（1 列に同じ直書き 6 か所）は 1 つと数える＝同じ原因を 6 回減点しない。
+    # 重大欠陥が 0 件なら「重大な欠陥の疑い」の C 以下にはしない（2026-09-24: 警告だけで 65 点・C と出ていた）
+    n_warn_kinds = len({(i["type"], i["msg"]) for i in issues if i["severity"] == "warning"})
+    penalty = (n_crit * 15) + (n_warn_kinds * 5) + (n_info * 2)
     score = max(0, 100 - penalty)
+    if n_crit == 0:
+        score = max(score, 75)
 
     lines = []
     lines.append(f"╔═══════════════════════════════════════════════════════════════╗")
@@ -495,10 +620,16 @@ def format_audit_report(
     warns = [i for i in issues if i["severity"] == "warning"]
     if warns:
         lines.append("🟡 【要確認 (Warning)】誤集計・保守性低下の原因:")
+        # 同じ中身の警告（H4〜H9 の *1.1 の直書き 6 本など）は 1 行にまとめる（2026-09-24: 6 行並べて読む量を増やしていた）
+        groups = {}
         for it in warns:
-            lines.append(f"  • {it['cell']}: {it['msg']}")
-            if "formula" in it:
-                lines.append(f"      数式: {it['formula']}")
+            groups.setdefault((it['type'], it['msg']), []).append(it)
+        for (_t, msg), its in groups.items():
+            cells = [it['cell'] for it in its]
+            where = cells[0] if len(cells) == 1 else f"{', '.join(cells[:6])}{' …' if len(cells) > 6 else ''}（{len(cells)} か所）"
+            lines.append(f"  • {where}: {msg}")
+            if "formula" in its[0]:
+                lines.append(f"      数式: {its[0]['formula']}" + ("（先頭の 1 つ）" if len(its) > 1 else ""))
         lines.append("")
 
     # 3. クレンジング (Info)
@@ -513,15 +644,22 @@ def format_audit_report(
 
     # 推奨アクション
     lines.append("💡 【推奨アクション】")
+    acts = []
     if crits:
-        lines.append("  1. 集計範囲漏れ・数式エラーを優先して数式を修正してください。")
+        acts.append("集計範囲漏れ・数式エラーを優先して数式を修正してください。")
     if any(i["type"] == "hardcoded_constant" for i in warns):
-        lines.append("  2. 数式内の固定値は、別セル（設定マスタ列等）を参照するようリファクタリングを推奨します。")
+        acts.append("数式内の固定値は、別セル（設定マスタ列等）を参照するようリファクタリングを推奨します。")
     if any(i["type"] == "hidden_whitespace" for i in infos):
-        lines.append("  3. 前後の空白は TRIM 関数または Python クレンジングで一括除去してください。")
+        acts.append("前後の空白は TRIM 関数または Python クレンジングで一括除去してください。")
     if any(i["type"] == "text_number" for i in warns):
-        lines.append("  4. 文字列型数字は VALUE 関数または数値変換で統一してください。")
-    lines.append("  👉 `--fix` オプションを付与して実行すると、上記のうち数式漏れ・空白・文字列数字を安全に一括自動修復できます。")
+        acts.append("文字列型数字は VALUE 関数または数値変換で統一してください。")
+    if any(i["type"] == "outlier" for i in issues) or any("乖離" in i.get("msg", "") for i in issues):
+        acts.append("外れ値は入力の誤りか本当の値かを人が確かめてください（道具は直しません）。")
+    for n, a in enumerate(acts, 1):
+        lines.append(f"  {n}. {a}")
+    # --fix が書き戻すのは空白と文字列の数字だけ（集計漏れの式は提案だけ）。前は「数式漏れも直す」と書いていた（2026-09-24）
+    if any(i["type"] in ("hidden_whitespace", "text_number") for i in issues):
+        lines.append("  👉 `--fix`（fix=True）で、前後の空白と文字列の数字を控えを取ってから一括で直せます（数式は直しません）。")
 
     return "\n".join(lines)
 
@@ -970,6 +1108,11 @@ def cmd_diagnose(args):
     # 静的解析とデータクレンジングの実行
     f_issues = check_formula_linter(formulas, formulas_r1c1, values, start_row, start_col)
     d_issues = check_data_cleaner(values, start_row, start_col)
+    # 外れ値は手で入れた値だけ（式のセルは元の値の外れを重ねて言うだけ・2026-09-23）
+    fml_cells = {_rowcol_to_a1(start_row + i, start_col + j)
+                 for i, row in enumerate(formulas or []) for j, v in enumerate(row or [])
+                 if isinstance(v, str) and v.startswith("=")}
+    d_issues = [i for i in d_issues if not (i.get("type") == "outlier_value" and i.get("cell") in fml_cells)]
     all_issues = f_issues + d_issues
 
     # --fix: 人の値を書き換える手＝ -y（依頼に承認の語があるときだけ付ける）と控えを要る（2026-09-17）
