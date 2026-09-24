@@ -3764,12 +3764,12 @@ import datetime as _dt                                              # noqa: E402
 # ----------------------------------------------------------------
 def _messy_rows_20260911():
     return [["会社名", "担当者名", "電話番号", "メール", "金額", "状態"],
-            ["株式会社サンライズ", "田中 太郎", "03-1234-5678", "tanaka@example.co.jp", 1500000, "相談中"],
-            ["株式会社スカイネット", "加藤 健", "０３１１１１９９９９", "KATO@EXAMPLE.JP", "¥3,500,000", "Active"],
-            ["株式会社サンライズ ", "田中 太郎", "0312345678", "TANAKA@EXAMPLE.CO.JP", "1,500,000", "相談中"],
-            ["株式会社スカイネット", "加藤 健", "03-1111-9999", "kato@example.jp", 3500000, "Active"],
-            ["有限会社みらい工芸", "鈴木 健二", "045-111-2222", "suzuki@example.jp", 500000, "受注済み"],
-            ["株式会社ハートビート", "木村 拓", "03-1888-2222", "kimura@example.jp", 300000, "相談中"]]
+            ["株式会社サンライズ", "田中 太郎", "03-1234-5678", "tanaka@sunrise.co.jp", 1500000, "相談中"],
+            ["株式会社スカイネット", "加藤 健", "０３１１１１９９９９", "KATO@SKYNET.JP", "¥3,500,000", "Active"],
+            ["株式会社サンライズ ", "田中 太郎", "0312345678", "TANAKA@SUNRISE.CO.JP", "1,500,000", "相談中"],
+            ["株式会社スカイネット", "加藤 健", "03-1111-9999", "kato@skynet.jp", 3500000, "Active"],
+            ["有限会社みらい工芸", "鈴木 健二", "045-111-2222", "suzuki@mirai.jp", 500000, "受注済み"],
+            ["株式会社ハートビート", "木村 拓", "03-1888-2222", "kimura@heartbeat.jp", 300000, "相談中"]]
 
 
 def test_duplicates_are_matched_through_spelling_and_lost_rows_are_seen_20260911():
@@ -3807,7 +3807,7 @@ def test_normalize_reads_yen_man_english_dates_and_lowercases_20260911():
     assert (d.year, d.month, d.day) == (2026, 3, 15)
     d = vh._normalize_value("April 2, 2026", [("date", None)])[0]
     assert (d.month, d.day) == (4, 2)
-    assert vh._normalize_value(" KATO@EXAMPLE.JP", [("trim", None), ("lower", None)])[0] == "kato@example.jp"
+    assert vh._normalize_value(" KATO@SKYNET.JP", [("trim", None), ("lower", None)])[0] == "kato@skynet.jp"
     assert "lower" in vh._NORMALIZE_RULES
 
 
@@ -3815,10 +3815,10 @@ def test_a_name_column_is_not_an_id_column_after_dedupe_20260911():
     """重複を消した後は会社名が全部違う値になる。それを番号の列と見なすと、書き方の違う同じ会社を見逃す。"""
     import vbam_hands as vh
     rows = [["会社名", "担当者名", "電話番号", "メール", "金額"],
-            ["株式会社アクアテック", "渡辺 隆", "06-1234-5678", "watanabe@example.jp", 750000],
-            ["株式会社サンライズ", "田中 太郎", "03-1234-5678", "tanaka@example.co.jp", 1500000],
-            ["（株） アクアテック", "渡辺 隆", "0612345678", "watanabe@example.jp", 750000],
-            ["有限会社みらい工芸", "鈴木 健二", "045-111-2222", "suzuki@example.jp", 500000]]
+            ["株式会社アクアテック", "渡辺 隆", "06-1234-5678", "watanabe@aquatech.jp", 750000],
+            ["株式会社サンライズ", "田中 太郎", "03-1234-5678", "tanaka@sunrise.co.jp", 1500000],
+            ["（株） アクアテック", "渡辺 隆", "0612345678", "watanabe@aquatech.jp", 750000],
+            ["有限会社みらい工芸", "鈴木 健二", "045-111-2222", "suzuki@mirai.jp", 500000]]
     assert [(i, k) for i, k, _ in vh._dup_pairs(rows, 0)] == [(3, 1)]
     # 見出しが番号の列で値が違えば別の相手（伝票番号の違う同じ取引先・同じ品）
     rows2 = [["伝票番号", "取引先", "品名", "数量"],
@@ -4921,3 +4921,69 @@ def test_cp932_safe_swaps_only_what_vba_cannot_hold():
     text, swapped = vc.cp932_safe("' ⑴ 手順 — 済み ✓ ①")
     assert text == "' (1) 手順 ― 済み ○ ①" and ("⑴", "(1)") in swapped
     assert vc.cp932_safe("そのまま")[1] == []
+
+
+def test_seiri_prefire_fires_the_request_in_one_call_20260925(monkeypatch):
+    """先撃ちは AI に考えさせずに 1 回で撃ち終えるための物（Qiita「言葉で頼んで AI 0 回・約 1 秒」）。
+
+    9/23 に MCP の道で先撃ちを外し（shelf --ask と shelf-run を AI が 1 手ずつ撃つ形にした）、Gemini が遅くなった。
+    ここが崩れたら落ちる: seiri 頼みの文 の 1 回の呼び出しの中で、表を整えるマクロ → 頼みに当たる棚 → tidy まで撃ち、
+    エラーが無ければ「次の手: なし」で終える。MCP の説明文にも「seiri 頼みの文 を 1 回（先撃ち）」が残っている。
+    """
+    import io
+    import contextlib
+    import pathlib
+    import types
+    import vbam_view as vw
+    import vbam_vba as vvba
+    import vbam_undo as vu
+
+    class _N:
+        def __init__(self, n):
+            self.Count = n
+
+    class _UR:                                  # 大きい表にして気づき・### の数えは飛ばす（ここで見るのは撃つ順と回数）
+        Rows, Columns, Address = _N(100000), _N(100), "$A$1:$CV$100000"
+
+        def SpecialCells(self, *a):
+            raise Exception("no cells")
+
+    class _WS:
+        Name, UsedRange = "テスト用4", _UR()
+
+        def Activate(self):
+            pass
+
+    ws = _WS()
+
+    class _WB:
+        Name, ActiveSheet = "お試し版 Excelコンボ.xlsm", ws
+
+        def Activate(self):
+            pass
+
+    calls = []
+    monkeypatch.setattr(vw, "get_workbook", lambda t: (object(), _WB()))
+    monkeypatch.setattr(vw, "job_clock_start", lambda *a: None)
+    monkeypatch.setattr(vw, "_macro_book", lambda *a: "秀コンボ.xlam")
+    monkeypatch.setattr(vvba, "run_book_macro", lambda xl, book, nm: calls.append(("macro", nm)))
+    monkeypatch.setattr(vu, "_sheet_snapshot", lambda w: {})
+    monkeypatch.setattr(vu, "_agent_backup", lambda *a, **k: "控え")
+    monkeypatch.setattr(vw, "_seiri_fire_request",
+                        lambda xl, wb, w, req, snap: calls.append(("shelf", req)) or ["左右に並んだ表を突き合わせる"])
+    monkeypatch.setattr(vw, "_seiri_autofix", lambda xl, wb, w: ([], set()))
+    monkeypatch.setattr(vw, "_seiri_tidy", lambda wb, w, snap: calls.append(("tidy",)))
+    monkeypatch.setattr(vw, "_seiri_print_changes", lambda *a, **k: None)
+
+    req = ["郵便番号をハイフンつきに統一して", "住所の全角半角をそろえて", "左の名簿と右の申込一覧を会員番号で突き合わせて"]
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        assert vw.cmd_seiri(types.SimpleNamespace(posargs=list(req), dedupe=False)) is True
+    text = out.getvalue()
+    assert calls == [("macro", vw._SEIRI_TIDY), ("shelf", " ".join(req)), ("tidy",)]   # 1 回の呼び出しで撃ち終える
+    assert "次の手: なし" in text and "道具をこれ以上撃たない" in text
+    assert "shelf-run" not in text.split("次の手:")[-1]                                   # AI に撃つ手を戻さない
+
+    src = (pathlib.Path(vw.__file__).parent / "vba_mcp_server.py").read_text(encoding="utf-8")
+    assert 'vba("seiri 頼みの文") を 1 回（先撃ち）' in src
+    assert '"seiri 頼みの文" を 1 回' in src
