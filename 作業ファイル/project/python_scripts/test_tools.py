@@ -4541,6 +4541,36 @@ def test_every_example_in_mcp_docs_parses():
     assert not bad, f"説明の手本が読み取りを通らない: {bad}"
 
 
+def test_usage_examples_parse_and_show_on_mistake_20260924():
+    """形を外したときに返す手本（_USAGE_EXAMPLES）は、それ自体が読み取りを通り、外したときの返事に出る
+    （2026-09-24: Antigravity の Gemini の記録で、使い方だけが返って撃ち直した往復が 36 回）。"""
+    import contextlib
+    import io as _io
+    import vbam_core as vc
+    p = vm.build_parser()
+    for cmd, ex in vm._USAGE_EXAMPLES.items():
+        with contextlib.redirect_stderr(_io.StringIO()):
+            ns, msg, _n = vm.parse_command_tokens(p, vc.split_command_line(ex))
+        assert msg is None and ns is not None and ns.command == cmd, (cmd, ex, msg)
+    with contextlib.redirect_stderr(_io.StringIO()):
+        _ns, msg, _n = vm.parse_command_tokens(p, ["format-range", "A1:B2", "--nope"])
+    assert "例: format-range B2:N2" in msg
+    with contextlib.redirect_stderr(_io.StringIO()):
+        _ns, msg, _n = vm.parse_command_tokens(p, ["print-setup", "--area"])
+    assert "例: print-setup --area" in msg
+
+
+def test_shape_list_and_delete_words_are_options_20260924():
+    """shape list ＝ shape --list、shape delete 名前 ＝ shape 名前 --delete（Gemini が「図形 'list' が無い」で撃ち直していた）。"""
+    p = vm.build_parser()
+    ns, msg, notes = vm.parse_command_tokens(p, ["shape", "list"])
+    assert msg is None and ns.list_shapes and ns.posargs == []
+    ns, msg, notes = vm.parse_command_tokens(p, ["shape", "delete", "図1", "図2"])
+    assert msg is None and ns.delete and ns.posargs == ["図1", "図2"]
+    ns, msg, _n = vm.parse_command_tokens(p, ["shape", "G1", "--left", "10"])
+    assert msg is None and not ns.delete and ns.posargs == ["G1"]
+
+
 def test_every_example_in_skill_docs_parses():
     """SKILL.md と参照（commands.md 等）に書いた手本の手が、本物の読み取りを通る（2026-09-24 総点検: 330 個中
     「checkup --unack」が値なしで書かれていて通らなかった）。行末の「# 説明」は外し、<名前> は 1 に、[省略可] は外して形だけ見る。"""

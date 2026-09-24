@@ -1426,6 +1426,28 @@ _OPTION_ALIASES = {
     "replace-procedure": {"--file": "--code-file"},
 }
 
+# 形を外したときに、使い方と一緒に返す手本（2026-09-24。Antigravity の Gemini の記録 9/18〜23 で、使い方だけが返って
+# 撃ち直した往復が 36 回＝使い方の行からは正しい形が組めない手が多い。手本は test で形が通ることを確かめる）
+_USAGE_EXAMPLES = {
+    "format-range": "format-range B2:N2 --merge --bold --bg #1F4E79 --color #FFFFFF --size 16",
+    "chart": "chart create A1:B5 --type column --title 題 --name G1 --at H3",
+    "chart-config": "chart-config legend G1 bottom",
+    "pivot": "pivot create Sheet1!A1:G13 --rows 部署 --cols 区分 --values 金額 --func sum --sheet 集計 --name P1",
+    "pivot-field": "pivot-field set-format P1 金額 #,##0",
+    "slicer": "slicer add P1 部署 --name S1 --at A11",
+    "shape": "shape --list",
+    "sheet": "sheet add 新シート --before 既存",
+    "cond-format": 'cond-format A6:D17 --formula "=$B6<$C6" --bg #FFC7CE',
+    "add-procedure": "add-procedure Module1 -y",
+    "fill": "fill D6:D17",
+    "clear-range": "clear-range A2:D20",
+    "tidy": "tidy A5:G13",
+    "run-macro": "run-macro マクロ名",
+    "write-cells": "write-cells C7 値 C11 値 --show",
+    "print-setup": "print-setup --area A1:H50 --title-rows 1:3",
+    "shelf-run": "shelf-run 表の書き方と罫線と列幅をそろえる",
+}
+
 
 def _sub_parsers(parser):
     """build_parser の子（コマンド名 → 子の parser）。"""
@@ -1474,6 +1496,12 @@ def normalize_command_tokens(parser, tokens):
                 toks.remove(f"--{verb}")
                 toks.insert(1, verb)
                 notes.append(f"（--{verb} は {cmd} {verb} … の形で撃ちました）")
+    # shape list ／ shape delete 名前 ＝ --list ／ --delete（2026-09-24。Gemini が「図形 'list' が無い」で撃ち直していた）
+    if cmd == "shape" and len(toks) > 1 and toks[1].lower() in ("list", "delete"):
+        verb = toks.pop(1).lower()
+        if f"--{verb}" not in toks:
+            toks.append(f"--{verb}")
+        notes.append(f"（shape {verb} は shape … --{verb} として撃ちました）")
     # run-macro -y ＝ 窓に「はい」で答える（run-macro に -y は無い・2026-09-24 マクロの引っ越しで外した）
     if cmd in ("run-macro", "rehearse", "test", "テスト", "予行演習", "gate", "関所") and "--auto-dialog" not in toks:
         for y in ("-y", "--yes"):
@@ -1520,6 +1548,8 @@ def _unknown_option_help(parser, cmd, unknown):
     if near:
         lines.append(f"  近いもの: {' / '.join(dict.fromkeys(near))}")
     lines.append(f"  {cmd} が受ける引数: {' '.join(opts) if opts else '（オプション無し）'}")
+    if cmd in _USAGE_EXAMPLES:
+        lines.append(f"  例: {_USAGE_EXAMPLES[cmd]}")
     return "\n".join(lines)
 
 
@@ -1567,6 +1597,8 @@ def parse_command_tokens(parser, tokens):
             sp = subs.get(cmd)
             if sp is not None:
                 msg += "\n  " + sp.format_usage().strip()
+            if cmd in _USAGE_EXAMPLES:
+                msg += f"\n  例: {_USAGE_EXAMPLES[cmd]}"
     if msg:
         try:
             call_log_write(toks[0] if toks else "?", argparse.Namespace(posargs=toks[1:4]), 0.0, False,
