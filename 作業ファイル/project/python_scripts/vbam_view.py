@@ -2090,6 +2090,7 @@ def _seiri_print_changes(ws, before_snap, backup_path, show=12):
         pass
     if backup_path and (rows or fmt_rows):
         print("（戻すなら agent --undo）")
+    return bool(rows or fmt_rows)
 
 
 def cmd_seiri(args):
@@ -2109,11 +2110,16 @@ def cmd_seiri(args):
     request = " ".join(str(x) for x in rest).strip()     # 依頼の文（渡されたら棚にも当てて同じ呼び出しで撃つ）
     xl, wb = get_workbook(target_file)
     ws = wb.ActiveSheet
+    try:
+        was_saved = bool(wb.Saved) and bool(str(wb.Path or '')) and not bool(wb.ReadOnly)
+    except Exception:
+        was_saved = False
     job_clock_start(f"{wb.Name}!{ws.Name}")
     print(f"ブック: {wb.Name}   シート: {ws.Name}")
     owner = _macro_book(xl, _SEIRI_MODULE, _SEIRI_TIDY)
     names = [_SEIRI_TIDY] + ([_SEIRI_DEDUPE] if getattr(args, 'dedupe', False) else [])
     tried = None                    # 気づきから撃った手の鍵（撃っていなければ None＝残りの手をそのまま並べる）
+    has_changes = False
     if owner:
         # マクロが直した所を出す＋控えを取る（2026-09-23 の通しの実測: 文字の日付・全角の数字・半角カナ等 6 か所を
         # 黙って直し、報告に 1 つも出なかった＝何が変わったか分からず、戻す手も無かった）
@@ -2152,7 +2158,7 @@ def cmd_seiri(args):
                 _seiri_tidy(wb, ws, before_snap)
             except Exception as e:
                 print(f"仕上げ（tidy）を撃てませんでした: {e}")
-        _seiri_print_changes(ws, before_snap, backup_path)
+        has_changes = bool(_seiri_print_changes(ws, before_snap, backup_path))
     else:
         print(f"マクロ: モジュール「{_SEIRI_MODULE}」の {_SEIRI_TIDY} が開いているブック・アドインに無いので撃っていません")
     try:
@@ -2253,7 +2259,16 @@ def cmd_seiri(args):
     #   残りは AI が表を見て直す所だと、ここで言い切る）
     # 2026-09-25: エラーが無いのに AI が気づき（文字色）の直し・screenshot・寄せの手直しを 4 手足して 27 秒かかった
     #   （道具の中は約 7 秒）。先撃ちは 1 回で終える＝エラーが無ければ「ここで終わり」と言い切る
-    if not errs:
+    if not owner:
+        if not errs:
+            print("次の手: なし（棚が開いているブック・アドインに無いため、自動修正は行っていません。エラーセルはありませんでした）。"
+                  "次の返事で要点だけ 3 行程度（5 行以内）で報告して終わる（経過・秒数・長い説明は書かない）")
+        else:
+            print("次の手: 棚が開いているブック・アドインに無いため、自動修正は行っていません。"
+                  "エラーセルだけ、上の表と式を見てその場で write-cells で直す"
+                  "（棚を使う場合は秀コンボ.xlsm を開いて再度 seiri を撃つ）。"
+                  "報告は要点だけ 3 行程度（5 行以内）（何をどこに直したかを番地で。経過・秒数・長い説明は書かない）")
+    elif not errs:
         print("次の手: なし＝これで仕上がり（先撃ちは 1 回で終える）。道具をこれ以上撃たない"
               "（screenshot・気づきの直し・寄せや色の手直しも撃たない。気づきは使う人が頼んだときだけ直す）。"
               "次の返事で要点だけ 3 行程度（5 行以内）で報告して終わる（何をどこに直したかを番地で。経過・秒数・長い説明は書かない）")
@@ -2262,7 +2277,14 @@ def cmd_seiri(args):
               "エラーセルだけ、上の表と式を見てその場で write-cells で直す"
               "（ソースやブックの既存マクロを探しに行かない）→ tidy。気づきは使う人が頼んだときだけ直す。"
               "報告は要点だけ 3 行程度（5 行以内）（何をどこに直したかを番地で。経過・秒数・長い説明は書かない）")
-    print("（保存はしていません）")
+    if was_saved and not has_changes:
+        try:
+            if not bool(wb.Saved):
+                wb.Saved = True
+        except Exception:
+            pass
+    if has_changes:
+        print("（保存はしていません）")
     return True
 
 
