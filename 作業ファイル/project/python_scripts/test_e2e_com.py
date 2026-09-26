@@ -742,6 +742,7 @@ def test_tidy_money_stays_whole_and_blank_rows_get_no_border_20260913(book):
         ws.Range("F28").Value = "平均"
         ws.Range("G28").Formula = "=AVERAGE(G6:G25)"            # 6,570 … 小数が出る数に
         ws.Range("E25").Value = 121
+        ws.Range("F25").Value = 61                              # 単価60固定だと20行平均が必ず整数になるため小数が出るよう調整
         ns = argparse.Namespace(posargs=["A5:G28"], header_from=None, bg=None,
                                 sheet_opt="明細", no_header=False, no_border=False,
                                 no_col_format=False, no_autofit=False, min_width=None, max_width=None)
