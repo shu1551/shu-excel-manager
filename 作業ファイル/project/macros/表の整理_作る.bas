@@ -2,12 +2,12 @@ Attribute VB_Name = "表の整理_作る"
 ' 表の整理_作る - 棚（言葉で頼んで撃つマクロ）の作る（集計・グラフ・転記・書き出し）（2026-09-23 表の整理から分けた）
 
 Sub 帳票を右に1行1件の一覧にする()
-    ' 依頼の語: 帳票を一覧|1行1件|１行１件|データの一覧に|レイアウトの表|結合セルの帳票|受付簿をリスト|様式の帳票を一覧|1件複数行の帳票|帳票から一覧|一覧に直|受付簿|一覧化|帳票形式|結合セルのレイアウト表|レイアウト表を一覧表|一覧表に直
+    ' 依頼の語: 帳票を一覧|1行1件|１行１件|データの一覧に|レイアウトの表|結合セルの帳票|受付簿をリスト|様式の帳票を一覧|1件複数行の帳票|帳票から一覧|一覧に直|受付簿|一覧化|帳票形式|結合セルのレイアウト表|レイアウト表を一覧表|一覧表に直|この帳票を1行1件の一覧表に直|1行1件の一覧表に直
     ' 依頼の組: 帳票,様式,申請書,レイアウト,結合+一覧,リスト,データベース,1行1件+-差し込,ひな形,転記,解除,調べ,仕掛け
     ' 扱う: 帳票変換 一覧化
     ' 見出し: なし
     ' 形: 数の列 日付の列 結合の見出し
-    ' 結合セル・1件複数行の帳票を読み取り、表の右に1列空けて1行1件の一覧表を出力する
+    ' 結合セル・1件複数行の帳票を読み取り、元の帳票そのものを1行1件の一覧表に直接書き換える
 
     Dim ws As Worksheet
     Set ws = ActiveSheet
@@ -362,14 +362,36 @@ NextRow:
 
     If curIdx = 0 Then Exit Sub
 
-    ' --- 出力先: 帳票の右（前に作った一覧があればそこへ書き直す・右に人のメモや別の表があれば避ける）---
-    ' （2026-09-24 総点検: 帳票の右から使用範囲の右端までを全部消していて、右に置いた人のメモが消えた）
-    Dim listStartCol As Long, 印 As String, ii As Long
+    ' --- 出力先: 元の帳票そのものを書き換える（2026-09-27 統一）---
+    ' 前に右へ出力した一覧が残っていれば消す
+    Dim listStartCol As Long, 印 As String, ii As Long, oldRightCol As Long
     For ii = 0 To Application.Min(2, listColCnt - 1)
         印 = 印 & "|" & listColNames(ii)
     Next ii
-    listStartCol = 右の出し先(ws, hdrRow, frmRight + 2, listColCnt, Mid$(印, 2))
-    If セルの字(ws.Cells(hdrRow, listStartCol).Value) = listColNames(0) Then 前の出力を消す ws, hdrRow, listStartCol, listColCnt
+    oldRightCol = 右の出し先(ws, hdrRow, frmRight + 2, listColCnt, Mid$(印, 2))
+    If セルの字(ws.Cells(hdrRow, oldRightCol).Value) = listColNames(0) Then 前の出力を消す ws, hdrRow, oldRightCol, listColCnt
+
+    ' 元の帳票の左端列を特定
+    Dim frmLeft As Long
+    frmLeft = urLeft
+    For c = urLeft To frmRight
+        If セルの字(ws.Cells(hdrRow, c).Value) <> "" Then
+            frmLeft = c
+            Exit For
+        End If
+    Next c
+
+    ' 元の帳票範囲（見出し行?下端行）の結合セルを解除し、クリアして元の場所に直接書き直す
+    Dim clearBottom As Long
+    clearBottom = Application.Max(urBottom, hdrRow + curIdx + 2)
+    Dim clearRight As Long
+    clearRight = Application.Max(frmRight, frmLeft + listColCnt - 1)
+    With ws.Range(ws.Cells(hdrRow, frmLeft), ws.Cells(clearBottom, clearRight))
+        .UnMerge
+        .Clear
+    End With
+
+    listStartCol = frmLeft
 
     ' 見出し書き出し
     Dim i As Long
