@@ -4190,7 +4190,7 @@ Sub ボタンとマクロの対応を一覧にする()
     Dim wb As Workbook, sh As Object, shp As Object, out As Worksheet, old As Object, comp As Object, cm As Object
     Dim nM As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, hr As Long, NC As Long
     Dim procs As Object, okVba As Boolean, n As Long, jj As Long, proc As String, nxt As Long
-    Dim act As String, mac As String, p As Long, t As String, 種 As String, 確 As String, 他 As Boolean, loc As String
+    Dim act As String, maC As String, p As Long, t As String, 種 As String, 確 As String, 他 As Boolean, loc As String
     On Error GoTo 失敗
     Set wb = ActiveWorkbook
     Set procs = CreateObject("Scripting.Dictionary")
@@ -4273,18 +4273,18 @@ Sub ボタンとマクロの対応を一覧にする()
                 out.Cells(r, 4).Value = loc
                 out.Cells(r, 5).Value = "'" & Left$(t, 30)
                 out.Cells(r, 6).Value = "'" & act
-                mac = act
-                p = InStrRev(mac, "!")
-                If p > 0 Then mac = Mid$(mac, p + 1)
-                p = InStrRev(mac, ".")
-                If p > 0 Then mac = Mid$(mac, p + 1)
-                mac = Replace(mac, "'", "")
+                maC = act
+                p = InStrRev(maC, "!")
+                If p > 0 Then maC = Mid$(maC, p + 1)
+                p = InStrRev(maC, ".")
+                If p > 0 Then maC = Mid$(maC, p + 1)
+                maC = Replace(maC, "'", "")
                 他 = (InStr(act, "!") > 0 And InStr(LCase$(act), LCase$(wb.Name)) = 0)
                 If Not okVba Then
                     確 = "確認できません（VBA に触れない設定）"
                 ElseIf 他 Then
                     確 = "他のブックのマクロ（未確認）"
-                ElseIf procs.exists(LCase$(mac)) Then
+                ElseIf procs.exists(LCase$(maC)) Then
                     確 = "あり"
                 Else
                     確 = "見つからない"

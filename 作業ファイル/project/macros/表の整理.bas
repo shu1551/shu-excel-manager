@@ -1886,6 +1886,31 @@ Sub 表の中の空行を削除して詰める()
     urLeft = ur.Column
     urRight = ur.Column + ur.Columns.Count - 1
     urBottom = 表の本文の最終行(ws)
+    Dim maC As Long
+    For maC = urLeft To urRight
+        If ws.Cells(urBottom, maC).MergeCells Then
+            Dim maBottom As Long
+            maBottom = ws.Cells(urBottom, maC).MergeArea.Row + ws.Cells(urBottom, maC).MergeArea.rows.Count - 1
+            If maBottom > urBottom Then urBottom = maBottom
+        End If
+    Next maC
+    Dim maxR As Long
+    maxR = ur.Row + ur.rows.Count - 1
+    Do While urBottom < maxR
+        Dim nextEmpty As Boolean
+        nextEmpty = True
+        For maC = urLeft To urRight
+            If セルの字(ws.Cells(urBottom + 1, maC).Value) <> "" Then
+                nextEmpty = False
+                Exit For
+            End If
+        Next maC
+        If nextEmpty Then
+            urBottom = urBottom + 1
+        Else
+            Exit Do
+        End If
+    Loop
 
     ' 見出し行を探す: 値が2つ以上あり、数値だけでない最初の行
     Dim hdrRow As Long
@@ -1919,6 +1944,11 @@ Sub 表の中の空行を削除して詰める()
             End If
         Next c
         If allEmpty Then
+            For maC = colLeft To colRight
+                If ws.Cells(r, maC).MergeCells Then
+                    ws.Cells(r, maC).MergeArea.UnMerge
+                End If
+            Next maC
             ws.rows(r).Delete Shift:=xlUp
         End If
     Next r
@@ -1997,10 +2027,10 @@ Sub 二段の見出しを一行に畳む()
     Dim lastTop As String
     lastTop = ""
     For c = urLeft To urRight
-        Dim mac As Range
-        Set mac = ws.Cells(row1, c).MergeArea
+        Dim maC As Range
+        Set maC = ws.Cells(row1, c).MergeArea
         Dim topVal As String
-        topVal = Trim(CStr(mac.Cells(1, 1).Value))
+        topVal = Trim(CStr(maC.Cells(1, 1).Value))
         If セルの字(topVal) <> "" Then lastTop = topVal
         topLabel(c) = lastTop
     Next c
