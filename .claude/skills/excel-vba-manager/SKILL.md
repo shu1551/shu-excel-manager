@@ -277,4 +277,6 @@ datamodel list / relation add|delete / measure add|delete
   4. 高速化三種の神器: `ScreenUpdating = False`, `Calculation = xlCalculationManual`, `EnableEvents = False`
   5. プロシージャ走査: `ProcCountLines` による行ジャンプ
 - **テスト全件PASSの徹底**: マクロ修正・新規作成後は全体コンパイル（`compile`）に加え、必ずテスト（`vba("test")`）を実行して全件成功（PASS）を確認してから報告する。
+- **Excel操作時のシェル遮断**: Excel・VBAの作業においてシェル（`run_command`）を呼ぶことは完全自己凍結。すべて `excel-manager` MCP で完結させる（Git プッシュなどの外部連携作業時のみシェルを使用）。
+
 
