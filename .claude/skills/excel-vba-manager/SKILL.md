@@ -266,3 +266,15 @@ datamodel list / relation add|delete / measure add|delete
   図形・テーブル）を見る。変更を伴う作業は前後で snapshot → snapshot-diff。
 - **動作検証は COM 経由が第一選択**（run-macro／test／snapshot-diff）。computer-use の打鍵は最終手段。
 - **checkup／check は利用者が明示したときだけ**。裁量で回さない。
+
+## マクロ作成・修正時の最速原則（初手からプロレベル最速構成の徹底）
+
+- **万単位の実務データ前提**: 指示に「高速化」と書かれていなくても、セル直接ループ（`For Each c In Range`）、`Union`、`EntireRow.Delete`、`AddItem` 連打などの遅い実装を絶対に書かない。
+- **初手から最速の型**:
+  1. データ取得: `srcData = Range.Value`（配列で一括取得）
+  2. 条件判定・抽出: メモリ配列内で処理（5万行でも0.02秒）
+  3. 書出し: `Range.Resize(...).Value = outData`（1手で一括代入）
+  4. 高速化三種の神器: `ScreenUpdating = False`, `Calculation = xlCalculationManual`, `EnableEvents = False`
+  5. プロシージャ走査: `ProcCountLines` による行ジャンプ
+- **テスト全件PASSの徹底**: マクロ修正・新規作成後は全体コンパイル（`compile`）に加え、必ずテスト（`vba("test")`）を実行して全件成功（PASS）を確認してから報告する。
+
