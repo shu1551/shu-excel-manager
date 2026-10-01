@@ -1935,7 +1935,7 @@ Sub 検索_省略()
 End Sub
 
 Sub 検索_明示()
-    Set c = Range("A:A").Find(What:="あ", LookAt:=xlWhole, _
+    Set c = Range("A:A").Find(What:="あ", LookIn:=xlFormulas, LookAt:=xlWhole, _
                               SearchOrder:=xlByRows, MatchCase:=False)
 End Sub
 
@@ -2030,14 +2030,30 @@ def test_vbm011_flags_find_without_lookat():
     found = vv._diag_stateful_find(lines, vv._split_procedures(lines))
     assert [f[0] for f in found] == ['検索_省略']
     assert found[0][1] == 'Find'
-    assert found[0][3] == ['LookAt', 'SearchOrder', 'MatchCase']
+    assert found[0][3] == ['LookIn', 'LookAt', 'SearchOrder', 'MatchCase']
 
 
-def test_vbm011_silent_when_args_span_continuation():
-    # 継続行を畳まないと「LookAt が無い」と誤報する（畳めていることの回帰）
-    lines = _diag_lines()
+def test_vbm011_counts_positional_args_and_skips_regexp_and_codemodule():
+    """省くと使う人の［検索と置換］の設定を引き継ぐ引数を、位置引数も数えて見る（2026-10-01）。正規表現の .Replace と VBE の Find は別物。"""
+    src = '''Sub 位置で全部()
+    Set c = ws.Cells.Find("あ", , -4123, 2, 1, 1, False)
+End Sub
+Sub 一部だけ()
+    Set c = ws.Cells.Find("#REF!", LookIn:=-4123, LookAt:=2)
+    ws.Cells.Replace What:="a", Replacement:="b"
+    ws.Cells.Replace("a", "b", 2, 1, False)
+End Sub
+Sub 別物()
+    Dim re As Object
+    Set re = CreateObject("VBScript.RegExp")
+    s = re.Replace(s, " ")
+    If cm.CodeModule.Find("x", a, b, c, d) Then n = n + 1
+End Sub
+'''
+    lines = src.split("\n")
     found = vv._diag_stateful_find(lines, vv._split_procedures(lines))
-    assert '検索_明示' not in [f[0] for f in found]
+    assert [(f[0], f[1], f[3]) for f in found] == [('一部だけ', 'Find', ['SearchOrder', 'MatchCase']),
+                                                  ('一部だけ', 'Replace', ['LookAt', 'SearchOrder', 'MatchCase'])]
 
 
 # ---- inspect-gui ----

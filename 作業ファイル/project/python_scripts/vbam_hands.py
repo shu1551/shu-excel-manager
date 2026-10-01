@@ -677,8 +677,9 @@ def _extra_materials(wb, ws):
         pass
     try:
         ur = ws.UsedRange
-        last_r = ws.Cells.Find("*", ws.Cells(1, 1), -4163, 2, 1, 2)   # xlValues, xlPart, xlByRows, xlPrevious
-        last_c = ws.Cells.Find("*", ws.Cells(1, 1), -4163, 2, 2, 2)   # xlByColumns
+        # MatchCase・MatchByte・SearchFormat も明示する（省くと使う人の［検索と置換］の設定を引き継ぎ、こちらの Find も設定を書き換える）
+        last_r = ws.Cells.Find("*", ws.Cells(1, 1), -4163, 2, 1, 2, False, False, False)   # xlValues, xlPart, xlByRows, xlPrevious
+        last_c = ws.Cells.Find("*", ws.Cells(1, 1), -4163, 2, 2, 2, False, False, False)   # xlByColumns
         if last_r is not None and last_c is not None:
             data_end = f"{_col_letter(int(last_c.Column))}{int(last_r.Row)}"
             ur_end = f"{_col_letter(int(ur.Column) + int(ur.Columns.Count) - 1)}{int(ur.Row) + int(ur.Rows.Count) - 1}"

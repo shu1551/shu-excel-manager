@@ -3099,7 +3099,7 @@ Sub 名前を一覧にし壊れた名前を削除()
     Dim nM As Name, 参照 As String, 名前 As String, 短名 As String
     Dim 全式 As String, i As Long, p As Long, 使用 As Boolean
     Dim outRow As Long, 名 As String, n壊れ As Long, n未使用 As Long, n全 As Long, 消した As Long
-    Dim 前後 As String, j As Long
+    Dim 前後 As String, j As Long, n外部 As Long
 
     Set wb = ActiveWorkbook
     If wb.names.Count = 0 Then
@@ -3170,6 +3170,20 @@ Sub 名前を一覧にし壊れた名前を削除()
                 Or Left$(短名, 6) = "_xlpm." Or 短名 = "Consolidate_Area" Or 短名 = "Criteria" Or 短名 = "Extract" _
                 Or 短名 = "Auto_Open" Or 短名 = "Auto_Close" Or 短名 = "Sheet_Title")
 
+        ' 他のブックを指す名前か（[book.xlsx]Sheet!A1 の形、または [1]Sheet!A1 の外部リンクの番号の形。表の構造化参照 Table1[列] は除く）
+        Dim 外部 As Boolean, 外p1 As Long, 外p2 As Long, 外t As String, 外前 As String
+        外部 = False
+        外p1 = InStr(参照, "[")
+        If 外p1 > 0 Then
+            外p2 = InStr(外p1, 参照, "]")
+            If 外p2 > 外p1 Then
+                外t = LCase$(Mid$(参照, 外p1 + 1, 外p2 - 外p1 - 1))
+                外前 = "="
+                If 外p1 > 1 Then 外前 = Mid$(参照, 外p1 - 1, 1)
+                If 外t Like "*.xl*" Or (IsNumeric(外t) And InStr("=(,+-*/&' ", 外前) > 0) Then 外部 = True
+            End If
+        End If
+
         使用 = False
         p = 1
         Do
@@ -3204,6 +3218,15 @@ Sub 名前を一覧にし壊れた名前を削除()
                 Err.Clear
             End If
             On Error GoTo 0
+        ElseIf 外部 Then
+            ' 別のブックから持ち込まれた名前（参照先が消えていても、2026 年の仕様変更で名前の管理にエラーが出ない）。消さない
+            n外部 = n外部 + 1
+            sh.Cells(outRow, 3).Value = "他のブックを指している（持ち込まれた名前）"
+            If 使用 Then
+                sh.Cells(outRow, 4).Value = "そのまま（式で使われている。外部リンクの元。解消は「他ブック参照を自ブックに直す」「外部リンクを値に変えて切る」）"
+            Else
+                sh.Cells(outRow, 4).Value = "消してよい候補（消していません・どこからも使われていない）"
+            End If
         ElseIf 組込 Then
             sh.Cells(outRow, 3).Value = "Excel が使う名前（印刷範囲・絞り込みなど）"
             sh.Cells(outRow, 4).Value = "そのまま"
@@ -3224,7 +3247,8 @@ Sub 名前を一覧にし壊れた名前を削除()
     If sh.Columns(2).ColumnWidth > 60 Then sh.Columns(2).ColumnWidth = 60
     sh.Activate
     Application.ScreenUpdating = True
-    Application.StatusBar = "名前の整理: 名前 " & n全 & " 本のうち、壊れた名前 " & n壊れ & " 本を消しました（" & 消した & " 本）。使われていない候補が " & n未使用 & " 本（消していません）。一覧はシート「" & 名 & "」。"
+    Application.StatusBar = "名前の整理: 名前 " & n全 & " 本のうち、壊れた名前 " & n壊れ & " 本を消しました（" & 消した & " 本）。使われていない候補が " & n未使用 & " 本（消していません）。" & _
+        IIf(n外部 > 0, "他のブックを指す名前が " & n外部 & " 本あります（消していません）。", "") & "一覧はシート「" & 名 & "」。"
 End Sub
 
 Sub 余分な行列を削除し軽くする()
@@ -3292,10 +3316,10 @@ Sub 余分な行列を削除し軽くする()
             Dim 最後 As Range
             Set 最後 = Nothing
             On Error Resume Next
-            Set 最後 = ws.Cells.Find(What:="*", LookIn:=xlFormulas, SearchOrder:=xlByRows, SearchDirection:=xlPrevious)
+            Set 最後 = ws.Cells.Find(What:="*", LookIn:=xlFormulas, SearchOrder:=xlByRows, SearchDirection:=xlPrevious, LookAt:=xlPart, MatchCase:=False, MatchByte:=False, SearchFormat:=False)
             If Not 最後 Is Nothing Then 値行 = 最後.Row
             Set 最後 = Nothing
-            Set 最後 = ws.Cells.Find(What:="*", LookIn:=xlFormulas, SearchOrder:=xlByColumns, SearchDirection:=xlPrevious)
+            Set 最後 = ws.Cells.Find(What:="*", LookIn:=xlFormulas, SearchOrder:=xlByColumns, SearchDirection:=xlPrevious, LookAt:=xlPart, MatchCase:=False, MatchByte:=False, SearchFormat:=False)
             If Not 最後 Is Nothing Then 値列 = 最後.Column
             On Error GoTo 0
 
