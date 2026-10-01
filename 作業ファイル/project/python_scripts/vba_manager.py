@@ -144,6 +144,7 @@ from vbam_build import *  # noqa: F401,F403
 from vbam_devtools import *  # noqa: F401,F403  (2026-09-16 職場向け VBA ツール作りの手)
 from vbam_lineage import *  # noqa: F401,F403  (2026-09-17 系譜と閉じたブック: versions・history・list-file・grep-files・export-file)
 from vbam_audit import *  # noqa: F401,F403  (2026-09-17 数式・データ総合診断エンジン)
+from vbam_flow import *  # noqa: F401,F403  (2026-10-01 マクロの中の流れを Mermaid の流れ図に・flow)
 # AI の機能（agent・set-key・clear-key）は vbam_agent 一式があるときだけ読む（2026-09-12・本体だけでも動く形に）。
 # 黙って飛ばすのは「ファイルが無い」ときだけ。中身に誤りがあれば今まで通り例外で止まる
 import importlib.util as _ilu
@@ -326,6 +327,15 @@ def build_parser():
     p.add_argument("--mermaid", nargs="?", const="_DEFAULT_", default=None,
                    help="Mermaid図をMarkdownに出力（省略時 _last_callgraph.md。GitHub/Qiitaで描画可）")
     p.add_argument("--json", action="store_true", help="結果をJSON形式で出力")
+
+    # flow [excel_file] <マクロ名> [--module 名] [--out 出力.md] [--max-nodes N]
+    p = sub.add_parser("flow", aliases=["流れ図"],
+                       help="マクロの中の流れ（分岐・ループ・GoSub・エラー処理）を Mermaid の流れ図に（AI なし・コードから機械的に）")
+    p.add_argument("posargs", nargs="*")
+    p.add_argument("--module", dest="module_opt", default=None, help="対象モジュール（同名マクロが複数あるとき）")
+    p.add_argument("--out", default=None, help="Markdown の出力先（省略時 _last_flow.md）")
+    p.add_argument("--max-nodes", dest="max_nodes", type=int, default=150,
+                   help="節点の上限（超えたら深い入れ子を「中身 n 行は省略」にたたむ。既定 150）")
 
     # impact(影響範囲) [excel_file] <マクロ名>
     p = sub.add_parser("impact", aliases=["影響範囲"],
@@ -1908,6 +1918,8 @@ def _raw_command_table():
         "code-replace":      cmd_code_replace,
         "docs":              cmd_docs,
         "call-graph":        cmd_call_graph,
+        "flow":              cmd_flow,            # 2026-10-01 マクロの流れ図（Mermaid）
+        "流れ図":              cmd_flow,
         "checkup":           cmd_checkup,
         "健康診断":            cmd_checkup,
         "test":              cmd_test,

@@ -622,7 +622,9 @@ def shelf_pick(request, entries=()):
                 top, best = len(n) * 2, n
     # 「直して」の頼みに、調べて一覧にするだけの棚は当てない（2026-09-24・エラーの原因を探して直して→ エラー値のセルを一覧にする だった）
     # （「直すとどこまで影響する」は調べる頼み＝「直して」「修正して」と頼んだときだけ）
-    if best and _LOOK_ONLY_RE.search(best) and any(w in req for w in ('直して', '修正して')):
+    # （帳票を右に1行1件の一覧にする は「一覧に直して」で頼む本体＝VBA の 調べるだけの棚か と同じく例外・2026-10-01）
+    if best and best != '帳票を右に1行1件の一覧にする' and _LOOK_ONLY_RE.search(best) \
+            and any(w in req for w in ('直して', '修正して')):
         best = ''
     return best
 

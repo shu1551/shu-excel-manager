@@ -999,6 +999,8 @@ _CAPABILITIES = {
         ("checkup", "健康診断"), ("check", "静的診断"), ("check-bas", ".bas 単体検査"),
         ("compile", "全体コンパイル（押すだけ・ブックは変わらない）"),
         ("call-graph", "呼び出し関係"), ("impact", "影響範囲"),
+        ("flow", "マクロの中の流れ図（Mermaid。コードから機械的に・読むだけ・ファイルは作るがブックは無傷）"),
+        ("流れ図", "flow の別名"),
         ("grep", "コード横断検索"), ("metrics", "プロシージャ計量"),
         ("rules", "診断規則の一覧"), ("capabilities", "この表そのもの"),
         ("audit", "表の仕上げ検査（見出し・罫線・列の型・列幅・空の見出し。読むだけ）"),
@@ -4827,6 +4829,24 @@ def cmd_call_graph(args):
         # 未解決の呼び先は赤ノード。呼び出しのあるマクロだけを図に載せる
         out_path = (os.path.join(SCRIPT_DIR, "_last_callgraph.md")
                     if args.mermaid == '_DEFAULT_' else os.path.abspath(args.mermaid))
+        if focus:
+            # --macro 名: そのマクロから呼ばれる先（間接まで）だけを描く。ブック全体の図は数百の節点になって読めない（2026-10-01）
+            hit = known.get(focus.lower())
+            if not hit:
+                print(f"エラー: マクロ '{focus}' が見つかりません")
+                _suggest_similar(focus, [v[0] for v in known.values()])
+                return False
+            keep, stack = {hit[0].lower()}, [hit[0].lower()]
+            by_proc = {}
+            for (_m, _p), _cs in edges.items():
+                by_proc.setdefault(_p.lower(), set()).update(_cs)
+            while stack:
+                for c in by_proc.get(stack.pop(), ()):
+                    if c.lower() not in keep:
+                        keep.add(c.lower())
+                        stack.append(c.lower())
+            edges = {k: v for k, v in edges.items() if k[1].lower() in keep}
+            unresolved = [u for u in unresolved if (u[1] or '').lower() in keep]
         node_ids = {}
 
         def nid(name):
@@ -4845,6 +4865,8 @@ def cmd_call_graph(args):
         for _, _proc, _n, _, _ in unresolved:
             if _proc and _proc != '(宣言部)':
                 used.add(_proc)
+        if focus:
+            used.add(hit[0])                               # 呼び先が無くても起点の 1 つは描く
         ml = [f"# {inv['name']} 呼び出し関係図", "",
               f"生成: {time.strftime('%Y-%m-%d %H:%M')}（vba_manager call-graph --mermaid）", "",
               "```mermaid", "flowchart LR"]
