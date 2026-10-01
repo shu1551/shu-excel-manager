@@ -1314,6 +1314,16 @@ Sub 数式の危ない所を右に報告する()
     Set ur = ws.UsedRange
     On Error GoTo 0
     If ur Is Nothing Then Exit Sub
+    ' 正規表現: VBScript が外された環境では VBA 標準の RegExp に切り替える（2027 年対応）
+    On Error Resume Next
+    Set 正規 = CreateObject("VBScript.RegExp")
+    If 正規 Is Nothing Then Set 正規 = 正規表現_標準版を作る()
+    On Error GoTo 0
+    If 正規 Is Nothing Then
+        Application.StatusBar = "数式の監査: 正規表現が使えないので調べられませんでした（VBScript が無効で、この Excel の VBA にも標準の RegExp がありません）"
+        Exit Sub
+    End If
+    正規.Global = True
     urTop = ur.Row: urLeft = ur.Column
     urRight = ur.Column + ur.Columns.Count - 1
     urBottom = ur.Row + ur.rows.Count - 1
@@ -1447,10 +1457,6 @@ Sub 数式の危ない所を右に報告する()
 直書きの数:
     ' s（A1 形式の式）の中の直書きの数を u に「、1.1、25」の形で（無ければ ""）
     u = ""
-    If 正規 Is Nothing Then
-        Set 正規 = CreateObject("VBScript.RegExp")
-        正規.Global = True
-    End If
     正規.Pattern = """[^""]*"""
     s = 正規.Replace(s, " ")
     正規.Pattern = "'[^']*'!"
@@ -4410,7 +4416,13 @@ Sub シートの数式を形ごとに一覧にする()
         Next ar
     End If
 集計おわり:
+    ' 正規表現: VBScript が外された環境では VBA 標準の RegExp に切り替える（2027 年対応）
+    Set re = Nothing
+    On Error Resume Next
     Set re = CreateObject("VBScript.RegExp")
+    If re Is Nothing Then Set re = 正規表現_標準版を作る()
+    On Error GoTo 失敗
+    If re Is Nothing Then Err.Raise 429, , "正規表現が使えません。VBScript が無効で、この Excel の VBA にも標準の RegExp がありません"
     re.Global = True
     For Each kv In cnt.keys
         key = CStr(kv)
