@@ -33,6 +33,8 @@ py vba_manager.py structure [excel_file] [--sheet 名] [--out x.md]   # 値を�
 #  （式の中の文字列・入力規則のリスト・テーブルの列名・リンク先は出す）。保護で隠した式は保護を外さず保存済みのファイルから読む。
 #  気をつける所＝見つけたこと → なぜ → Excel のどこで確かめるか（完全に非表示のシート・壊れた名前・列まるごとの規則・中身の無い入力規則・
 #  見えない図形・揮発関数・他ブック参照・標準でない参照設定・古い自動実行 等）
+#  Excel だけで動く版＝棚「ブックの構造を一覧にする」（shelf-run ブックの構造を一覧にする。新しいシート「調査_構造」・1 秒前後。
+#  オフィス田中の診断ツールと試しブック＋仕事のブック 5 本で 19 項目の件数が一致・値の漏れ 0 を確かめた・2026-10-02）
 py vba_manager.py no-values [on|off]           # 値なしの切り替え（%LOCALAPPDATA%\vba-manager\no_values.flag。環境変数 EXCEL_MANAGER_NO_VALUES=1/0 が先）
 #  on の間: materials は値の代わりに型の格子（数・文・日・式→型）・seiri／shelf-run／agent の変更の明細は番地だけ・
 #  read-range・read-selection・snapshot・trace・screenshot・diagnose・audit・find・style-map・build-sheet は止める。materials --no-values で 1 回だけも可

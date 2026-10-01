@@ -5168,3 +5168,899 @@ Sub ブックに隠れた物を一覧にする()
     Application.DisplayAlerts = True
     Application.StatusBar = "隠れた物: 調べられませんでした（" & Err.Description & "）"
 End Sub
+
+Sub ブックの構造を一覧にする()
+    ' 依頼の語: ブックの構造|ブック全体の構造|ブックの仕組み|ブックの作り|ワークシート診断|診断ツール|中身を出さず|値を出さずに|AIに渡せる|ＡＩに渡せる|構造だけ
+    ' 依頼の組: ブック+構造,仕組み,作り,中身を出さず,値を出さず+調べ,一覧,教え,まとめ,出して,見せ,診断,洗い出+-削除,消して,直して
+    ' 扱う: 構造 診断 数式 名前 条件付き書式 入力規則 テーブル ピボット 図形 クエリ 接続 リンク VBA 引き継ぎ
+    ' 見出し: なし
+    ' 形: なし
+    ' ブックの仕組みを、セルの値を出さずに新しいシート「調査_構造」に 1 枚の表で一覧にする。何も変えない。
+    '   概要（件数）／気をつける所（なぜ・Excel のどこで確かめるか）／シート／ユーザー定義の表示形式とスタイル／名前／
+    '   数式（同じ形の式は 1 行にまとめ、結果は型だけ）／関数／参照／条件付き書式／入力規則／テーブル／ピボット／
+    '   図形・グラフ・コメント（文字は字数だけ）／クエリ（M）／接続（パスワードは伏せる）／ハイパーリンク／VBA の点検
+    '   式の中の文字・入力規則のリスト・テーブルの列名は表の形として出す。このシートをコピーして AI に貼れば、中身を出さずに相談できる
+    ' （オフィス田中・田中亨さんのワークシート診断ツールの項目に学んだ。田中さんのツールも Excel だけで動く）
+    Dim wb As Workbook, 出 As Worksheet, 古 As Object, 元 As Object, ws As Worksheet
+    Dim 詳 As Collection, 点 As Collection, 要 As Collection, 列 As Collection
+    Dim 区 As String, 項 As String, 場 As String, 容 As String, 法 As String
+    Dim 名 As String, 名0 As String, 回 As Long, 行 As Long, 全 As Long, 打切 As Boolean
+    Dim 域 As Range, 面 As Range, 交 As Range, 見 As Range, 柱 As Range
+    Dim fa As Variant, fr As Variant, fv As Variant, v As Variant, 組 As Variant, 並 As Variant
+    Dim i As Long, j As Long, k As Long, r0 As Long, c0 As Long, nr As Long, NC As Long
+    Dim 一括 As Boolean, 式 As String, 式R As String, 種 As String, 鍵 As Variant
+    Dim 型数 As Object, 型先 As Object, 型末 As Object, 型式 As Object, 型種 As Object, 辞 As Object
+    Dim 関辞 As Object, 関全 As Object, 参辞 As Object, 名辞 As Object
+    Dim 字 As String, 語 As String, 括 As Boolean, p As Long, q As Long, 前 As String, 印 As String
+    Dim 式数 As Long, 外数 As Long, 隠式 As Long, 読めず As Long, 解除 As Double, 結合 As Long, 規数 As Double, 規全 As Double
+    Dim シ数 As Long, シ隠 As Long, グ数 As Long, 保数 As Long, 揮発 As String
+    Dim 条数 As Long, 条全 As Long, 図 As Object, 親 As String, 図種 As Long, 図類 As String, 文字数 As Long
+    Dim 図表 As Long, 図絵 As Long, 図箱 As Long, 図注 As Long, 図AX As Long, 図他 As Long, 図上 As Long, 幽 As String, 幽数 As Long
+    Dim 注数 As Long, 表数 As Long, 回転 As Long, リ数 As Long, ク数 As Long, 接数 As Long, 名数 As Long, 名本 As Long
+    Dim 壊名 As String, 隠名 As String, 残規 As String, 残規数 As Long
+    Dim 名前 As Object, 型 As Object, lo As Object, pt As Object, 欄 As Object, 繋 As Object, 問 As Object, hl As Object, 系 As Object
+    Dim 部品 As Object, 注 As Object, 参照 As String, 短 As String, 範 As String
+    Dim 殻 As Object, 箱 As Object, 中 As Object, 一時 As String, 書式 As String, 書式数 As Long, 流 As Object, xml As String
+    Dim cm As Object, 行数 As Long, 手 As String, 手種 As Long, 始 As Long, 長 As Long, 本文 As String, 宣言 As String
+    Dim 当 As String, 当辞 As Object, マ数 As Long, 標外 As String, 標外数 As Long
+    Dim 手名 As String, 頭 As String, 規計 As Double, 時 As Single, 書辞 As Object, 位 As Long
+    Dim 出力() As Variant
+
+    On Error GoTo 失敗
+    Set wb = ActiveWorkbook
+    Application.ScreenUpdating = False
+    Set 詳 = New Collection: Set 点 = New Collection: Set 要 = New Collection
+    Set 関全 = CreateObject("Scripting.Dictionary")
+
+    ' --- 出す先のシート（前の「調査：」のシートは作り直す）
+    名0 = "調査_構造": 名 = 名0: 回 = 1
+    Do
+        Set 古 = Nothing
+        On Error Resume Next
+        Set 古 = wb.Sheets(名)
+        On Error GoTo 失敗
+        If 古 Is Nothing Then Exit Do
+        If TypeName(古) = "Worksheet" Then
+            If Left$(CStr(古.Range("A1").Value), 3) = "調査：" Then
+                Application.DisplayAlerts = False
+                古.Delete
+                Application.DisplayAlerts = True
+                Exit Do
+            End If
+        End If
+        回 = 回 + 1
+        名 = 名0 & "_" & 回
+    Loop
+
+    ' === 1. シートごと（式・結合・ロック・条件付き書式・入力規則・テーブル・ピボット・図形・コメント・リンク）
+    For Each 元 In wb.Sheets
+        If TypeName(元) <> "Worksheet" Then
+            グ数 = グ数 + 1
+            区 = "シート": 項 = "グラフシート": 場 = 元.Name: 容 = IIf(元.Visible = -1, "表示", IIf(元.Visible = 2, "完全に非表示", "非表示")): 法 = ""
+            GoSub 詳を足す
+            GoTo 次のシート
+        End If
+        Set ws = 元
+        If Left$(CStr(ws.Range("A1").Value), 3) = "調査：" Then GoTo 次のシート
+        シ数 = シ数 + 1
+        If ws.Visible <> -1 Then シ隠 = シ隠 + 1
+        If ws.Visible = 2 Then
+            項 = "シート「" & ws.Name & "」が完全に非表示"
+            容 = "シート見出しを右クリックした［再表示］の一覧にも出ない＝あることに誰も気づかない"
+            法 = "Alt+F11 → プロジェクトのシート → プロパティの Visible"
+            GoSub 点を足す
+        End If
+        If ws.ProtectContents Then 保数 = 保数 + 1
+        Set 域 = ws.UsedRange
+        nr = 域.rows.Count: NC = 域.Columns.Count
+        r0 = 域.Row: c0 = 域.Column
+
+        位 = 詳.Count + 1
+        ' 1a. 式（一括で A1・R1C1・値を読む。保護で隠した式があると一括は拒まれる＝1 セルずつ）
+        Set 型数 = CreateObject("Scripting.Dictionary"): Set 型先 = CreateObject("Scripting.Dictionary")
+        Set 型末 = CreateObject("Scripting.Dictionary"): Set 型式 = CreateObject("Scripting.Dictionary")
+        Set 型種 = CreateObject("Scripting.Dictionary"): Set 関辞 = CreateObject("Scripting.Dictionary")
+        隠式 = 0: 読めず = 0: 一括 = False
+        If CDbl(nr) * NC <= 1000000# Then
+            On Error Resume Next
+            If nr * NC = 1 Then
+                ReDim fa(1 To 1, 1 To 1): ReDim fr(1 To 1, 1 To 1): ReDim fv(1 To 1, 1 To 1)
+                fa(1, 1) = 域.Formula: fr(1, 1) = 域.FormulaR1C1: fv(1, 1) = 域.Value
+            Else
+                fa = 域.Formula: fr = 域.FormulaR1C1: fv = 域.Value
+            End If
+            一括 = (Err.Number = 0)
+            Err.Clear
+            On Error GoTo 失敗
+        End If
+        If 一括 Then
+            For i = 1 To nr
+                For j = 1 To NC
+                    If VarType(fa(i, j)) = vbString Then
+                        If Left$(fa(i, j), 1) = "=" Then
+                            式 = fa(i, j): 式R = fr(i, j): v = fv(i, j)
+                            Set 見 = ws.Cells(r0 + i - 1, c0 + j - 1)
+                            GoSub 式を数える
+                        End If
+                    End If
+                Next j
+            Next i
+        ElseIf CDbl(nr) * NC <= 200000# Then
+            For Each 見 In 域.Cells
+                On Error Resume Next
+                If 見.HasFormula Then
+                    If ws.ProtectContents And 見.FormulaHidden Then 隠式 = 隠式 + 1
+                    式 = "": 式 = 見.Formula
+                    If 式 = "" Then
+                        読めず = 読めず + 1
+                    Else
+                        式R = 見.FormulaR1C1: v = 見.Value
+                        On Error GoTo 失敗
+                        GoSub 式を数える
+                    End If
+                End If
+                On Error GoTo 失敗
+            Next 見
+        End If
+        式数 = 式数 + 読めず
+        For Each 鍵 In 型数.keys
+            印 = ""
+            Set 見 = ws.Range(型先(鍵))
+            On Error Resume Next
+            If 見.HasArray Then
+                If 見.HasSpill Then
+                    印 = "スピル " & 見.SpillingToRange.Address(False, False)
+                Else
+                    印 = "配列数式（CSE）"
+                End If
+            ElseIf 見.HasSpill Then
+                印 = "スピル " & 見.SpillingToRange.Address(False, False)
+            End If
+            On Error GoTo 失敗
+            式 = 型式(鍵): GoSub 関数を拾う
+            並 = Array("NOW", "TODAY", "RAND", "RANDBETWEEN", "OFFSET", "INDIRECT", "CELL", "INFO", "RANDARRAY")
+            For k = 0 To UBound(並)
+                If InStr("|" & 当 & "|", "|" & 並(k) & "|") > 0 Then
+                    印 = 印 & IIf(印 = "", "", "・") & "揮発関数 " & 並(k)
+                    If InStr("・" & 揮発 & "・", "・" & 並(k) & "・") = 0 Then 揮発 = 揮発 & IIf(揮発 = "", "", "・") & 並(k)
+                End If
+            Next k
+            容 = ""
+            For Each 組 In 型種(鍵).keys
+                容 = 容 & IIf(容 = "", "", "・") & 組 & IIf(型数(鍵) > 1, " " & 型種(鍵)(組), "")
+            Next 組
+            区 = "数式": 項 = 型数(鍵) & " セル"
+            場 = ws.Name & "!" & 型先(鍵) & IIf(型数(鍵) > 1, "～" & 型末(鍵), "")
+            法 = "結果の型: " & 容 & IIf(印 = "", "", "／" & 印)
+            容 = 型式(鍵)
+            GoSub 詳を足す
+        Next 鍵
+        If 読めず > 0 Then
+            区 = "数式": 項 = 読めず & " セル": 場 = ws.Name: 容 = "（保護で隠した式＝中身は読めません。保護は外していません）": 法 = ""
+            GoSub 詳を足す
+        End If
+        If 関辞.Count > 0 Then
+            区 = "関数": 項 = 関辞.Count & " 種": 場 = ws.Name: 容 = Join(関辞.keys, "・"): 法 = ""
+            GoSub 詳を足す
+        End If
+
+        ' 1b. ロック解除・結合
+        解除 = 0
+        On Error Resume Next
+        v = 域.Locked
+        If IsNull(v) Then
+            For Each 柱 In 域.Columns
+                v = 柱.Locked
+                If IsNull(v) Then
+                    For Each 見 In 柱.Cells
+                        If 見.Locked = False Then 解除 = 解除 + 1
+                    Next 見
+                ElseIf v = False Then
+                    解除 = 解除 + 柱.Cells.CountLarge
+                End If
+            Next 柱
+        ElseIf v = False Then
+            解除 = 域.CountLarge
+        End If
+        結合 = 0
+        If IsNull(域.MergeCells) Or 域.MergeCells = True Then
+            If CDbl(nr) * NC <= 200000# Then
+                For Each 見 In 域.Cells
+                    If 見.MergeCells Then
+                        If 見.Address = 見.MergeArea.Cells(1, 1).Address Then 結合 = 結合 + 1
+                    End If
+                Next 見
+            End If
+        End If
+        On Error GoTo 失敗
+        If ws.ProtectContents And 解除 = 0 Then
+            項 = "シート「" & ws.Name & "」は保護されていて、ロック解除のセルが 0"
+            容 = "入力欄を空けずに保護している＝どのセルにも入力できない"
+            法 = "［ホーム］→［書式］→［セルのロック］／［校閲］→［シート保護の解除］"
+            GoSub 点を足す
+        End If
+        If 隠式 > 0 Then
+            項 = "シート「" & ws.Name & "」に保護で隠した式 " & 隠式 & " セル"
+            容 = "数式バーに式が出ない＝計算の中身を確かめられない（引き継ぎの時に困る）"
+            法 = "［セルの書式設定］→［保護］→［表示しない］"
+            GoSub 点を足す
+        End If
+
+        ' 1c. 条件付き書式
+        条数 = 0
+        On Error Resume Next
+        k = ws.Cells.FormatConditions.Count
+        On Error GoTo 失敗
+        For i = 1 To k
+            条数 = 条数 + 1
+            On Error Resume Next
+            Set 部品 = ws.Cells.FormatConditions(i)
+            範 = "": 範 = 部品.AppliesTo.Address(False, False)
+            種 = "": 種 = CStr(部品.Type)
+            Select Case 種
+                Case "1": 種 = "セルの値"
+                Case "2": 種 = "数式"
+                Case "3": 種 = "カラースケール"
+                Case "4": 種 = "データバー"
+                Case "5": 種 = "上位/下位"
+                Case "6": 種 = "アイコン"
+                Case "8": 種 = "一意/重複"
+                Case "9": 種 = "文字列"
+                Case "10": 種 = "空白"
+                Case "11": 種 = "日付"
+                Case "12": 種 = "平均より上/下"
+                Case "13": 種 = "空白以外"
+                Case "16": 種 = "エラー"
+                Case "17": 種 = "エラー以外"
+            End Select
+            容 = "": 容 = CStr(部品.Formula1)
+            字 = "": 字 = CStr(部品.Formula2)
+            If 字 <> "" Then 容 = 容 & " ～ " & 字
+            前 = ""
+            前 = Choose(部品.Operator, "間", "間以外", "等しい", "等しくない", "より大きい", "より小さい", "以上", "以下")
+            印 = ""
+            If CStr(部品.NumberFormat) <> "" Then 印 = 印 & "・表示形式"
+            If Not IsNull(部品.Font.Bold) Or Not IsNull(部品.Font.Italic) Then 印 = 印 & "・フォント"
+            If 部品.Interior.ColorIndex <> -4142 And 部品.Interior.ColorIndex <> -4105 And Not IsNull(部品.Interior.ColorIndex) Then 印 = 印 & "・塗り"
+            For j = 1 To 4
+                If 部品.Borders(j).LineStyle <> -4142 And Not IsNull(部品.Borders(j).LineStyle) Then 印 = 印 & "・罫線": Exit For
+            Next j
+            括 = False
+            For Each 柱 In 部品.AppliesTo.Areas
+                If 柱.rows.Count >= ws.rows.Count Or 柱.Columns.Count >= ws.Columns.Count Then 括 = True
+            Next 柱
+            Err.Clear
+            On Error GoTo 失敗
+            区 = "条件付き書式": 項 = 種 & IIf(前 = "", "", "（" & 前 & "）"): 場 = ws.Name & "!" & 範 & IIf(括, " ★まるごと", "")
+            法 = "書式: " & Mid$(印, 2)
+            GoSub 詳を足す
+            If 括 Then
+                項 = "条件付き書式が列・行まるごと（" & ws.Name & "!" & 範 & "）"
+                容 = "100 万行ぶん判定する＝スクロールや入力が重くなる元"
+                法 = "［ホーム］→［条件付き書式］→［ルールの管理］"
+                GoSub 点を足す
+            End If
+        Next i
+        条全 = 条全 + 条数
+        If 条数 >= 50 Then
+            項 = "シート「" & ws.Name & "」の条件付き書式が " & 条数 & " ルール"
+            容 = "コピーや行の挿入で分かれて増えたもの＝重さの元"
+            法 = "［ホーム］→［条件付き書式］→［ルールの管理］（このワークシート）"
+            GoSub 点を足す
+        End If
+
+        ' 1d. 入力規則（件数は使用範囲の中で数える）
+        規数 = 0
+        Set 面 = Nothing
+        On Error Resume Next
+        Set 面 = ws.Cells.SpecialCells(-4174)
+        On Error GoTo 失敗
+        If Not 面 Is Nothing Then
+            For Each 柱 In 面.Areas
+                Set 交 = Nothing
+                On Error Resume Next
+                Set 交 = Application.Intersect(柱, 域)
+                On Error GoTo 失敗
+                If 交 Is Nothing Then v = 0 Else v = 交.CountLarge
+                規数 = 規数 + v: 規全 = 規全 + 柱.CountLarge
+                On Error Resume Next
+                With 柱.Cells(1, 1).Validation
+                    j = -1: j = .Type
+                    種 = "?"
+                    種 = Choose(j + 1, "すべての値", "整数", "小数", "リスト", "日付", "時刻", "文字列（長さ）", "ユーザー設定")
+                    容 = "": 容 = CStr(.Formula1)
+                    字 = "": 字 = CStr(.Formula2)
+                    If 字 <> "" Then 容 = 容 & " ～ " & 字
+                    字 = "": 字 = .InputTitle & "／" & .InputMessage
+                    前 = "": 前 = .ErrorTitle & "／" & .ErrorMessage
+                    p = 0: p = .AlertStyle
+                    q = 0: q = .IMEMode
+                End With
+                Err.Clear
+                On Error GoTo 失敗
+                括 = (柱.rows.Count >= ws.rows.Count Or 柱.Columns.Count >= ws.Columns.Count)
+                If j = 0 And 字 = "／" And 前 = "／" And q = 0 Then
+                    残規数 = 残規数 + 1
+                    If 残規数 <= 4 Then 残規 = 残規 & IIf(残規 = "", "", "・") & ws.Name & "!" & 柱.Address(False, False)
+                    区 = "入力規則": 項 = "中身の無い規則（残骸）": 場 = ws.Name & "!" & 柱.Address(False, False): 容 = "": 法 = "使用範囲の中 " & Format$(v, "#,##0") & " セル"
+                    GoSub 詳を足す
+                Else
+                    区 = "入力規則": 項 = 種: 場 = ws.Name & "!" & 柱.Address(False, False) & IIf(括, " ★まるごと", "")
+                    法 = "使用範囲の中 " & Format$(v, "#,##0") & " セル・入力時 " & 字 & "・エラー時（" & Choose(IIf(p < 1 Or p > 3, 1, p), "停止", "注意", "情報") & "）" & 前 & IIf(q > 0, "・日本語入力 " & Choose(q, "オン", "オフ", "無効", "ひらがな", "全角カタカナ", "半角カタカナ", "全角英数", "半角英数"), "")
+                    GoSub 詳を足す
+                    If 括 Then
+                        項 = "入力規則が列・行まるごと（" & ws.Name & "!" & 柱.Address(False, False) & "）"
+                        容 = "使っていない行まで規則が付く＝ファイルが重くなり、どこまでが表か分からなくなる"
+                        法 = "［データ］→［データの入力規則］"
+                        GoSub 点を足す
+                    End If
+                End If
+            Next 柱
+        End If
+
+        ' 1e. シートの行
+        区 = "シート": 項 = IIf(ws.Visible = -1, "表示", IIf(ws.Visible = 2, "完全に非表示", "非表示")) & IIf(ws.ProtectContents, "・保護", "")
+        場 = ws.Name
+        容 = "使用範囲 " & 域.Address(False, False) & "（" & nr & " 行×" & NC & " 列）"
+        法 = "ロック解除 " & Format$(解除, "#,##0") & "・非表示の式 " & 隠式 & "・結合 " & 結合 & "・条件付き書式 " & 条数 & "・入力規則 " & Format$(規数, "#,##0") & " セル"
+        規計 = 規計 + 規数
+        If 位 <= 詳.Count Then 詳.Add Array(区, 項, 場, 容, 法), Before:=位 Else GoSub 詳を足す
+
+        ' 1f. テーブル
+        For Each lo In ws.ListObjects
+            表数 = 表数 + 1
+            容 = ""
+            For Each 欄 In lo.ListColumns
+                容 = 容 & IIf(容 = "", "", "・") & 欄.Name
+            Next 欄
+            字 = ""
+            On Error Resume Next
+            字 = lo.QueryTable.WorkbookConnection.Name
+            On Error GoTo 失敗
+            区 = "テーブル": 項 = lo.Name: 場 = ws.Name & "!" & lo.Range.Address(False, False)
+            法 = IIf(lo.ShowTotals, "集計行あり", "") & IIf(字 = "", "", IIf(lo.ShowTotals, "・", "") & "接続 " & 字)
+            容 = "列 " & 容
+            GoSub 詳を足す
+        Next lo
+
+        ' 1g. ピボット
+        For Each pt In ws.PivotTables
+            回転 = 回転 + 1
+            字 = "": 前 = ""
+            On Error Resume Next
+            字 = pt.SourceData
+            前 = pt.PivotCache.WorkbookConnection.Name
+            容 = ""
+            For Each 組 In Array("RowFields", "ColumnFields", "DataFields", "PageFields")
+                並 = ""
+                For Each 欄 In CallByName(pt, CStr(組), VbGet)
+                    並 = 並 & IIf(並 = "", "", "・") & 欄.Name
+                Next 欄
+                If 並 <> "" Then 容 = 容 & IIf(容 = "", "", "／") & Choose(InStr("RCDP", Left$(組, 1)), "行 ", "列 ", "値 ", "フィルター ") & 並
+            Next 組
+            p = 0: p = pt.PivotCache.RefreshOnFileOpen
+            On Error GoTo 失敗
+            区 = "ピボット": 項 = pt.Name: 場 = ws.Name & "!" & pt.TableRange2.Address(False, False)
+            法 = "元 " & IIf(字 = "", 前, 字) & IIf(p, "・開くとき更新", "")
+            GoSub 詳を足す
+        Next pt
+
+        ' 1h. 図形・グラフ（グループの中もたどる。文字は字数だけ）
+        Set 列 = New Collection
+        For Each 図 In ws.Shapes
+            列.Add Array(図, "")
+        Next 図
+        Do While 列.Count > 0
+            組 = 列(1): 列.Remove 1
+            Set 図 = 組(0): 親 = 組(1)
+            If 親 = "" Then 図上 = 図上 + 1
+            On Error Resume Next
+            図種 = -1: 図種 = 図.Type
+            Select Case 図種
+                Case 1: 図類 = "オートシェイプ"
+                Case 3: 図類 = "グラフ": 図表 = 図表 + 1
+                Case 4: 図類 = "コメント": 図注 = 図注 + 1
+                Case 6: 図類 = "グループ"
+                Case 8: 図類 = "フォームコントロール"
+                Case 9: 図類 = "線"
+                Case 12: 図類 = "ActiveX コントロール（" & 図.OLEFormat.progID & "）": 図AX = 図AX + 1
+                Case 13: 図類 = "図": 図絵 = 図絵 + 1
+                Case 17: 図類 = "テキストボックス": 図箱 = 図箱 + 1
+                Case Else: 図類 = "種類 " & 図種
+            End Select
+            If 図種 <> 3 And 図種 <> 4 And 図種 <> 12 And 図種 <> 13 And 図種 <> 17 Then 図他 = 図他 + 1
+            文字数 = 0
+            文字数 = Len(図.TextFrame2.TextRange.text)
+            If 文字数 = 0 Then 文字数 = Len(図.TextFrame.Characters.text)
+            範 = "": 範 = 図.TopLeftCell.Address(False, False)
+            字 = "": 字 = 図.OnAction
+            前 = "": 前 = 図.Hyperlink.Address
+            容 = ""
+            If 図種 = 3 Then
+                For Each 系 In 図.Chart.SeriesCollection
+                    容 = 容 & IIf(容 = "", "", "　") & 系.Formula
+                Next 系
+            End If
+            If 図種 <> 4 And (図.Visible = False Or 図.Height <= 1 Or 図.Width <= 1) Then
+                幽数 = 幽数 + 1
+                If 幽数 <= 5 Then 幽 = 幽 & IIf(幽 = "", "", "・") & ws.Name & "!" & 図.Name
+            End If
+            区 = "図形": 項 = 図類: 場 = ws.Name & "!" & 範 & "　" & 図.Name & IIf(親 = "", "", "（グループ " & 親 & "）")
+            法 = Round(図.Height) & "×" & Round(図.Width) & IIf(字 = "", "", "・マクロ " & 字) & IIf(前 = "", "", "・リンク " & 前) & IIf(文字数 > 0, "・文字 " & 文字数 & " 字", "") & IIf(図.Visible, "", "・非表示")
+            If 図種 = 6 Then
+                For Each 部品 In 図.GroupItems
+                    列.Add Array(部品, 図.Name)
+                Next 部品
+            End If
+            Err.Clear
+            On Error GoTo 失敗
+            If 図種 <> 4 Then GoSub 詳を足す
+        Loop
+        On Error Resume Next
+        For Each 注 In ws.Comments
+            注数 = 注数 + 1
+            区 = "コメント": 項 = "メモ": 場 = ws.Name & "!" & 注.Parent.Address(False, False): 容 = "": 法 = "文字 " & Len(注.text) & " 字"
+            GoSub 詳を足す
+        Next 注
+        For Each 注 In ws.CommentsThreaded
+            注数 = 注数 + 1
+            区 = "コメント": 項 = "スレッド コメント": 場 = ws.Name & "!" & 注.Parent.Address(False, False): 容 = "": 法 = ""
+            GoSub 詳を足す
+        Next 注
+        ' 1i. ハイパーリンク（表示の文字はセルの値なので出さない）
+        For Each hl In ws.Hyperlinks
+            リ数 = リ数 + 1
+            範 = "(図形)": 範 = hl.Range.Address(False, False)
+            区 = "ハイパーリンク": 項 = "リンク": 場 = ws.Name & "!" & 範
+            容 = hl.Address & IIf(hl.SubAddress = "", "", "#" & hl.SubAddress): 法 = ""
+            GoSub 詳を足す
+        Next hl
+        Err.Clear
+        On Error GoTo 失敗
+次のシート:
+    Next 元
+
+    ' === 2. 名前
+    For Each 名前 In wb.names
+        参照 = "": 短 = "": 範 = "(ブック)"
+        On Error Resume Next
+        参照 = 名前.RefersTo
+        短 = 名前.Name
+        If 名前.Parent.Name <> wb.Name Then 範 = 名前.Parent.Name
+        On Error GoTo 失敗
+        名数 = 名数 + 1
+        字 = 短
+        If InStr(字, "!") > 0 Then 字 = Mid$(字, InStr(字, "!") + 1)
+        括 = (字 Like "_xl*" Or 字 = "_FilterDatabase" Or 字 Like "ExternalData_#*")
+        If Not 括 Then 名本 = 名本 + 1
+        区 = "名前": 項 = IIf(括, "Excel が作る名前", IIf(名前.Visible, "名前", "非表示の名前")): 場 = 短 & "（範囲 " & 範 & "）": 容 = 参照
+        法 = IIf((InStr(参照, "#REF!") > 0 Or InStr(参照, "#NAME?") > 0) And Not 括, "★参照先が壊れている", "")
+        GoSub 詳を足す
+        If Not 括 Then
+            If InStr(参照, "#REF!") > 0 Or InStr(参照, "#NAME?") > 0 Then
+                項 = "名前「" & 短 & "」の参照先が壊れている（" & 参照 & "）"
+                容 = "この名前を使う式・入力規則・印刷範囲が #REF! になる"
+                法 = "［数式］→［名前の管理］"
+                GoSub 点を足す
+            ElseIf 名前.Visible = False Then
+                隠名 = 隠名 & IIf(隠名 = "", "", "・") & 短
+            End If
+        End If
+    Next 名前
+    If 隠名 <> "" Then
+        項 = "非表示の名前（" & Left$(隠名, 80) & "）"
+        容 = "［名前の管理］にも出ない。他のブックから写ってきた古い名前が多い"
+        法 = "VBA の Names（Visible）でしか見えない"
+        GoSub 点を足す
+    End If
+
+    ' === 3. スタイル・ユーザー定義の表示形式（表示形式は VBA で一覧が取れないので、保存済みのファイルの styles.xml から読む）
+    On Error Resume Next
+    For Each 型 In wb.Styles
+        If 型.BuiltIn = False Then
+            区 = "スタイル": 項 = "ユーザー定義のスタイル": 場 = "ブック全体": 容 = 型.NameLocal: 法 = ""
+            GoSub 詳を足す
+        End If
+    Next 型
+    Err.Clear
+    書式数 = -1
+    If wb.path <> "" And (LCase$(Right$(wb.Name, 5)) = ".xlsx" Or LCase$(Right$(wb.Name, 5)) = ".xlsm") Then
+        一時 = Environ$("TEMP") & "\構造_" & Format$(Now, "hhnnss") & Int(Rnd * 10000)
+        Set 箱 = CreateObject("Scripting.FileSystemObject")
+        箱.CreateFolder 一時
+        箱.CopyFile wb.FullName, 一時 & "\b.zip"
+        Set 殻 = CreateObject("Shell.Application")
+        Set 中 = 殻.Namespace(CVar(一時 & "\b.zip")).ParseName("xl").GetFolder
+        殻.Namespace(CVar(一時)).CopyHere 中.ParseName("styles.xml"), 4 + 16 + 1024
+        時 = Timer
+        Do While Timer - 時 < 5 And Timer >= 時
+            If 箱.FileExists(一時 & "\styles.xml") Then
+                If FileLen(一時 & "\styles.xml") > 0 Then Exit Do
+            End If
+            DoEvents
+        Loop
+        If 箱.FileExists(一時 & "\styles.xml") Then
+            Set 流 = CreateObject("ADODB.Stream")
+            流.Charset = "utf-8"
+            流.Open
+            流.LoadFromFile 一時 & "\styles.xml"
+            xml = 流.ReadText
+            流.Close
+            書式数 = 0
+            Set 書辞 = CreateObject("Scripting.Dictionary")
+            p = InStr(xml, "<numFmt ")
+            Do While p > 0
+                q = InStr(p, xml, ">")
+                字 = Mid$(xml, p, q - p)
+                i = InStr(字, "formatCode=""")
+                j = InStr(字, "numFmtId=""")
+                If i > 0 And j > 0 Then
+                    書式 = Mid$(字, i + 12, InStr(i + 12, 字, """") - i - 12)
+                    書式 = Replace(Replace(Replace(Replace(Replace(書式, "&quot;", """"), "&lt;", "<"), "&gt;", ">"), "&apos;", "'"), "&amp;", "&")
+                    If val(Mid$(字, j + 10)) >= 164 And Not 書辞.exists(書式) Then
+                        書辞.Add 書式, 1
+                        書式数 = 書式数 + 1
+                        区 = "表示形式": 項 = "ユーザー定義の表示形式": 場 = "ブック全体": 容 = 書式: 法 = ""
+                        GoSub 詳を足す
+                    End If
+                End If
+                p = InStr(q, xml, "<numFmt ")
+            Loop
+        End If
+        箱.DeleteFolder 一時, True
+    End If
+    Err.Clear
+    On Error GoTo 失敗
+
+    ' === 4. クエリ・接続・他ブックへのリンク
+    On Error Resume Next
+    For Each 問 In wb.Queries
+        ク数 = ク数 + 1
+        字 = ""
+        For Each 元 In wb.Worksheets
+            For Each lo In 元.ListObjects
+                前 = "": 前 = lo.QueryTable.WorkbookConnection.Name
+                If 前 = "クエリ - " & 問.Name Or 前 = "Query - " & 問.Name Then 字 = 字 & IIf(字 = "", "", "・") & 元.Name & "!" & lo.Range.Address(False, False)
+            Next lo
+        Next 元
+        区 = "クエリ": 項 = 問.Name: 場 = IIf(字 = "", "（接続のみ・データモデル）", 字): 容 = Left$(問.Formula, 32000): 法 = "Power Query の M 言語"
+        GoSub 詳を足す
+    Next 問
+    For Each 繋 In wb.Connections
+        接数 = 接数 + 1
+        字 = "": 前 = "": p = 0
+        字 = 繋.OLEDBConnection.Connection
+        If 字 = "" Then 字 = 繋.ODBCConnection.Connection
+        組 = Empty: 組 = 繋.OLEDBConnection.CommandText
+        If IsArray(組) Then 前 = Join(組, " ") Else 前 = CStr(組)
+        p = 繋.OLEDBConnection.RefreshOnFileOpen
+        ' パスワードは伏せる
+        For Each 鍵 In Array("Password=", "Pwd=")
+            i = InStr(1, 字, 鍵, vbTextCompare)
+            If i > 0 Then
+                j = InStr(i, 字, ";")
+                If j = 0 Then j = Len(字) + 1
+                字 = Left$(字, i + Len(鍵) - 1) & "***" & Mid$(字, j)
+            End If
+        Next 鍵
+        区 = "接続": 項 = 繋.Name: 場 = "種類 " & 繋.Type: 容 = 字: 法 = IIf(前 = "", "", "コマンド " & 前) & IIf(p, "・開くとき更新", "")
+        GoSub 詳を足す
+        If p And InStr(字, "Microsoft.Mashup") = 0 Then
+            項 = "開くときに更新する接続「" & 繋.Name & "」"
+            容 = "接続先に届かない PC では開くたびに待たされ、エラーが出る"
+            法 = "［データ］→［クエリと接続］→［プロパティ］"
+            GoSub 点を足す
+        End If
+    Next 繋
+    組 = Empty: 組 = wb.LinkSources(1)
+    If IsArray(組) Then
+        For i = LBound(組) To UBound(組)
+            外数 = 外数 + 1
+            区 = "参照": 項 = "リンク元のファイル": 場 = "ブック全体": 容 = 組(i): 法 = ""
+            GoSub 詳を足す
+        Next i
+        項 = "他のブックを参照している（" & (UBound(組) - LBound(組) + 1) & " ファイル）"
+        容 = "相手のファイルが動く・名前が変わると #REF! になり、開くたびに更新を聞かれる"
+        法 = "［データ］→［リンクの編集］"
+        GoSub 点を足す
+    End If
+    Err.Clear
+    On Error GoTo 失敗
+
+    ' === 5. VBA（モジュール・手続き・田中さんの VBA CheckList の点検）
+    On Error Resume Next
+    k = -1: k = wb.VBProject.VBComponents.Count
+    On Error GoTo 失敗
+    If k < 0 Then
+        区 = "VBA": 項 = "読めません": 場 = "": 容 = "［VBA プロジェクト オブジェクト モデルへのアクセスを信頼する］が要ります": 法 = ""
+        GoSub 詳を足す
+    Else
+        For Each 部品 In wb.VBProject.VBComponents
+            Set cm = 部品.CodeModule
+            行数 = cm.CountOfLines
+            If 行数 > 0 Then
+                宣言 = ""
+                If cm.CountOfDeclarationLines > 0 Then 宣言 = cm.lines(1, cm.CountOfDeclarationLines)
+                字 = ""
+                For Each 並 In Split(宣言, vbCrLf)
+                    If 並 Like "*Declare *" And Left$(Trim$(並), 1) <> "'" Then
+                        語 = Trim$(Split(Split(Trim$(Mid$(並, InStr(並, "Declare ") + 8)), "(")(0), " Lib")(0))
+                        字 = 字 & IIf(字 = "", "", "・") & Mid$(語, InStrRev(語, " ") + 1)
+                    End If
+                Next 並
+                手 = ""
+                i = cm.CountOfDeclarationLines + 1
+                Do While i <= 行数
+                    手種 = 0
+                    手名 = cm.ProcOfLine(i, 手種)
+                    If 手名 = "" Then
+                        i = i + 1
+                    Else
+                        If 部品.Type = 1 Then マ数 = マ数 + 1
+                        始 = cm.ProcStartLine(手名, 手種): 長 = cm.ProcCountLines(手名, 手種)
+                        頭 = cm.lines(cm.ProcBodyLine(手名, 手種), 1)
+                        本文 = cm.lines(始, 長)
+                        Set 当辞 = CreateObject("Scripting.Dictionary")
+                        For Each 並 In Split(本文, vbCrLf)
+                            ' コメントを外し、文字列を潰す
+                            語 = "": 括 = False
+                            For p = 1 To Len(並)
+                                前 = Mid$(並, p, 1)
+                                If 前 = """" Then
+                                    括 = Not 括
+                                ElseIf 前 = "'" And Not 括 Then
+                                    Exit For
+                                ElseIf Not 括 Then
+                                    語 = 語 & 前
+                                End If
+                            Next p
+                            語 = " " & 語 & " "
+                            If 語 Like "*CreateObject(*" Then 当辞("留意: CreateObject") = 1
+                            If 語 Like "*[!.A-Za-z0-9_]Selection[!A-Za-z0-9_]*" Then 当辞("好ましくない: Selection") = 1
+                            If 語 Like "*Range(*&*" Then 当辞("好ましくない: Range の中で文字列結合") = 1
+                            If 語 Like "*[!A-Za-z0-9_]GoTo *" And Not 語 Like "*On Error*" Then 当辞("好ましくない: GoTo") = 1
+                            If 語 Like "*FileSearch*" Then 当辞("互換性: FileSearch（2007 で消えた）") = 1
+                            If 語 Like "*Cells.Count*" And Not 語 Like "*Cells.CountLarge*" Then 当辞("互換性: Cells.Count（CountLarge に）") = 1
+                            If 語 Like "*SaveAs*" And (語 Like "*xlExcel9795*" Or 語 Like "*FileFormat:=43*") Then 当辞("互換性: Excel 95/97 形式で保存") = 1
+                            If 語 Like "*ChartObjects*" Then 当辞("互換性: ChartObjects") = 1
+                            If 語 Like "*[!A-Za-z0-9_]Shapes[!A-Za-z0-9_]*" Then 当辞("互換性: Shapes") = 1
+                            If 語 Like "*CommandBars*" Then 当辞("互換性: CommandBars") = 1
+                            If 語 Like "*PivotCaches.Add*" Or 語 Like "*PivotCaches().Add*" Then 当辞("互換性: PivotCaches.Add") = 1
+                        Next 並
+                        If LCase$(手名) = "auto_open" Or LCase$(手名) = "auto_close" Then 当辞("留意: 古い自動実行") = 1
+                        当 = Join(当辞.keys, "／")
+                        手 = 手 & IIf(手 = "", "", "・") & 手名 & "（" & 長 & "行）"
+                        区 = "VBA": 項 = IIf(InStr(頭, "Private ") > 0, "Private ", "") & IIf(手種 > 0, Choose(手種, "Property Let", "Property Set", "Property Get"), IIf(頭 Like "*Function *", "Function", "Sub"))
+                        場 = 部品.Name & "." & 手名: 容 = 長 & " 行": 法 = 当
+                        GoSub 詳を足す
+                        For Each 鍵 In 当辞.keys
+                            If 鍵 Like "*FileSearch*" Or 鍵 Like "*Cells.Count*" Or 鍵 Like "*95/97*" Then
+                                項 = 部品.Name & "." & 手名 & ": " & Mid$(鍵, 6)
+                                容 = "今の Excel では止まるか、意図と違う形で動く"
+                                法 = "Alt+F11 で " & 部品.Name & " の " & 手名
+                                GoSub 点を足す
+                            ElseIf 鍵 = "留意: 古い自動実行" Then
+                                項 = 部品.Name & "." & 手名 & " が古い自動実行"
+                                容 = "Auto_Open／Auto_Close は VBA から開いたとき（Workbooks.Open）は動かない"
+                                法 = "ThisWorkbook の Workbook_Open／Workbook_BeforeClose に移す"
+                                GoSub 点を足す
+                            End If
+                        Next 鍵
+                        i = 始 + 長
+                    End If
+                Loop
+                区 = "VBA": 項 = Choose(IIf(部品.Type = 100, 4, IIf(部品.Type > 3, 4, 部品.Type)), "標準モジュール", "クラス", "フォーム", "シート/ブック")
+                場 = 部品.Name: 容 = 行数 & " 行・Option Explicit " & IIf(宣言 Like "*Option Explicit*", "あり", "なし") & IIf(字 = "", "", "・API 宣言 " & 字)
+                法 = 手
+                GoSub 詳を足す
+            End If
+        Next 部品
+        On Error Resume Next
+        For Each 部品 In wb.VBProject.References
+            If Not 部品.BuiltIn Then
+                字 = UCase$(部品.GUID)
+                If 字 <> "{00020430-0000-0000-C000-000000000046}" And 字 <> "{2DF8D04C-5BFA-101B-BDE5-00AA0044DE52}" And 字 <> "{0D452EE1-E08F-101A-852E-02608C4D0BB4}" Then
+                    標外数 = 標外数 + 1
+                    標外 = 標外 & IIf(標外 = "", "", "・") & 部品.Description & IIf(部品.IsBroken, "（参照不可）", "")
+                End If
+            End If
+        Next 部品
+        Err.Clear
+        On Error GoTo 失敗
+        If 標外数 > 0 Then
+            区 = "VBA": 項 = "標準でない参照設定": 場 = "ブック全体": 容 = 標外: 法 = ""
+            GoSub 詳を足す
+            項 = "標準でない参照設定 " & 標外数 & " 本"
+            容 = "その部品が入っていない PC では、関係ないマクロまでコンパイルエラーで止まる"
+            法 = "Alt+F11 → ［ツール］→［参照設定］"
+            GoSub 点を足す
+        End If
+    End If
+
+    ' === 6. まとめの気づき
+    If シ隠 > 0 Then
+        項 = "非表示のシート " & シ隠 & " 枚"
+        容 = "見えない所の式や値が、見えている表の結果を左右していることがある"
+        法 = "シート見出しを右クリック → ［再表示］"
+        GoSub 点を足す
+    End If
+    If 揮発 <> "" Then
+        項 = "揮発関数（" & 揮発 & "）"
+        容 = "開くたびに再計算される＝何も変えていなくても閉じるときに保存を聞かれ、大きい表では遅くなる"
+        法 = "［数式］→［数式の表示］"
+        GoSub 点を足す
+    End If
+    If 幽数 > 0 Then
+        項 = "見えないオブジェクト " & 幽数 & " 個（" & 幽 & IIf(幽数 > 5, "…", "") & "）"
+        容 = "非表示か大きさ 0 の図形。行のコピーで増え続け、ファイルを重くする"
+        法 = "［ホーム］→［検索と選択］→［オブジェクトの選択と表示］"
+        GoSub 点を足す
+    End If
+    If 図AX > 0 Then
+        項 = "ActiveX コントロール " & 図AX & " 個"
+        容 = "Office の更新や別の PC で動かなくなることがある"
+        法 = "［開発］→［デザインモード］（フォームコントロールに替える）"
+        GoSub 点を足す
+    End If
+    If 残規数 > 0 Then
+        項 = "中身の無い入力規則 " & 残規数 & " か所（" & 残規 & IIf(残規数 > 4, "…", "") & "）"
+        容 = "何も制限しない規則がコピーや貼り付けで残っている＝ファイルを重くするだけ"
+        法 = "範囲を選んで ［データ］→［データの入力規則］→［すべてクリア］"
+        GoSub 点を足す
+    End If
+
+    ' === 7. 概要（田中さんの診断ツールの［概要］と同じ項目）
+    区 = "概要": 場 = "": 法 = ""
+    項 = "ブック": 容 = wb.Name & IIf(wb.path = "", "（未保存）", "・" & Format$(FileLen(wb.FullName), "#,##0") & " バイト"): GoSub 要を足す
+    字 = ""
+    On Error Resume Next
+    For Each 組 In Array("Author", "Last Author", "Company", "Title")
+        前 = "": 前 = CStr(wb.BuiltinDocumentProperties(組).Value)
+        If 前 <> "" Then 字 = 字 & IIf(字 = "", "", "・") & Choose(1 + Abs(組 = "Last Author") + 2 * Abs(組 = "Company") + 3 * Abs(組 = "Title"), "作成者", "最終更新者", "会社", "タイトル")
+    Next 組
+    On Error GoTo 失敗
+    If 字 <> "" Then 項 = "プロパティに書かれているもの": 容 = 字 & "（中身は出しません）": GoSub 要を足す
+    項 = "シート": 容 = シ数 & " 枚（非表示 " & シ隠 & "）・グラフシート " & グ数 & "・保護 " & 保数: GoSub 要を足す
+    項 = "数式": 容 = 式数 & " セル（他ブックを参照 " & 外数 & " ファイル）": GoSub 要を足す
+    項 = "名前": 容 = 名数 & " 個（Excel が作る名前を除くと " & 名本 & "）": GoSub 要を足す
+    項 = "条件付き書式・入力規則": 容 = 条全 & " ルール・入力規則 " & Format$(規計, "#,##0") & " セル（使用範囲の中・範囲の全体では " & Format$(規全, "#,##0") & "）": GoSub 要を足す
+    項 = "ユーザー定義の表示形式": 容 = IIf(書式数 < 0, "（保存済みの xlsx/xlsm から読みます）", 書式数 & " 個"): GoSub 要を足す
+    項 = "テーブル・ピボット・クエリ・接続": 容 = 表数 & "・" & 回転 & "・" & ク数 & "・" & 接数: GoSub 要を足す
+    項 = "オブジェクト": 容 = 図上 & " 個（グラフ " & 図表 & "・図 " & 図絵 & "・テキストボックス " & 図箱 & "・ActiveX " & 図AX & "・コメント " & 注数 & " セル）": GoSub 要を足す
+    項 = "ハイパーリンク": 容 = リ数 & " 個": GoSub 要を足す
+    項 = "マクロ": 容 = IIf(マ数 > 0, "あり（標準モジュールの手続き " & マ数 & "）", "なし") & IIf(標外数 > 0, "・標準でない参照設定 " & 標外数, ""): GoSub 要を足す
+
+    ' === 8. 書き出す（概要 → 気をつける所 → 詳しく）
+    Set 出 = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
+    出.Name = 名
+    全 = 要.Count + 点.Count + 詳.Count
+    If 全 > 60000 Then 全 = 60000: 打切 = True
+    ReDim 出力(1 To 全, 1 To 5)
+    行 = 0
+    For Each 組 In 要
+        行 = 行 + 1
+        For j = 0 To 4: 出力(行, j + 1) = 組(j): Next j
+    Next 組
+    For Each 組 In 点
+        行 = 行 + 1
+        For j = 0 To 4: 出力(行, j + 1) = 組(j): Next j
+    Next 組
+    For Each 組 In 詳
+        If 行 >= 全 Then Exit For
+        行 = 行 + 1
+        For j = 0 To 4: 出力(行, j + 1) = 組(j): Next j
+    Next 組
+    With 出
+        .Range("A1:E" & 全 + 4).NumberFormat = "@"
+        .Range("A1").Value = "調査：ブックの構造　" & wb.Name
+        .Range("A2").Value = "セルの値は出していません（式・名前・書式・規則の形だけ）。このシートをコピーして AI に貼れば、中身を出さずに相談できます。"
+        .Range("A3").Value = IIf(打切, "多いので先頭の 60,000 行までを出しました。", "") & "気をつける所は「見つけたこと → なぜ → Excel のどこで確かめるか」。オフィス田中のワークシート診断ツールの項目に学んでいます。"
+        .Range("A4:E4").Value = Array("区分", "項目", "場所", "内容（値は出さない）", "なぜ・確かめる所・補足")
+        .Range("A5").Resize(全, 5).Value = 出力
+        .Range("A1").Font.Bold = True
+        .Range("A1").Font.Size = 12
+        With .Range("A4:E4")
+            .Font.Bold = True
+            .Interior.Color = RGB(221, 235, 247)
+        End With
+        With .Range("A4").Resize(全 + 1, 5)
+            .Borders.LineStyle = 1
+            .VerticalAlignment = -4160
+        End With
+        .Range("A1:A3").WrapText = False
+        .Range("A4:C" & 全 + 4).Columns.AutoFit
+        .Columns("D").ColumnWidth = 60
+        .Columns("E").ColumnWidth = 60
+        .Range("D5:E" & 全 + 4).WrapText = True
+        For j = 1 To 3
+            If .Columns(j).ColumnWidth > 40 Then .Columns(j).ColumnWidth = 40: .Columns(j).WrapText = True
+        Next j
+    End With
+    出.Activate
+    出.Range("A1").Select
+    Application.ScreenUpdating = True
+    Application.StatusBar = "調査_構造: 気をつける所 " & 点.Count & " 件・全 " & 全 & " 行（値は出していません）"
+    Exit Sub
+
+式を数える:
+    式数 = 式数 + 1
+    If 型数.exists(式R) Then
+        型数(式R) = 型数(式R) + 1
+        型末(式R) = 見.Address(False, False)
+    Else
+        型数.Add 式R, 1
+        型先.Add 式R, 見.Address(False, False)
+        型末.Add 式R, 見.Address(False, False)
+        型式.Add 式R, 式
+        型種.Add 式R, CreateObject("Scripting.Dictionary")
+        GoSub 関数を拾う
+        For Each 組 In Split(当, "|")
+            If 組 <> "" Then 関辞(組) = 1: 関全(組) = 1
+        Next 組
+    End If
+    If IsError(v) Then
+        Select Case CLng(v)
+            Case 2000: 種 = "#NULL!"
+            Case 2007: 種 = "#DIV/0!"
+            Case 2015: 種 = "#VALUE!"
+            Case 2023: 種 = "#REF!"
+            Case 2029: 種 = "#NAME?"
+            Case 2036: 種 = "#NUM!"
+            Case 2042: 種 = "#N/A"
+            Case 2045: 種 = "#SPILL!"
+            Case 2050: 種 = "#CALC!"
+            Case Else: 種 = "#エラー"
+        End Select
+    ElseIf isEmpty(v) Then
+        種 = "空"
+    ElseIf VarType(v) = vbBoolean Then
+        種 = "論理"
+    ElseIf VarType(v) = vbDate Then
+        種 = "日付"
+    ElseIf VarType(v) = vbString Then
+        種 = IIf(v = "", "空", "文字")
+    Else
+        種 = "数"
+    End If
+    Set 辞 = 型種(式R)
+    辞(種) = 辞(種) + 1
+    Return
+
+関数を拾う:
+    ' 式の中の関数名を拾う（文字列の中は数えない・_xlfn. などを外す）→ 当 = "|SUM|IF|"
+    当 = "|": 語 = "": 括 = False
+    For p = 1 To Len(式)
+        字 = Mid$(式, p, 1)
+        If 字 = """" Then
+            括 = Not 括: 語 = ""
+        ElseIf Not 括 Then
+            If 字 Like "[A-Za-z0-9._]" Then
+                語 = 語 & 字
+            ElseIf 字 = "(" And 語 <> "" Then
+                語 = UCase$(Replace(Replace(Replace(語, "_xlfn.", "", , , vbTextCompare), "_xlws.", "", , , vbTextCompare), "_xludf.", "", , , vbTextCompare))
+                If 語 Like "[A-Z]*" And InStr(当, "|" & 語 & "|") = 0 Then 当 = 当 & 語 & "|"
+                語 = ""
+            Else
+                語 = ""
+            End If
+        End If
+    Next p
+    Return
+
+詳を足す:
+    詳.Add Array(区, 項, 場, 容, 法)
+    Return
+
+点を足す:
+    点.Add Array("気をつける所", 項, "", 容, 法)
+    Return
+
+要を足す:
+    要.Add Array("概要", 項, "", 容, "")
+    Return
+
+失敗:
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+    Application.StatusBar = "ブックの構造: 調べられませんでした（" & Err.Description & "）"
+End Sub
