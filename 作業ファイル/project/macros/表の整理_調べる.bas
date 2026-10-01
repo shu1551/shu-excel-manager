@@ -5180,6 +5180,8 @@ Sub ブックの構造を一覧にする()
     '   数式（同じ形の式は 1 行にまとめ、結果は型だけ）／関数／参照／条件付き書式／入力規則／テーブル／ピボット／
     '   図形・グラフ・コメント（文字は字数だけ）／クエリ（M）／接続（パスワードは伏せる）／ハイパーリンク／VBA の点検
     '   式の中の文字・入力規則のリスト・テーブルの列名は表の形として出す。このシートをコピーして AI に貼れば、中身を出さずに相談できる
+    '   Excelコンボがエラーの相談で AI に渡すときは、シートを作らずに文字で返す（ブックは何も変えない）。
+    '   調べるのにかかった秒数も出す（田中さん: 診断に何分もかかるブックは末期症状に近い）
     ' （オフィス田中・田中亨さんのワークシート診断ツールの項目に学んだ。田中さんのツールも Excel だけで動く）
     Dim wb As Workbook, 出 As Worksheet, 古 As Object, 元 As Object, ws As Worksheet
     Dim 詳 As Collection, 点 As Collection, 要 As Collection, 列 As Collection
@@ -5204,17 +5206,22 @@ Sub ブックの構造を一覧にする()
     Dim cm As Object, 行数 As Long, 手 As String, 手種 As Long, 始 As Long, 長 As Long, 本文 As String, 宣言 As String
     Dim 当 As String, 当辞 As Object, マ数 As Long, 標外 As String, 標外数 As Long
     Dim 手名 As String, 頭 As String, 規計 As Double, 時 As Single, 書辞 As Object, 位 As Long
-    Dim 出力() As Variant
+    Dim 出力() As Variant, 文字で As Boolean, 計時 As Single, 秒 As Double, 文 As String
 
     On Error GoTo 失敗
     Set wb = ActiveWorkbook
+    計時 = Timer
+    ' Excelコンボが材料にするときは文字で返す（コンボ道具が無いブックでもこのマクロだけで動くように Run で聞く）
+    On Error Resume Next
+    文字で = Application.Run("'" & ThisWorkbook.Name & "'!コンボ道具.構造を文字で返すか")
+    On Error GoTo 失敗
     Application.ScreenUpdating = False
     Set 詳 = New Collection: Set 点 = New Collection: Set 要 = New Collection
     Set 関全 = CreateObject("Scripting.Dictionary")
 
     ' --- 出す先のシート（前の「調査：」のシートは作り直す）
     名0 = "調査_構造": 名 = 名0: 回 = 1
-    Do
+    Do While Not 文字で
         Set 古 = Nothing
         On Error Resume Next
         Set 古 = wb.Sheets(名)
@@ -5909,9 +5916,19 @@ Sub ブックの構造を一覧にする()
         GoSub 点を足す
     End If
 
+    秒 = Timer - 計時
+    If 秒 < 0 Then 秒 = 秒 + 86400
+    If 秒 > 30 Then
+        項 = "調べるのに " & Format$(秒, "0") & " 秒かかった"
+        容 = "ふつうは数秒で終わる。名前・表示形式・条件付き書式・入力規則・図形が異常に多いと長くなる＝ブックの健康状態が悪い疑い"
+        法 = "下の概要の件数で多いものを見る（［名前の管理］・［条件付き書式］→［ルールの管理］・［オブジェクトの選択と表示］）"
+        GoSub 点を足す
+    End If
+
     ' === 7. 概要（田中さんの診断ツールの［概要］と同じ項目）
     区 = "概要": 場 = "": 法 = ""
     項 = "ブック": 容 = wb.Name & IIf(wb.path = "", "（未保存）", "・" & Format$(FileLen(wb.FullName), "#,##0") & " バイト"): GoSub 要を足す
+    項 = "調べた時間": 容 = Format$(秒, "0.0") & " 秒": GoSub 要を足す
     字 = ""
     On Error Resume Next
     For Each 組 In Array("Author", "Last Author", "Company", "Title")
@@ -5931,8 +5948,6 @@ Sub ブックの構造を一覧にする()
     項 = "マクロ": 容 = IIf(マ数 > 0, "あり（標準モジュールの手続き " & マ数 & "）", "なし") & IIf(標外数 > 0, "・標準でない参照設定 " & 標外数, ""): GoSub 要を足す
 
     ' === 8. 書き出す（概要 → 気をつける所 → 詳しく）
-    Set 出 = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
-    出.Name = 名
     全 = 要.Count + 点.Count + 詳.Count
     If 全 > 60000 Then 全 = 60000: 打切 = True
     ReDim 出力(1 To 全, 1 To 5)
@@ -5950,6 +5965,20 @@ Sub ブックの構造を一覧にする()
         行 = 行 + 1
         For j = 0 To 4: 出力(行, j + 1) = 組(j): Next j
     Next 組
+    If 文字で Then
+        ' Excelコンボの材料：タブ区切りの文字（セルの中の改行は［改行］に）。ブックには何も書かない
+        文 = "ブックの構造（" & wb.Name & "・セルの値は含まない）" & vbLf & "区分" & vbTab & "項目" & vbTab & "場所" & vbTab & "内容" & vbTab & "なぜ・確かめる所・補足" & vbLf
+        For i = 1 To 全
+            For j = 1 To 5
+                文 = 文 & Replace(Replace(Replace(CStr(出力(i, j)), vbCrLf, "［改行］"), vbLf, "［改行］"), vbTab, " ") & IIf(j < 5, vbTab, vbLf)
+            Next j
+        Next i
+        Application.Run "'" & ThisWorkbook.Name & "'!コンボ道具.構造の文字を入れる", 文
+        Application.ScreenUpdating = True
+        Exit Sub
+    End If
+    Set 出 = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
+    出.Name = 名
     With 出
         .Range("A1:E" & 全 + 4).NumberFormat = "@"
         .Range("A1").Value = "調査：ブックの構造　" & wb.Name
@@ -6063,4 +6092,9 @@ Sub ブックの構造を一覧にする()
     Application.ScreenUpdating = True
     Application.DisplayAlerts = True
     Application.StatusBar = "ブックの構造: 調べられませんでした（" & Err.Description & "）"
+    If 文字で Then
+        文 = "（ブックの構造を調べられませんでした: " & Err.Description & "）"
+        On Error Resume Next
+        Application.Run "'" & ThisWorkbook.Name & "'!コンボ道具.構造の文字を入れる", 文
+    End If
 End Sub
