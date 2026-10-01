@@ -4862,7 +4862,7 @@ Sub ブックに隠れた物を一覧にする()
     Dim 数 As Long, 区 As Long
     Dim 域 As Range, 面 As Range, 値 As Variant, 末 As Range, 見 As Range, 組 As Variant
     Dim 名前 As Object, 型 As Object, 図 As Object, 参照 As String, 短 As String
-    Dim 辞 As Object, 書 As String, 部() As String, 検 As Long, 検行 As Long
+    Dim 辞 As Object, 書 As String, 部() As String, 検 As Long, 検行 As Long, 改先 As String, 改容 As String
 
     On Error GoTo 失敗
     Set wb = ActiveWorkbook
@@ -4946,7 +4946,8 @@ Sub ブックに隠れた物を一覧にする()
     数 = 0
     On Error Resume Next
     For Each 型 In wb.Styles
-        If 型.BuiltIn = False Then
+        ' 貼り付けで自動で増える名前（標準 2・桁区切り 2・スタイル 1 など）は隠し物ではないので数えない（実際の仕事のブック 15 本で 10 本に出た）
+        If 型.BuiltIn = False And Not (型.Name Like "標準*" Or 型.Name Like "桁区切り*" Or 型.Name Like "スタイル #*" Or 型.Name Like "ハイパーリンク*" Or 型.Name Like "Excel Built-in*" Or 型.Name Like "Normal*" Or 型.Name Like "通貨*" Or 型.Name Like "パーセント*") Then
             数 = 数 + 1
             If 数 <= 40 Then
                 種 = "ユーザー定義のセルスタイル"
@@ -4974,7 +4975,8 @@ Sub ブックに隠れた物を一覧にする()
 
     ' --- 4. ブックのプロパティ
     On Error Resume Next
-    For Each 組 In Array("Title", "Subject", "Author", "Last Author", "Keywords", "Comments", "Company", "Manager", "Category", "Hyperlink base")
+    ' 作成者・最終更新者は、ほぼ全部のブックに入っていて見つけ物にならないので出さない（個人名を消すなら［ドキュメント検査］）
+    For Each 組 In Array("Title", "Subject", "Keywords", "Comments", "Company", "Manager", "Category", "Hyperlink base")
         書 = ""
         書 = CStr(wb.BuiltinDocumentProperties(組).Value)
         If 書 <> "" Then
@@ -5040,13 +5042,8 @@ Sub ブックに隠れた物を一覧にする()
                     If VarType(値) = vbString Then
                         If InStr(値, vbLf) > 0 Then
                             If 見.WrapText = False Or 見.RowHeight < (UBound(Split(値, vbLf)) + 1) * 見.Font.Size * 1.15 Then
-                                If 検行 < 15 Then
-                                    種 = "セル内改行で見えない行があるセル"
-                                    場 = 元.Name & "!" & 見.Address(False, False)
-                                    容 = Replace(Left$(CStr(値), 30), vbLf, "[改行]")
-                                    法 = "数式バーを広げる（Ctrl+Shift+U）か、行の高さを広げる。LEN で字数がずれる"
-                                    GoSub 行を足す
-                                End If
+                                ' 1 シートに何十もあることがある（データの中の複数行の文）ので、行は 1 つにまとめて出す
+                                If 検行 = 0 Then 改先 = 見.Address(False, False): 改容 = Replace(Left$(CStr(値), 30), vbLf, "[改行]")
                                 検行 = 検行 + 1
                             End If
                         End If
@@ -5078,6 +5075,13 @@ Sub ブックに隠れた物を一覧にする()
             End If
         Next 見
         On Error GoTo 失敗
+        If 検行 > 0 Then
+            種 = "セル内改行で見えない行があるセル"
+            場 = 元.Name & "!" & 改先
+            容 = 検行 & " セル（先頭 " & 改先 & "「" & 改容 & "」）"
+            法 = "数式バーを広げる（Ctrl+Shift+U）か、行の高さを広げる。LEN で字数がずれる"
+            GoSub 行を足す
+        End If
 
         ' 5c. 入力規則のメッセージ（空のセルにも付く）
         Set 面 = Nothing

@@ -1232,7 +1232,9 @@ def validate_vba_code(code, force=False, old_code='', project_code=None):
         except Exception:
             pass                                 # ブックを読めなければ、読めた範囲（old_code）での判定のまま止める
     if pollution:
-        errors.append(case_pollution_message(pollution))
+        # 知らせるだけで止めない（2026-10-01 実際の仕事のブック 15 本で確かめた: 小文字の宣言は 4 本のブックに既にあり、
+        # どれも動作に影響していない。止めると書き込みが 1 往復無駄になるだけ。見た目の話なので、宣言を直すかは書く側が決める）
+        print("注意: " + case_pollution_message(pollution).replace('書き換えます', '書き換わります'))
 
     if errors:
         for err in errors:
