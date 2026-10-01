@@ -5070,3 +5070,16 @@ def test_seiri_prefire_fires_the_request_in_one_call_20260925(monkeypatch):
     src = (pathlib.Path(vw.__file__).parent / "vba_mcp_server.py").read_text(encoding="utf-8")
     assert 'vba("seiri 頼みの文") を 1 回（先撃ち）' in src
     assert '"seiri 頼みの文" を 1 回' in src
+
+
+def test_vbm018_skips_procedures_that_already_fall_back_to_the_standard_regexp():
+    src = ('Function 正規表現を作る() As Object\n'
+           '    On Error Resume Next\n'
+           '    Set 正規表現を作る = CreateObject("VBScript.RegExp")\n'
+           '    If 正規表現を作る Is Nothing Then Set 正規表現を作る = 標準の正規表現を作る()\n'
+           'End Function\n'
+           'Sub 古い書き方()\n'
+           '    Set re = CreateObject("VBScript.RegExp")\n'
+           'End Sub\n')
+    lines = src.split('\n')
+    assert [x[0] for x in vv._diag_vbscript_regexp(lines)] == [7]                  # 対応済みの手続き（3 行目）は出ない
