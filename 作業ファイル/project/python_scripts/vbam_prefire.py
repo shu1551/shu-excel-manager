@@ -538,6 +538,11 @@ _SHELF_QUESTION = ("とは何", "とは？", "とは?", "って何", "の違い�
                    "どうやって", "どうしたら", "どうすれば", "やり方", "方法を", "方法は", "使い方を教",
                    "使い方は", "使い方が分", "使い方がわ", "相談", "コツ", "作り方", "分析して", "傾向",
                    "考え方", "何が言え", "何が分か", "した方がいい", "しない方がいい", "使わない方がいい")
+# エラーの原因を尋ねる依頼（「B3 が #N/A になる原因を教えて」）は、一覧を作る棚でなく AI が構造を見て答える（2026-10-02・
+# オフィス田中の使い方＝エラーの相談はブックの構造を添えて AI に聞く）。エラーの印と理由を尋ねる語が両方あるときだけ止める
+# （「ブックが重い原因を調べて」はエラーの印が無いので今までどおり棚に当たる）
+_SHELF_ERROR_MARK = ("エラー", "#N/A", "#REF", "#NAME", "#VALUE", "#DIV", "#SPILL", "#NUM", "#NULL", "#CALC")
+_SHELF_WHY = ("原因", "なぜ", "どうして", "なんで", "何で", "理由")
 
 
 def _ask_points(ask, req):
@@ -597,6 +602,8 @@ def shelf_pick(request, entries=()):
             return ''
     low = req.lower()
     if any(w in req for w in _SHELF_NOT_WORK) or any(w.lower() in low for w in _SHELF_QUESTION):
+        return ''
+    if any(w.lower() in low for w in _SHELF_ERROR_MARK) and any(w in req for w in _SHELF_WHY):
         return ''
     points, banned, order = {}, set(), []
     for e in entries or ():
