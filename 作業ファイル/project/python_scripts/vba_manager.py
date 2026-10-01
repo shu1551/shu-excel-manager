@@ -1154,8 +1154,10 @@ def build_parser():
 
     # c. ブックの開閉・保存・印刷まわり
     p = sub.add_parser("open",         # open <path>
-                       help="ブックを開く（見えているExcelに合流。未起動なら通常起動＝アドインも読み込まれる）")
+                       help="ブックを開く（見えているExcelに合流。未起動なら通常起動＝アドインも読み込まれる。CSV は壊れる列だけ文字列で）")
     p.add_argument("posargs", nargs="*")
+    p.add_argument("--excel-default", dest="excel_default", action="store_true",
+                   help="CSV・テキストを Excel の既定どおり開く（先頭の 0・長い数・1-2 などが読み替えられる）")
     p = sub.add_parser("close",        # close <ブック名|path> (--save|--no-save) [-y]
                        help="開いているブックを1冊閉じる（名指し・保存方針・確認の三点セット。Excel本体は終了しない）")
     p.add_argument("posargs", nargs="*")
