@@ -203,6 +203,7 @@ compile / gate [絞り込み] [--timeout 秒] / test [絞り込み]   # 全体�
 run-macro <マクロ> [引数…] [--input-text 値] [--raw]   # 実行（ハーネス経由＝実行時エラーが文字で返る）
 rehearse <マクロ> [--timeout 秒] [--addins]             # コピーに試し撃ちして差分報告（本体は無傷）
 call-graph [--macro 名] [--mermaid] / impact <マクロ> / wiring / docs   # 呼び出し関係・影響範囲・ボタン配線・取説
+flow <マクロ名> [--module 名] [--out x.md]    # マクロの中の流れ図（Mermaid・コードから機械的に・AI なし。引き継ぎ資料に）
 checkup [--form] [--note "…"] [--history]              # 健康診断（利用者が明示したときだけ）
 inspect-gui [マクロ] / capabilities [コマンド] / metrics / process [--kill PID] / setup-check / diag
 close-form [題名] [--list] / vbe-reset [--check]        # 表示中フォームを閉じる・中断モード解除（人の指示でだけ）

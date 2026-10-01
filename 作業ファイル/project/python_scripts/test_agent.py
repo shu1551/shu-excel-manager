@@ -2570,6 +2570,8 @@ def test_shelf_plan_fires_every_clause_and_pick_reads_handbooks_and_mishearing_2
     assert vp.shelf_pick("【手順書：重複チェック】削除は頼まれるまでしない", E) == ''   # 棚に無い名前の手順書は本文で採点しない
     assert vp.shelf_pick("D31の式がエラーになる原因を探して直して", E) == ''
     assert vp.shelf_pick("エラー値を一覧にして", E) == 'エラー値のセルを一覧にする'
+    E2 = E[:4] + [{'name': '帳票を右に1行1件の一覧にする', 'ask': '帳票を一覧|一覧に直', 'combo': None}]
+    assert vp.shelf_pick("帳票を一覧に直して", E2) == '帳票を右に1行1件の一覧にする'   # 「直して」で頼む本体＝調べるだけの棚の止めから外す（VBA と同じ・2026-10-01）
 
 
 def test_shelf_run_reports_page_setup_row_height_and_filter_changes_20260924():

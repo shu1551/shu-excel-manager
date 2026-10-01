@@ -24,6 +24,10 @@ py vba_manager.py docs [--out f.md] [--preview 3]  # --preview で各シート�
 py vba_manager.py call-graph                    # 未解決Call(存在しないマクロ呼び=一語バグ)・関係一覧・孤立
 py vba_manager.py call-graph --macro 親処理      # そのマクロ起点の呼び出しツリー＋呼び元
 py vba_manager.py call-graph --mermaid          # Mermaid図を _last_callgraph.md に（未解決は赤ノード）
+py vba_manager.py call-graph --macro 親処理 --mermaid   # そのマクロから呼ばれる先（間接まで）だけを図に（全体は数百節点で読めない）
+py vba_manager.py flow マクロ名 [--module 名] [--out x.md]  # マクロの中の流れ（分岐・ループ・GoSub・エラー処理）を Mermaid の流れ図に。
+#  コードから機械的に作る（AI なし・読み違いなし・何度でも同じ図）。各ブロックの直前のコメントが節点の言葉。GoSub の節・エラー処理は別の枠。
+#  節点が 150 を超えたら深い入れ子を「中身 n 行は省略」にたたむ（--max-nodes）。GitHub・Qiita・mermaid.live にそのまま貼れる（属人化・引き継ぎの資料）
 
 # 対話セッション（接続を張ったままコマンドを打ち続ける。2コマンド目から再接続なし）
 py vba_manager.py shell                         # exit で終了。batch のファイル版に対する対話版
