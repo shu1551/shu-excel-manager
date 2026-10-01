@@ -3403,8 +3403,27 @@ def cmd_save_as(args):
     return True
 
 
+def _open_csv_text_protected(xl, path, scan):
+    """CSV・テキストを、壊れる列だけ文字列（ほかは標準）にして開く → ブック。Workbooks.OpenText は値を返さないので ActiveWorkbook を取る。"""
+    import vbam_csvrisk as _cr
+    delim = scan['delimiter']
+    before = {w.FullName.lower() for w in xl.Workbooks}
+    xl.Workbooks.OpenText(Filename=path, Origin=scan['origin'], StartRow=1, DataType=1, TextQualifier=1,
+                          ConsecutiveDelimiter=False, Tab=(delim == '\t'), Semicolon=(delim == ';'),
+                          Comma=(delim == ','), Space=False, Other=False,
+                          FieldInfo=_cr.risky_field_info(scan))
+    wb = xl.ActiveWorkbook
+    for w in xl.Workbooks:                                   # 取り違えを避ける: 今回増えたブックを優先
+        if w.FullName.lower() not in before:
+            wb = w
+    return wb
+
+
 def cmd_open(args):
-    """ブックを開く: open <path>
+    """ブックを開く: open <path> [--excel-default]
+
+    CSV・テキスト（.csv .txt .tsv）は、Excel の既定で開くと先頭の 0・16 桁以上の数・1-2 のような日付・JAN1・12E5 が
+    読み替えられ元に戻らないので、壊れる列だけ文字列にして開き、どの列を守ったかを知らせる（--excel-default で既定どおり）。
 
     「人が開くのと同じ場所」に開くのが原則:
       - 既に開いていれば前面化して知らせるだけ（二重には開かない）
@@ -3425,6 +3444,18 @@ def cmd_open(args):
     if not path or not os.path.exists(path):
         print(f"エラー: ファイルが見つかりません: {rest[0]}")
         return False
+
+    # CSV・テキストを Excel の既定で開くと、先頭の 0・16 桁以上の数・1-2 のような短い日付・JAN1・12E5 が読み替えられ、
+    # 保存した時点で元に戻らない。壊れる列だけ文字列にして開く（2026-10-01・オフィス田中「CSV の自動データ変換」）
+    risky = None
+    if os.path.splitext(path)[1].lower() in ('.csv', '.txt', '.tsv') and not getattr(args, 'excel_default', False):
+        try:
+            import vbam_csvrisk as _cr
+            _scan = _cr.scan_csv(path)
+            if _scan['cols']:
+                risky = _scan
+        except Exception:
+            risky = None
 
     # 既に開いていないか（全インスタンス横断）
     for wb in _running_excel_workbooks():
@@ -3472,13 +3503,55 @@ def cmd_open(args):
             pass
 
     if xl is not None:
-        wb = xl.Workbooks.Open(path)
+        if risky:
+            wb = _open_csv_text_protected(xl, path, risky)
+        else:
+            wb = xl.Workbooks.Open(path)
         try:
             wb.Activate()
         except Exception:
             pass
         print(f"開きました: {wb.Name}  （起動中の Excel に合流）")
+        if risky:
+            import vbam_csvrisk as _cr
+            for line in _cr.describe_risks(risky):
+                print(line)
         return True
+
+    if not excel_somewhere and risky:
+        # Excel が動いていない。os.startfile で開くと既定の読み替えが走るので、先に普通に起こして OpenText で開く（アドインは普段どおり読まれる）
+        try:
+            import subprocess
+            subprocess.Popen(["cmd", "/c", "start", "", "excel.exe"], stdin=subprocess.DEVNULL)
+            limit = time.time() + 40.0
+            while time.time() < limit and xl is None:
+                time.sleep(1.0)
+                try:
+                    cand = _get_active_excel()
+                    if bool(cand.Visible):
+                        xl = cand
+                except Exception:
+                    pass
+            if xl is not None:
+                wb = _open_csv_text_protected(xl, path, risky)
+                try:
+                    wb.Activate()
+                except Exception:
+                    pass
+                print(f"開きました: {wb.Name}  （Excel を通常起動して、壊れる列を文字列で）")
+                import vbam_csvrisk as _cr
+                for line in _cr.describe_risks(risky):
+                    print(line)
+                return True
+        except Exception:
+            pass
+        print("⚠ Excel を起こして開くことができなかったので、この CSV は開いていません"
+              "（Excel の既定で開くと壊れる列があります）。Excel を先に起動してから open をやり直すか、"
+              "既定どおり開くなら --excel-default を付けてください。")
+        import vbam_csvrisk as _cr
+        for line in _cr.describe_risks(risky):
+            print(line)
+        return False
 
     if not excel_somewhere:
         # COM から見えなくても EXCEL.EXE のプロセスだけ残っている残骸が居る

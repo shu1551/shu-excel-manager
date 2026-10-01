@@ -502,6 +502,8 @@ py vba_manager.py name delete 基準値
 ```bash
 # --- a. 編集の足回り ---
 py vba_manager.py row insert 5 2          # 5行目に2行挿入 / row delete 5 2（--sheet 名 で対象明示可）
+py vba_manager.py open ファイル.csv [--excel-default]   # CSV・テキストは、Excel の既定で開くと先頭の 0・16 桁超の数・1-2・JAN1・12E5 が読み替えられ保存で元に戻らないので、
+#  壊れる列だけ文字列にして開く（ほかの列は普段どおり数・日付）。守った列を知らせる。--excel-default で既定どおり
 py vba_manager.py col insert C 1          # C列に1列挿入 / col delete C 1
 #  列・行の挿入／削除は、VLOOKUP の列番号（,3,）・HLOOKUP の行番号・INDEX の行／列番号の**直書きの数字**を、Excel が直さないので
 #  同じデータを指すように道具が直す（操作の前に全シートの式を読み、あとで番号だけ書き換える。何式直したか式ごとに出す）。
