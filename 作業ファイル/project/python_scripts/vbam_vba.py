@@ -686,6 +686,16 @@ def cmd_check(args):
         for pname, n in _diag_long_procs(procs):
             mod_info["warnings"].append(f"プロシージャ '{pname}' が {n} 行あります（150 行超）")
 
+        # VBM017: 小文字の宣言（`Dim value` 等）。VBE がブック全体の `.Value` を `.value` に書き換えている（2026-10-01）
+        _poll = {}
+        for lineno, nm, canon in find_case_pollution('\n'.join(lines)):
+            _poll.setdefault((nm, canon), []).append(lineno)
+        if _poll:
+            _shown = '、'.join(f"`{nm}`×{len(ls)}（行 {ls[0]}〜）" for (nm, _c), ls in list(_poll.items())[:6])
+            mod_info["warnings"].append(
+                f"小文字の宣言が {len(_poll)} 種あり、ブック全体の `.{list(_poll)[0][1]}` などを小文字に書き換えています"
+                f"（見た目だけ。動作は変わりません）: {_shown}" + ('…' if len(_poll) > 6 else ''))
+
         inv_modules.append({'name': comp_name, 'type': int(comp.Type),
                             'procs': [{'name': p["name"]} for p in procs], 'code': '\r\n'.join(lines)})
         results["modules"].append(mod_info)
@@ -1091,6 +1101,7 @@ _CHECK_RULES = [
     # 2026-09-17: clean-vba（9/16 夜）の目を check に畳んだ。戻し忘れは VBM008 が既に見る
     ("VBM015", "warning", "On Error Resume Next（エラーを握りつぶす行）", "手続き内", ""),
     ("VBM016", "warning", "150 行を超えるプロシージャ", "手続き内", ""),
+    ("VBM017", "warning", "小文字の宣言（Dim value 等）がブック全体の .Value を小文字に書き換えている", "手続き内", ""),
 ]
 
 
@@ -2249,6 +2260,20 @@ def cmd_get(args):
     return True
 
 
+def _project_code_fn(target_file):
+    """validate_vba_code の project_code 用: 対象ブックの全モジュールのコードを 1 本の文字で返す関数（呼ばれたときだけ読む）。"""
+    def _read():
+        _xl, wb = get_workbook(target_file)
+        out = []
+        for comp in wb.VBProject.VBComponents:
+            cm = comp.CodeModule
+            n = cm.CountOfLines
+            if n:
+                out.append(cm.Lines(1, n))
+        return '\r\n'.join(out)
+    return _read
+
+
 def cmd_replace_procedure(args):
     """プロシージャを置換 (コードファイル省略時は _last_proc.vba を使用)"""
     target_file, rest = parse_target_and_rest(args.posargs)
@@ -2277,7 +2302,7 @@ def cmd_replace_procedure(args):
     new_code = read_code_file(resolved)
 
     # 簡易構文チェック・エンコード検証
-    if not validate_vba_code(new_code, getattr(args, 'force', False)):
+    if not validate_vba_code(new_code, getattr(args, 'force', False), project_code=_project_code_fn(target_file)):
         return False
 
     # プロシージャ名を特定
@@ -2806,7 +2831,7 @@ def cmd_add_procedure(args):
         print(f"エラー: コードファイルが見つかりません: {code_file}")
         return False
     new_code = read_code_file(resolved)
-    if not validate_vba_code(new_code, force=getattr(args, 'force', False)):
+    if not validate_vba_code(new_code, force=getattr(args, 'force', False), project_code=_project_code_fn(target_file)):
         return False
     # コードファイルに複数本入っていることがある（get は3本以上を連結して
     # 1つの _last_proc.vba に書く）。先頭1本だけ見て重複検査すると、2本目以降が
@@ -3196,6 +3221,20 @@ def cmd_replace_module(args):
         if tmp_norm and os.path.exists(tmp_norm):
             _remove_export_artifacts(tmp_norm)
         return False
+
+    # 小文字の宣言（`Dim value` 等）が、ブック全体の `.Value` を小文字にする（2026-10-01）。同じ綴りで既に宣言されていれば止めない
+    pollution = find_case_pollution(bas_head)
+    if pollution and not getattr(args, 'force', False):
+        try:
+            pollution = find_case_pollution(bas_head, _project_code_fn(target_file)())
+        except Exception:
+            pass
+        if pollution:
+            print("エラー: " + case_pollution_message(pollution))
+            print("  （--force で強行可）")
+            if tmp_norm and os.path.exists(tmp_norm):
+                _remove_export_artifacts(tmp_norm)
+            return False
 
     xl, wb = get_workbook(target_file)
     if make_backup(wb.FullName, f"module_{module_name}") is None and not getattr(args, 'force', False):
@@ -5908,6 +5947,23 @@ def cmd_code_replace(args):
     if tolerance:
         print(f"（完全一致なし → {tolerance}して探し直し: {total_lines}行に一致。"
               "VBA は保存時に識別子の大小文字や演算子前後の空白を揃えるため、書いた字面と違うことがあります）")
+
+    # 置換後の行が、ブック全体の綴りを書き換える小文字の宣言を持ち込まないか（2026-10-01・変数名が小文字の value/name/row 等）
+    if not getattr(args, 'force', False):
+        poll = []
+        for comp, changes in plans:
+            for i, old, new in changes:
+                for _ln, nm, canon in find_case_pollution(new, old):
+                    poll.append((f"[{comp.Name}] {i}行目", nm, canon))
+        if poll:
+            have = declared_names(_project_code_fn(target_file)())          # ブックが既に同じ綴りで汚れていれば何も起きない
+            poll = [(w, nm, canon) for (w, nm, canon) in poll if nm not in have]
+        if poll:
+            print("エラー: 小文字の宣言がブック全体の綴りを書き換えます（VBE の仕様。宣言を消しても戻りません）:")
+            for w, nm, canon in poll[:8]:
+                print(f"  {w}: `{nm}` ← `.{canon}` が `.{nm}` になります（別名に: `my{canon}` など）")
+            print("  --force で強行できます。")
+            return False
 
     # 差分プレビュー
     print(f"--- 置換プレビュー: {len(plans)}モジュール / {total_lines}行 ---")
