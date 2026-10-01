@@ -366,9 +366,22 @@ def _code_part(raw):
 
 
 def _diag_vbscript_regexp(lines):
-    """VBM018: VBScript.RegExp を作っている行 → [(行番号(1始まり), 行テキスト)]（純 Python・コメントの中は除く）。"""
-    return [(i + 1, raw.strip()[:80]) for i, raw in enumerate(lines)
+    """VBM018: VBScript.RegExp を作っている行 → [(行番号(1始まり), 行テキスト)]（純 Python・コメントの中は除く）。
+
+    作れなかったときに VBA 標準の RegExp（New RegExp・標準の正規表現を作る・正規表現_標準版を作る）へ切り替えているプロシージャは、
+    対応済みなので出さない（2027 年の VBScript 廃止に備えた形・2026-10-01）。"""
+    hits = [(i + 1, raw.strip()[:80]) for i, raw in enumerate(lines)
             if re.search(r'VBScript\.RegExp', _code_part(raw), re.IGNORECASE)]
+    if not hits:
+        return hits
+    out = []
+    for ln, text in hits:
+        proc = next((p for p in _split_procedures(lines) if p["start"] <= ln - 1 <= p["end"]), None)
+        body = '\n'.join(_code_part(lines[i]) for i in range(proc["start"], proc["end"] + 1)) if proc else ''
+        if re.search(r'New\s+RegExp|標準の正規表現を作る|正規表現_標準版を作る', body):
+            continue
+        out.append((ln, text))
+    return out
 
 
 def _diag_text_import(lines, procs):
