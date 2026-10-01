@@ -145,6 +145,7 @@ from vbam_devtools import *  # noqa: F401,F403  (2026-09-16 職場向け VBA ツ
 from vbam_lineage import *  # noqa: F401,F403  (2026-09-17 系譜と閉じたブック: versions・history・list-file・grep-files・export-file)
 from vbam_audit import *  # noqa: F401,F403  (2026-09-17 数式・データ総合診断エンジン)
 from vbam_flow import *  # noqa: F401,F403  (2026-10-01 マクロの中の流れを Mermaid の流れ図に・flow)
+from vbam_structure import cmd_structure, cmd_no_values, no_values_refusal  # noqa: F401  (2026-10-01 値を出さずにブックの構造だけ・structure)
 # AI の機能（agent・set-key・clear-key）は vbam_agent 一式があるときだけ読む（2026-09-12・本体だけでも動く形に）。
 # 黙って飛ばすのは「ファイルが無い」ときだけ。中身に誤りがあれば今まで通り例外で止まる
 import importlib.util as _ilu
@@ -336,6 +337,20 @@ def build_parser():
     p.add_argument("--out", default=None, help="Markdown の出力先（省略時 _last_flow.md）")
     p.add_argument("--max-nodes", dest="max_nodes", type=int, default=150,
                    help="節点の上限（超えたら深い入れ子を「中身 n 行は省略」にたたむ。既定 150）")
+
+    # structure [excel_file] [--out 出力.md] [--sheet 名]
+    p = sub.add_parser("structure", aliases=["構造"],
+                       help="値を出さずにブックの構造だけを 1 枚に（式・名前・書式・条件付き書式・入力規則・テーブル・ピボット・図形・"
+                            "クエリ・接続・リンク・VBA の点検）。機密のブックでも AI に渡せる（オフィス田中の診断ツールに学ぶ）")
+    p.add_argument("posargs", nargs="*")
+    p.add_argument("--out", default=None, help="Markdown の出力先（省略時 _last_structure.md）")
+    p.add_argument("--sheet", dest="sheet_opt", default=None, help="このシートだけ（省略時はブック全体）")
+
+    # no-values [on|off]
+    p = sub.add_parser("no-values", aliases=["値なし"],
+                       help="値なしの切り替え：on の間は materials・seiri・shelf-run が値を出さず（型・番地・式だけ）、"
+                            "値を返す手（read-range・screenshot 等）を止める。中身を外に出せないブックで AI を使うとき")
+    p.add_argument("posargs", nargs="*")
 
     # impact(影響範囲) [excel_file] <マクロ名>
     p = sub.add_parser("impact", aliases=["影響範囲"],
@@ -696,6 +711,8 @@ def build_parser():
                    help="先頭に見せる行数（既定5。省略時、40行×30列までの表は全体を出す）")
     p.add_argument("--full", action="store_true",
                    help="200行×30列までの表は全体を出す（エージェント・採点係が使う。読み直しの往復を無くす）")
+    p.add_argument("--no-values", dest="no_values", action="store_true",
+                   help="値を出さず型だけ（数・文・日・式→型）。no-values on の間はいつもこれ（2026-10-01）")
     p.add_argument("--sheet", dest="sheet_opt", default=None,
                    help="対象シート名（posargでも可。省略時はアクティブシート）")
 
@@ -1848,6 +1865,11 @@ def _logged(fn):
 
     @functools.wraps(fn)
     def run(args):
+        # 値なしの切り替え中は、値を返す手を入れ子（batch・agent の中）でも止める（2026-10-01・structure）
+        refusal = no_values_refusal(getattr(args, 'command', None) or fn.__name__.replace('cmd_', '', 1).replace('_', '-'))
+        if refusal:
+            print(refusal)
+            return False
         if getattr(_CALL_LOCAL, 'depth', 0):
             return fn(args)
         _CALL_LOCAL.depth = 1
@@ -1927,6 +1949,10 @@ def _raw_command_table():
         "docs":              cmd_docs,
         "call-graph":        cmd_call_graph,
         "flow":              cmd_flow,            # 2026-10-01 マクロの流れ図（Mermaid）
+        "structure":         cmd_structure,       # 2026-10-01 値を出さずに構造だけ（オフィス田中の診断ツールに学ぶ）
+        "構造":              cmd_structure,
+        "no-values":         cmd_no_values,       # 2026-10-01 値なしの切り替え（AI に値を渡さない）
+        "値なし":             cmd_no_values,
         "流れ図":              cmd_flow,
         "checkup":           cmd_checkup,
         "健康診断":            cmd_checkup,

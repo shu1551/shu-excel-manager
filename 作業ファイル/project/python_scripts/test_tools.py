@@ -2566,7 +2566,7 @@ def test_capabilities_destructive_set_is_explicit():
 def test_rules_codes_are_unique_and_sequential():
     codes = [r[0] for r in vv._CHECK_RULES]
     assert codes == sorted(set(codes))
-    assert codes[0] == 'VBM001' and codes[-1] == 'VBM019'      # 2026-09-17: VBM012〜014、同日 VBM015・016（clean-vba を畳んだ）／2026-10-01: VBM018（VBScript.RegExp）・VBM019（テキスト取り込み）
+    assert codes[0] == 'VBM001' and codes[-1] == 'VBM021'      # 2026-09-17: VBM012〜014、同日 VBM015・016（clean-vba を畳んだ）／2026-10-01: VBM018（VBScript.RegExp）・VBM019（テキスト取り込み）・VBM020/021（オフィス田中 VBA CheckList）
 
 
 def test_rules_vbm012_to_014_are_errors():
@@ -2579,7 +2579,8 @@ def test_rules_vbm012_to_014_are_errors():
 def test_rules_imported_four_cite_their_origin():
     imported = {r[0]: r[4] for r in vv._CHECK_RULES if r[4]}
     assert imported == {'VBM008': 'xlflow VBA203', 'VBM009': 'xlflow VBA221',
-                        'VBM010': 'xlflow VBA240', 'VBM011': 'xlflow VBA215'}
+                        'VBM010': 'xlflow VBA240', 'VBM011': 'xlflow VBA215',
+                        'VBM020': 'オフィス田中 VBA CheckList', 'VBM021': 'オフィス田中 VBA CheckList'}
 
 
 def test_xlflow_commands_are_wired():

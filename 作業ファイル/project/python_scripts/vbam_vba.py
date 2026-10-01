@@ -384,6 +384,35 @@ def _diag_vbscript_regexp(lines):
     return out
 
 
+# VBM020・021（2026-10-01）: オフィス田中のワークシート診断ツールの [VBA CheckList] から、今の Excel で実際に止まる・
+# 意図と違うものだけ（Selection・GoTo・CreateObject・ChartObjects・Shapes・CommandBars・PivotCaches.Add は今も動くので入れない）
+_LEGACY_RULES = [
+    (re.compile(r'\bFileSearch\b', re.IGNORECASE),
+     'FileSearch（Excel 2007 で消えた＝実行時エラー 445）→ Dir か FileSystemObject で探す'),
+    (re.compile(r'(?:(?<![\w.)])|\b(?:ActiveSheet|Worksheets\([^)]*\)|Sheets\([^)]*\))\.)Cells\.Count\b(?!Large)',
+                re.IGNORECASE),
+     'シート全体の Cells.Count（2007 以降は 171 億セル＝Long に入らずエラー 6）→ Cells.CountLarge'),
+    (re.compile(r'\bSaveAs\b.*(?:\bxlExcel9795\b|FileFormat\s*:=\s*43\b)', re.IGNORECASE),
+     'Excel 95/97 形式で保存（今の Excel は書けない）→ xlOpenXMLWorkbook（51）か xlExcel8（56）'),
+]
+
+
+def _diag_legacy(lines):
+    """VBM020: 今の Excel で止まる古い書き方 → [(行番号(1始まり), 説明, 行テキスト)]（純 Python・コメントと文字列の中は除く）。"""
+    out = []
+    for i, raw in enumerate(lines):
+        code = re.sub(r'"(?:[^"]|"")*"', '""', _code_part(raw))
+        for rx, why in _LEGACY_RULES:
+            if rx.search(code):
+                out.append((i + 1, why, raw.strip()[:80]))
+    return out
+
+
+def _diag_auto_open(procs):
+    """VBM021: 古い自動実行（Auto_Open・Auto_Close）の手続き名 → [名前]。"""
+    return [p["name"] for p in procs if str(p["name"]).lower() in ('auto_open', 'auto_close')]
+
+
 def _diag_text_import(lines, procs):
     """VBM019: テキスト・CSV の取り込み（QueryTables.Add の "TEXT;"・OpenText）で、プロシージャのどこにも列の型の指定
     （TextFileColumnDataTypes・FieldInfo）が無い → [(プロシージャ名, 行番号(1始まり), 行テキスト)]（純 Python）。"""
@@ -795,6 +824,15 @@ def cmd_check(args):
                 "  → Excel が先頭の 0・16 桁以上の数・1-2 などを読み替え、保存すると元に戻りません。"
                 "TextFileColumnDataTypes（OpenText は FieldInfo）で、壊れる列を文字列（2）にする")
 
+        # VBM020: 今の Excel で止まる古い書き方／VBM021: Auto_Open・Auto_Close（オフィス田中の VBA CheckList から・2026-10-01）
+        for lineno, why, text in _diag_legacy(lines):
+            pname = _proc_of_index(procs, lineno - 1)
+            mod_info["warnings"].append(f"プロシージャ '{pname}' に古い書き方 (行 {lineno}): {text}  → {why}")
+        for pname in _diag_auto_open(procs):
+            mod_info["warnings"].append(
+                f"プロシージャ '{pname}' は古い自動実行です  → ブックを VBA から開いたとき（Workbooks.Open）は動きません。"
+                "ThisWorkbook の Workbook_Open／Workbook_BeforeClose に移すと、開き方によらず動きます")
+
         inv_modules.append({'name': comp_name, 'type': int(comp.Type),
                             'procs': [{'name': p["name"]} for p in procs], 'code': '\r\n'.join(lines)})
         results["modules"].append(mod_info)
@@ -1050,6 +1088,9 @@ _CAPABILITIES = {
         ("call-graph", "呼び出し関係"), ("impact", "影響範囲"),
         ("flow", "マクロの中の流れ図（Mermaid。コードから機械的に・読むだけ・ファイルは作るがブックは無傷）"),
         ("流れ図", "flow の別名"),
+        ("structure", "ブックの構造だけを 1 枚に（値は出さない・読むだけ・ファイルは作るがブックは無傷）"),
+        ("構造", "structure の別名"),
+        ("no-values", "値なしの切り替え（道具の設定だけ・ブックは無傷）"), ("値なし", "no-values の別名"),
         ("grep", "コード横断検索"), ("metrics", "プロシージャ計量"),
         ("rules", "診断規則の一覧"), ("capabilities", "この表そのもの"),
         ("audit", "表の仕上げ検査（見出し・罫線・列の型・列幅・空の見出し。読むだけ）"),
@@ -1204,6 +1245,9 @@ _CHECK_RULES = [
     ("VBM016", "warning", "150 行を超えるプロシージャ", "手続き内", ""),
     ("VBM018", "warning", "VBScript.RegExp を使っている（VBScript は 2027 年に外される予定）", "手続き内", ""),
     ("VBM019", "warning", "テキスト・CSV の取り込みで列の型を指定していない（先頭の 0・長い数・1-2 が読み替えられる）", "手続き内", ""),
+    ("VBM020", "warning", "今の Excel で止まる古い書き方（FileSearch・シート全体の Cells.Count・95/97 形式の保存）", "手続き内",
+     "オフィス田中 VBA CheckList"),
+    ("VBM021", "warning", "古い自動実行（Auto_Open・Auto_Close）", "手続き内", "オフィス田中 VBA CheckList"),
 ]
 
 
