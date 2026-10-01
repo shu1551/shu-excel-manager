@@ -705,7 +705,8 @@ _INSTRUCTIONS = """秀エクセルマネージャー（excel-manager）。道具
 ブックの仕組み（式・名前・条件付き書式・入力規則・テーブル・ピボット・図形・クエリ・接続・リンク・VBA）を聞かれたら vba("structure")
 （値を出さずに形だけを 1 枚に。気をつける所には「なぜ」と「Excel のどこで確かめるか」が付く）。
 中身を外に出せないブックでは vba("no-values on")＝materials・seiri・shelf-run が値を出さず（型・番地・式だけ）、
-値を返す手（read-range・screenshot 等）は止まる。棚のマクロは Excel の中で値を見て直すので seiri はそのまま使える。"""
+値を返す手（read-range・screenshot 等）は止まる。棚のマクロは Excel の中で値を見て直すので seiri はそのまま使える。
+Excel だけで動く同じ診断は棚の vba("shelf-run ブックの構造を一覧にする")（新しいシート「調査_構造」に値なしの 1 枚）。"""
 mcp = FastMCP("excel-manager", instructions=_INSTRUCTIONS)
 
 
