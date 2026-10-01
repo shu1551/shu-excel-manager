@@ -700,7 +700,12 @@ _INSTRUCTIONS = """秀エクセルマネージャー（excel-manager）。道具
     経過・秒数・長い説明は書かない。戻すのは agent(undo=True)。
 棚を 1 本だけ撃つ: vba("shelf-run 名前 [--select A1:A9,C1:C9]")（選ぶ列は 1 列ずつカンマで）。目録: vba("shelf --grep 語")。
 式がどこから来ているか: vba("trace D31 --depth 3")（シートをまたいで番地・式・値の木）。
-棚が無い（秀コンボを読み込んでいない）ときは、seiri はマクロを撃たずに残りだけを返す＝手で直す。"""
+棚が無い（秀コンボを読み込んでいない）ときは、seiri はマクロを撃たずに残りだけを返す＝手で直す。
+
+ブックの仕組み（式・名前・条件付き書式・入力規則・テーブル・ピボット・図形・クエリ・接続・リンク・VBA）を聞かれたら vba("structure")
+（値を出さずに形だけを 1 枚に。気をつける所には「なぜ」と「Excel のどこで確かめるか」が付く）。
+中身を外に出せないブックでは vba("no-values on")＝materials・seiri・shelf-run が値を出さず（型・番地・式だけ）、
+値を返す手（read-range・screenshot 等）は止まる。棚のマクロは Excel の中で値を見て直すので seiri はそのまま使える。"""
 mcp = FastMCP("excel-manager", instructions=_INSTRUCTIONS)
 
 
@@ -711,6 +716,8 @@ def vba(command: str) -> str:
     まずこれ（1 回撃って、その返事だけで答える）:
       今開いているブック・シートは？ → "sheet-info"（軽い。ブック名・アクティブシート・全シートの一覧）
       表の中身を見る → "materials"（返事が長い。表を読むときだけ）
+      ブックの仕組み・点検 → "structure"（値を出さずに形だけ。機密のブックでも AI に渡せる）
+      中身を外に出せないブック → "no-values on"（以後 materials・seiri が値を出さない。外すのは "no-values off"）
       表を直す・整える → "seiri 頼みの文" を 1 回（先撃ち。下に詳しく）
 
     CLI と同じ引数列をそのまま渡す。例:

@@ -1484,6 +1484,10 @@ def formula_notes(cells, body_rows=None, limit=8):
     return out
 
 
+class _NoValuesSkip(Exception):
+    """値なしのとき、値を含む気づき（表の汚れ・外れ値）を飛ばす目印。"""
+
+
 def cmd_materials(args):
     """先回り材料：1シートについて、手を動かす前に見るべきものを1回でまとめて出す。
 
@@ -1515,7 +1519,9 @@ def cmd_materials(args):
     active = wb.ActiveSheet.Name
     tail = "" if ws.Name == active else f"   （アクティブは {active}）"
     job_clock_start(f"{wb.Name}!{ws.Name}")          # 仕事の時計を押す（tidy／write が経過秒を出す）
-    print(f"ブック: {wb.Name}   シート: {ws.Name}{tail}")
+    from vbam_structure import no_values_mode, type_grid
+    nv = bool(getattr(args, 'no_values', False)) or no_values_mode()   # 値なし（2026-10-01・オフィス田中に学ぶ）
+    print(f"ブック: {wb.Name}   シート: {ws.Name}{tail}" + ("   【値なし: 値の代わりに型だけ】" if nv else ""))
     print("=" * 60)
     try:
         ur = ws.UsedRange
@@ -1546,8 +1552,12 @@ def cmd_materials(args):
         n = nr if whole else min(head_n, nr)
         head = ws.Range(ur.Cells(1, 1), ur.Cells(n, nc))
         label = "全体" if whole else f"先頭{n}行"
-        print(f"--- {label}（値） ---")
-        print(_values_to_grid(head))
+        if nv:
+            print(f"--- {label}（型。数・文・日・論・#エラー・式→結果の型。値は出していません） ---")
+            print(type_grid(head))
+        else:
+            print(f"--- {label}（値） ---")
+            print(_values_to_grid(head))
     except Exception as e:
         print(f"（先頭行を読めませんでした: {e}）")
     # 結合セル
@@ -1560,7 +1570,7 @@ def cmd_materials(args):
         print(f"結合セル {len(areas)}件: " + ", ".join(shown) + more)
     # 書式の目（見出しの結合の親子・合計行・塗りの有無。番地の細部は style-map・2026-09-17）
     try:
-        for _ln in style_summary(ws, ur, nr, nc, areas):
+        for _ln in style_summary(ws, ur, nr, nc, areas, texts=not nv):
             print(_ln)
     except Exception:
         pass
@@ -1570,6 +1580,12 @@ def cmd_materials(args):
         if los:
             print("テーブル: " + ", ".join(
                 f"{lo.Name}({lo.Range.Address.replace('$', '')})" for lo in los))
+            if nv:                                  # 値なしでも列名は表の形として出す（式の構造化参照に出る名前）
+                for lo in los:
+                    try:
+                        print(f"  {lo.Name} の列: " + "・".join(str(c.Name) for c in lo.ListColumns))
+                    except Exception:
+                        pass
     except Exception:
         pass
     # 名前定義（このシートを指すもの）
@@ -1658,6 +1674,8 @@ def cmd_materials(args):
         print(f"図形・ボタン: {len(shapes)}個")
         for s in shapes[:20]:
             t = s.get("text") or ""
+            if nv and t:
+                t = f"文字 {len(t)} 字"
             oa = s.get("onaction")
             geo = " ".join(f"{k}={s[k]}" for k in ("l", "t", "w", "h") if k in s)   # 位置と大きさ（並べる手の材料）
             print(f"  {s.get('name', '?')}" + (f"「{t}」" if t else "") + (f" → {oa}" if oa else "")
@@ -1708,10 +1726,12 @@ def cmd_materials(args):
                     _blk, _ntc = diagnose_notes(_fa, _fr, grid, r0, c0)
                     for _b in _blk:
                         print(f"⚠ 【要修正】循環参照 {_b}")
-                    for _n in _ntc:
+                    for _n in ([] if nv else _ntc):
                         print(f"気づき（{'数式' if _n.startswith(('式の列', '集計の')) else '外れ値'}）: {_n}")
             except Exception:
                 pass
+            if nv:
+                raise _NoValuesSkip()
             hidx = _guess_header_idx(grid)
             try:
                 _look = _body_look_mixed(ws, grid, r0, c0, hidx)
@@ -1720,6 +1740,8 @@ def cmd_materials(args):
             for ln in dirt_notes(grid, r0, c0, hidx, _date_col_formats(ws, grid, r0, c0, hidx),
                                  look_mixed=_look, fmt_odd=_safe_fmt_odd(ws, grid, r0, c0, hidx)):
                 print(ln)
+    except _NoValuesSkip:
+        print("気づき（表の汚れ）: 値なしのため出していません（重複・空白の揺れ等は seiri が Excel の中で見て直します）")
     except Exception as e:
         print(f"（気づきを数えられませんでした: {e}）")
     # 列幅
@@ -2034,7 +2056,7 @@ def _seiri_autofix(xl, wb, ws, max_steps=10):
     return fired, tried
 
 
-def print_seiri_hints(hints, tried=None):
+def print_seiri_hints(hints, tried=None, nv=False):
     """棚で直せる手を、撃つ順に並べて出す（式を先に揃えてから行を消す＝消した行を指す式が #REF! にならない）。
 
     tried（seiri がもう撃った手の鍵）に入っている手は「撃っても残った」として分けて出す＝撃ち直しても直らない所。
@@ -2045,6 +2067,8 @@ def print_seiri_hints(hints, tried=None):
     tried = tried or set()
     seen, lines, stuck = set(), [], []
     for _o, name, sel, why in sorted(hints, key=lambda h: h[0]):
+        if nv:
+            why = '（値なしのため理由は省略）'
         key = (name, sel)
         if key in seen:
             continue
@@ -2115,7 +2139,9 @@ def cmd_seiri(args):
     except Exception:
         was_saved = False
     job_clock_start(f"{wb.Name}!{ws.Name}")
-    print(f"ブック: {wb.Name}   シート: {ws.Name}")
+    from vbam_structure import no_values_mode
+    nv = no_values_mode()
+    print(f"ブック: {wb.Name}   シート: {ws.Name}" + ("   【値なし】" if nv else ""))
     owner = _macro_book(xl, _SEIRI_MODULE, _SEIRI_TIDY)
     names = [_SEIRI_TIDY] + ([_SEIRI_DEDUPE] if getattr(args, 'dedupe', False) else [])
     tried = None                    # 気づきから撃った手の鍵（撃っていなければ None＝残りの手をそのまま並べる）
@@ -2222,7 +2248,7 @@ def cmd_seiri(args):
                 _blk, _ntc = diagnose_notes(_fa, _fr, grid, r0, c0)
                 for _b in _blk:
                     print(f"⚠ 【要修正】循環参照 {_b}")
-                for _n in _ntc:
+                for _n in ([] if nv else _ntc):
                     print(f"気づき（{'数式' if _n.startswith(('式の列', '集計の')) else '外れ値'}）: {_n}")
             except Exception:
                 pass
@@ -2234,17 +2260,18 @@ def cmd_seiri(args):
             hints = []
             for ln in dirt_notes(grid, r0, c0, hidx, _date_col_formats(ws, grid, r0, c0, hidx), look_mixed=look,
                                  hints=hints, fmt_odd=_safe_fmt_odd(ws, grid, r0, c0, hidx)):
-                print(ln)
+                if not nv:                          # 値なし: 汚れの気づきは値を含むので出さない
+                    print(ln)
             try:
                 _areas, _sk = _merged_areas_in_range(ur)
-                for _ln in style_summary(ws, ur, nr, nc, _areas):
+                for _ln in style_summary(ws, ur, nr, nc, _areas, texts=not nv):
                     print(_ln)
             except Exception:
                 pass
             # 棚で直せる手（2026-09-23・通しの実測で、気づきを見てから棚を探す往復が要っていた）
             try:
                 hints += seiri_formula_hints(_fa, _fr, grid, r0, c0, hidx)
-                print_seiri_hints(hints, tried)
+                print_seiri_hints(hints, tried, nv=nv)
             except Exception:
                 pass
     except Exception as e:
@@ -4472,7 +4499,7 @@ def _excel_color_to_hex(color_val) -> Optional[str]:
         return None
 
 
-def style_summary(ws, ur, nr, nc, areas=None, max_rows=300):
+def style_summary(ws, ur, nr, nc, areas=None, max_rows=300, texts=True):
     """書式の目の要約（materials／seiri 用・COM は数回〜行数回）。行のリストを返す。
 
     style-map（セル 1 つずつ Interior／Font を読む＝行×列×5 往復）を 1 手目に畳むと大きい表で遅いので、
@@ -4511,6 +4538,8 @@ def style_summary(ws, ur, nr, nc, areas=None, max_rows=300):
                         t = ''
                     if t:
                         kids.append(t[:12])
+            if not texts:                          # 値なし: 見出しの文字は出さず、番地と直下の数だけ
+                txt, kids = '', ([f'{len(kids)} 個'] if kids else [])
             line = f"  {a}「{txt[:20]}」" if txt else f"  {a}"
             if kids:
                 line += " → 下の行: " + " / ".join(kids[:8]) + (" …" if len(kids) > 8 else "")

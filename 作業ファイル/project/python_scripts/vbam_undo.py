@@ -491,6 +491,14 @@ def _clip(s, n):
 
 def _changes_table(rows, show=12, multi_sheet=False):
     """明細を人が読める形に整える（頭の show 行だけ・残りは行数で言う）。戻り値＝行の並び。"""
+    try:
+        from vbam_structure import no_values_mode
+        if no_values_mode():                # 値なし（2026-10-01）: 番地だけ。前と後の値は AI に渡さない
+            cells = [(f"{r['sheet']}!" if multi_sheet else '') + str(r['addr']) for r in rows]
+            return ["  変わった番地（値なしのため前と後は出しません）: " + " ".join(cells[:40])
+                    + (f" …ほか {len(cells) - 40} 個" if len(cells) > 40 else "")]
+    except ImportError:
+        pass
     out = []
     head = (f"  {'シート':<10}" if multi_sheet else "") + f"  {'番地':<6}  {'前':<22}  →  後"
     out.append(head)

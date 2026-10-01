@@ -28,6 +28,14 @@ py vba_manager.py call-graph --macro 親処理 --mermaid   # そのマクロか�
 py vba_manager.py flow マクロ名 [--module 名] [--out x.md]  # マクロの中の流れ（分岐・ループ・GoSub・エラー処理）を Mermaid の流れ図に。
 #  コードから機械的に作る（AI なし・読み違いなし・何度でも同じ図）。各ブロックの直前のコメントが節点の言葉。GoSub の節・エラー処理は別の枠。
 #  節点が 150 を超えたら深い入れ子を「中身 n 行は省略」にたたむ（--max-nodes）。GitHub・Qiita・mermaid.live にそのまま貼れる（属人化・引き継ぎの資料）
+py vba_manager.py structure [excel_file] [--sheet 名] [--out x.md]   # 値を出さずにブックの構造だけを 1 枚に（_last_structure.md にも保存）
+#  オフィス田中のワークシート診断ツールの 17 シートの項目を覆う。セルの値・式の結果・コメントと図形の文字・プロパティの中身は出さない
+#  （式の中の文字列・入力規則のリスト・テーブルの列名・リンク先は出す）。保護で隠した式は保護を外さず保存済みのファイルから読む。
+#  気をつける所＝見つけたこと → なぜ → Excel のどこで確かめるか（完全に非表示のシート・壊れた名前・列まるごとの規則・中身の無い入力規則・
+#  見えない図形・揮発関数・他ブック参照・標準でない参照設定・古い自動実行 等）
+py vba_manager.py no-values [on|off]           # 値なしの切り替え（%LOCALAPPDATA%\vba-manager\no_values.flag。環境変数 EXCEL_MANAGER_NO_VALUES=1/0 が先）
+#  on の間: materials は値の代わりに型の格子（数・文・日・式→型）・seiri／shelf-run／agent の変更の明細は番地だけ・
+#  read-range・read-selection・snapshot・trace・screenshot・diagnose・audit・find・style-map・build-sheet は止める。materials --no-values で 1 回だけも可
 
 # 対話セッション（接続を張ったままコマンドを打ち続ける。2コマンド目から再接続なし）
 py vba_manager.py shell                         # exit で終了。batch のファイル版に対する対話版
@@ -194,6 +202,8 @@ py vba_manager.py check [excel_file] [--all-warnings]   # ブックの全モジ�
 #  2026-09-17: VBM012（飛び先ラベルが無い）・VBM013（On Err GoTo＝Error の打ち間違い）・VBM014（存在しないマクロを呼ぶ＝
 #  call-graph の未解決）を error に足した＝コンパイル・実行で止まる欠陥を check で先に拾う（ポスター.xlsm の 3 件が素通りしていた）。
 #  VBM003（On Error が無い）は既定で件数だけ（ポスターで 190 件中 150 件がこれ）。行も見るなら --all-warnings。JSON は全部残る
+#  2026-10-01: VBM020（今の Excel で止まる古い書き方＝FileSearch・シート全体の Cells.Count・95/97 形式の保存）・
+#  VBM021（Auto_Open・Auto_Close）をオフィス田中の VBA CheckList から足した（今も動く Selection・GoTo・CommandBars 等は入れない）
 py vba_manager.py rules                         # 診断規則の一覧（COM不要・Excelを開かない）
 
 # 自動操縦を止めるGUI境界を、撃つ前に洗い出す（rehearse / gate が黙って固まる場所）
