@@ -2480,6 +2480,9 @@ def test_write_helpers_exposed_by_recipe_fire():
     assert vc._coerce_cell("'") == "" and vc._coerce_cell("=SUM(A1)") == "=SUM(A1)"
     assert ve._is_dynamic_formula('=FILTER(A2:E13,C2:C13="正会員","該当なし")')
     assert ve._is_dynamic_formula("=xlookup(A1,B:B,C:C)") and ve._is_dynamic_formula("=LET(x,1,x)")
+    for fn in ("TRIMRANGE(A:A)", 'IMPORTCSV("a.csv")', 'REGEXEXTRACT(A1:A9,"\\d+")', "TEXTBEFORE(A1:A9,\"-\")", "TOCOL(A1:C3)",
+               "GROUPBY(A:A,B:B,SUM)", "PIVOTBY(A:A,B:B,C:C,SUM)"):
+        assert ve._is_dynamic_formula("=" + fn), fn                            # 2026 年の新しい関数も Formula2 で書く
     assert not ve._is_dynamic_formula("=SUM(A1:A3)") and not ve._is_dynamic_formula("FILTER") and not ve._is_dynamic_formula(12)
 
     class _Cell:

@@ -181,7 +181,9 @@ _KEPT_NOTE = "文字列として保持（Excel が日付・数値に読み替え
 # 2026-09-04 の手順書の実射で発覚）。これらを含む数式は Formula2 で書く
 _DYN_FUNC_RE = re.compile(r'\b(?:FILTER|UNIQUE|SORT|SORTBY|SEQUENCE|RANDARRAY|XLOOKUP|XMATCH|LET|LAMBDA|TEXTSPLIT|'
                           r'VSTACK|HSTACK|TOCOL|TOROW|BYROW|BYCOL|MAP|REDUCE|SCAN|MAKEARRAY|TAKE|DROP|CHOOSEROWS|'
-                          r'CHOOSECOLS|WRAPROWS|WRAPCOLS|EXPAND|GROUPBY|PIVOTBY)\s*\(', re.I)
+                          r'CHOOSECOLS|WRAPROWS|WRAPCOLS|EXPAND|GROUPBY|PIVOTBY|'
+                          # 2026 年の新しい関数（スピルする・範囲を渡すと配列を返す）。.Formula で書くと @ が付いて 1 セルに潰れる
+                          r'TRIMRANGE|IMPORTCSV|IMPORTTEXT|REGEXEXTRACT|REGEXREPLACE|REGEXTEST|ARRAYTOTEXT|TEXTBEFORE|TEXTAFTER)\s*\(', re.I)
 
 
 def _is_dynamic_formula(v):
@@ -293,6 +295,106 @@ def _grid_cells(r0, c0, grid):
     return [(f"{_col_letter(c0 + j)}{r0 + i}", v) for i, row in enumerate(grid or []) for j, v in enumerate(row)]
 
 
+_VALIDATION_KINDS = {1: '整数', 2: '小数', 3: 'リスト', 4: '日付', 5: '時刻', 6: '文字数', 7: 'ユーザー設定'}
+
+
+def _validation_rule_text(v):
+    """Validation オブジェクト → 規則の短い字（'リスト: 赤,青'・'整数: 1〜10'）。読めなければ ''。"""
+    try:
+        kind = _VALIDATION_KINDS.get(int(v.Type), '規則')
+    except Exception:
+        return ''
+    try:
+        f1 = str(v.Formula1)
+    except Exception:
+        f1 = ''
+    try:
+        f2 = str(v.Formula2)
+    except Exception:
+        f2 = ''
+    if int(v.Type) == 3:
+        return f"{kind}: {f1}"
+    if f2:
+        return f"{kind}: {f1}〜{f2}"
+    return f"{kind}: {f1}" if f1 else kind
+
+
+def _validation_violations(rng, limit=300):
+    """書いた範囲で入力規則に合わない値のセル → [(番地, 値の字, 規則の字)]。
+
+    COM（Range.Value・Formula）で書いた値は入力規則では止まらない（手で打てば Excel が止める所を、道具は素通りで書ける）。
+    書いたあとで Validation.Value（今の値が規則に合うか）を見て知らせる。止めはしない（頼まれて書いた値）。2026-10-01"""
+    out = []
+    try:
+        if int(rng.Cells.CountLarge) == 1:       # 単セルの SpecialCells は使用範囲全体に化けるので直接見る
+            cells = rng
+            v = rng.Validation
+            int(v.Type)                          # 規則が無いセルはここで例外
+        else:
+            cells = rng.SpecialCells(-4174)      # xlCellTypeAllValidation
+    except Exception:
+        return out
+    n = 0
+    for c in cells.Cells:
+        n += 1
+        if n > limit:
+            break
+        try:
+            v = c.Validation
+            if bool(v.Value):
+                continue
+            out.append((c.Address.replace('$', ''), str(c.Text), _validation_rule_text(v)))
+        except Exception:
+            continue
+    return out
+
+
+def _spill_blockers(cell, ws, limit=3):
+    """#SPILL! のセルの展開先をふさいでいる値のセル → 番地の並び（直下と右隣と、そのさらに先を見る）。無ければ []。"""
+    out = []
+    try:
+        r0, c0 = cell.Row, cell.Column
+        for dr, dc in ((1, 0), (0, 1), (2, 0), (0, 2)):
+            x = ws.Cells(r0 + dr, c0 + dc)
+            v = x.Value
+            if v is not None and not (isinstance(v, str) and v == ''):
+                out.append(x.Address.replace('$', ''))
+                if len(out) >= limit:
+                    break
+    except Exception:
+        pass
+    return out
+
+
+def _report_spill_and_validation(ws, rngs, spill_cells):
+    """#SPILL! の原因（展開先をふさぐ値）と、入力規則に合わない値を知らせる（write-range・write-cells 共通・2026-10-01）。
+
+    spill_cells: #SPILL! になったセルの並び。rngs: 書いた範囲（かセル）の並び。止めない・消さない（Excel は人の値を上書きしない）。"""
+    for sc in spill_cells:
+        blockers = _spill_blockers(sc, ws)
+        try:
+            a = sc.Address.replace('$', '')
+        except Exception:
+            a = '?'
+        if blockers:
+            print(f"⚠ 【スピル】{a} は #SPILL! です。展開先の {'・'.join(blockers)} に値が入っていて展開できません"
+                  "（Excel は人の値を上書きしないので、そのセルの値は無事です）。"
+                  "展開先を空けるか、式を空いている場所へ書き直してください（人の値を消すのは人の判断）。")
+        else:
+            print(f"⚠ 【スピル】{a} は #SPILL! です。展開先（下・右）の途中に値のあるセルか、結合セル・表（テーブル）があります。"
+                  "展開先を空けるか、式を空いている場所へ書き直してください。")
+    bad = []
+    for r in rngs:
+        try:
+            bad += _validation_violations(r)
+        except Exception:
+            pass
+    if bad:
+        shown = " ".join(f"{a}={t}（{r}）" if r else f"{a}={t}" for a, t, r in bad[:5]) + ("…" if len(bad) > 5 else "")
+        print(f"⚠ 【入力規則】書いた値が入力規則に合わないセルがあります: {len(bad)}件 {shown}")
+        print("  道具（COM）で書いた値は入力規則で止まりません。値を直すか、規則（リストの項目など）を直してください。")
+
+
 def _report_write_result(ws, rng):
     """書込後の検証読み戻し：書いた範囲のエラーセル（#REF!等）や ### 表示を数えて報告する。
 
@@ -301,11 +403,18 @@ def _report_write_result(ws, rng):
     """
     n_err = 0
     err_samples = []
+    spill_cells = []
     for typ in (-4123, 2):          # xlCellTypeFormulas / xlCellTypeConstants
         try:
             sp = rng.SpecialCells(typ, 16)   # 16 = xlErrors
             for c in sp:
                 n_err += 1
+                try:
+                    txt0 = str(c.Text or '')
+                    if ('SPILL' in txt0.upper() or 'スピル' in txt0) and len(spill_cells) < 3:
+                        spill_cells.append(c)
+                except Exception:
+                    pass
                 if len(err_samples) < 5:
                     try:
                         addr = c.Address.replace('$', '')
@@ -338,6 +447,7 @@ def _report_write_result(ws, rng):
     if n_err > 0:
         tail = "（" + " ".join(err_samples) + ("…" if n_err > len(err_samples) else "") + "）"
         print(f"⚠ 【要修正】書き込み結果に数式エラーがあります: {n_err}件 {tail}")
+    _report_spill_and_validation(ws, [rng], spill_cells)
     if n_hash > 0:
         tail = "（" + " ".join(hash_samples) + ("…" if n_hash > len(hash_samples) else "") + "）"
         print(f"⚠ 【表示崩れ】列幅不足により '###' 表示になっているセルがあります: {n_hash}件 {tail}")
@@ -685,6 +795,18 @@ def cmd_write_cells(args):
     if errs:
         print(f"書き込み後のエラーセル: {len(errs)}個 （" + " ".join(errs[:5])
               + ("…" if len(errs) > 5 else "") + "）")
+    # #SPILL! の原因と入力規則違反（write-range と同じ知らせ・2026-10-01）。書き込みの前に全セルを解決済みなので 1 つのシートごとに見る
+    _spills = []
+    for ws, c, val in targets:
+        try:
+            tx = str(c.Text or '')
+            if 'SPILL' in tx.upper() or 'スピル' in tx:
+                _spills.append((ws, c))
+        except Exception:
+            pass
+    for _ws, _c in _spills[:3]:
+        _report_spill_and_validation(_ws, [], [_c])
+    _report_spill_and_validation(targets[0][0], [c for _w, c, _v in targets], [])
     if getattr(args, 'show', False):
         print("表示（画面に見えている文字）:")
         for ws, c, val in targets:
