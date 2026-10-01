@@ -1488,6 +1488,21 @@ class _NoValuesSkip(Exception):
     """値なしのとき、値を含む気づき（表の汚れ・外れ値）を飛ばす目印。"""
 
 
+def _print_causes(wb, ur, fa, fv, nv=False):
+    """原因の段（2026-10-02・vbam_cause）: 式と値から道具が決めたエラーの理由・おかしな結果・名前と自作関数の正体・英字の表記ゆれ。
+
+    オフィス田中「ExcelのAI活用」で Copilot が外したのは理由の当て推量だった。理由は式と値の型から決まる＝道具が決めて AI に渡す。"""
+    from vbam_cause import cause_notes, spelling_notes, workbook_names_udfs
+    r0, c0 = int(ur.Row), int(ur.Column)
+    has_fml = any(isinstance(v, str) and v.startswith('=') for row in fa for v in row)
+    names, udfs = workbook_names_udfs(wb) if has_fml else ({}, set())
+    lines = (cause_notes(fa, fv, r0, c0, names, udfs, nv=nv) if has_fml else []) + spelling_notes(fv, r0, c0, nv=nv)
+    if lines:
+        print("原因（道具が式と値から決めたもの。直すときはこれを前提にする）:")
+        for ln in lines:
+            print("  " + ln)
+
+
 def cmd_materials(args):
     """先回り材料：1シートについて、手を動かす前に見るべきものを1回でまとめて出す。
 
@@ -1744,6 +1759,11 @@ def cmd_materials(args):
         print("気づき（表の汚れ）: 値なしのため出していません（重複・空白の揺れ等は seiri が Excel の中で見て直します）")
     except Exception as e:
         print(f"（気づきを数えられませんでした: {e}）")
+    try:
+        if nr * nc <= _FML_LENS_MAX_CELLS:
+            _print_causes(wb, ur, _fa if _fa is not None else _grid_of_value(ur.Formula), _grid_of_value(ur.Value), nv=nv)
+    except Exception as e:
+        print(f"（原因を調べられませんでした: {e}）")
     # 列幅
     try:
         c0 = int(ur.Column)
@@ -2252,6 +2272,10 @@ def cmd_seiri(args):
                     print(f"気づき（{'数式' if _n.startswith(('式の列', '集計の')) else '外れ値'}）: {_n}")
             except Exception:
                 pass
+            try:
+                _print_causes(wb, ur, _fa, grid, nv=nv)
+            except Exception as e:
+                print(f"（原因を調べられませんでした: {e}）")
             hidx = _guess_header_idx(grid)
             try:
                 look = _body_look_mixed(ws, grid, r0, c0, hidx)
