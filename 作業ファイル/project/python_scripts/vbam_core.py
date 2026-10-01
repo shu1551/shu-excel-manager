@@ -1176,8 +1176,13 @@ def normalize_bas_newlines(path):
     return fixed, raw, (fixed != raw)
 
 
-def validate_vba_code(code, force=False):
-    """VBAコードの簡易バリデーション（構文・エンコード）"""
+def validate_vba_code(code, force=False, old_code='', project_code=None):
+    """VBAコードの簡易バリデーション（構文・エンコード・ブックを汚す小文字の宣言）。
+
+    old_code: 置き換え前のコード（同じ綴りの宣言が既にあれば、今回増やすわけではないので止めない）。
+    project_code: 引数なしで「対象ブックの全モジュールのコード（1 本の文字）」を返す関数。小文字の宣言が見つかったときだけ呼ぶ
+      （ブックが既に同じ綴りで汚れていれば、今回は何も起きないので止めない）。
+    """
     # 1. CP932エンコード検証
     try:
         code.encode('cp932')
@@ -1218,6 +1223,16 @@ def validate_vba_code(code, force=False):
     #    AddFromString/InsertLines は構文検査をせず成功報告になるため、ここが水際）
     for ln, _name, reason in _find_invalid_procedure_names(code):
         errors.append(f"行{ln}: プロシージャ名が VBA の識別子規則に反しています: {reason}")
+
+    # 4. 小文字の宣言（`Dim value` など）が、ブック全体の `.Value` を小文字にし、消しても戻らない（2026-10-01）
+    pollution = find_case_pollution(code, old_code)
+    if pollution and project_code is not None:
+        try:
+            pollution = find_case_pollution(code, (old_code or '') + '\n' + str(project_code() or ''))
+        except Exception:
+            pass                                 # ブックを読めなければ、読めた範囲（old_code）での判定のまま止める
+    if pollution:
+        errors.append(case_pollution_message(pollution))
 
     if errors:
         for err in errors:
@@ -1592,6 +1607,120 @@ def _find_invalid_procedure_names(norm_text):
             if reason:
                 hits.append((idx, m.group(1), reason))
     return hits
+
+# ----------------------------------------------------------------
+# 小文字の変数名がブックを汚す件（2026-10-01・オフィス田中 PeNwbhQoONo）
+#   VBE は、あるモジュールで `Dim value` / `Dim name` / `Dim row` のように宣言（変数・引数・定数・プロシージャ名）すると、
+#   **プロジェクトの全モジュールの `.Value` `.Name` `.Row` の綴りを宣言のとおり小文字に書き換える**。宣言を消しても戻らない
+#   （実測 2026-10-01: 別モジュールに書いただけで既存の `.Value` が `.value` になり、消しても `.value` のまま）。
+#   AI が書いたコードを貼る・replace-procedure で流すのが入口なので、書く前にここで止める。
+# ----------------------------------------------------------------
+_CASE_SENSITIVE_NAMES = (
+    # Excel のプロパティ・メソッド（変数名にされやすい）
+    'Value Value2 Formula FormulaR1C1 Text Name Row Column Rows Columns Cells Range Address Count Item Items Index Type '
+    'Font Color Width Height Left Top Right Bottom Offset Resize Parent Caption Visible Path FullName Key Keys Exists '
+    'Add Remove Clear Delete Copy Cut Paste Activate Save Find Replace Previous First Last '
+    'Start Interior Borders Characters Comment Hyperlink Number NumberFormat Orientation Style Locked Hidden '
+    'Enabled Title Tag Selected Checked Min Max Size Bold Italic Underline Pattern Weight Sheets Worksheets Selection '
+    'Target Source Destination Result Description Global IgnoreCase Execute Test Match Matches SubMatches Length '
+    'Workbook Worksheet Shape Chart Names Pages Areas Application Window '
+    # VBA の組み込み関数（変数名にすると同じ綴りが組み込みの綴りまで書き換わる）
+    'Date Time Now Format Mid Trim Len Split Join Filter Array Chr Asc Abs Int Fix Sgn Sqr Rnd Round Str Val '
+    'Year Month Day Hour Minute Second Weekday Instr InStrRev Ucase Lcase Space String Dir Err'
+).split()
+_CASE_CANON = {}
+for _n in _CASE_SENSITIVE_NAMES:
+    _CASE_CANON.setdefault(_n.lower(), _n)
+
+
+def _decl_names_of_line(line):
+    """1 行の宣言が導入する識別子を [綴り] で（Dim/Private/Public/Static/Const/ReDim の並び・Sub/Function の引数と名前）。
+
+    コメントと文字列は見ない。コロンで区切られた複数文も見る。`Declare` と `Attribute` は見ない（外部 API・メタ行）。
+    """
+    s = re.sub(r'"[^"]*"', '""', line).split("'", 1)[0]
+    out = []
+    for seg in s.split(':'):
+        seg = seg.strip()
+        if not seg or seg.lower().startswith(('rem ', 'declare', 'attribute', 'public declare', 'private declare')):
+            continue
+        m = re.match(r'^(?:(?:Public|Private|Friend|Global)\s+)?(?:Static\s+)?(Sub|Function|Property\s+(?:Get|Let|Set))\s+'
+                     r'([^\s\(]+)\s*(?:\((.*)\))?', seg, re.IGNORECASE)
+        if m:
+            out.append(m.group(2))
+            params = m.group(3) or ''
+            for p in _split_top_level(params):
+                p = re.sub(r'^\s*(?:Optional\s+)?(?:ByVal\s+|ByRef\s+)?(?:ParamArray\s+)?', '', p, flags=re.IGNORECASE)
+                mm = re.match(r'([^\s\(=]+)', p)
+                if mm:
+                    out.append(mm.group(1))
+            continue
+        m = re.match(r'^(?:(?:Public|Private|Global)\s+)?(?:Dim|Static|Const|ReDim|Public|Private|Global)\s+(?:WithEvents\s+|Preserve\s+)?(.*)$',
+                     seg, re.IGNORECASE)
+        if m:
+            for p in _split_top_level(m.group(1)):
+                mm = re.match(r'\s*(?:WithEvents\s+|Preserve\s+)?([^\s\(=]+)', p, re.IGNORECASE)
+                if mm:
+                    out.append(mm.group(1))
+    return [nm.rstrip('%&!#@$') for nm in out]           # row& / name$ の型宣言文字は名前ではない
+
+
+def _split_top_level(text):
+    """かっこの外のカンマで切る。"""
+    parts, depth, cur = [], 0, []
+    for ch in text:
+        if ch == '(':
+            depth += 1
+        elif ch == ')':
+            depth -= 1
+        if ch == ',' and depth <= 0:
+            parts.append(''.join(cur))
+            cur = []
+        else:
+            cur.append(ch)
+    if cur:
+        parts.append(''.join(cur))
+    return parts
+
+
+def declared_names(code):
+    """コードの中で宣言されている識別子の綴りの集合（_decl_names_of_line を全行に）。"""
+    out = set()
+    for ln in (code or '').replace('\r\n', '\n').split('\n'):
+        out.update(_decl_names_of_line(ln))
+    return out
+
+
+def find_case_pollution(code, old_code=''):
+    """VBE がブック全体の綴りを書き換える宣言を列挙 → [(行番号(1始まり), 宣言の綴り, 本来の綴り)]（純 Python）。
+
+    宣言した名前が、Excel・VBA の既存の名前と大小文字だけ違う（`value` ↔ `Value`）ものを返す。本来の綴りと同じ（`Value`）なら
+    何も起きないので入れない。old_code に同じ綴りの宣言が既にあれば（もう汚れている・今回増やさない）入れない。
+    """
+    already = declared_names(old_code)
+    hits, seen = [], set()
+    for idx, ln in enumerate((code or '').replace('\r\n', '\n').split('\n'), 1):
+        st = ln.strip()
+        if st.startswith("'") or st.lower().startswith('rem '):
+            continue
+        for nm in _decl_names_of_line(ln):
+            canon = _CASE_CANON.get(nm.lower())
+            if canon and nm != canon and nm not in already and (nm, idx) not in seen:
+                seen.add((nm, idx))
+                hits.append((idx, nm, canon))
+    return hits
+
+
+def case_pollution_message(hits, limit=8):
+    """find_case_pollution の結果を人（と AI）向けの文に。直し方（別名）つき。"""
+    lines = []
+    for idx, nm, canon in hits[:limit]:
+        lines.append(f"  行{idx}: `{nm}` ← `.{canon}` の綴りまで `.{nm}` に書き換わります（別名に: `my{canon}` など）")
+    if len(hits) > limit:
+        lines.append(f"  … 他 {len(hits) - limit} 件")
+    return ("小文字の宣言がブック全体の綴りを書き換えます（VBE の仕様。宣言を消しても戻りません。動作は変わらないが、\n"
+            "  .Value が .value になるなどコードが読みにくくなり、元に戻す手がありません）:\n" + '\n'.join(lines))
+
 
 def _col_letter(n):
     """列番号(1始まり)を A, B, ... Z, AA, ... に変換"""
@@ -2384,6 +2513,9 @@ __all__ = ['split_command_line',
     '_last_open_by_tool',
     '_find_component',
     '_find_invalid_procedure_names',
+    'find_case_pollution',
+    'case_pollution_message',
+    'declared_names',
     '_get_active_excel',
     '_get_workbook_uncached',
     '_import_module_verified',

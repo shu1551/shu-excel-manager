@@ -1091,6 +1091,39 @@ def test_validate_vba_code_accepts_valid_japanese_name():
     assert vm.validate_vba_code("Sub tmp検証()\nEnd Sub\n") is True
 
 
+def test_case_pollution_finds_lowercase_declarations():
+    """小文字の宣言（Dim value など）はブック全体の .Value を小文字にする（2026-10-01・オフィス田中 PeNwbhQoONo）。"""
+    code = ("Sub 試験()\n"
+            "    Dim value As String, row&, name$, i As Long, Value2 As Long\n"
+            "    Const count = 3\n"
+            "    Dim ws As Worksheet: Dim text As String\n"
+            "    ' Dim comment As String\n"
+            "    s = \"Dim date As Date\"\n"
+            "End Sub\n"
+            "Private Function f(ByVal index As Long, Optional address As String = \"a\", ParamArray items()) As Long\n"
+            "End Function\n")
+    got = {(nm, canon) for _ln, nm, canon in vm.find_case_pollution(code)}
+    assert got == {('value', 'Value'), ('row', 'Row'), ('name', 'Name'), ('count', 'Count'), ('text', 'Text'),
+                   ('index', 'Index'), ('address', 'Address'), ('items', 'Items')}
+    # 本来の綴り・日本語・コメントと文字列の中は対象外
+    assert vm.find_case_pollution("Sub a()\n    Dim Value As String, 値 As Long, myValue As String\nEnd Sub\n") == []
+    # 置き換え前に同じ綴りの宣言があれば（もう汚れている）増やさないので止めない
+    assert vm.find_case_pollution("Sub a()\n    Dim value As String\nEnd Sub\n", old_code="Dim value As String") == []
+    assert vm.declared_names("Dim value As String, name$\nSub q(ByVal x)") == {'value', 'name', 'q', 'x'}
+
+
+def test_validate_vba_code_rejects_case_polluting_declaration():
+    bad = "Sub a()\n    Dim value As String\n    value = ActiveSheet.Range(\"A1\").Value\nEnd Sub\n"
+    assert vm.validate_vba_code(bad) is False
+    assert vm.validate_vba_code(bad, force=True) is True
+    assert vm.validate_vba_code(bad, old_code="Dim value As String") is True
+    # ブックが既に同じ綴りで汚れているなら、その判定（project_code）で通す。読めなければ止めたまま
+    assert vm.validate_vba_code(bad, project_code=lambda: "Sub z()\r\nDim value As Long\r\nEnd Sub") is True
+    assert vm.validate_vba_code(bad, project_code=lambda: "Sub z()\r\nEnd Sub") is False
+    assert vm.validate_vba_code(bad, project_code=lambda: 1 / 0) is False
+    assert vm.validate_vba_code("Sub a()\n    Dim v As String\nEnd Sub\n") is True
+
+
 def test_check_bas_rejects_invalid_identifier(tmp_path):
     p = tmp_path / "m.bas"
     p.write_bytes('Attribute VB_Name = "M"\r\nSub _tmp検証()\r\nEnd Sub\r\n'.encode('cp932'))
@@ -2483,7 +2516,7 @@ def test_capabilities_destructive_set_is_explicit():
 def test_rules_codes_are_unique_and_sequential():
     codes = [r[0] for r in vv._CHECK_RULES]
     assert codes == sorted(set(codes))
-    assert codes[0] == 'VBM001' and codes[-1] == 'VBM016'      # 2026-09-17: VBM012〜014、同日 VBM015・016（clean-vba を畳んだ）
+    assert codes[0] == 'VBM001' and codes[-1] == 'VBM017'      # 2026-09-17: VBM012〜014、同日 VBM015・016（clean-vba を畳んだ）／2026-10-01: VBM017（小文字の宣言）
 
 
 def test_rules_vbm012_to_014_are_errors():
