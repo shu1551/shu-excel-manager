@@ -1221,6 +1221,7 @@ Sub ピボットの元範囲を広げて更新する()
     ' ブック内の全ピボットを走査
     Dim ws As Worksheet
     Dim pt As PivotTable
+    Dim n飛ばし As Long
 
     For Each ws In wb.Worksheets
         For Each pt In ws.PivotTables
@@ -1228,7 +1229,10 @@ Sub ピボットの元範囲を広げて更新する()
             On Error Resume Next
             srcStr = CStr(pt.PivotCache.SourceData)
             On Error GoTo 0
-            If セルの字(srcStr) = "" Then GoTo nextPT
+            If セルの字(srcStr) = "" Then
+                n飛ばし = n飛ばし + 1                          ' Power Query・データモデル由来のピボットは元範囲が無い（ここでは広げられない）
+                GoTo nextPT
+            End If
 
             ' ソースシート名を取得
             Dim bangPos As Long: bangPos = InStr(srcStr, "!")
@@ -1253,6 +1257,7 @@ Sub ピボットの元範囲を広げて更新する()
 nextPT:
         Next pt
     Next ws
+    If n飛ばし > 0 Then Application.StatusBar = "ピボットの元範囲を広げる: " & n飛ばし & " 個のピボットは元の範囲が無い（Power Query・データモデル由来）ので広げていません。元のクエリ・モデルの側で更新してください。"
 
 End Sub
 

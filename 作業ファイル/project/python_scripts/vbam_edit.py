@@ -290,6 +290,37 @@ def _blank_like_note(cells):
             + "（空欄にするなら何も書かない＝clear-range 番地 --contents）")
 
 
+_TRIM_REF_RE = re.compile(r'\.\$?[A-Za-z]{1,3}\$?\d*:|:\.\$?[A-Za-z]{1,3}\$?\d*')
+
+
+def _trim_ref_note(cells):
+    """[(番地, 書いた値)] → トリム参照（A:.C・A1:.A10 のコロンの隣のドット）を書いたセルの注意（無ければ ''・純 Python・2026-10-01）。
+
+    トリム参照は新しい Excel（2024 以降の Microsoft 365）だけの書き方。古い Excel（2021 以前・LTSC）で開くと式エラーになる。
+    AI は知らずにドットを消すことがあるが、ここでは逆に、書いたものを知らせる。文字列リテラルの中は式ではないので見ない。"""
+    hit = []
+    for a, v in cells:
+        if isinstance(v, str) and v.startswith('='):
+            body = re.sub(r'"[^"]*"', '""', v)
+            if _TRIM_REF_RE.search(body):
+                hit.append(a)
+    if not hit:
+        return ''
+    return (f"⚠ トリム参照（A:.C のドット）の式を書きました: {' '.join(hit[:8])}" + ("…" if len(hit) > 8 else "")
+            + "。新しい Excel（2024 以降の Microsoft 365）だけで動きます。古い Excel（2021 以前・LTSC）で開く人がいるブックなら、"
+            "ドットなしの範囲か OFFSET・INDEX の形にしてください")
+
+
+def _areas_copyable(areas):
+    """コピー元の各範囲 [(行, 行数, 列, 列数)] → Excel がコピーできる形か（純 Python・2026-10-01）。
+
+    離れた範囲をコピーできるのは、全部の行が同じ（横に並ぶ）か全部の列が同じ（縦に並ぶ）ときだけ。それ以外は
+    「この操作は複数選択範囲では実行できません」で止まる。1 つだけなら常に可。"""
+    if len(areas) <= 1:
+        return True
+    return len({(r, n) for r, n, c, m in areas}) == 1 or len({(c, m) for r, n, c, m in areas}) == 1
+
+
 def _grid_cells(r0, c0, grid):
     """書いた格子 → [(番地, 値)]（純 Python）。"""
     return [(f"{_col_letter(c0 + j)}{r0 + i}", v) for i, row in enumerate(grid or []) for j, v in enumerate(row)]
@@ -688,6 +719,12 @@ def cmd_write_range(args):
         _bn = ''
     if _bn:
         print(_bn)
+    try:
+        _tn = _trim_ref_note(_grid_cells(rng.Row, rng.Column, grid)) if grid else ''
+    except NameError:
+        _tn = ''
+    if _tn:
+        print(_tn)
     if written_rng is not None:
         _report_write_result(ws, written_rng)
         if getattr(args, 'show', False):
@@ -783,6 +820,9 @@ def cmd_write_cells(args):
     _bn = _blank_like_note([(f"{ws.Name}!{c.Address.replace('$', '')}", val) for ws, c, val in targets])
     if _bn:
         print(_bn)
+    _tn = _trim_ref_note([(f"{ws.Name}!{c.Address.replace('$', '')}", val) for ws, c, val in targets])
+    if _tn:
+        print(_tn)
     # 書込後の検証（write-range の _report_write_result と同じ思想。単セルの SpecialCells は
     # 使用範囲全体に化けるので、セルごとに IsError で見る）
     errs = []
@@ -2891,6 +2931,17 @@ def cmd_copy_range(args):
         return False
     ws_s, rng_s = _resolve_range(xl, wb, rest[0], sheet_opt)
     ws_d, rng_d = _resolve_range(xl, wb, rest[1])
+    # 離れた範囲（A1:A3,C1:C9 のように書いたもの）は、行か列がそろっているときしか Excel がコピーできない。
+    # COM の生のエラー（「この操作は複数選択範囲では実行できません」）で転ばず、理由を言う
+    try:
+        _areas = [(int(a.Row), int(a.Rows.Count), int(a.Column), int(a.Columns.Count)) for a in rng_s.Areas]
+    except Exception:
+        _areas = []
+    if not _areas_copyable(_areas):
+        print(f"エラー: コピー元 '{rest[0]}' は離れた範囲で、行も列もそろっていないので、Excel がコピーできません。")
+        print("  離れた範囲をコピーできるのは、全部の行が同じ（横に並ぶ）か全部の列が同じ（縦に並ぶ）ときだけです。"
+              "範囲を 1 つずつ copy-range してください。")
+        return False
     try:
         r0, c0 = int(rng_d.Row), int(rng_d.Column)
         nr = max(int(rng_s.Rows.Count), int(rng_d.Rows.Count))

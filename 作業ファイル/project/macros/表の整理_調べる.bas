@@ -3802,8 +3802,18 @@ Sub ブックが重い原因を一覧にする()
             out.Cells(r, 4).Value = "使用範囲がデータより " & gR & " 行・" & gC & " 列ぶん広い（消したはずの書式が残っている可能性）"
         End If
         np = 0
+        Dim 幽 As Long, 幅 As Double, 高 As Double
+        幽 = 0
         For Each shp In sh.Shapes
             If shp.Type = 13 Then np = np + 1
+            ' 幅か高さが 0 の図形（幽霊）。線・コネクタ・コメントは幅か高さが 0 でも正常なので数えない
+            幅 = 1: 高 = 1
+            On Error Resume Next
+            幅 = shp.Width: 高 = shp.Height
+            If 幅 < 1 Or 高 < 1 Then
+                If shp.Type <> 9 And shp.Type <> 4 And shp.Connector = False Then 幽 = 幽 + 1
+            End If
+            On Error GoTo 失敗
         Next shp
         ns = sh.Shapes.Count
         If ns > 0 Then
@@ -3814,6 +3824,13 @@ Sub ブックが重い原因を一覧にする()
                 out.Cells(r, 3).Value = "要確認"
                 out.Cells(r, 4).Value = "図形や画像が多い（同じ図形が重なっていないか）"
             End If
+        End If
+        If 幽 > 0 Then
+            r = r + 1
+            out.Cells(r, 1).Value = "幽霊の図形：" & sh.Name
+            out.Cells(r, 2).Value = "幅か高さが 0 の図形 " & 幽 & " 個"
+            If 幽 >= 10 Then out.Cells(r, 3).Value = "要確認"
+            out.Cells(r, 4).Value = "見えないのに残っている図形（コピー元の貼り付け残り）。ブックを重くする。「シートの図形と画像を全部削除する」「図形を一覧にし位置をそろえる」で確かめる"
         End If
         fcN = 0
         On Error Resume Next
@@ -3843,6 +3860,18 @@ Sub ブックが重い原因を一覧にする()
     out.Cells(r, 1).Value = "スタイルの数"
     out.Cells(r, 2).Value = wb.Styles.Count & " 個"
     If wb.Styles.Count > 500 Then out.Cells(r, 3).Value = "要確認": out.Cells(r, 4).Value = "他のブックから貼り付けるたびに増える。500 を超えると重くなりやすい"
+    ' ユーザー定義のスタイル（組み込みでないもの。他のブックから貼るたびに増え、表示形式もスタイルごとに持つ）
+    Dim 型, 自 As Long
+    自 = 0
+    On Error Resume Next
+    For Each 型 In wb.Styles
+        If 型.BuiltIn = False Then 自 = 自 + 1
+    Next 型
+    On Error GoTo 失敗
+    r = r + 1
+    out.Cells(r, 1).Value = "ユーザー定義のスタイル"
+    out.Cells(r, 2).Value = 自 & " 個"
+    If 自 > 200 Then out.Cells(r, 3).Value = "要確認": out.Cells(r, 4).Value = "組み込みでないスタイルが多い（他のブックから貼るたびに増える。表示形式もここに溜まる）。直すのは「余分な行列を削除し軽くする」ではなく、不要なスタイルを消す"
     r = r + 1
     out.Cells(r, 1).Value = "名前定義の数"
     out.Cells(r, 2).Value = wb.names.Count & " 個"

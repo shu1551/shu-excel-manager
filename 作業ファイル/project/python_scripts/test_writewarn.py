@@ -98,3 +98,20 @@ def test_report_prints_spill_and_validation_without_stopping(capsys):
 def test_report_is_silent_when_nothing_is_wrong(capsys):
     ve._report_spill_and_validation(_WS({}), [_Cell('C2', '赤', val=_Val(3, '赤,青', ok=True))], [])
     assert capsys.readouterr().out == ''
+
+
+def test_trim_ref_note_flags_dots_next_to_the_colon_only_in_formulas():
+    cells = [('S!A1', '=SUM(A:.A)'), ('S!B1', '=COUNTA(A1:.A99)'), ('S!C1', '=SUM(.A:C)'), ('S!D1', '=SUM(A:A)'),
+             ('S!E1', '="A:.A"'), ('S!F1', 'A:.A'), ('S!G1', '=TAKE(A:.C,5)')]
+    note = ve._trim_ref_note(cells)
+    assert 'S!A1 S!B1 S!C1 S!G1' in note and 'S!D1' not in note and 'S!E1' not in note and 'S!F1' not in note
+    assert '古い Excel' in note and '2024' in note
+    assert ve._trim_ref_note([('S!A1', '=SUM(A:A)'), ('S!A2', 12)]) == ''
+
+
+def test_areas_copyable_only_when_rows_or_columns_line_up():
+    assert ve._areas_copyable([])                                           # 取れなければ止めない
+    assert ve._areas_copyable([(1, 3, 1, 1)])                                # 1 つ
+    assert ve._areas_copyable([(1, 3, 1, 1), (1, 3, 3, 2)])                  # 横に並ぶ（行が同じ）
+    assert ve._areas_copyable([(1, 3, 1, 2), (6, 4, 1, 2)])                  # 縦に並ぶ（列が同じ）
+    assert not ve._areas_copyable([(1, 3, 1, 1), (5, 2, 3, 2)])             # 行も列もそろっていない
