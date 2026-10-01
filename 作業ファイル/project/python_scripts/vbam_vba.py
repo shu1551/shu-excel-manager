@@ -354,6 +354,38 @@ def _diag_stateful_find(lines, procs):
     return out
 
 
+def _code_part(raw):
+    """1 行からコメント（文字列の外の ' 以降）だけを落とす。文字列の中身は残す（"VBScript.RegExp" を探すため）。"""
+    inq = False
+    for i, ch in enumerate(raw):
+        if ch == '"':
+            inq = not inq
+        elif ch == "'" and not inq:
+            return raw[:i]
+    return raw
+
+
+def _diag_vbscript_regexp(lines):
+    """VBM018: VBScript.RegExp を作っている行 → [(行番号(1始まり), 行テキスト)]（純 Python・コメントの中は除く）。"""
+    return [(i + 1, raw.strip()[:80]) for i, raw in enumerate(lines)
+            if re.search(r'VBScript\.RegExp', _code_part(raw), re.IGNORECASE)]
+
+
+def _diag_text_import(lines, procs):
+    """VBM019: テキスト・CSV の取り込み（QueryTables.Add の "TEXT;"・OpenText）で、プロシージャのどこにも列の型の指定
+    （TextFileColumnDataTypes・FieldInfo）が無い → [(プロシージャ名, 行番号(1始まり), 行テキスト)]（純 Python）。"""
+    out = []
+    for p in procs:
+        code = [_code_part(lines[i]) for i in range(p["start"], p["end"] + 1)]
+        if re.search(r'TextFileColumnDataTypes|FieldInfo', ' '.join(code), re.IGNORECASE):
+            continue
+        for k, c in enumerate(code):
+            if re.search(r'\bOpenText\b', c, re.IGNORECASE) or (re.search(r'QueryTables\.Add', c, re.IGNORECASE)
+                                                                and re.search(r'"TEXT;', c, re.IGNORECASE)):
+                out.append((p["name"], p["start"] + k + 1, lines[p["start"] + k].strip()[:80]))
+    return out
+
+
 def _diag_module_state(lines, procs):
     """VBM010: モジュール変数の書き手が2か所以上に散っている
     → [(変数名, 宣言行, [書き手プロシージャ...])]"""
@@ -736,15 +768,19 @@ def cmd_check(args):
         for pname, n in _diag_long_procs(procs):
             mod_info["warnings"].append(f"プロシージャ '{pname}' が {n} 行あります（150 行超）")
 
-        # VBM017: 小文字の宣言（`Dim value` 等）。VBE がブック全体の `.Value` を `.value` に書き換えている（2026-10-01）
-        _poll = {}
-        for lineno, nm, canon in find_case_pollution('\n'.join(lines)):
-            _poll.setdefault((nm, canon), []).append(lineno)
-        if _poll:
-            _shown = '、'.join(f"`{nm}`×{len(ls)}（行 {ls[0]}〜）" for (nm, _c), ls in list(_poll.items())[:6])
+        # VBM018: VBScript.RegExp（2027 年に VBScript が外される予定）／VBM019: テキスト取り込みで列の型の指定なし
+        # （実際の仕事のブック 15 本のうち 3 本ずつで見つかった・2026-10-01）。VBM017（小文字の宣言）は、見た目だけで動作に影響せず、
+        # 4 本のブックで警告が出るだけだったので外した
+        for lineno, text in _diag_vbscript_regexp(lines):
+            pname = _proc_of_index(procs, lineno - 1)
             mod_info["warnings"].append(
-                f"小文字の宣言が {len(_poll)} 種あり、ブック全体の `.{list(_poll)[0][1]}` などを小文字に書き換えています"
-                f"（見た目だけ。動作は変わりません）: {_shown}" + ('…' if len(_poll) > 6 else ''))
+                f"プロシージャ '{pname}' が VBScript.RegExp を使っています (行 {lineno}): {text}"
+                "  → VBScript は 2027 年に外される予定。作れなかったときに VBA 標準の RegExp（New RegExp・Microsoft 365 の 2025-08 以降）へ切り替える形に")
+        for pname, lineno, text in _diag_text_import(lines, procs):
+            mod_info["warnings"].append(
+                f"プロシージャ '{pname}' のテキスト・CSV 取り込みが列の型を指定していません (行 {lineno}): {text}"
+                "  → Excel が先頭の 0・16 桁以上の数・1-2 などを読み替え、保存すると元に戻りません。"
+                "TextFileColumnDataTypes（OpenText は FieldInfo）で、壊れる列を文字列（2）にする")
 
         inv_modules.append({'name': comp_name, 'type': int(comp.Type),
                             'procs': [{'name': p["name"]} for p in procs], 'code': '\r\n'.join(lines)})
@@ -1153,7 +1189,8 @@ _CHECK_RULES = [
     # 2026-09-17: clean-vba（9/16 夜）の目を check に畳んだ。戻し忘れは VBM008 が既に見る
     ("VBM015", "warning", "On Error Resume Next（エラーを握りつぶす行）", "手続き内", ""),
     ("VBM016", "warning", "150 行を超えるプロシージャ", "手続き内", ""),
-    ("VBM017", "warning", "小文字の宣言（Dim value 等）がブック全体の .Value を小文字に書き換えている", "手続き内", ""),
+    ("VBM018", "warning", "VBScript.RegExp を使っている（VBScript は 2027 年に外される予定）", "手続き内", ""),
+    ("VBM019", "warning", "テキスト・CSV の取り込みで列の型を指定していない（先頭の 0・長い数・1-2 が読み替えられる）", "手続き内", ""),
 ]
 
 
@@ -3281,12 +3318,8 @@ def cmd_replace_module(args):
             pollution = find_case_pollution(bas_head, _project_code_fn(target_file)())
         except Exception:
             pass
-        if pollution:
-            print("エラー: " + case_pollution_message(pollution))
-            print("  （--force で強行可）")
-            if tmp_norm and os.path.exists(tmp_norm):
-                _remove_export_artifacts(tmp_norm)
-            return False
+        if pollution:                       # 知らせるだけで止めない（見た目の話。実際のブックでは動作に影響していなかった・2026-10-01）
+            print("注意: " + case_pollution_message(pollution).replace('書き換えます', '書き換わります'))
 
     xl, wb = get_workbook(target_file)
     if make_backup(wb.FullName, f"module_{module_name}") is None and not getattr(args, 'force', False):
@@ -6030,12 +6063,10 @@ def cmd_code_replace(args):
         if poll:
             have = declared_names(_project_code_fn(target_file)())          # ブックが既に同じ綴りで汚れていれば何も起きない
             poll = [(w, nm, canon) for (w, nm, canon) in poll if nm not in have]
-        if poll:
-            print("エラー: 小文字の宣言がブック全体の綴りを書き換えます（VBE の仕様。宣言を消しても戻りません）:")
+        if poll:                            # 知らせるだけで止めない（見た目の話・2026-10-01）
+            print("注意: 小文字の宣言がブック全体の綴りを書き換わります（VBE の仕様。宣言を消しても戻りません。動作は変わらず、見た目だけ）:")
             for w, nm, canon in poll[:8]:
                 print(f"  {w}: `{nm}` ← `.{canon}` が `.{nm}` になります（別名に: `my{canon}` など）")
-            print("  --force で強行できます。")
-            return False
 
     # 差分プレビュー
     print(f"--- 置換プレビュー: {len(plans)}モジュール / {total_lines}行 ---")

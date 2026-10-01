@@ -1112,16 +1112,47 @@ def test_case_pollution_finds_lowercase_declarations():
     assert vm.declared_names("Dim value As String, name$\nSub q(ByVal x)") == {'value', 'name', 'q', 'x'}
 
 
-def test_validate_vba_code_rejects_case_polluting_declaration():
+def test_validate_vba_code_only_notes_case_polluting_declaration(capsys):
+    """小文字の宣言は見た目だけで動作に影響しない（実際の仕事のブック 15 本で確認）ので、知らせるだけで止めない（2026-10-01）。"""
     bad = "Sub a()\n    Dim value As String\n    value = ActiveSheet.Range(\"A1\").Value\nEnd Sub\n"
-    assert vm.validate_vba_code(bad) is False
-    assert vm.validate_vba_code(bad, force=True) is True
+    assert vm.validate_vba_code(bad) is True
+    out = capsys.readouterr().out
+    assert '注意' in out and 'value' in out and 'myValue' in out
+    # 既に同じ綴りで宣言があれば知らせもしない
     assert vm.validate_vba_code(bad, old_code="Dim value As String") is True
-    # ブックが既に同じ綴りで汚れているなら、その判定（project_code）で通す。読めなければ止めたまま
+    assert capsys.readouterr().out == ''
     assert vm.validate_vba_code(bad, project_code=lambda: "Sub z()\r\nDim value As Long\r\nEnd Sub") is True
-    assert vm.validate_vba_code(bad, project_code=lambda: "Sub z()\r\nEnd Sub") is False
-    assert vm.validate_vba_code(bad, project_code=lambda: 1 / 0) is False
+    assert capsys.readouterr().out == ''
     assert vm.validate_vba_code("Sub a()\n    Dim v As String\nEnd Sub\n") is True
+    assert capsys.readouterr().out == ''
+
+
+def test_vbm018_vbscript_regexp_and_vbm019_text_import():
+    src = ('Sub 使う()\n'
+           '    Set re = CreateObject("VBScript.RegExp")\n'
+           "    \' CreateObject(\"VBScript.RegExp\") は昔の書き方\n"
+           'End Sub\n'
+           'Sub 取り込む()\n'
+           '    With ws.QueryTables.Add(Connection:="TEXT;" & p, Destination:=ws.Range("A1"))\n'
+           '        .TextFileCommaDelimiter = True\n'
+           '    End With\n'
+           'End Sub\n'
+           'Sub 型つき()\n'
+           '    With ws.QueryTables.Add(Connection:="TEXT;" & p, Destination:=ws.Range("A1"))\n'
+           '        .TextFileColumnDataTypes = Array(2, 1)\n'
+           '    End With\n'
+           'End Sub\n'
+           'Sub 開く()\n'
+           '    Workbooks.OpenText Filename:=p\n'
+           'End Sub\n'
+           'Sub 型つきで開く()\n'
+           '    Workbooks.OpenText Filename:=p, FieldInfo:=Array(Array(1, 2))\n'
+           'End Sub\n')
+    lines = src.split('\n')
+    procs = vv._split_procedures(lines)
+    assert [x[0] for x in vv._diag_vbscript_regexp(lines)] == [2]                       # コメントの中は数えない
+    got = vv._diag_text_import(lines, procs)
+    assert [(g[0]) for g in got] == ['取り込む', '開く']                                  # 型の指定がある 2 つは出ない
 
 
 def test_check_bas_rejects_invalid_identifier(tmp_path):
@@ -2535,7 +2566,7 @@ def test_capabilities_destructive_set_is_explicit():
 def test_rules_codes_are_unique_and_sequential():
     codes = [r[0] for r in vv._CHECK_RULES]
     assert codes == sorted(set(codes))
-    assert codes[0] == 'VBM001' and codes[-1] == 'VBM017'      # 2026-09-17: VBM012〜014、同日 VBM015・016（clean-vba を畳んだ）／2026-10-01: VBM017（小文字の宣言）
+    assert codes[0] == 'VBM001' and codes[-1] == 'VBM019'      # 2026-09-17: VBM012〜014、同日 VBM015・016（clean-vba を畳んだ）／2026-10-01: VBM018（VBScript.RegExp）・VBM019（テキスト取り込み）
 
 
 def test_rules_vbm012_to_014_are_errors():
