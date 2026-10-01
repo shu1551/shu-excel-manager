@@ -1101,6 +1101,8 @@ def build_parser():
                    help="コピー元シート名（srcと分離指定）")
     p.add_argument("--whole-sheet", dest="whole_sheet", action="store_true",
                    help="コピー元にシート名だけ（使用範囲全域）を許可する")
+    p.add_argument("--col-widths", dest="col_widths", action="store_true",
+                   help="列の幅も写す（セルをコピーしても幅は付いてこない＝幅は列が持っているため）")
     p.add_argument("--show", action="store_true",
                    help="貼り付け後の見え方（画面の文字・###）を読み戻す")
     p = sub.add_parser("fill")         # fill <range> [--right]

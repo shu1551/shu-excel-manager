@@ -4844,3 +4844,323 @@ Sub 列番号を直書きした式を一覧にする()
     Application.DisplayAlerts = True
     Application.StatusBar = "列番号の直書き: 調べられませんでした（" & Err.Description & "）"
 End Sub
+
+Sub ブックに隠れた物を一覧にする()
+    ' 依頼の語: 隠れた物を|隠れた物は|隠れているもの|隠れている物|隠してある物|隠してあるもの|ブックの診断|ブックを診断|隠れた情報|何が隠れ|見えない物を|見えないものを|ブックに隠れ
+    ' 依頼の組: 隠れ,隠し,見えない+調べ,一覧,探,診断,洗い出,見つけ+-削除,消して,表示に戻,再表示,直して,行と列,シートと行
+    ' 扱う: 隠れた物 診断 名前 スタイル プロパティ 引き継ぎ
+    ' 見出し: なし
+    ' 形: なし
+    ' 画面を見ても分からない物を、新しいシート「調査_隠れた物」に一覧にする。何も変えない（セルの値は出さず、場所と種類を出す）。
+    '   非表示・極秘のシート／オブジェクト名が既定でないシート／セルに付いていない名前（名前ボックスに出ない）・非表示の名前／
+    '   ユーザー定義のセルスタイルとテーブルスタイル／ブックのプロパティ（作成者・ユーザー設定など）／白い文字のセル／
+    '   セル内改行で 2 行目が見えないセル／入力規則のメッセージ（空のセルにも付く）／文字を別の字に見せる表示形式／非表示の図形／離れた所にぽつんとある最後のセル
+    ' （オフィス田中「ブックの中に 10 種類の動物が隠れています」の隠し場所を、引き継ぎ・点検で漏れなく洗う）
+    Dim wb As Workbook, 出 As Worksheet, 古 As Object, 元 As Object
+    Dim 名 As String, 名0 As String, 回 As Long, 行 As Long, 件 As Long, 打切 As Boolean
+    Dim 種 As String, 場 As String, 容 As String, 法 As String
+    Dim 数 As Long, 区 As Long
+    Dim 域 As Range, 面 As Range, 値 As Variant, 末 As Range, 見 As Range, 組 As Variant
+    Dim 名前 As Object, 型 As Object, 図 As Object, 参照 As String, 短 As String
+    Dim 辞 As Object, 書 As String, 部() As String, 検 As Long, 検行 As Long
+
+    On Error GoTo 失敗
+    Set wb = ActiveWorkbook
+    Application.ScreenUpdating = False
+    名0 = "調査_隠れた物": 名 = 名0: 回 = 1
+    Do
+        Set 古 = Nothing
+        On Error Resume Next
+        Set 古 = wb.Sheets(名)
+        On Error GoTo 失敗
+        If 古 Is Nothing Then Exit Do
+        If TypeName(古) = "Worksheet" Then
+            If Left$(セルの字(古.Range("A1").Value), 3) = "調査：" Then
+                Application.DisplayAlerts = False
+                古.Delete
+                Application.DisplayAlerts = True
+                Exit Do
+            End If
+        End If
+        回 = 回 + 1
+        名 = 名0 & "_" & 回
+    Loop
+    Set 出 = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
+    出.Name = 名
+    出.Range("A1").Value = "調査：隠れた物　" & wb.Name
+    出.Range("A4:D4").Value = Array("種類", "場所", "内容（値は出さず、形と場所）", "見つけ方")
+    行 = 4
+
+    ' --- 1. シート（非表示・極秘・オブジェクト名）
+    For Each 元 In wb.Sheets
+        If 元.Visible <> -1 Then
+            If 元.Visible = 2 Then
+                種 = "極秘のシート（VeryHidden）"
+                法 = "［再表示］の一覧にも出ない。VBE のプロパティの Visible か、［校閲］→［ブックの統計情報］の枚数で気づく"
+            Else
+                種 = "非表示のシート"
+                法 = "シート見出しを右クリック→［再表示］（非表示が 1 枚でもあれば押せる）"
+            End If
+            場 = 元.Name
+            容 = TypeName(元)
+            If TypeName(元) = "Worksheet" Then 容 = "使用範囲 " & 元.UsedRange.Address(False, False)
+            GoSub 行を足す
+        End If
+        If TypeName(元) = "Worksheet" Then
+            If 元.CodeName <> "" And Left$(元.Name, 3) <> "調査_" And Not (元.CodeName Like "Sheet#*" Or 元.CodeName Like "シート#*") Then
+                種 = "既定でないオブジェクト名"
+                場 = 元.Name
+                容 = "オブジェクト名 " & 元.CodeName & "（表示名とは別。VBE の (オブジェクト名) プロパティ）"
+                法 = "VBE（Alt+F11）のプロジェクトエクスプローラーで、シート名の左側の名前"
+                GoSub 行を足す
+            End If
+        End If
+    Next 元
+
+    ' --- 2. 名前（セルに付いていない・非表示）
+    For Each 名前 In wb.names
+        参照 = "": 短 = ""
+        On Error Resume Next
+        参照 = 名前.RefersTo
+        短 = 名前.Name
+        On Error GoTo 失敗
+        If InStr(短, "!") > 0 Then 短 = Mid$(短, InStr(短, "!") + 1)
+        If Not (短 Like "_xlnm*" Or 短 Like "Print_*" Or 短 Like "_FilterDatabase" Or 短 Like "_xlfn*" Or 短 Like "_xlpm*" Or 短 Like "Consolidate_Area" Or 短 Like "Sheet_Title") Then
+            If 名前.Visible = False Then
+                種 = "非表示の名前"
+                場 = 名前.Name
+                容 = 参照
+                法 = "［名前の管理］にも出ない（VBA で Visible=False にした名前）。VBA の Names か『ワークシート診断』で"
+                GoSub 行を足す
+            ElseIf Left$(参照, 1) = "=" And InStr(参照, "!") = 0 And InStr(参照, "#REF") = 0 Then
+                種 = "セルに付いていない名前（定数・式）"
+                場 = 名前.Name
+                容 = 参照
+                法 = "名前ボックス（左上）の一覧には出ない。［数式］→［名前の管理］で見る"
+                GoSub 行を足す
+            End If
+        End If
+    Next 名前
+
+    ' --- 3. ユーザー定義のスタイル（セルスタイル・テーブルスタイル）
+    数 = 0
+    On Error Resume Next
+    For Each 型 In wb.Styles
+        If 型.BuiltIn = False Then
+            数 = 数 + 1
+            If 数 <= 40 Then
+                種 = "ユーザー定義のセルスタイル"
+                場 = "ブック全体"
+                容 = 型.Name
+                法 = "［ホーム］→［セルのスタイル］の「ユーザー設定」"
+                GoSub 行を足す
+            End If
+        End If
+    Next 型
+    If 数 > 40 Then
+        種 = "ユーザー定義のセルスタイル（続き）": 場 = "ブック全体": 容 = "ほかに " & (数 - 40) & " 個": 法 = "「ブックが重い原因を一覧にする」でも数が分かる"
+        GoSub 行を足す
+    End If
+    For Each 型 In wb.TableStyles
+        If 型.BuiltIn = False Then
+            種 = "ユーザー定義のテーブルスタイル"
+            場 = "ブック全体"
+            容 = 型.Name
+            法 = "［テーブルとして書式設定］の一覧の下のほうの「ユーザー設定」"
+            GoSub 行を足す
+        End If
+    Next 型
+    On Error GoTo 失敗
+
+    ' --- 4. ブックのプロパティ
+    On Error Resume Next
+    For Each 組 In Array("Title", "Subject", "Author", "Last Author", "Keywords", "Comments", "Company", "Manager", "Category", "Hyperlink base")
+        書 = ""
+        書 = CStr(wb.BuiltinDocumentProperties(組).Value)
+        If 書 <> "" Then
+            種 = "ブックのプロパティ"
+            場 = 組
+            容 = "（" & Len(書) & " 字）" & Left$(書, 30)
+            法 = "［ファイル］→［情報］→［プロパティ］→［詳細プロパティ］。エクスプローラーのポップアップにも出る"
+            GoSub 行を足す
+        End If
+    Next 組
+    For 区 = 1 To wb.CustomDocumentProperties.Count
+        種 = "ブックのプロパティ（ユーザー設定）"
+        場 = wb.CustomDocumentProperties(区).Name
+        容 = Left$(CStr(wb.CustomDocumentProperties(区).Value), 30)
+        法 = "［詳細プロパティ］の［ユーザー設定］タブ（エクスプローラーには出ない）"
+        GoSub 行を足す
+    Next 区
+    On Error GoTo 失敗
+
+    ' --- 5. シートごとの隠し場所
+    For Each 元 In wb.Worksheets
+        If Left$(セルの字(元.Range("A1").Value), 3) = "調査：" Then GoTo 次のシート
+        Set 域 = Nothing
+        On Error Resume Next
+        Set 域 = 元.UsedRange
+        Set 末 = 元.Cells.SpecialCells(11)           ' xlCellTypeLastCell（Ctrl+End の行き先）
+        On Error GoTo 失敗
+        If 域 Is Nothing Then GoTo 次のシート
+
+        ' 5a. 離れた所にぽつんとある最後のセル
+        If Not 末 Is Nothing Then
+            If セルの字(末.Value) <> "" Then
+                If Application.WorksheetFunction.CountA(元.rows(末.Row)) = 1 And Application.WorksheetFunction.CountA(元.Columns(末.Column)) = 1 And (末.Row > 20 Or 末.Column > 10) Then
+                    種 = "離れた所にぽつんとあるセル"
+                    場 = 元.Name & "!" & 末.Address(False, False)
+                    容 = "使用範囲の最後（Ctrl+End の行き先）。その行にも列にも、ほかの値が無い（" & Len(CStr(末.Value)) & " 字）"
+                    法 = "Ctrl+End を押す"
+                    GoSub 行を足す
+                End If
+            End If
+        End If
+
+        ' 5b. 白い文字・文字を別の字に見せる表示形式（先頭 3000 セルまで）・セル内改行で 2 行目が見えない
+        Set 辞 = CreateObject("Scripting.Dictionary")
+        数 = 0: 検 = 0: 検行 = 0
+        On Error Resume Next
+        For Each 見 In 域.Cells
+            数 = 数 + 1
+            If 数 > 3000 Then Exit For
+            値 = 見.Value
+            If Not IsError(値) Then
+                If セルの字(値) <> "" Then
+                    If 見.Font.Color = 16777215 And 見.Interior.ColorIndex = -4142 Then
+                        If 検 < 15 Then
+                            種 = "白い文字のセル（背景なし）"
+                            場 = 元.Name & "!" & 見.Address(False, False)
+                            容 = "値あり（" & Len(CStr(値)) & " 字）。文字の色が白で、塗りつぶしが無い"
+                            法 = "Ctrl+End・［検索と置換］・数式バーで見る"
+                            GoSub 行を足す
+                        End If
+                        検 = 検 + 1
+                    End If
+                    If VarType(値) = vbString Then
+                        If InStr(値, vbLf) > 0 Then
+                            If 見.WrapText = False Or 見.RowHeight < (UBound(Split(値, vbLf)) + 1) * 見.Font.Size * 1.15 Then
+                                If 検行 < 15 Then
+                                    種 = "セル内改行で見えない行があるセル"
+                                    場 = 元.Name & "!" & 見.Address(False, False)
+                                    容 = Replace(Left$(CStr(値), 30), vbLf, "[改行]")
+                                    法 = "数式バーを広げる（Ctrl+Shift+U）か、行の高さを広げる。LEN で字数がずれる"
+                                    GoSub 行を足す
+                                End If
+                                検行 = 検行 + 1
+                            End If
+                        End If
+                    End If
+                End If
+            End If
+            書 = 見.NumberFormat
+            If InStr(書, ";") > 0 Then
+                If Not 辞.exists(書) Then
+                    辞.Add 書, 見.Address(False, False)
+                    部 = Split(書, ";")
+                    If UBound(部) >= 3 Then
+                        If 部(3) <> "" And InStr(部(3), "@") = 0 Then
+                            種 = "文字を別の字に見せる表示形式"
+                            場 = 元.Name & "!" & 見.Address(False, False)
+                            容 = "表示形式 " & 書 & "（文字の欄に @ が無い＝何を入れても同じ字に見える）"
+                            法 = "［セルの書式設定］→［ユーザー定義］"
+                            GoSub 行を足す
+                        End If
+                    End If
+                    If 書 = ";;;" Or 書 Like ";;;*" Then
+                        種 = "値を隠す表示形式（;;;）"
+                        場 = 元.Name & "!" & 見.Address(False, False)
+                        容 = "表示形式 " & 書
+                        法 = "［セルの書式設定］→［ユーザー定義］。数式バーには値が出る"
+                        GoSub 行を足す
+                    End If
+                End If
+            End If
+        Next 見
+        On Error GoTo 失敗
+
+        ' 5c. 入力規則のメッセージ（空のセルにも付く）
+        Set 面 = Nothing
+        On Error Resume Next
+        Set 面 = 元.Cells.SpecialCells(-4174)       ' xlCellTypeAllValidation
+        On Error GoTo 失敗
+        If Not 面 Is Nothing Then
+            数 = 0
+            For Each 域 In 面.Areas
+                数 = 数 + 1
+                If 数 > 300 Then Exit For
+                容 = ""
+                On Error Resume Next
+                If CStr(域.Cells(1, 1).Validation.InputTitle & 域.Cells(1, 1).Validation.InputMessage) <> "" Then 容 = "入力時メッセージ「" & Left$(域.Cells(1, 1).Validation.InputTitle & " " & 域.Cells(1, 1).Validation.InputMessage, 40) & "」"
+                If CStr(域.Cells(1, 1).Validation.ErrorTitle & 域.Cells(1, 1).Validation.ErrorMessage) <> "" Then 容 = 容 & " エラーメッセージ「" & Left$(域.Cells(1, 1).Validation.ErrorTitle & " " & 域.Cells(1, 1).Validation.ErrorMessage, 40) & "」"
+                On Error GoTo 失敗
+                If 容 <> "" Then
+                    種 = "入力規則のメッセージ"
+                    場 = 元.Name & "!" & 域.Address(False, False) & IIf(Application.WorksheetFunction.CountA(域) = 0, "（セルは空）", "")
+                    法 = "［データの入力規則］の［入力時メッセージ］［エラーメッセージ］タブ。［検索と選択］→［条件を選択してジャンプ］→［入力規則］"
+                    GoSub 行を足す
+                End If
+            Next 域
+        End If
+
+        ' 5d. 非表示の図形
+        For Each 図 In 元.Shapes
+            If 図.Visible = False Then
+                種 = "非表示の図形"
+                場 = 元.Name & "!" & 図.Name
+                容 = "種類 " & 図.Type
+                法 = "［ホーム］→［検索と選択］→［選択ウィンドウ］の目のマーク"
+                GoSub 行を足す
+            End If
+        Next 図
+次のシート:
+    Next 元
+
+    If 打切 Then 出.Range("A2").Value = "件数が多いので、先頭の 3,000 件までを出しました。"
+    出.Range("A3").Value = "白い文字・表示形式・セル内改行の検査は、各シートの先頭 3,000 セルまでです。セルの値は出さず（場所と字数だけ）、ブックのプロパティ・名前・スタイルは中身の先頭を出しています。"
+    If 行 = 4 Then
+        行 = 5
+        出.Cells(行, 1).Value = "隠れた物は見つかりませんでした"
+    End If
+    With 出
+        .Range("A1").Font.Bold = True
+        .Range("A1").Font.Size = 12
+        With .Range(.Cells(4, 1), .Cells(4, 4))
+            .Font.Bold = True
+            .Interior.Color = RGB(221, 235, 247)
+        End With
+        With .Range(.Cells(4, 1), .Cells(行, 4))
+            .Borders.LineStyle = 1
+            .VerticalAlignment = -4160
+            .Columns.AutoFit
+        End With
+        For 区 = 1 To 4
+            If .Columns(区).ColumnWidth > 60 Then
+                .Columns(区).ColumnWidth = 60
+                .Columns(区).WrapText = True
+            End If
+        Next 区
+    End With
+    出.Activate
+    出.Range("A1").Select
+    Application.ScreenUpdating = True
+    Application.StatusBar = "調査_隠れた物: " & 件 & " 件を一覧にしました（何も変えていません）。"
+    Exit Sub
+
+行を足す:
+    If 行 < 3000 Then
+        行 = 行 + 1
+        出.Cells(行, 1).Value = 種
+        出.Cells(行, 2).Value = "'" & 場
+        出.Cells(行, 3).Value = "'" & 容
+        出.Cells(行, 4).Value = 法
+    Else
+        打切 = True
+    End If
+    件 = 件 + 1
+    Return
+失敗:
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+    Application.StatusBar = "隠れた物: 調べられませんでした（" & Err.Description & "）"
+End Sub

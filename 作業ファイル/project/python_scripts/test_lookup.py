@@ -134,3 +134,27 @@ def test_apply_plan_uses_moved_cell_position_and_marks_vanished_ones():
     assert [(a) for _s, a, _o, _n in fixed] == ['F2', 'L2']
     assert wb.ws.cells[(2, 6)].Formula2.endswith(',4,0)') and wb.ws.cells[(2, 12)].Formula2.endswith(',4,0)')
     assert skipped == []
+
+
+def test_approx_calls_flags_omitted_true_and_one_but_not_false_or_zero():
+    f = vl.approx_calls
+    assert [(a[0], a[1]) for a in f('=VLOOKUP(A1,$I$2:$K$9,3)')] == [('VLOOKUP', 'omitted')]
+    assert [(a[0], a[1]) for a in f('=VLOOKUP(A1,I:K,3,TRUE)')] == [('VLOOKUP', 'TRUE')]
+    assert [(a[0], a[1]) for a in f('=hlookup(A1,A1:F3,2,1)')] == [('HLOOKUP', '1')]
+    assert f('=VLOOKUP(A1,I:K,3,FALSE)') == [] and f('=VLOOKUP(A1,I:K,3,0)') == [] and f('=VLOOKUP(A1,I:K,3,)') == []
+    assert [(a[0], a[1]) for a in f('=MATCH(A1,I1:I9)')] == [('MATCH', 'omitted')]
+    assert [(a[0], a[1]) for a in f('=MATCH(A1,I1:I9,1)')] == [('MATCH', '1')] and [(a[0], a[1]) for a in f('=MATCH(A1,I1:I9,-1)')] == [('MATCH', '-1')]
+    assert f('=MATCH(A1,I1:I9,0)') == []
+    assert f('=XLOOKUP(A1,I:I,J:J)') == [] and f('=IF(A1="VLOOKUP(x,y,2)",1,2)') == []        # 文字列の中・別の関数は見ない
+
+
+def test_approx_calls_handles_nesting_and_many():
+    f = '=IFERROR(VLOOKUP(A2,$I$2:$K$60,3,FALSE),"なし")&VLOOKUP(B2,$M$2:$N$9,2)&INDEX(C:C,MATCH(D2,B:B))'
+    got = [(a[0], a[1]) for a in vl.approx_calls(f)]
+    assert got == [('VLOOKUP', 'omitted'), ('MATCH', 'omitted')]
+
+
+def test_approx_note_wording():
+    n = vl.approx_note([('S!A1', '=VLOOKUP(B1,D:E,2)'), ('S!A2', '=VLOOKUP(B2,D:E,2,0)'), ('S!A3', 5)])
+    assert 'S!A1' in n and 'S!A2' not in n and 'FALSE' in n and '別の行の値' in n
+    assert vl.approx_note([('S!A2', '=VLOOKUP(B2,D:E,2,0)')]) == ''
