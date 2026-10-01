@@ -4577,3 +4577,241 @@ Sub シートの数式を形ごとに一覧にする()
     Application.DisplayAlerts = True
     Application.StatusBar = "数式の一覧: 調べられませんでした（" & Err.Description & "）"
 End Sub
+
+Sub 列番号を直書きした式を一覧にする()
+    ' 依頼の語: 列を挿入すると壊れる式|列を挿入するとずれる式|列を追加すると壊れる式|列を入れると壊れる式|列番号の直書き|列番号を直書き|列番号が直書き|VLOOKUPの列番号|列を挿入するとずれ|列を挿入したら壊れ|列を足すとずれ|列の追加で壊れ|列番号がずれ|番号の直書き|行番号の直書き|列を入れると壊れ|列を増やすとずれ
+    ' 依頼の組: 列番号,行番号,番号+直書き,ずれ,壊れ,危な,調べ,一覧,探+-削除,直して,書き換え,置換
+    ' 扱う: 数式 VLOOKUP 列番号 直書き
+    ' 見出し: なし
+    ' 形: なし
+    ' VLOOKUP・HLOOKUP・INDEX の「列番号・行番号が数字で直書きされた式」を、新しいシート「調査_列番号の直書き」に一覧にする。何も変えない。
+    ' 範囲は自動で伸びるのに、この数字は列や行を挿入・削除しても直らず、黙って別の列を返す。番号が指している見出しの字も出す。
+    ' （道具の col・row の insert/delete は、この番号を同じデータを指すように直す。直すのは MATCH で見出しから探す形にするのが根本）
+    Dim wb As Workbook, 元 As Object, 出 As Worksheet, 古 As Object
+    Dim 名 As String, 名0 As String, 回 As Long, 行 As Long, 末 As Long, 項 As Long
+    Dim 域 As Range, 面 As Range, 値 As Variant, a As Long, b As Long, 式 As String, 大 As String
+    Dim 関 As Variant, 位 As Long, 前 As String, 深 As Long, 引 As Long, 始 As Long, 文字 As String, 引用 As Boolean, 引用S As Boolean
+    Dim 引数(1 To 9) As String, 引数数 As Long, 番号 As String, 表 As String, 種 As String, 図 As Range
+    Dim 参照シート As Object, 区 As Long, 参照名 As String, 見出1 As String, 見出2 As String, 件 As Long, 打切 As Boolean
+    Dim 番 As Long, 検 As Long
+
+    On Error GoTo 失敗
+    Set wb = ActiveWorkbook
+    Application.ScreenUpdating = False
+    名0 = "調査_列番号の直書き": 名 = 名0: 回 = 1
+    Do
+        Set 古 = Nothing
+        On Error Resume Next
+        Set 古 = wb.Sheets(名)
+        On Error GoTo 失敗
+        If 古 Is Nothing Then Exit Do
+        If TypeName(古) = "Worksheet" Then
+            If Left$(セルの字(古.Range("A1").Value), 3) = "調査：" Then
+                Application.DisplayAlerts = False
+                古.Delete
+                Application.DisplayAlerts = True
+                Exit Do
+            End If
+        End If
+        回 = 回 + 1
+        名 = 名0 & "_" & 回
+    Loop
+    Set 出 = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
+    出.Name = 名
+    出.Range("A1").Value = "調査：列番号・行番号が直書きの式　" & wb.Name
+    出.Range("A4:H4").Value = Array("シート", "セル", "関数", "数字の種類", "直書きの番号", "表の範囲", "番号が指す見出しの字", "式")
+    行 = 4
+
+    For Each 元 In wb.Worksheets
+        If Left$(セルの字(元.Range("A1").Value), 3) = "調査：" Then GoTo 次のシート
+        Set 域 = Nothing
+        On Error Resume Next
+        Set 域 = 元.UsedRange.SpecialCells(-4123)
+        On Error GoTo 失敗
+        If 域 Is Nothing Then GoTo 次のシート
+        For Each 面 In 域.Areas
+            If 面.CountLarge = 1 Then
+                ReDim 値(1 To 1, 1 To 1)
+                値(1, 1) = 面.Formula
+            Else
+                値 = 面.Formula
+            End If
+            For a = 1 To UBound(値, 1)
+                For b = 1 To UBound(値, 2)
+                    式 = CStr(値(a, b))
+                    大 = UCase$(式)
+                    If InStr(大, "VLOOKUP(") > 0 Or InStr(大, "HLOOKUP(") > 0 Or InStr(大, "INDEX(") > 0 Then
+                        ' "…" の中（文字として書いた VLOOKUP( など）は式ではないので、空白に伏せて探す（位置はそのまま）
+                        If InStr(式, """") > 0 Then
+                            引用 = False: 大 = ""
+                            For 区 = 1 To Len(式)
+                                文字 = Mid$(式, 区, 1)
+                                If 文字 = """" Then
+                                    引用 = Not 引用
+                                    大 = 大 & """"
+                                ElseIf 引用 Then
+                                    大 = 大 & " "
+                                Else
+                                    大 = 大 & UCase$(文字)
+                                End If
+                            Next 区
+                        End If
+                        For Each 関 In Array("VLOOKUP", "HLOOKUP", "INDEX")
+                            位 = InStr(大, 関 & "(")
+                            Do While 位 > 0
+                                前 = ""
+                                If 位 > 1 Then 前 = Mid$(大, 位 - 1, 1)
+                                If 前 Like "[A-Z0-9_.]" Then GoTo 次の呼び出し
+                                始 = 位 + Len(関) + 1
+                                GoSub 引数を切る
+                                If 引数数 >= 2 Then
+                                    表 = Trim$(引数(IIf(関 = "INDEX", 1, 2)))
+                                    For 検 = 1 To 2
+                                        番号 = "": 種 = ""
+                                        If 関 = "VLOOKUP" And 検 = 1 And 引数数 >= 3 Then 番号 = Trim$(引数(3)): 種 = "列番号"
+                                        If 関 = "HLOOKUP" And 検 = 1 And 引数数 >= 3 Then 番号 = Trim$(引数(3)): 種 = "行番号"
+                                        If 関 = "INDEX" Then
+                                            If 検 = 1 And 引数数 >= 2 Then 番号 = Trim$(引数(2)): 種 = "行番号"
+                                            If 検 = 2 And 引数数 >= 3 Then 番号 = Trim$(引数(3)): 種 = "列番号"
+                                            If 検 = 1 And 引数数 = 2 Then 種 = "行番号"
+                                        End If
+                                        If 番号 <> "" And Len(番号) <= 6 And Not (番号 Like "*[!0-9]*") Then
+                                            If CLng(番号) >= 1 Then
+                                                GoSub 見出しを引く
+                                                項 = 項 + 1
+                                                If 行 < 5000 Then
+                                                    行 = 行 + 1
+                                                    出.Cells(行, 1).Value = "'" & 元.Name
+                                                    出.Cells(行, 2).Value = 面.Cells(a, b).Address(False, False)
+                                                    出.Cells(行, 3).Value = 関
+                                                    出.Cells(行, 4).Value = 種
+                                                    出.Cells(行, 5).Value = CLng(番号)
+                                                    出.Cells(行, 6).Value = "'" & 表
+                                                    出.Cells(行, 7).Value = "'" & 見出1 & IIf(見出2 <> "", "（1 つ上の行: " & 見出2 & "）", "")
+                                                    出.Cells(行, 8).Value = "'" & 式
+                                                Else
+                                                    打切 = True
+                                                End If
+                                            End If
+                                        End If
+                                    Next 検
+                                End If
+次の呼び出し:
+                                位 = InStr(位 + 1, 大, 関 & "(")
+                            Loop
+                        Next 関
+                    End If
+                Next b
+            Next a
+        Next 面
+次のシート:
+    Next 元
+
+    If 打切 Then 出.Range("A2").Value = "件数が多いので、先頭の 5,000 件までを出しました。"
+    If 行 = 4 Then
+        行 = 5
+        出.Cells(行, 1).Value = "列番号・行番号が数字で直書きされた VLOOKUP・HLOOKUP・INDEX は見つかりませんでした"
+    Else
+        出.Range("A3").Value = "列や行を挿入・削除すると、この数字は自動では直りません（範囲だけが伸びる）。道具の col・row は直しますが、Excel で手で挿入する前に確かめてください。根本は MATCH で見出しから探す形：=VLOOKUP(キー, 表, MATCH(""見出し"", 見出しの行, 0), FALSE)"
+    End If
+    末 = 行
+    With 出
+        .Range("A1").Font.Bold = True
+        .Range("A1").Font.Size = 12
+        With .Range(.Cells(4, 1), .Cells(4, 8))
+            .Font.Bold = True
+            .Interior.Color = RGB(221, 235, 247)
+        End With
+        With .Range(.Cells(4, 1), .Cells(末, 8))
+            .Borders.LineStyle = 1
+            .VerticalAlignment = -4160
+            .Columns.AutoFit
+        End With
+        For 区 = 1 To 8
+            If .Columns(区).ColumnWidth > 60 Then
+                .Columns(区).ColumnWidth = 60
+                .Columns(区).WrapText = True
+            End If
+        Next 区
+    End With
+    出.Activate
+    出.Range("A1").Select
+    Application.ScreenUpdating = True
+    Application.StatusBar = "調査_列番号の直書き: " & 項 & " 件を一覧にしました（何も変えていません）。"
+    Exit Sub
+
+引数を切る:
+    ' 式 の 始（"(" の次）から、対応する ")" までの引数を 引数(1..) に・数を 引数数 に（かっこと "…" と '…' の中のコンマでは切らない）
+    引数数 = 0
+    For 区 = 1 To 9: 引数(区) = "": Next 区
+    深 = 1: 引 = 始: 引用 = False: 引用S = False
+    For 区 = 始 To Len(式)
+        文字 = Mid$(式, 区, 1)
+        If 引用 Then
+            If 文字 = """" Then 引用 = False
+        ElseIf 引用S Then
+            If 文字 = "'" Then 引用S = False
+        ElseIf 文字 = """" Then
+            引用 = True
+        ElseIf 文字 = "'" Then
+            引用S = True
+        ElseIf 文字 = "(" Or 文字 = "{" Then
+            深 = 深 + 1
+        ElseIf 文字 = ")" Or 文字 = "}" Then
+            深 = 深 - 1
+            If 深 = 0 Then
+                引数数 = 引数数 + 1
+                If 引数数 <= 9 Then 引数(引数数) = Mid$(式, 引, 区 - 引)
+                Exit For
+            End If
+        ElseIf 文字 = "," And 深 = 1 Then
+            引数数 = 引数数 + 1
+            If 引数数 <= 9 Then 引数(引数数) = Mid$(式, 引, 区 - 引)
+            引 = 区 + 1
+        End If
+    Next 区
+    If 深 > 0 Then 引数数 = 0
+    If 引数数 > 9 Then 引数数 = 9
+    Return
+
+見出しを引く:
+    ' 表（範囲の文字）の 番号 番目の列・行の見出しの字を 見出1（範囲の 1 つ目）・見出2（1 つ上・1 つ左）に。読めなければ ""
+    見出1 = "": 見出2 = ""
+    Set 参照シート = 元
+    参照名 = 表
+    区 = InStrRev(参照名, "!")
+    If 区 > 0 Then
+        Set 参照シート = Nothing
+        On Error Resume Next
+        Set 参照シート = wb.Worksheets(Replace(Left$(参照名, 区 - 1), "'", ""))
+        On Error GoTo 失敗
+        参照名 = Mid$(参照名, 区 + 1)
+    End If
+    If Not 参照シート Is Nothing Then
+        Set 図 = Nothing
+        On Error Resume Next
+        Set 図 = 参照シート.Range(参照名)
+        On Error GoTo 失敗
+        If Not 図 Is Nothing Then
+            番 = CLng(番号)
+            On Error Resume Next
+            If 種 = "列番号" Then
+                If 番 <= 図.Columns.Count Then
+                    見出1 = CStr(図.Cells(1, 番).text)
+                    If 図.Row > 1 Then 見出2 = CStr(参照シート.Cells(図.Row - 1, 図.Column + 番 - 1).text)
+                End If
+            Else
+                If 番 <= 図.rows.Count Then
+                    見出1 = CStr(図.Cells(番, 1).text)
+                    If 図.Column > 1 Then 見出2 = CStr(参照シート.Cells(図.Row + 番 - 1, 図.Column - 1).text)
+                End If
+            End If
+            On Error GoTo 失敗
+        End If
+    End If
+    Return
+失敗:
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+    Application.StatusBar = "列番号の直書き: 調べられませんでした（" & Err.Description & "）"
+End Sub

@@ -2663,6 +2663,14 @@ def cmd_row(args):
         # 破壊操作は実行前に対象を明示する（対象取り違え事故の防止）
         print(f"対象シート: {ws.Name}（{wb.Name}）")
     rng = ws.Rows(f"{start}:{start + count - 1}")
+    # HLOOKUP の行番号・INDEX の行番号の直書きも、行の挿入・削除で Excel が直さない（列の挿入・削除と同じ。cmd_col を参照）
+    plan = None
+    if action in ('insert', 'delete') and not getattr(args, 'keep_lookup', False):
+        import vbam_lookup as _vl
+        try:
+            plan = _vl.plan_for_book(wb, ws.Name, 'row', action, start, count)
+        except Exception:
+            plan = None
     if action == 'insert':
         rng.Insert()
         print(f"行挿入: {ws.Name} {start}行目に {count}行")
@@ -2671,6 +2679,10 @@ def cmd_row(args):
         print(f"行削除: {ws.Name} {start}〜{start + count - 1}行")
     else:
         print(f"未知のアクション: {action}（insert|delete）"); return False
+    if plan:
+        fixed, skipped = _vl.apply_plan(wb, plan, ws.Name, 'row', action, start, count)
+        for line in _vl.report_lines(fixed, skipped, f"{start}行目の{'挿入' if action == 'insert' else '削除'}"):
+            print(line)
     print("（保存はしていません）")
     return True
 
@@ -2706,6 +2718,15 @@ def cmd_col(args):
         # 破壊操作は実行前に対象を明示する（対象取り違え事故の防止）
         print(f"対象シート: {ws.Name}（{wb.Name}）")
     rng = ws.Columns(f"{start}:{end}")
+    # VLOOKUP の列番号（,3,）のような直書きの数字は、Excel が列の挿入・削除で直さない（範囲は伸びるのに番号はそのまま＝黙って別の列を返す）。
+    # 操作の前に影響を受ける式を読み、あとで同じデータを指すように番号を直す（2026-10-01・Excel のエージェントモードが直せなかった所）
+    plan = None
+    if action in ('insert', 'delete') and not getattr(args, 'keep_lookup', False):
+        import vbam_lookup as _vl
+        try:
+            plan = _vl.plan_for_book(wb, ws.Name, 'col', action, _col_num(start), count)
+        except Exception:
+            plan = None
     if action == 'insert':
         rng.Insert()
         print(f"列挿入: {ws.Name} {start}列に {count}列")
@@ -2714,6 +2735,10 @@ def cmd_col(args):
         print(f"列削除: {ws.Name} {start}〜{end}列")
     else:
         print(f"未知のアクション: {action}（insert|delete）"); return False
+    if plan:
+        fixed, skipped = _vl.apply_plan(wb, plan, ws.Name, 'col', action, _col_num(start), count)
+        for line in _vl.report_lines(fixed, skipped, f"{start}列の{'挿入' if action == 'insert' else '削除'}"):
+            print(line)
     print("（保存はしていません）")
     return True
 

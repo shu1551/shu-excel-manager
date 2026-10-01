@@ -503,6 +503,10 @@ py vba_manager.py name delete 基準値
 # --- a. 編集の足回り ---
 py vba_manager.py row insert 5 2          # 5行目に2行挿入 / row delete 5 2（--sheet 名 で対象明示可）
 py vba_manager.py col insert C 1          # C列に1列挿入 / col delete C 1
+#  列・行の挿入／削除は、VLOOKUP の列番号（,3,）・HLOOKUP の行番号・INDEX の行／列番号の**直書きの数字**を、Excel が直さないので
+#  同じデータを指すように道具が直す（操作の前に全シートの式を読み、あとで番号だけ書き換える。何式直したか式ごとに出す）。
+#  直さないなら --keep-lookup。指していた列・行そのものを消したときと配列数式は直さずに知らせる。
+#  既存ブックの壊れやすい式は、棚のマクロ「列番号を直書きした式を一覧にする」（シート「調査_列番号の直書き」）で洗える
 py vba_manager.py copy-range A1:C1 E1     # 範囲コピー（--values で値のみ）
 py vba_manager.py fill D2:D5              # 先頭セルを下にフィル（--right で右）
 py vba_manager.py sort A1:C20 --key B --desc --header   # B列キーで降順、見出しあり
