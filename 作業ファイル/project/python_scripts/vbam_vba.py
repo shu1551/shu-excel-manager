@@ -281,25 +281,75 @@ def _diag_app_state(lines, procs):
     return leaks
 
 
+# Range.Find / Range.Replace が「省くと前回の設定を引き継ぐ」引数（Excel は［検索と置換］の設定を覚えていて、
+# マクロの Find も使う人の設定を書き換え、読み戻せない。2026-10-01 オフィス田中 / 2026-08-28 xlflow VBA215）
+_FIND_PARAMS = ['What', 'After', 'LookIn', 'LookAt', 'SearchOrder', 'SearchDirection', 'MatchCase', 'MatchByte', 'SearchFormat']
+_REPLACE_PARAMS = ['What', 'Replacement', 'LookAt', 'SearchOrder', 'MatchCase', 'MatchByte', 'SearchFormat', 'ReplaceFormat']
+_FIND_NEEDED = ['LookIn', 'LookAt', 'SearchOrder', 'MatchCase']
+_REPLACE_NEEDED = ['LookAt', 'SearchOrder', 'MatchCase']
+
+
+def _call_args(stmt, open_idx):
+    """stmt[open_idx] の '(' から対応する ')' までの引数を、かっこの外のカンマで切って返す（文字列は潰し済み）。"""
+    depth, cur, args = 0, [], []
+    for ch in stmt[open_idx:]:
+        if ch == '(':
+            depth += 1
+            if depth == 1:
+                continue
+        elif ch == ')':
+            depth -= 1
+            if depth == 0:
+                break
+        if ch == ',' and depth == 1:
+            args.append(''.join(cur).strip())
+            cur = []
+        else:
+            cur.append(ch)
+    args.append(''.join(cur).strip())
+    return args
+
+
 def _diag_stateful_find(lines, procs):
-    """VBM011: Range.Find / Replace が LookAt を省いている
-    （省くと Excel が前回の検索ダイアログ／マクロの設定を引き継ぐ）"""
+    """VBM011: Range.Find / Replace が、前回の設定を引き継ぐ引数を省いている → [(プロシージャ名, Find|Replace, 行, [省いた引数])]
+    （Find は LookIn・LookAt・SearchOrder・MatchCase、Replace は LookAt・SearchOrder・MatchCase を見る。位置引数も数える。
+    正規表現（VBScript.RegExp / RegExp）の .Replace と VBE の CodeModule.Find は別物なので見ない）"""
     out = []
-    call_re = re.compile(r'\.\s*(Find|Replace)\s*\(', re.IGNORECASE)
+    call_re = re.compile(r'([\w\.\)]*?)\s*\.\s*(Find|Replace)\b(\s*\()?', re.IGNORECASE)
+    regex_vars = set()
+    for raw in lines:
+        for m in re.finditer(r'\b(\w+)\s*=\s*(?:CreateObject\s*\(\s*"VBScript\.RegExp"|New\s+RegExp)', raw, re.IGNORECASE):
+            regex_vars.add(m.group(1).lower())
+        for m in re.finditer(r'\bDim\s+(\w+)\s+As\s+(?:New\s+)?RegExp\b', raw, re.IGNORECASE):
+            regex_vars.add(m.group(1).lower())
     for p in procs:
         idx = p["start"]
         while idx <= p["end"]:
             stmt, used = _logical_line(lines, idx)
-            m = call_re.search(stmt)
-            if m:
-                packed = stmt.lower().replace(' ', '')
-                if 'lookat:=' not in packed:
-                    missing = ['LookAt']
-                    for a, label in (('searchorder:=', 'SearchOrder'),
-                                     ('matchcase:=', 'MatchCase')):
-                        if a not in packed:
-                            missing.append(label)
-                    out.append((p["name"], m.group(1), idx + 1, missing))
+            for m in call_re.finditer(stmt):
+                recv = m.group(1).lower()
+                kind = m.group(2).capitalize()
+                if recv.endswith('codemodule') or recv.split('.')[-1] in regex_vars:
+                    continue
+                if m.group(3):
+                    args = _call_args(stmt, m.end() - 1)
+                else:                                    # .Replace What:=..., Replacement:=... のかっこなしの形（文の残りが引数）
+                    rest = stmt[m.end():].split(':')[0] if ':=' not in stmt[m.end():] else stmt[m.end():]
+                    if kind == 'Find' or (':=' not in rest and ',' not in rest):
+                        continue
+                    args = [a.strip() for a in rest.split(',')]
+                params = _FIND_PARAMS if kind == 'Find' else _REPLACE_PARAMS
+                needed = _FIND_NEEDED if kind == 'Find' else _REPLACE_NEEDED
+                given = set()
+                for i, a in enumerate(args):
+                    nm = re.match(r'(\w+)\s*:=', a)
+                    if nm:
+                        given.add(nm.group(1).lower())
+                    elif a and i < len(params):
+                        given.add(params[i].lower())
+                missing = [n for n in needed if n.lower() not in given]
+                if missing:
+                    out.append((p["name"], kind, idx + 1, missing))
             idx += used
     return out
 

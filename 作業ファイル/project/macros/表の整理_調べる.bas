@@ -3436,7 +3436,7 @@ Sub 壊れた参照と名前を一覧にする()
         End If
         Set f = Nothing
         On Error Resume Next
-        Set f = sh.Cells.Find("#REF!", LookIn:=-4123, LookAt:=2)
+        Set f = sh.Cells.Find("#REF!", LookIn:=-4123, LookAt:=2, SearchOrder:=1, MatchCase:=False, MatchByte:=False, SearchFormat:=False)
         On Error GoTo 失敗
         If Not f Is Nothing Then
             first = f.Address
@@ -3457,12 +3457,35 @@ Sub 壊れた参照と名前を一覧にする()
         End If
 次のシート1:
     Next sh
+    Dim 外s As String, 外p1 As Long, 外p2 As Long, 外t As String, 外前 As String
     For Each nn In wb.names
-        If InStr(nn.RefersTo, "#REF!") > 0 Then
+        外s = nn.RefersTo
+        If InStr(外s, "#REF!") > 0 Then
             r = r + 1
             out.Cells(r, 1).Value = "壊れた名前"
             out.Cells(r, 3).Value = "'" & nn.Name
-            out.Cells(r, 4).Value = "'" & nn.RefersTo
+            out.Cells(r, 4).Value = "'" & 外s
+        Else
+            ' 他のブックを指す名前（別のブックへシートやセルをコピーすると、使われている名前だけが持ち込まれる）。
+            ' 2026 年の仕様変更で、参照先が消えていても名前の管理でエラーにならないので、#REF! の検査では見つからない
+            外p1 = InStr(外s, "[")
+            If 外p1 > 0 Then
+                外p2 = InStr(外p1, 外s, "]")
+                If 外p2 > 外p1 Then
+                    外t = LCase$(Mid$(外s, 外p1 + 1, 外p2 - 外p1 - 1))
+                    外前 = "="
+                    If 外p1 > 1 Then 外前 = Mid$(外s, 外p1 - 1, 1)
+                    If 外t Like "*.xl*" Or (IsNumeric(外t) And InStr("=(,+-*/&' ", 外前) > 0) Then
+                        r = r + 1
+                        out.Cells(r, 1).Value = "他のブックを指す名前"
+                        out.Cells(r, 3).Value = "'" & nn.Name
+                        out.Cells(r, 4).Value = "'" & 外s
+                        out.Cells(r, 5).Value = "別のブックから持ち込まれた名前。開くたびに更新確認が出る。参照先が消えていてもエラーにならない" & _
+                            IIf(InStr(LCase$(外s), "\users\") > 0 Or InStr(LCase$(外s), "onedrive") > 0 Or InStr(LCase$(外s), "sharepoint") > 0 Or InStr(LCase$(外s), "http") > 0, _
+                                "／参照先のフルパスに個人名・OneDrive・SharePoint が含まれる", "")
+                    End If
+                End If
+            End If
         End If
     Next nn
     If 他 > 0 Then out.Range("A2").Value = "このほかに、#REF!・#NAME? 以外のエラー値のセルが " & 他 & " 件あります（一覧は「エラー値のセルを一覧にする」）。"
@@ -3633,8 +3656,39 @@ Sub 参照とリンクを一覧にする()
             r = r + 1
             out.Cells(r, 1).Value = "リンク元ファイル"
             out.Cells(r, 3).Value = "'" & lk(i)
+            ' フルパスに Windows のログイン名・OneDrive・SharePoint のサーバー名が残る（ブックを人に渡すと見える）
+            If InStr(LCase$(lk(i)), "\users\") > 0 Or InStr(LCase$(lk(i)), "onedrive") > 0 Or InStr(LCase$(lk(i)), "sharepoint") > 0 Or InStr(LCase$(lk(i)), "http") > 0 Then
+                out.Cells(r, 5).Value = "フルパスに個人名・OneDrive・SharePoint が含まれる"
+            End If
         Next i
     End If
+    ' 名前が他のブックを指している（別のブックへのコピーで持ち込まれた名前。式の中には外部参照が見えないので上の一覧に出ない）
+    Dim 外nn As Object, 外s As String, 外p1 As Long, 外p2 As Long, 外t As String, 外前 As String
+    For Each 外nn In wb.names
+        外s = ""
+        On Error Resume Next
+        外s = 外nn.RefersTo
+        On Error GoTo 失敗
+        外p1 = InStr(外s, "[")
+        If 外p1 > 0 Then
+            外p2 = InStr(外p1, 外s, "]")
+            If 外p2 > 外p1 Then
+                外t = LCase$(Mid$(外s, 外p1 + 1, 外p2 - 外p1 - 1))
+                外前 = "="
+                If 外p1 > 1 Then 外前 = Mid$(外s, 外p1 - 1, 1)
+                If 外t Like "*.xl*" Or (IsNumeric(外t) And InStr("=(,+-*/&' ", 外前) > 0) Then
+                    r = r + 1
+                    out.Cells(r, 1).Value = "他のブックを指す名前"
+                    out.Cells(r, 2).Value = "'" & 外nn.Name
+                    out.Cells(r, 3).Value = "'" & 外s
+                    out.Cells(r, 4).Value = 1
+                    If InStr(LCase$(外s), "\users\") > 0 Or InStr(LCase$(外s), "onedrive") > 0 Or InStr(LCase$(外s), "sharepoint") > 0 Or InStr(LCase$(外s), "http") > 0 Then
+                        out.Cells(r, 5).Value = "フルパスに個人名・OneDrive・SharePoint が含まれる"
+                    End If
+                End If
+            End If
+        End If
+    Next 外nn
     If 打切 Then out.Range("A2").Value = "数式が多いので、先頭の 200,000 個までを調べました。"
     If r = hr Then
         r = r + 1
@@ -3733,10 +3787,10 @@ Sub ブックが重い原因を一覧にする()
         lastR = 0: lastC = 0
         Set lc = Nothing
         On Error Resume Next
-        Set lc = sh.Cells.Find("*", SearchOrder:=1, SearchDirection:=2, LookIn:=-4123)
+        Set lc = sh.Cells.Find("*", SearchOrder:=1, SearchDirection:=2, LookIn:=-4123, LookAt:=2, MatchCase:=False, MatchByte:=False, SearchFormat:=False)
         If Not lc Is Nothing Then lastR = lc.Row
         Set lc = Nothing
-        Set lc = sh.Cells.Find("*", SearchOrder:=2, SearchDirection:=2, LookIn:=-4123)
+        Set lc = sh.Cells.Find("*", SearchOrder:=2, SearchDirection:=2, LookIn:=-4123, LookAt:=2, MatchCase:=False, MatchByte:=False, SearchFormat:=False)
         If Not lc Is Nothing Then lastC = lc.Column
         On Error GoTo 失敗
         gR = endR - lastR: gC = endC - lastC
@@ -3793,6 +3847,31 @@ Sub ブックが重い原因を一覧にする()
     out.Cells(r, 1).Value = "名前定義の数"
     out.Cells(r, 2).Value = wb.names.Count & " 個"
     If wb.names.Count > 1000 Then out.Cells(r, 3).Value = "要確認": out.Cells(r, 4).Value = "名前が多い（使っていない名前が溜まっていないか）"
+    ' 別のブックから持ち込まれた名前（外部リンクの元。参照先が消えていても名前の管理にエラーが出ない）
+    Dim nn As Object, 外s As String, 外p1 As Long, 外p2 As Long, 外t As String, 外前 As String, n外 As Long
+    For Each nn In wb.names
+        外s = ""
+        On Error Resume Next
+        外s = nn.RefersTo
+        On Error GoTo 失敗
+        外p1 = InStr(外s, "[")
+        If 外p1 > 0 Then
+            外p2 = InStr(外p1, 外s, "]")
+            If 外p2 > 外p1 Then
+                外t = LCase$(Mid$(外s, 外p1 + 1, 外p2 - 外p1 - 1))
+                外前 = "="
+                If 外p1 > 1 Then 外前 = Mid$(外s, 外p1 - 1, 1)
+                If 外t Like "*.xl*" Or (IsNumeric(外t) And InStr("=(,+-*/&' ", 外前) > 0) Then n外 = n外 + 1
+            End If
+        End If
+    Next nn
+    If n外 > 0 Then
+        r = r + 1
+        out.Cells(r, 1).Value = "他のブックを指す名前"
+        out.Cells(r, 2).Value = n外 & " 本"
+        out.Cells(r, 3).Value = "要確認"
+        out.Cells(r, 4).Value = "別のブックから持ち込まれた名前（外部リンクの元・開くたびに更新確認が出る）。一覧は「参照とリンクを一覧にする」"
+    End If
     lk = Empty
     On Error Resume Next
     lk = wb.LinkSources(1)
@@ -3822,7 +3901,7 @@ Sub ブックが重い原因を一覧にする()
             End If
             Set f = Nothing
             On Error Resume Next
-            Set f = sh.Cells.Find(w, LookIn:=-4123, LookAt:=2)
+            Set f = sh.Cells.Find(w, LookIn:=-4123, LookAt:=2, SearchOrder:=1, MatchCase:=False, MatchByte:=False, SearchFormat:=False)
             On Error GoTo 失敗
             If Not f Is Nothing Then
                 first = f.Address

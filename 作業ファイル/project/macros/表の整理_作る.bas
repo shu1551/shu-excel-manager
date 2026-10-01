@@ -10640,9 +10640,37 @@ Sub シートを別ブックで保存する()
     Loop
     Application.ScreenUpdating = False
     ActiveSheet.Copy
+    ' 別のブックへ写すと、使われている名前と、元のブックの他のシートを見ている式が「元のブックへのリンク」として付いてくる
+    ' （フルパスが残り、保存先を開くたびに更新確認が出る）。黙って渡さず、残っている件数を知らせる
+    Dim lk As Variant, nM2 As Object, s2 As String, p1 As Long, p2 As Long, t2 As String, 前 As String, nリンク As Long, n名前 As Long
+    lk = Empty
+    On Error Resume Next
+    lk = ActiveWorkbook.LinkSources(1)
+    On Error GoTo 0
+    If IsArray(lk) Then nリンク = UBound(lk) - LBound(lk) + 1
+    For Each nM2 In ActiveWorkbook.names
+        s2 = ""
+        On Error Resume Next
+        s2 = nM2.RefersTo
+        On Error GoTo 0
+        p1 = InStr(s2, "[")
+        If p1 > 0 Then
+            p2 = InStr(p1, s2, "]")
+            If p2 > p1 Then
+                t2 = LCase$(Mid$(s2, p1 + 1, p2 - p1 - 1))
+                前 = "="
+                If p1 > 1 Then 前 = Mid$(s2, p1 - 1, 1)
+                If t2 Like "*.xl*" Or (IsNumeric(t2) And InStr("=(,+-*/&' ", 前) > 0) Then n名前 = n名前 + 1
+            End If
+        End If
+    Next nM2
     ActiveWorkbook.SaveAs fileName:=fp, FileFormat:=xlOpenXMLWorkbookMacroEnabled, CreateBackup:=False
     ActiveWorkbook.Close False
     Application.ScreenUpdating = True
+    If nリンク > 0 Or n名前 > 0 Then
+        Application.StatusBar = "シートを別ブックで保存: 元のブックへのリンクが " & nリンク & " 件・他のブックを指す名前が " & n名前 & " 本ついてきました" & _
+            "（開くと更新確認が出ます・元のファイルのフルパスが残ります）。切るなら保存先で「外部リンクを値に変えて切る」。"
+    End If
 End Sub
 
 Sub 左右に並んだ表を突き合わせる()

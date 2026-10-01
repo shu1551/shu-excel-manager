@@ -6885,7 +6885,7 @@ class _XmCells:
             return _InvObj(Count=self.ws.n_dv)
         raise RuntimeError("該当するセルが見つかりません")
 
-    def Find(self, what, after=None, look_in=None, look_at=None, order=1, direction=2):
+    def Find(self, what, after=None, look_in=None, look_at=None, order=1, direction=2, match_case=None, match_byte=None, search_format=None):
         keys = [k for k, v in self.ws.v.items() if v not in (None, '')]
         if not keys:
             return None
