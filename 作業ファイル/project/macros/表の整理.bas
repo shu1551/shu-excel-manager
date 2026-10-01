@@ -4468,3 +4468,108 @@ Sub 空白の有無を多い方にそろえる()
         End If
     Next c
 End Sub
+
+Sub 選んだ文字で入力規則リストを作る()
+    ' 依頼の語: 入力規則のリスト|プルダウンを作|ドロップダウンを作|プルダウンにし|ドロップダウンにし|プルダウンリスト|ドロップダウンリスト|リストから選べ|選べるようにし|選択肢を作|入力規則を設定|入力規則にし|入力規則のプルダウン|入力規則を付け
+    ' 依頼の組: プルダウン,ドロップダウン,入力規則,選択肢+作,設定,付け,つけ,にし,選べ,入れ+-一覧,調べ,探,点検,削除,解除,消
+    ' 扱う: 入力規則 プルダウン リスト
+    ' 見出し: なし
+    ' 形: なし
+    ' 今のセル（アクティブセル）に書いた「項目をスペースかカンマで区切った文字」を、選んでいるセルすべての入力規則のリスト（プルダウン）にする。
+    ' 区切りは、半角・全角のスペース・カンマ・読点・タブ・改行（カンマがあるときはカンマと改行だけ＝項目の中にスペースを使える）。重複は除く。
+    ' 項目の代わりに =A2:A10 や =Sheet2!$A$1:$A$9 のような範囲参照（文字として入れた形でも、式として入れた形でも）を書くと、その範囲がリストになる。
+    ' 元の文字を書いたセルは設定のあと空にする。項目が 1 つだけのとき・255 字を超えるとき・範囲参照が使えないときは、何も変えずに知らせる（普通のデータを消さない）。
+    ' 2026-10-01 オフィス田中「アドイン解説 入力規則のリスト」の型（Selection に一括・既存の規則は入れ替え）に、安全のための確認を足した
+    Dim 元 As String, 参照 As String, 項目 As Variant, 結果 As String, 区切り As String
+    Dim 見 As Object, 一つ As String, 設定 As String
+    Dim 域 As Range, 先頭 As Range
+
+    If TypeName(Selection) <> "Range" Then Exit Sub
+    Set 先頭 = ActiveCell
+    If 先頭 Is Nothing Then Exit Sub
+    If 先頭.Cells.CountLarge > 1 Then Set 先頭 = 先頭.Cells(1, 1)
+
+    ' 元の文字（式なら式の字）。空なら何もしない
+    参照 = ""
+    If 先頭.HasFormula Then
+        元 = 先頭.Formula
+    Else
+        元 = 先頭.Value
+    End If
+    元 = Trim$(元)
+    If 元 = "" Then Exit Sub
+
+    If Left$(元, 1) = "=" Then
+        ' 範囲参照（=A2:A10・=Sheet2!$A$1:$A$9・=部署リスト）。関数が入っていれば参照ではない
+        If InStr(元, "(") > 0 Then
+            Application.StatusBar = "入力規則のリスト: 式が入っています。項目をスペースかカンマで区切って書くか、=A2:A10 のような範囲参照だけを書いてください。"
+            Exit Sub
+        End If
+        参照 = 元
+        設定 = 参照
+    Else
+        ' 区切りをカンマにそろえる（改行・読点・全角のカンマは常に区切り。カンマが無ければスペースとタブも区切り）
+        区切り = Replace(Replace(Replace(元, vbCrLf, ","), vbLf, ","), vbCr, ",")
+        区切り = Replace(Replace(区切り, "、", ","), "，", ",")
+        If InStr(区切り, ",") = 0 Then
+            区切り = Replace(Replace(区切り, vbTab, " "), "　", " ")
+            区切り = Replace(区切り, " ", ",")
+        End If
+        Set 見 = CreateObject("Scripting.Dictionary")
+        結果 = ""
+        For Each 項目 In Split(区切り, ",")
+            一つ = CStr(項目)
+            Do While Len(一つ) > 0
+                If Left$(一つ, 1) = " " Or Left$(一つ, 1) = "　" Or Left$(一つ, 1) = vbTab Then 一つ = Mid$(一つ, 2) Else Exit Do
+            Loop
+            Do While Len(一つ) > 0
+                If Right$(一つ, 1) = " " Or Right$(一つ, 1) = "　" Or Right$(一つ, 1) = vbTab Then 一つ = Left$(一つ, Len(一つ) - 1) Else Exit Do
+            Loop
+            If 一つ <> "" Then
+                If Not 見.exists(一つ) Then
+                    見.Add 一つ, 1
+                    結果 = 結果 & IIf(結果 = "", "", ",") & 一つ
+                End If
+            End If
+        Next 項目
+        If 見.Count < 2 Then
+            Application.StatusBar = "入力規則のリスト: 項目が 1 つしか見つかりません（" & 見.Count & " 個）。スペースかカンマで 2 つ以上を区切って書いてください。何も変えていません。"
+            Exit Sub
+        End If
+        If Len(結果) > 255 Then
+            Application.StatusBar = "入力規則のリスト: 項目が長すぎます（" & Len(結果) & " 字。直接書けるのは 255 字まで）。項目をどこかのセルに並べて =A2:A10 の形で書いてください。何も変えていません。"
+            Exit Sub
+        End If
+        設定 = 結果
+    End If
+
+    ' 先頭のセルで試す（範囲参照が使えない形・シートの保護はここで分かる。元の文字はまだ消さない）
+    On Error Resume Next
+    先頭.Validation.Delete
+    Err.Clear
+    先頭.Validation.Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:=xlBetween, Formula1:=設定
+    If Err.Number <> 0 Then
+        Application.StatusBar = "入力規則のリスト: 設定できませんでした（" & Err.Description & "）。範囲参照の書き方か、シートの保護を確かめてください。元の文字はそのままです。"
+        Exit Sub
+    End If
+    On Error GoTo 0
+
+    ' 選んでいるセルすべて（離れた範囲もまとめて）に設定する。既にある入力規則は入れ替える
+    For Each 域 In Selection.Areas
+        On Error Resume Next
+        域.Validation.Delete
+        Err.Clear
+        域.Validation.Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:=xlBetween, Formula1:=設定
+        If Err.Number <> 0 Then
+            Application.StatusBar = "入力規則のリスト: " & 域.Address(False, False) & " に設定できませんでした（" & Err.Description & "）。"
+            Err.Clear
+        Else
+            域.Validation.IgnoreBlank = True
+            域.Validation.InCellDropdown = True
+        End If
+        On Error GoTo 0
+    Next 域
+
+    ' 元の文字は残さない（残すとリストの中に見えないまま邪魔になる）
+    先頭.ClearContents
+End Sub
