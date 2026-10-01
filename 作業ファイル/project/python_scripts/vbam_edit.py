@@ -407,7 +407,15 @@ def _report_spill_and_validation(ws, rngs, spill_cells):
             a = sc.Address.replace('$', '')
         except Exception:
             a = '?'
-        if blockers:
+        try:
+            in_table = sc.ListObject is not None
+        except Exception:
+            in_table = False
+        if in_table:
+            print(f"⚠ 【スピル】{a} はテーブルの中です。テーブルの中ではスピル（式の結果が複数セルに広がる）は使えません。"
+                  "テーブルの外の空いた場所に式を書くか、結果を 1 つの値にしてください"
+                  "（Excel の新しい「セルの中のリスト」機能なら、結果を { } で囲むと 1 つのセルに収められます）。")
+        elif blockers:
             print(f"⚠ 【スピル】{a} は #SPILL! です。展開先の {'・'.join(blockers)} に値が入っていて展開できません"
                   "（Excel は人の値を上書きしないので、そのセルの値は無事です）。"
                   "展開先を空けるか、式を空いている場所へ書き直してください（人の値を消すのは人の判断）。")
@@ -725,6 +733,13 @@ def cmd_write_range(args):
         _tn = ''
     if _tn:
         print(_tn)
+    try:
+        import vbam_lookup as _vl2
+        _an = _vl2.approx_note(_grid_cells(rng.Row, rng.Column, grid)) if grid else ''
+    except Exception:
+        _an = ''
+    if _an:
+        print(_an)
     if written_rng is not None:
         _report_write_result(ws, written_rng)
         if getattr(args, 'show', False):
@@ -823,6 +838,13 @@ def cmd_write_cells(args):
     _tn = _trim_ref_note([(f"{ws.Name}!{c.Address.replace('$', '')}", val) for ws, c, val in targets])
     if _tn:
         print(_tn)
+    try:
+        import vbam_lookup as _vl2
+        _an = _vl2.approx_note([(f"{ws.Name}!{c.Address.replace('$', '')}", val) for ws, c, val in targets])
+    except Exception:
+        _an = ''
+    if _an:
+        print(_an)
     # 書込後の検証（write-range の _report_write_result と同じ思想。単セルの SpecialCells は
     # 使用範囲全体に化けるので、セルごとに IsError で見る）
     errs = []
@@ -2460,6 +2482,11 @@ def cmd_table(args):
         if tname:
             lo.Name = tname
         print(f"テーブル作成: [{ws.Name}] {lo.Name}  範囲={lo.Range.Address}")
+        if not tname and not str(lo.Name).isascii():
+            # 日本語版の標準名は「テーブル1」。関数名にカタカナは無いので、数式で = のあとに打っても入力補完の候補に出ない
+            # （オフィス田中「列をドラッグで移動できる&テーブルの名前を簡単設定できる」）。名前を付けるなら英数字で短く
+            print(f"（名前が「{lo.Name}」のままです。数式の入力補完を使うなら、英数字の短い名前＝例 data にすると = d で候補に出ます。"
+                  "table create 範囲 data のように名前を足すか、テーブルデザインで変えてください）")
         # 範囲に集計の行・題の行が入っていると、並べ替え・絞り込みで明細と混ざる（2026-09-24）。黙って渡さない
         try:
             from vbam_view import _is_total_label
@@ -2963,6 +2990,22 @@ def cmd_copy_range(args):
     else:
         rng_s.Copy(rng_d)
         print(f"コピー(書式・式込): {ws_s.Name}!{rng_s.Address} → {ws_d.Name}!{rng_d.Address}")
+    # 列の幅はセルではなく「列」が持っているので、セルをコピーしても付いてこない（オフィス田中「セルに幅はない！」）。
+    # --col-widths で写す。写さないときは、幅が違うことだけ知らせる
+    try:
+        if len(rng_s.Areas) == 1:
+            sc0, dc0, ncol = int(rng_s.Column), int(rng_d.Column), int(rng_s.Columns.Count)
+            diff = [(sc0 + i, dc0 + i) for i in range(ncol)
+                    if abs(float(ws_s.Columns(sc0 + i).ColumnWidth) - float(ws_d.Columns(dc0 + i).ColumnWidth)) > 0.5]
+            if diff and getattr(args, 'col_widths', False):
+                for s_c, d_c in diff:
+                    ws_d.Columns(d_c).ColumnWidth = ws_s.Columns(s_c).ColumnWidth
+                print(f"列幅も写しました: {len(diff)} 列")
+            elif diff:
+                print(f"（列の幅は写していません: {len(diff)} 列で幅が違います。セルをコピーしても幅は付いてきません"
+                      "＝幅は列が持っているため。--col-widths を付けると写します）")
+    except Exception:
+        pass
     if getattr(args, 'show', False):
         # 貼り付け先が左上セル1つでも、実際に埋まった広さ（コピー元の大きさ）を見せる
         r0, c0 = int(rng_d.Row), int(rng_d.Column)

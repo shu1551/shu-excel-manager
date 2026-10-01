@@ -1690,6 +1690,7 @@ Sub 選んだ列の文字の日付を日付にする()
     Dim col As Long
     Dim colIdx As Long
     Dim r As Long
+    Dim okNum As Boolean, v数 As Double
 
     Set ws = ActiveSheet
     hdrRow = Selection.Cells(1, 1).Row
@@ -1698,12 +1699,27 @@ Sub 選んだ列の文字の日付を日付にする()
     For Each area In Selection.Areas
         For col = 1 To area.Columns.Count
             colIdx = area.Column + col - 1
+            ' 8 桁の「数値」（20260615 が数のもの。基幹システムの出力に多い）は、列の数値が全部 8 桁の日付の形のときだけ日付にする
+            ' （金額の列を日付にしない）。数値が無い列・日付の形でない数値のある列は、数値には触らない
+            okNum = True: v数 = 0
+            For r = hdrRow + 1 To lastRow
+                If VarType(ws.Cells(r, colIdx).Value) = vbDouble Then
+                    If Not ws.Cells(r, colIdx).HasFormula Then
+                        v数 = ws.Cells(r, colIdx).Value
+                        If v数 <> Int(v数) Or v数 < 19000101 Or v数 > 21001231 Or InStr(ws.Cells(r, colIdx).NumberFormat, "y") > 0 Then okNum = False: Exit For
+                    End If
+                End If
+            Next r
             For r = hdrRow + 1 To lastRow
                 Set cell = ws.Cells(r, colIdx)
                 If isEmpty(cell.Value) Then GoTo NextCell
                 If VarType(cell.Value) = vbDate Then GoTo NextCell
                 If VarType(cell.Value) = vbDouble And InStr(cell.NumberFormat, "y") > 0 Then GoTo NextCell
-                If VarType(cell.Value) <> vbString Then GoTo NextCell
+                If VarType(cell.Value) = vbDouble Then
+                    If Not okNum Or cell.HasFormula Then GoTo NextCell
+                ElseIf VarType(cell.Value) <> vbString Then
+                    GoTo NextCell
+                End If
                 s = Trim(CStr(cell.Value))
                 If セルの字(s) = "" Then GoTo NextCell
                 s = StrConv(s, vbNarrow)

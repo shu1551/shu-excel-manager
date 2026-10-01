@@ -203,6 +203,56 @@ def plan_formula(formula, own_sheet, target_sheet, axis, op, start, count):
 
 
 # ----------------------------------------------------------------
+# 近似一致の検索（第 4 引数の省略・TRUE）
+# ----------------------------------------------------------------
+# オフィス田中「VLOOKUP の第 4 引数に毎回 FALSE を指定する意味は？」: 第 4 引数は省略すると TRUE（近似一致）になる。
+# 近似一致は「並べ替えた表から、探す値以下で最大のものを返す」検索で、完全一致のつもりで省略すると、見つからない値に
+# 黙って別の行の値を返す（エラーにならない）。MATCH の第 3 引数も同じ（省略は 1＝昇順の近似一致）。
+_APPROX_FN_RE = re.compile(r'(?<![A-Za-z0-9_.])(VLOOKUP|HLOOKUP|MATCH)\s*\(', re.IGNORECASE)
+
+
+def approx_calls(formula):
+    """式の中の、近似一致になっている VLOOKUP・HLOOKUP・MATCH → [(関数名, 'omitted'|'TRUE'|'1'|'-1', 位置)]（純 Python）。
+
+    VLOOKUP・HLOOKUP は第 4 引数が省略か TRUE・1。MATCH は第 3 引数が省略か 1・-1（0 だけが完全一致）。
+    引数が空（`VLOOKUP(a,b,2,)`）は 0＝FALSE と同じなので完全一致。文字列の中は見ない。"""
+    s = formula or ''
+    masked = _mask_strings(s)
+    out = []
+    for m in _APPROX_FN_RE.finditer(masked):
+        fn = m.group(1).upper()
+        args = _split_args(s, masked, m.end() - 1)
+        if not args:
+            continue
+        need = 4 if fn in ('VLOOKUP', 'HLOOKUP') else 3
+        if len(args) < need:
+            if len(args) >= 2:
+                out.append((fn, 'omitted', m.start()))
+            continue
+        flag = args[need - 1][0].strip().upper()
+        if fn == 'MATCH':
+            if flag in ('1', '-1'):
+                out.append((fn, flag, m.start()))
+        elif flag in ('TRUE', '1'):
+            out.append((fn, flag, m.start()))
+    return out
+
+
+def approx_note(cells):
+    """[(番地, 書いた式)] → 近似一致の検索を書いたときの注意（無ければ ''・純 Python）。write-range・write-cells が使う。"""
+    hit = []
+    for a, v in cells:
+        if isinstance(v, str) and v.startswith('=') and approx_calls(v):
+            hit.append(a)
+    if not hit:
+        return ''
+    return (f"⚠ 近似一致の検索を書きました（VLOOKUP/HLOOKUP の第 4 引数が省略か TRUE・MATCH の第 3 引数が省略か 1・-1）: {' '.join(hit[:8])}"
+            + ("…" if len(hit) > 8 else "")
+            + "。探す値が表に無いとき、エラーにならず別の行の値を返します（表が昇順に並んでいる前提の「以下で最大」の検索）。"
+            "完全一致のつもりなら、第 4 引数に FALSE（MATCH は第 3 引数に 0）を書いてください")
+
+
+# ----------------------------------------------------------------
 # COM（ブック全体）
 # ----------------------------------------------------------------
 
@@ -321,4 +371,5 @@ def report_lines(fixed, skipped, what, limit=12):
     return out
 
 
-__all__ = ['scan_lookups', 'plan_adjust', 'plan_formula', 'apply_values', 'plan_for_book', 'apply_plan', 'report_lines', 'parse_ref']
+__all__ = ['scan_lookups', 'plan_adjust', 'plan_formula', 'apply_values', 'plan_for_book', 'apply_plan', 'report_lines', 'parse_ref',
+           'approx_calls', 'approx_note']

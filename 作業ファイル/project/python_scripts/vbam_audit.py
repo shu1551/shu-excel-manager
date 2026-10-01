@@ -218,6 +218,24 @@ def check_formula_linter(
                     })
                     break
 
+            # B2. 近似一致の検索（VLOOKUP/HLOOKUP の第 4 引数省略・TRUE、MATCH の第 3 引数省略・1・-1）。
+            # 探す値が表に無いとき、エラーにならず別の行の値を返す（2026-10-01・オフィス田中「VLOOKUP の第 4 引数」）
+            try:
+                import vbam_lookup as _vl
+                _ap = _vl.approx_calls(f)
+            except Exception:
+                _ap = []
+            if _ap:
+                _fns = '・'.join(sorted({a[0] for a in _ap}))
+                issues.append({
+                    "cell": addr,
+                    "severity": "warning",
+                    "type": "approx_match",
+                    "msg": f"{_fns} が近似一致（第 4 引数が省略か TRUE・MATCH は第 3 引数が省略か 1・-1）です。探す値が表に無いと、"
+                           "エラーにならず別の行の値を返します。完全一致のつもりなら FALSE（MATCH は 0）を書く",
+                    "formula": f
+                })
+
             # C. SUM / AVERAGE 集計範囲漏れの検知
             # 例: =SUM(B2:B9) で直下や直上に数値があるのに漏れている
             m_sum = _RE_SUM_FUNC.search(f)
