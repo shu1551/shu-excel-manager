@@ -1086,10 +1086,14 @@ def build_parser():
     p.add_argument("posargs", nargs="*")
     p.add_argument("--sheet", dest="sheet", default=None,
                    help="対象シート名（省略時はアクティブシート）")
+    p.add_argument("--keep-lookup", dest="keep_lookup", action="store_true",
+                   help="HLOOKUP・INDEX の行番号の直書きを直さない（既定は同じデータを指すように直す）")
     p = sub.add_parser("col")          # col <insert|delete> <列文字> [本数]
     p.add_argument("posargs", nargs="*")
     p.add_argument("--sheet", dest="sheet", default=None,
                    help="対象シート名（省略時はアクティブシート）")
+    p.add_argument("--keep-lookup", dest="keep_lookup", action="store_true",
+                   help="VLOOKUP・INDEX の列番号の直書きを直さない（既定は同じデータを指すように直す）")
     p = sub.add_parser("copy-range")   # copy-range <src> <dst> [--values]
     p.add_argument("posargs", nargs="*")
     p.add_argument("--values", action="store_true", help="値のみ貼り付け")
