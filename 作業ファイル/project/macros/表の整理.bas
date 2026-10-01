@@ -4085,11 +4085,21 @@ Sub 他ブック参照を自ブックに直す()
     Set fc = ActiveSheet.UsedRange.SpecialCells(xlCellTypeFormulas)
     On Error GoTo 0
     If fc Is Nothing Then Exit Sub
-    Set re1 = CreateObject("VBScript.RegExp"): re1.Global = True: re1.IgnoreCase = True
+    ' 正規表現: VBScript が外された環境では VBA 標準の RegExp に切り替える（2027 年対応）
+    On Error Resume Next
+    Set re1 = CreateObject("VBScript.RegExp"): If re1 Is Nothing Then Set re1 = 正規表現_標準版を作る()
+    Set re2 = CreateObject("VBScript.RegExp"): If re2 Is Nothing Then Set re2 = 正規表現_標準版を作る()
+    Set reS = CreateObject("VBScript.RegExp"): If reS Is Nothing Then Set reS = 正規表現_標準版を作る()
+    On Error GoTo 0
+    If re1 Is Nothing Or re2 Is Nothing Or reS Is Nothing Then
+        Application.StatusBar = "外部参照を直す: 正規表現が使えないので直せませんでした（VBScript が無効で、この Excel の VBA にも標準の RegExp がありません）"
+        Exit Sub
+    End If
+    re1.Global = True: re1.IgnoreCase = True
     re1.Pattern = "'[^'\[]*\[[^\[\]]+\.xl[a-z]{1,2}\]([^']+)'!"
-    Set re2 = CreateObject("VBScript.RegExp"): re2.Global = True: re2.IgnoreCase = True
+    re2.Global = True: re2.IgnoreCase = True
     re2.Pattern = "\[[^\[\]]+\.xl[a-z]{1,2}\]"
-    Set reS = CreateObject("VBScript.RegExp"): reS.Global = True
+    reS.Global = True
     reS.Pattern = "(?:'((?:[^']|'')+)'|([^\s=+\-*/^&,;:<>()!'""{}]+))!"
     calc = Application.Calculation
     Application.ScreenUpdating = False

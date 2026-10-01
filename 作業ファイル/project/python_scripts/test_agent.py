@@ -2608,7 +2608,8 @@ def test_shelf_reads_split_modules_in_name_order():
         # VBComponents の列挙は足した順＝名前順ではない
         comps = [C("表の整理_調べる", "Sub 表のおかしい所を右に報告する()\r\nEnd Sub"), C("shu003", "Sub 表の書き方と罫線と列幅をそろえる()\r\nEnd Sub"),
                  C("表の整理_下請け", "Sub 表の仕上げ()\r\nEnd Sub"), C("表の整理", "Sub 表の書き方と罫線と列幅をそろえる()\r\nEnd Sub"),
-                 C("表の整理_作る", "Sub 項目と金額の円グラフを作る()\r\nEnd Sub")]
+                 C("表の整理_作る", "Sub 項目と金額の円グラフを作る()\r\nEnd Sub"),
+                 C("表の整理_正規表現_下請け", "Function 正規表現_標準版を作る() As Object\r\nEnd Function")]
 
         @property
         def VBComponents(self):
@@ -2617,7 +2618,8 @@ def test_shelf_reads_split_modules_in_name_order():
     assert [c.Name for c in vc.shelf_components(p)] == ["表の整理", "表の整理_作る", "表の整理_調べる"]
     assert [c.Name for c in vc.shelf_components(p, helpers=True)][1] == "表の整理_下請け"
     assert "表の仕上げ" not in vc.shelf_text(p) and "項目と金額の円グラフを作る" in vc.shelf_text(p)
-    assert [n for n, _t in vc.shelf_texts(p)] == ["表の整理", "表の整理_下請け", "表の整理_作る", "表の整理_調べる"]
+    assert "正規表現_標準版を作る" not in vc.shelf_text(p)                              # 下請けの Function は棚の本文（目録・依頼の語）に出ない
+    assert [n for n, _t in vc.shelf_texts(p)] == ["表の整理", "表の整理_下請け", "表の整理_作る", "表の整理_正規表現_下請け", "表の整理_調べる"]
     assert vc.shelf_module_of(p, "表のおかしい所を右に報告する") == "表の整理_調べる"
     assert vc.shelf_module_of(p, "表の書き方と罫線と列幅をそろえる") == "表の整理"          # 棚でない shu003 の同名は見ない
     assert vc.shelf_module_of(p, "無い") is None
