@@ -5183,3 +5183,49 @@ def test_check_unused_variable_scan_is_linear():
     unused = sorted(w.split("Dim ")[1].split(" ")[0] for w in doc["modules"][0]["warnings"] if "未使用変数" in w)
     assert unused == ["i_x", "onlyComment", "unused"]
     assert sec < 10
+
+
+def test_book_and_module_options_are_taken_as_positions():
+    """--book X は対象のブックとして先頭の位置引数に、get 名前 --module X は get X 名前 に（台帳 9/27〜10/2 で
+    「不明な引数」で落ちていた形）。"""
+    p = vm.build_parser()
+    toks, notes = vm.normalize_command_tokens(p, ["get", "マクロフォーム", "--book", "秀コンボ.xlam"])
+    assert toks == ["get", "秀コンボ.xlam", "マクロフォーム"] and notes
+    toks, _ = vm.normalize_command_tokens(p, ["grep", "ActiveSheet", "--book", "お試し版 Excelコンボ.xlam"])
+    assert toks == ["grep", "お試し版 Excelコンボ.xlam", "ActiveSheet"]
+    toks, _ = vm.normalize_command_tokens(p, ["get", "検索シート作成", "--module", "shu003"])
+    assert toks == ["get", "shu003", "検索シート作成"]
+    ns, msg, _ = vm.parse_command_tokens(p, ["get", "検索シート作成", "--module", "shu003"])
+    assert msg is None and ns.posargs == ["shu003", "検索シート作成"]
+
+
+def test_open_joins_a_spaced_name_given_without_quotes(tmp_path, monkeypatch, capsys):
+    """open お試し版 Excelコンボ.xlsm（引用符なし）は、つないだ名前が実在するときだけ 1 つのパスとして扱う。"""
+    import argparse
+    import vbam_edit as ve_
+    f = tmp_path / "お試し版 Excelコンボ.xlsm"
+    f.write_bytes(b"")
+    seen = {}
+    monkeypatch.setattr(ve_, "smart_path_resolve", lambda s: str(tmp_path / s) if (tmp_path / s).exists() else None)
+
+    def stop(path):
+        seen["path"] = path
+        raise RuntimeError("ここで止める")
+    monkeypatch.setattr(ve_.os.path, "splitext", lambda p: stop(p))
+    with pytest.raises(RuntimeError):
+        ve_.cmd_open(argparse.Namespace(posargs=["お試し版", "Excelコンボ.xlsm"]))
+    assert seen["path"] == str(f)
+    monkeypatch.setattr(ve_.os.path, "splitext", os.path.splitext)
+    assert ve_.cmd_open(argparse.Namespace(posargs=["無い", "名前.xlsm"])) is False
+    assert "囲む" in capsys.readouterr().out
+
+
+def test_confirm_prompt_without_answer_says_add_y(capsys):
+    """MCP では y/N の問いに答える人がいない＝EOFError を「-y を付けて撃ち直す」に言い換える（台帳 9/27・10/2）。"""
+    p = vm.build_parser()
+
+    def asks(_ns):
+        raise EOFError("EOF when reading a line")
+    table = {"delete-procedure": asks}
+    assert vm.run_command_line(p, table, "delete-procedure Mod1 A") is False
+    assert "-y を付けて" in capsys.readouterr().out
