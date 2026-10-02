@@ -3088,6 +3088,11 @@ def test_code_violations_catch_the_collateral_rewrite():
         "頼んでいないマクロが変わった: M1.(宣言部)"]
     # 控えが取れなかった（読めないブック）ときは黙って通す＝関所を落とし穴にしない
     assert vmac._code_violations(None, after, allowed=[]) == []
+    # 最後のマクロの後ろに足すと区切りの空行がその本文に付く＝変化ではない（2026-10-02 題 06）
+    after6 = dict(before)
+    after6[("M1", "別のマクロ")] = before[("M1", "別のマクロ")] + "\n\n"
+    after6[("M1", "田中2倍")] = "Sub 田中2倍()\nEnd Sub"
+    assert vmac._code_violations(before, after6, allowed=[], allow_new=True) == []
 
 
 def test_macro_loop_has_the_same_two_gates_as_the_sheet_loop():
@@ -7648,3 +7653,26 @@ def test_row_delete_accepts_a_row_range_20260911():
     import pytest
     with pytest.raises(ValueError, match="行番号"):
         va._action_to_tokens({"op": "row_delete", "range": "A:A", "overwrite": True}, "顧客")
+
+
+def test_one_formula_gate_counts_new_formula_cells():
+    """「E2 に 1 つの式で」なのに E2・F2 に分けて書いたら止める（2026-10-02 オフィス田中の題 13）。"""
+    import vbam_grade as vg
+
+    class R:
+        Row, Column = 1, 1
+        def __init__(self, f):
+            self.Formula = f
+
+    class WS:
+        def __init__(self, f):
+            self.UsedRange = R(f)
+
+    req = "E2セルに名前別の合計を、H2セルに月別の合計を、それぞれ1つの数式で出して"
+    before = {'sheets': {'S': {'formulas': {}}}}
+    two = ((None,) * 9, (None,) * 4 + ('=SORT(UNIQUE(B2:B19))', '=BYROW(E2#,x)', None, '=G()', '=I()'))
+    bad = vg._one_formula_misfits(WS(two), before, 'S', req)
+    assert bad and '4 個' in bad[0] and 'E2 F2' in bad[0]
+    one = ((None,) * 9, (None,) * 4 + ('=GROUPBY(B2:B19,C2:C19,SUM)', None, None, '=GROUPBY(x)', None))
+    assert vg._one_formula_misfits(WS(one), before, 'S', req) == []
+    assert vg._one_formula_misfits(WS(two), before, 'S', "E2 に名前別の合計") == []

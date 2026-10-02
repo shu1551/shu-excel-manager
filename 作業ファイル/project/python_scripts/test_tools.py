@@ -2566,7 +2566,7 @@ def test_capabilities_destructive_set_is_explicit():
 def test_rules_codes_are_unique_and_sequential():
     codes = [r[0] for r in vv._CHECK_RULES]
     assert codes == sorted(set(codes))
-    assert codes[0] == 'VBM001' and codes[-1] == 'VBM021'      # 2026-09-17: VBM012〜014、同日 VBM015・016（clean-vba を畳んだ）／2026-10-01: VBM018（VBScript.RegExp）・VBM019（テキスト取り込み）・VBM020/021（オフィス田中 VBA CheckList）
+    assert codes[0] == 'VBM001' and codes[-1] == 'VBM023'      # 2026-09-17: VBM012〜014、同日 VBM015・016（clean-vba を畳んだ）／2026-10-01: VBM018（VBScript.RegExp）・VBM019（テキスト取り込み）・VBM020/021（オフィス田中 VBA CheckList）／2026-10-02: VBM022（16 進・Chr）
 
 
 def test_rules_vbm012_to_014_are_errors():
@@ -2580,7 +2580,8 @@ def test_rules_imported_four_cite_their_origin():
     imported = {r[0]: r[4] for r in vv._CHECK_RULES if r[4]}
     assert imported == {'VBM008': 'xlflow VBA203', 'VBM009': 'xlflow VBA221',
                         'VBM010': 'xlflow VBA240', 'VBM011': 'xlflow VBA215',
-                        'VBM020': 'オフィス田中 VBA CheckList', 'VBM021': 'オフィス田中 VBA CheckList'}
+                        'VBM020': 'オフィス田中 VBA CheckList', 'VBM021': 'オフィス田中 VBA CheckList',
+                        'VBM023': 'オフィス田中 VBA高速化テクニック'}
 
 
 def test_xlflow_commands_are_wired():
@@ -5084,3 +5085,47 @@ def test_vbm018_skips_procedures_that_already_fall_back_to_the_standard_regexp()
            'End Sub\n')
     lines = src.split('\n')
     assert [x[0] for x in vv._diag_vbscript_regexp(lines)] == [7]                  # 対応済みの手続き（3 行目）は出ない
+
+
+def test_hex_sign_trap_finds_empty_range():
+    """&H9FFF は Integer の -24577＝&H3040 と並べた範囲が空になる（2026-10-02 オフィス田中の題 10・VBM022）。
+    両端が &H8000 以上（AscW の全角英数の比べ）は負どうしで揃うので咎めない。& 付きも咎めない。"""
+    import vbam_core as c
+    code = ("    IsJapanese = (code >= &H3040 And code <= &H9FFF)\n"
+            "    If code >= &HFF10 And code <= &HFF19 Then\n"
+            "    If a < &H3040 Or a > &H9FFF& Then\n"
+            "    ' code >= &H3040 And code <= &H9FFF\n"
+            "    result = result & Chr(code - &HFF00 + &H20)\n")     # 計算は咎めない（AscW の負と釣り合って正しい）
+    assert c.find_hex_sign_traps(code) == [(1, '&H9FFF', 0x9FFF)]
+    assert '-24577' in c.hex_sign_message(c.find_hex_sign_traps(code))
+
+
+def test_chr_wide_finds_fullwidth_space():
+    """Chr(&H3000) は全角空白にならず化ける＝ChrW（2026-10-02 オフィス田中の題 10・VBM022 の仲間）。"""
+    import vbam_core as c
+    code = ('    s = s & Chr(&H3000)\n    t = Chr(10) & Chr$(12288) & ChrW(&H3000)\n    \' Chr(&H3000)\n')
+    assert c.find_chr_wide(code) == [(1, 'Chr(&H3000)', 0x3000), (2, 'Chr$(12288)', 12288)]
+
+
+def test_loop_slow_finds_paste_and_row_delete_in_loops():
+    """VBM023: ループの中の値貼り付けと 1 行ずつの削除（2026-10-02 オフィス田中「値貼り付けは遅い」・題 25・26）。
+    ループの外の 1 回だけの PasteSpecial・オートフィルタの 1 回の削除は咎めない。"""
+    src = ["Sub a()",
+           "    Range(\"A1:A9\").Copy",
+           "    Range(\"B1\").PasteSpecial xlPasteValues",
+           "    For i = 9 To 2 Step -1",
+           "        If Cells(i, 1).Value = \"x\" Then Rows(i).Delete",
+           "        Cells(i, 2).Copy: Cells(i, 3).PasteSpecial xlPasteValues",
+           "    Next i",
+           "    rng.EntireRow.Delete",
+           "End Sub"]
+    assert [x[0] for x in vv._diag_loop_slow(src)] == [5, 6]
+
+
+def test_vba_error_reason_names_the_usual_cause():
+    """実行時エラーとコンパイル エラーに「なぜ」の一言（2026-10-02 オフィス田中「VBAのエラー」に学んだ・文は自前）。"""
+    import vbam_core as c
+    assert '保護' in c.vba_error_reason('実行時エラー 1004: 変更しようとしているセルやグラフは保護されているシート上にあります。')
+    assert '空行' in c.vba_error_reason('実行時エラー 9: インデックスが有効範囲にありません。')
+    assert '宣言' in c.vba_error_reason('コンパイル エラー: 変数が定義されていません。')
+    assert c.vba_error_reason('何か別の文') == ''

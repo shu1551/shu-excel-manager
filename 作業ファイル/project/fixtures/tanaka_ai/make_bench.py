@@ -22,6 +22,76 @@ UDF = '''Function CHECK(s As String) As Long
 End Function
 '''
 
+# 第 2 段（AI の道）: 田中さんの「止まるマクロ」「遅いマクロ」
+SLOW = """Sub CSV読込12()
+    Dim buf As String, n As Long, tmp
+    Open ThisWorkbook.Path & "\\tanaka12.csv" For Input As #1
+    n = 1
+    Do Until EOF(1)
+        Line Input #1, buf
+        tmp = Split(buf, ",")
+        Worksheets("12止まる").Cells(n, 1).Value = tmp(0)
+        Worksheets("12止まる").Cells(n, 2).Value = tmp(1)
+        Worksheets("12止まる").Cells(n, 3).Value = tmp(2)
+        n = n + 1
+    Loop
+    Close #1
+End Sub
+
+Sub 田中削除25()
+    Dim i As Long
+    For i = Cells(Rows.Count, 1).End(xlUp).Row To 2 Step -1
+        If Cells(i, 1).Value = "田中" Then Rows(i).Delete
+    Next i
+End Sub
+
+Sub 値貼付26()
+    Dim i As Long, j As Long
+    With Worksheets("26値貼付")
+        For i = 2 To .Cells(.Rows.Count, 1).End(xlUp).Row
+            For j = 2 To Worksheets("26マスタ").Cells(Rows.Count, 1).End(xlUp).Row
+                If .Cells(i, 1).Value = Worksheets("26マスタ").Cells(j, 1).Value Then
+                    Worksheets("26マスタ").Cells(j, 2).Copy
+                    .Cells(i, 2).PasteSpecial xlPasteValues
+                    Exit For
+                End If
+            Next j
+        Next i
+    End With
+    Application.CutCopyMode = False
+End Sub
+"""
+
+NAMES = ['田中', '小原', '佐倉', '花澤', '雨宮']
+
+
+def csv_files():
+    """08（読み込み）と 12（空行で止まる）の CSV を Shift-JIS で置く。"""
+    rows = ['日付,名前,数値']
+    for i in range(12):
+        rows.append(f'2025/9/{i + 1},{NAMES[i % 5] if i % 3 else "田中"},{(i + 1) * 1250}')
+    with open(os.path.join(HERE, 'tanaka08.csv'), 'w', encoding='cp932', newline='\r\n') as f:
+        f.write('\n'.join(rows) + '\n')
+    rows = ['日付,名前,数値', '2025/9/1,田中,100', '2025/9/2,小原,200', '', '2025/9/3,佐倉,300']
+    with open(os.path.join(HERE, 'tanaka12.csv'), 'w', encoding='cp932', newline='\r\n') as f:
+        f.write('\n'.join(rows) + '\n')
+
+
+def fill_slow(wb):
+    """25・26 の遅いマクロのデータ（撃つたびに作り直す: 試しの台本からも呼ぶ）。"""
+    ws = wb.Worksheets('25削除')
+    ws.Cells.Clear()
+    data = [('名前', '数値')] + [(NAMES[(i * 7) % 5] if i % 4 else '田中', i) for i in range(1, 10001)]
+    ws.Range(f'A1:B{len(data)}').Value = data
+    ws = wb.Worksheets('26マスタ')
+    ws.Cells.Clear()
+    data = [('記号', '単価')] + [(f'K{i:04d}', i * 10) for i in range(1, 1001)]
+    ws.Range(f'A1:B{len(data)}').Value = data
+    ws = wb.Worksheets('26値貼付')
+    ws.Cells.Clear()
+    data = [('記号', '単価')] + [(f'K{(i * 37) % 1000 + 1:04d}', None) for i in range(1, 1001)]
+    ws.Range(f'A1:B{len(data)}').Value = data
+
 
 def sheet(wb, name):
     ws = wb.Worksheets.Add(After=wb.Worksheets(wb.Worksheets.Count))
@@ -131,12 +201,17 @@ def build(xl):
     ws.Range('E4').Formula = '=SUM(B4:C4)'
     ws.Range('E8').Formula = '=SUM(C8:D8)'
 
+    build_stage2(wb)
+
     first.Name = '目次'
     first.Range('A1').Value = 'オフィス田中「ExcelのAI活用」の題の再現（各シート名の数字＝題の番号）'
 
     comp = wb.VBProject.VBComponents.Add(1)
     comp.Name = 'Mod題'
     comp.CodeModule.AddFromString(UDF)
+    comp.CodeModule.AddFromString(SLOW)
+    wb.Worksheets('12止まる').Protect()
+    csv_files()
 
     # 05 の #REF!・#NAME? は「消した後」の式を直接書いたので、名前「リスト」は作らない（消えた状態）
     if os.path.exists(OUT):
@@ -144,6 +219,97 @@ def build(xl):
     wb.SaveAs(OUT, FileFormat=52)
     print('保存:', OUT)
     wb.Close(SaveChanges=False)
+
+
+def build_stage2(wb):
+    """第 2 段（AI の道で作る・直す）の題のシート。"""
+    # 06 田中だったら 2 倍（13 行＝10 行固定の書き方は外れる）
+    ws = sheet(wb, '06田中2倍')
+    ws.Range('A1:C1').Value = ('名前', '数値', '結果')
+    for i in range(2, 15):
+        ws.Cells(i, 1).Value = NAMES[(i * 3) % 5]
+        ws.Cells(i, 2).Value = i * 10
+    # 06b C 列が A の行を F 列の既存データの下へコピー（書式も）
+    ws = sheet(wb, '06bコピー')
+    ws.Range('A1:D1').Value = ('日付', '名前', '区分', '数値')
+    ws.Range('F1:I1').Value = ('日付', '名前', '区分', '数値')
+    for i in range(2, 14):
+        ws.Cells(i, 1).Value = datetime.datetime(2025, 9, i)
+        ws.Cells(i, 2).Value = NAMES[i % 5]
+        ws.Cells(i, 3).Value = 'A' if i % 3 else 'B'
+        ws.Cells(i, 4).Value = i * 1234
+    for i in range(2, 5):
+        ws.Cells(i, 6).Value = datetime.datetime(2025, 8, i)
+        ws.Cells(i, 7).Value = '既存'
+        ws.Cells(i, 8).Value = 'A'
+        ws.Cells(i, 9).Value = i
+    ws.Range('A2:A13').NumberFormat = 'yyyy/m/d'
+    ws.Range('F2:F4').NumberFormat = 'yyyy/m/d'
+    ws.Range('D2:D13').NumberFormat = '#,##0'
+    ws.Range('D2:D13').Interior.Color = 0xCCFFFF
+    # 07 F1 の見出しの列を出す（行数は可変）
+    ws = sheet(wb, '07見出し')
+    ws.Range('A1:D1').Value = ('日付', '名前', '地域', '数値')
+    for i in range(2, 10):
+        ws.Cells(i, 1).Value = datetime.datetime(2025, 9, i)
+        ws.Cells(i, 2).Value = NAMES[i % 5]
+        ws.Cells(i, 3).Value = ('東京', '大阪', '福岡')[i % 3]
+        ws.Cells(i, 4).Value = i * 100
+    ws.Range('F1').Value = '名前'
+    # 08 CSV を A1 から（空のシート）
+    sheet(wb, '08CSV')
+    # 09 9 月と 10 月を結合して田中だけ新しいブックへ
+    for m in (9, 10):
+        ws = sheet(wb, f'{m}月')
+        ws.Range('A1:C1').Value = ('日付', '名前', '数値')
+        for i in range(2, 9):
+            ws.Cells(i, 1).Value = datetime.datetime(2025, m, i)
+            ws.Cells(i, 2).Value = NAMES[(i + m) % 5]
+            ws.Cells(i, 3).Value = i * m
+    # 10 全角半角・半角スペース・結合セル
+    ws = sheet(wb, '10全半角')
+    ws.Range('A1').Value = '文字'
+    for i, v in enumerate(['ＡＢＣ１２３', 'Ｅｘｃｅｌ　２０２５', '田中 太郎', '東京－ＳＨＩＮＪＵＫＵ（新宿）',
+                           'テスト１', '小原 花子 ＶＢＡ', 'Ｎｏ．１０'], start=2):
+        ws.Cells(i, 1).Value = v
+    ws = sheet(wb, '10結合')
+    ws.Range('A1:B1').Value = ('名前', '数値')
+    for i in range(2, 9):
+        ws.Cells(i, 2).Value = i * 10
+    ws.Range('A2').Value = '田中'
+    ws.Range('A5').Value = '小原'
+    ws.Range('A7').Value = '佐倉'
+    ws.Range('A2:A4').Merge()
+    ws.Range('A5:A6').Merge()
+    ws.Range('A7:A8').Merge()
+    # 11 数式で
+    ws = sheet(wb, '11数式')
+    ws.Range('A1').Value = '文字'
+    for i, v in enumerate(['ＡＢＣ１２３', 'Ｅｘｃｅｌ　２０２５', 'ﾃｽﾄ１', '東京\nＯＳＡＫＡ\n福岡'], start=2):
+        ws.Cells(i, 1).Value = v
+    # 12 止まるマクロ（保護と CSV の空行）
+    sheet(wb, '12止まる')
+    # 13 名前別・月別を 1 つの式で
+    ws = sheet(wb, '13集計')
+    ws.Range('A1:C1').Value = ('日付', '名前', '金額')
+    for i in range(2, 20):
+        ws.Cells(i, 1).Value = datetime.datetime(2025, 8 + (i % 3), (i * 3) % 27 + 1)
+        ws.Cells(i, 2).Value = NAMES[(i * 2) % 4]
+        ws.Cells(i, 3).Value = i * 500
+    # 20 数式をメモで
+    ws = sheet(wb, '20メモ')
+    ws.Range('A1:A4').Value = ((10,), (20,), (30,), (40,))
+    ws.Range('C2').Formula = '=IF(SUM(A1:A4)>50,ROUND(AVERAGE(A1:A4),0),MAX(A1:A4))'
+    # 23 名前別合計を D1 に 1 つの式で（テーブルでない表）
+    ws = sheet(wb, '23名前別')
+    ws.Range('A1:B1').Value = ('名前', '金額')
+    for i in range(2, 16):
+        ws.Cells(i, 1).Value = NAMES[(i * 3) % 5]
+        ws.Cells(i, 2).Value = i * 300
+    # 25・26 遅いマクロ
+    for n in ('25削除', '26値貼付', '26マスタ'):
+        sheet(wb, n)
+    fill_slow(wb)
 
 
 def main():
