@@ -1047,7 +1047,42 @@ _MIS_PHONE_OK = re.compile(r'0\d{1,4}-\d{1,4}-\d{3,4}|0\d{9,10}')
 _MIS_NUM_TEXT = re.compile(r'[¥￥$]?\s*[-+]?[\d０-９][\d０-９,，]*(?:\.\d+)?\s*(?:円|個|本|枚|台|冊|箱|点|件)?')
 
 
-def _column_misfits(rows, h, cols, r0, c0, req):
+def _width_skip_cols(ws, rows, h, cols, r0, c0, last_i, before, sheet):
+    """全角・半角・カナ・空白の指摘から外す列（0 起点）: 式の列と、手を付けていない元の列（2026-10-02 オフィス田中の題 11:
+    「B 列に A 列を全部半角にする式」で、元の A 列の全角と、ASC の結果の半角カナを咎めて不合格にした）。"""
+    skip = set()
+    for j in cols:
+        with contextlib.suppress(Exception):
+            hf = ws.Range(ws.Cells(r0 + h + 1, c0 + j), ws.Cells(r0 + last_i, c0 + j)).HasFormula
+            if hf is None or bool(hf):              # None＝式と値の混在
+                skip.add(j)
+                continue
+        if last_i - h <= 500:                       # スピルの広がった先（式ではないが式の結果）も同じ扱い（TEXTSPLIT の D 列）
+            for i in range(h + 1, last_i + 1):
+                with contextlib.suppress(Exception):
+                    if bool(ws.Cells(r0 + i, c0 + j).HasSpill):
+                        skip.add(j)
+                        break
+    snap = ((before or {}).get('sheets') or {}).get(sheet) if before else None
+    if snap and snap.get('values') and str(snap.get('used') or '').split(':')[0].replace('$', '') == \
+            f"{_col_letter(c0)}{r0}":
+        bv = snap['values']
+        changed_any = False
+        same = set()
+        for j in cols:
+            now = [_text_of(rows[i][j]) if j < len(rows[i]) else '' for i in range(h + 1, last_i + 1)]
+            old = [(bv[i][j] if i < len(bv) and j < len(bv[i]) else '') for i in range(h + 1, last_i + 1)]
+            norm = lambda xs: [x if x not in (None,) else '' for x in xs]   # noqa: E731
+            if norm(now) == norm(old):
+                same.add(j)
+            else:
+                changed_any = True
+        if changed_any:                             # 別の列に書いた回だけ（同じ列を直す依頼では元の列も見る）
+            skip |= same
+    return skip
+
+
+def _column_misfits(rows, h, cols, r0, c0, req, skip=()):
     """依頼に出た語の列で、書き方がそろっていない所 → done を止める指摘のリスト（純 Python）。
 
     2026-09-11 夜・試験（正解の表との突き合わせ）で、郵便の区切りなし・〒・電話の空白区切りとかっこ・全角の英数字・
@@ -1091,6 +1126,8 @@ def _column_misfits(rows, h, cols, r0, c0, req):
             if odd:
                 out.append(f"{name}の郵便番号が 000-0000 になっていません: {ex(odd)}。normalize の postal で直してください")
             continue
+        if j in skip:
+            continue                                # 式の列・手を付けていない元の列は、書き方の指摘をしない
         if ask['width']:
             fw = [(i, v) for i, v in strs if _MIS_FULL_ALNUM.search(v)]
             if fw:
@@ -1175,7 +1212,9 @@ def _request_gate(wb, sheet, before, request, facts):
                                  + (f" ほか {len(ws_left) - 10} セル" if len(ws_left) > 10 else "")
                                  + "。normalize の trim で消してください")
             try:
-                block += _column_misfits(rows[:last_i + 1], h, range(filled[0], filled[-1] + 1), r0, c0, req)
+                rng = range(filled[0], filled[-1] + 1)
+                skip = _width_skip_cols(ws, rows, h, rng, r0, c0, last_i, before, sheet)
+                block += _column_misfits(rows[:last_i + 1], h, rng, r0, c0, req, skip)
             except Exception:
                 pass
     if _DEDUP_REQ_RE.search(req) and len(rows) <= 20000:
@@ -1252,7 +1291,37 @@ def _request_gate(wb, sheet, before, request, facts):
                 block.append(f"normalize（{'・'.join(rules)}）を当てた {col} 列に、直っていない文字が残っています: "
                              + " ".join(f"{col}{r} '{str(v)[:20]}'" for r, v in uniq_left[:8])
                              + "。規則で読めない形は write_cells で正しい値を書いてください（overwrite）")
+    with contextlib.suppress(Exception):
+        block += _one_formula_misfits(ws, before, sheet, req)
     return block, noticed
+
+
+_ONE_FORMULA_RE = re.compile(r'(1|１|一|ひと)つの(数)?式|(1|１|一)(つの)?セル(だけ)?で')
+
+
+def _one_formula_misfits(ws, before, sheet, req):
+    """「E2 に 1 つの式で」と頼まれたのに、式を何セルにも書いた（2026-10-02 オフィス田中の題 13: 名前を E2・合計を F2 の
+    2 つの式に分けて「1 つの式で」を外した。田中さんが Copilot で「伝わらない」とした所）。純 Python ＋ COM の読み 1 回。"""
+    if not _ONE_FORMULA_RE.search(req or ''):
+        return []
+    want = len(set(re.findall(r'(?<![A-Z0-9])[A-Z]{1,2}[1-9][0-9]{0,6}(?![A-Z0-9])', req.upper())))   # 頼みに出た番地の数＝式の数
+    snap = ((before or {}).get('sheets') or {}).get(sheet) if before else None
+    had = set((snap or {}).get('formulas') or {})
+    ur = ws.UsedRange
+    r0, c0 = int(ur.Row), int(ur.Column)
+    new = []
+    for i, row in enumerate(_rows_of(ur.Formula)):
+        for j, f in enumerate(row):
+            if isinstance(f, str) and f.startswith('='):
+                a = f"{_col_letter(c0 + j)}{r0 + i}"
+                if a not in had:
+                    new.append(a)
+    if want and len(new) > want:
+        return [f"「1 つの式で」と頼まれた所に式が {len(new)} 個あります（{' '.join(new[:8])}）。頼みの番地 {want} か所に"
+                "式を 1 つずつ、見出しと値を 1 つの式で返す（=GROUPBY(B2:B19,C2:C19,SUM) か "
+                "=LET(u,UNIQUE(B2:B19),HSTACK(u,SUMIFS(C2:C19,B2:B19,u)))。月別は GROUPBY の行に "
+                "TEXT(A2:A19,\"yyyy/mm\")）。ほかのセルの式は clear_range で消す"]
+    return []
 
 
 __all__ = ['_AGENT_AFTER_DIR', '_AGENT_NOTES_FILE', '_AGENT_NOTES_KEEP', '_AUDIT_MAX_NOTES', '_AUDIT_MIN_COLS', '_AUDIT_MIN_ROWS', '_AUDIT_OPS', '_BORDER_KINDS', '_CF_TYPE_NAMES', '_DATAMODEL_NOTE', '_DATAMODEL_WORDS', '_GATE_LABELS', '_GRADE_MATERIALS_LIMIT', '_GRADE_OUTSIDE_CELLS', '_GRADE_OUTSIDE_MAX', '_GRADE_PROMPT', '_HEAVY_NONZERO_RE', '_REQ_PATH_RE', '_SECRET_MASK', '_SECRET_NAME_RE', '_UNMET_PHOTO_RE', '_UNMET_PRINT_RE', '_UNMET_VALUE_CHANGE_RE', '_after_path', '_after_save', '_audit_now', '_audit_targets', '_clip_grade', '_content_now', '_request_gate', '_look_misfits', '_LOOK_WORDS', '_validation_misfits', '_DEDUP_REQ_RE', '_gate_grade', '_gate_line', '_gate_total', '_grade_extra_sheets', '_grade_looks', '_grade_materials', '_grade_outside_numbers', '_grade_structure', '_looks_of_range', '_mask_secrets', '_notes_key', '_notes_load', '_notes_recall', '_notes_remember', '_other_sheets_now', '_page_setup_now', '_parse_noticed', '_parse_unmet', '_pivot_covering', '_request_key', '_secret_values', '_sheet_fingerprint', '_since_last_run', '_split_unmet_for_approval', '_unmet_drop_satisfied', '_wants_datamodel_note']

@@ -397,6 +397,29 @@ def _spill_blockers(cell, ws, limit=3):
     return out
 
 
+def _report_huge_spill(rng, limit=100000):
+    """列まるごとの参照（A:D）でスピルが表の下の空いた行まで伸び、0 が百万行並ぶ形を知らせる（2026-10-02 オフィス田中の題 07。
+    =DROP(XLOOKUP(F1,A1:D1,A:D),1) は表示が合って見え、検査も通っていた）。"""
+    try:
+        if int(rng.Count) > 200:
+            return
+        cells = list(rng.Cells)
+    except Exception:
+        return
+    for c in cells:
+        try:
+            if not bool(c.HasSpill):
+                continue
+            sp = c.SpillingToRange
+            n = int(sp.Rows.Count)
+        except Exception:
+            continue
+        if n >= limit:
+            print(f"⚠ 【スピル】{c.Address.replace('$', '')} の結果が {n:,} 行まで広がっています（{sp.Address.replace('$', '')}）。"
+                  "列まるごとの参照（A:D）で、表の下の空いた行まで 0 が並んでいます。"
+                  "空の行を落とす参照 A:.D（トリム参照）にするか、範囲を表の行に絞ってください。")
+
+
 def _report_spill_and_validation(ws, rngs, spill_cells):
     """#SPILL! の原因（展開先をふさぐ値）と、入力規則に合わない値を知らせる（write-range・write-cells 共通・2026-10-01）。
 
@@ -428,6 +451,7 @@ def _report_spill_and_validation(ws, rngs, spill_cells):
             bad += _validation_violations(r)
         except Exception:
             pass
+        _report_huge_spill(r)
     if bad:
         shown = " ".join(f"{a}={t}（{r}）" if r else f"{a}={t}" for a, t, r in bad[:5]) + ("…" if len(bad) > 5 else "")
         print(f"⚠ 【入力規則】書いた値が入力規則に合わないセルがあります: {len(bad)}件 {shown}")
@@ -1514,6 +1538,8 @@ def audit_table(ws, rng):
     if nrows < 2:
         return out                                   # 見出し＋1 行に満たないものは表として見ない
     addr = str(rng.Address).replace('$', '')
+    if _headerless_spill(rng):
+        return out                    # 見出しの無いスピル（1 つの式の結果）は見出し・先頭行の検査を当てない
     in_table = False
     try:
         for lo in ws.ListObjects:
@@ -1930,11 +1956,27 @@ def _content_findings(values, formulas, r0, c0, formulas_r1c1=None):
     return blocking, noticed
 
 
+def _headerless_spill(rng):
+    """表の左上のセルが式で、その結果（スピル）が表の 1 行目から広がっている＝見出しの無い 1 つの式の結果
+    （=GROUPBY(A2:A15,B2:B15,SUM) を D1 に置いた形）。1 行目を見出しと読んで「合計が上の和と合わない」
+    「先頭行だけ桁区切りが無い」と止めていた（2026-10-02 オフィス田中の題 23）。"""
+    try:
+        c = rng.Cells(1, 1)
+        if not (bool(c.HasFormula) and bool(c.HasSpill)):
+            return False
+        sp = c.SpillingToRange
+        return int(sp.Row) == int(rng.Row) and int(sp.Column) == int(rng.Column)
+    except Exception:
+        return False
+
+
 def audit_content(ws, rng):
     """表の中身を検査する → (done を止める指摘, 報告の気づき)。COM は 2 回（Value と Formula）。"""
     nrows, ncols = int(rng.Rows.Count), int(rng.Columns.Count)
     if nrows < 2 or nrows * ncols > _AUDIT_MAX_CELLS * 4:
         return [], []
+    if _headerless_spill(rng):
+        return [], []                 # 1 つの式が返した表（合計行も式が作る）＝中身の検査は当てない
     vals = rng.Value
     if nrows == 1:
         vals = [list(vals)] if isinstance(vals, tuple) else [[vals]]

@@ -1235,6 +1235,12 @@ def validate_vba_code(code, force=False, old_code='', project_code=None):
         # 知らせるだけで止めない（2026-10-01 実際の仕事のブック 15 本で確かめた: 小文字の宣言は 4 本のブックに既にあり、
         # どれも動作に影響していない。止めると書き込みが 1 往復無駄になるだけ。見た目の話なので、宣言を直すかは書く側が決める）
         print("注意: " + case_pollution_message(pollution).replace('書き換えます', '書き換わります'))
+    hex_hits = find_hex_sign_traps(code)
+    if hex_hits:                                 # 動きが変わる本物の不具合だが、意図して負の数を書く人もいるので知らせるだけ
+        print("⚠ " + hex_sign_message(hex_hits))
+    for ln_no, expr, v in find_chr_wide(code)[:5]:
+        print(f"⚠ 行{ln_no}: `{expr}` は Chr に {v:,} を渡しています。Chr は 0〜255 の文字だけ"
+              f"（全角空白などは化ける）→ `ChrW({v})`")
 
     if errors:
         for err in errors:
@@ -1711,6 +1717,105 @@ def find_case_pollution(code, old_code=''):
                 seen.add((nm, idx))
                 hits.append((idx, nm, canon))
     return hits
+
+
+_HEX_CMP_RE = re.compile(r'(?:<=|>=|<>|<|>)\s*&H([0-9A-Fa-f]{1,4})(?![0-9A-Fa-f&])'
+                         r'|&H([0-9A-Fa-f]{1,4})(?![0-9A-Fa-f&])\s*(?:<=|>=|<>|<|>)')
+
+
+def find_hex_sign_traps(code):
+    """VBA の 16 進の罠（2026-10-02 オフィス田中の題 10）: 4 桁の &H8000〜&HFFFF は & を付けないと Integer の負の数
+    （&H9FFF＝-24577）。同じ行で &H8000 未満の 16 進と並べて大小を比べる（AscW(c) >= &H3040 And AscW(c) <= &H9FFF）と、
+    範囲が空になって何も当たらない。→ [(行番号(1始まり), 書いた 16 進, 本来の数)]（純 Python・コメントと文字列の中は除く）。
+    比べ（< > <= >=）の相手になっている 16 進だけを見る（code - &HFF00 + &H20 のような計算は、AscW が負で返すのと
+    釣り合って正しく動くことがあるので咎めない＝咎めたら AI が & を付けて壊した）。"""
+    out = []
+    for idx, ln in enumerate((code or '').replace('\r\n', '\n').split('\n'), 1):
+        st = ln.strip()
+        if st.startswith("'") or st.lower().startswith('rem '):
+            continue
+        body = re.sub(r'"(?:[^"]|"")*"', '""', ln.split(" '")[0])
+        vals = []
+        for m in _HEX_CMP_RE.finditer(body):
+            h = m.group(1) or m.group(2)
+            vals.append(('&H' + h, int(h, 16)))
+        lows = [v for _t, v in vals if v < 0x8000]
+        highs = [(t, v) for t, v in vals if v >= 0x8000 and len(t) == 6]
+        if lows and highs:
+            out += [(idx, t, v) for t, v in highs]
+    return out
+
+
+_CHR_WIDE_RE = re.compile(r'\bChr\$?\(\s*(&H[0-9A-Fa-f]+&?|\d+)\s*\)', re.IGNORECASE)
+
+
+def find_chr_wide(code):
+    """Chr(&H3000) のように 255 を超える数を Chr に渡している行（2026-10-02 オフィス田中の題 10: 全角空白のつもりが
+    「0」になった）。→ [(行番号(1始まり), 書いた式, 数)]（純 Python・コメントと文字列の中は除く）。全角の文字は ChrW。"""
+    out = []
+    for idx, ln in enumerate((code or '').replace('\r\n', '\n').split('\n'), 1):
+        st = ln.strip()
+        if st.startswith("'") or st.lower().startswith('rem '):
+            continue
+        body = re.sub(r'"(?:[^"]|"")*"', '""', ln.split(" '")[0])
+        for m in _CHR_WIDE_RE.finditer(body):
+            t = m.group(1).rstrip('&')
+            v = int(t[2:], 16) if t.upper().startswith('&H') else int(t)
+            if v > 255:
+                out.append((idx, m.group(0), v))
+    return out
+
+
+def hex_sign_message(hits, limit=5):
+    lines = [f"  行{idx}: `{t}` は Integer の {v - 0x10000}（本来は {v:,}）" for idx, t, v in hits[:limit]]
+    return ("16 進の範囲の比べ方が空になっています（4 桁の &H8000〜&HFFFF は & が無いと負の数。&H8000 未満と並べた範囲に何も当たらない）。\n"
+            "  AscW も &H8000 以上の文字を負の数で返すので、& を付けるだけでは全角英数（&HFF10〜）の比べが外れます。"
+            "比べる前に `AscW(c) And &HFFFF&` で 0〜65535 にそろえ、16 進には全部 & を付ける:\n" + '\n'.join(lines))
+
+
+# VBA のエラーの「なぜ」を一言で（2026-10-02 オフィス田中「VBAのエラー」の構文・コンパイル・実行時の分け方に学んだ。
+# 文は自前。止まった行そのものより、データ・シートの状態・参照の側に原因があることが多いものを先に言う）
+_RUNTIME_REASONS = {
+    5: "関数やメソッドに渡した値が受け付けられない（空の文字・範囲外の数・存在しない名前）",
+    6: "数が型の上限を超えた（Integer は 32,767 まで・行番号は Long で持つ）",
+    9: "配列やコレクションに無い番号・名前を指した（Split の結果が足りない空行・無いシート名やブック名）",
+    11: "0 で割った（空のセルは 0 と読まれる）",
+    13: "型が合わない（数のつもりの所に文字・エラー値・空のセルが来た）",
+    53: "ファイルが無い（パスの綴り・ThisWorkbook.Path と ActiveWorkbook.Path の取り違え）",
+    76: "フォルダが無い（ネットワークのドライブ・OneDrive の場所が別の PC と違う）",
+    91: "オブジェクトの変数に Set していない・Find で見つからず Nothing のまま使った",
+    424: "オブジェクトが要る所に値が来た（Set の付け忘れ・Range の綴り違い）",
+    438: "そのオブジェクトに無いプロパティ・メソッドを呼んだ（版の違い・オブジェクトの取り違え）",
+    450: "引数の数が合わない・値を返さないものに値を入れようとした",
+    457: "辞書・コレクションに同じキーを 2 回入れた",
+    1004: "Excel 側が断った（シートの保護・結合セル・範囲の指定違い・シート名の重複・行や列の上限）",
+}
+_COMPILE_REASONS = (
+    ("変数が定義されていません", "Option Explicit の下で宣言していない名前を使った（綴り違いのことが多い）"),
+    ("Sub または Function が定義されていません", "呼んでいるマクロ・関数が無い（綴り違い・別のブックにある・参照設定が外れた）"),
+    ("メソッドまたはデータ メンバが見つかりません", "そのオブジェクトに無いメソッド・プロパティの名前（綴り違い・型の宣言違い）"),
+    ("ユーザー定義型は定義されていません", "参照設定が無い型を宣言した（Dictionary・RegExp など。Object と CreateObject にするか参照を足す）"),
+    ("End If", "If と End If・For と Next・With と End With の組が合っていない"),
+    ("End With", "If と End If・For と Next・With と End With の組が合っていない"),
+    ("Next に対応する For", "If と End If・For と Next・With と End With の組が合っていない"),
+    ("宣言が重複", "同じ名前を 2 回宣言した（同じモジュールの中の同名のマクロ・変数）"),
+    ("引数は省略できません", "必ず渡す引数を渡していない"),
+    ("名前が適切ではありません", "VBA の決まった語・使えない文字を名前にした"),
+    ("行ラベルが定義されていません", "GoTo・On Error GoTo の飛び先のラベルが無い"),
+    ("修正候補", "打ち間違い（括弧・カンマ・引用符の数）。その行の書き方を見直す"),
+)
+
+
+def vba_error_reason(text):
+    """エラーの文（「実行時エラー 9: …」・コンパイル エラーの本文）→ なぜの一言（分からなければ ''）。純 Python。"""
+    t = str(text or '')
+    m = re.search(r'実行時エラー\s*[\'"]?(\d+)', t)
+    if m and int(m.group(1)) in _RUNTIME_REASONS:
+        return _RUNTIME_REASONS[int(m.group(1))]
+    for key, why in _COMPILE_REASONS:
+        if key in t:
+            return why
+    return ''
 
 
 def case_pollution_message(hits, limit=8):
@@ -2517,6 +2622,10 @@ __all__ = ['split_command_line',
     '_find_invalid_procedure_names',
     'find_case_pollution',
     'case_pollution_message',
+    'find_hex_sign_traps',
+    'find_chr_wide',
+    'vba_error_reason',
+    'hex_sign_message',
     'declared_names',
     '_get_active_excel',
     '_get_workbook_uncached',

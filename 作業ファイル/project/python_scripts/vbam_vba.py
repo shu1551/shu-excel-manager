@@ -408,6 +408,35 @@ def _diag_legacy(lines):
     return out
 
 
+_LOOP_OPEN_RE = re.compile(r'^\s*(For\b|Do\b|While\b)', re.IGNORECASE)
+_LOOP_CLOSE_RE = re.compile(r'^\s*(Next\b|Loop\b|Wend\b)', re.IGNORECASE)
+
+
+def _diag_loop_slow(lines):
+    """VBM023: ループの中の遅い 1 回ずつの操作 → [(行番号(1始まり), 説明, 行テキスト)]（純 Python）。
+    値貼り付け（PasteSpecial）＝オフィス田中「VBA高速化テクニック: 値貼り付けは遅い」（500 回で 68 秒→Value の代入で 0.6 秒）。
+    1 行ずつの削除（Rows(i).Delete・EntireRow.Delete）＝オートフィルタで絞って 1 回か Union でまとめて 1 回
+    （2026-10-02 オフィス田中の題 25・26: 試しブックで 3.4 秒→1.2 秒・33.8 秒→0.03 秒）。"""
+    out = []
+    depth = 0
+    for i, raw in enumerate(lines):
+        code = re.sub(r'"(?:[^"]|"")*"', '""', _code_part(raw))
+        for part in code.split(':'):
+            if _LOOP_CLOSE_RE.match(part):
+                depth = max(0, depth - 1)
+            elif _LOOP_OPEN_RE.match(part) and not re.match(r'^\s*For\s+Each\b.*\bNext\b', part, re.IGNORECASE):
+                depth += 1
+        if depth <= 0:
+            continue
+        if re.search(r'\.PasteSpecial\b', code, re.IGNORECASE):
+            out.append((i + 1, "ループの中の値貼り付け（Copy → PasteSpecial）は 1 回ごとに遅い。"
+                               "貼り先.Value = 元.Value の代入にする（オフィス田中「値貼り付けは遅い」）", raw.strip()[:80]))
+        elif re.search(r'\bRows\s*\([^)]*\)\s*\.Delete\b|\.EntireRow\.Delete\b', code, re.IGNORECASE):
+            out.append((i + 1, "ループの中で 1 行ずつ消すと行の数だけ遅くなる。"
+                               "オートフィルタで絞って見えている行を 1 回で消すか、Union で集めて 1 回で消す", raw.strip()[:80]))
+    return out
+
+
 def _diag_auto_open(procs):
     """VBM021: 古い自動実行（Auto_Open・Auto_Close）の手続き名 → [名前]。"""
     return [p["name"] for p in procs if str(p["name"]).lower() in ('auto_open', 'auto_close')]
@@ -828,6 +857,19 @@ def cmd_check(args):
         for lineno, why, text in _diag_legacy(lines):
             pname = _proc_of_index(procs, lineno - 1)
             mod_info["warnings"].append(f"プロシージャ '{pname}' に古い書き方 (行 {lineno}): {text}  → {why}")
+        for lineno, t, v in find_hex_sign_traps('\n'.join(lines)):        # VBM022（2026-10-02 オフィス田中の題 10）
+            pname = _proc_of_index(procs, lineno - 1)
+            mod_info["warnings"].append(
+                f"プロシージャ '{pname}' の 16 進 {t} は Integer の {v - 0x10000} です (行 {lineno})"
+                f"  → 範囲の比べ方が空になります。{v:,} のつもりなら {t}& と & を付ける")
+        for lineno, expr, v in find_chr_wide('\n'.join(lines)):         # VBM022 の仲間（同じ題 10）
+            pname = _proc_of_index(procs, lineno - 1)
+            mod_info["warnings"].append(
+                f"プロシージャ '{pname}' の {expr} は Chr に {v:,} を渡しています (行 {lineno})"
+                f"  → Chr は 0〜255 の文字だけ。全角の文字は ChrW({v})")
+        for lineno, why, text in _diag_loop_slow(lines):                 # VBM023（2026-10-02）
+            pname = _proc_of_index(procs, lineno - 1)
+            mod_info["warnings"].append(f"プロシージャ '{pname}' が遅い書き方 (行 {lineno}): {text}  → {why}")
         for pname in _diag_auto_open(procs):
             mod_info["warnings"].append(
                 f"プロシージャ '{pname}' は古い自動実行です  → ブックを VBA から開いたとき（Workbooks.Open）は動きません。"
@@ -1248,6 +1290,9 @@ _CHECK_RULES = [
     ("VBM020", "warning", "今の Excel で止まる古い書き方（FileSearch・シート全体の Cells.Count・95/97 形式の保存）", "手続き内",
      "オフィス田中 VBA CheckList"),
     ("VBM021", "warning", "古い自動実行（Auto_Open・Auto_Close）", "手続き内", "オフィス田中 VBA CheckList"),
+    ("VBM022", "warning", "16 進の &H8000〜&HFFFF に & が無い（範囲の比べ方が空になる）・Chr に 255 を超える数（全角は ChrW）", "手続き内", ""),
+    ("VBM023", "warning", "ループの中の値貼り付け（PasteSpecial）・1 行ずつの削除（遅い）", "手続き内",
+     "オフィス田中 VBA高速化テクニック"),
 ]
 
 
@@ -7479,7 +7524,7 @@ def cmd_test(args):
                     results.append({"module": mod_name, "name": sub_name,
                                     "ok": False, "seconds": round(sec, 2), "error": err})
                     print(f"✗ {sub_name}  [{mod_name}]  ({sec:.2f}秒)")
-                    print(f"    {err}")
+                    print(f"    {err}" + (f"  → なぜ: {vba_error_reason(err)}" if vba_error_reason(err) else ""))
             except Exception as e:
                 sec = _time.time() - t0
                 err = _com_error_text(e)
@@ -7813,6 +7858,9 @@ def cmd_compile(args):
     if resaved:
         print("  （コンパイルの前は保存済みだったので保存済みの印を戻しました＝ファイルは書かない・閉じるときに保存を聞かれません）")
     if res["state"] == "error":
+        why = vba_error_reason(res["detail"])
+        if why:
+            print("  なぜ: " + why)
         print("  " + _compile_fix_hint(res if res.get("module") else None, res["detail"]))
     return res["ok"]
 

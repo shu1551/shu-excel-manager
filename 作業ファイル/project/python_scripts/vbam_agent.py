@@ -247,6 +247,15 @@ actions に並べられる手（この 44 個だけ）:
  - 集計の式は**同じ式を右にも下にもコピーできる形**で書く。月別なら見出しにその月の 1 日の日付を置き、
    式は ">="&B$1 と "<"&EDATE(B$1,1) で判定する（列ごとに月の数や年を式に書き換えない。TEXT や MONTH で判定しない）。
    区分別・担当別なら見出しや左端のセル（$A2）を参照する。列ごとに違う式を並べると、人が月や区分を足したとき壊れる。
+ - **「行数が変わる・増減する・可変」と言われた列の取り出し・抜き出し・集計は、先頭の 1 セルにスピルする式を 1 つ**だけ書く
+   （下へコピーする式にしない＝行を足すと追いつかない）。例: F1 の見出しの列 → =DROP(XLOOKUP(F1,A1:D1,A:.D),1)
+   （A:.D は空の行を落とす参照。使えない版なら =FILTER(XLOOKUP(F1,A1:D1,A2:D10000),A2:A10000<>"")）。
+   ROW()-ROW(見出し) で行をずらす式は 1 行ずれて見出しを拾う（2026-10-02 オフィス田中の題 07）。
+   セル内改行・区切り文字で分けて横に並べるのは各行の先頭に =TEXTSPLIT(A2,CHAR(10)) を 1 つ（MID と REPT の古い形で
+   列ごとに式を並べない）。全角→半角は =ASC(A2)、半角→全角は =JIS(A2)。
+ - **「E2 に 1 つの式で」の集計は、その 1 セルに見出しの列と値の列を両方返す式を 1 つ**（名前を E2・合計を F2 に分けない）:
+   =GROUPBY(B2:B19,C2:C19,SUM)（GROUPBY が無い版は =LET(u,UNIQUE(B2:B19),HSTACK(u,SUMIFS(C2:C19,B2:B19,u)))）。
+   月別は =GROUPBY(TEXT(A2:A19,"yyyy/mm"),C2:C19,SUM)（日付のまま返すと 45839 のような数に見える）。
  - 突き合わせは =IFERROR(VLOOKUP(キー,表,列,FALSE),"〜なし") の形。無いものは空欄でなく「〜なし」の文字。
    ただし金額など数の列に返すときは "" にする（文字が混ざると数値列と見なされず、仕上げ検査に引っかかる）。
    その場合、未一致がどれかは隣に印の列を作るか cond_format の色で示す。
@@ -2704,7 +2713,10 @@ def run_agent(request, sheet, wb, ai=_CC_AI, model=None, max_turns=_DEFAULT_MAX_
                 # 「完了しました」と言うだけの往復に 30 秒かかった）。足りなければ関所と採点係が差し戻す
                 auto_done = (not wanted_done and bool(actions) and isinstance(actions[-1], dict)
                              and str(actions[-1].get('op') or '') == 'tidy')
-                if (wanted_done or auto_done) and not dry_run and all(ok for _l, ok, _o in results):
+                # 書いた式のスピルの知らせ（#SPILL!・百万行の 0）が出た回は done を受けず、結果を見せて直させる（2026-10-02 題 07）
+                spill_warned = any('⚠ 【スピル】' in str(t) for _l, _o, t in results)
+                if ((wanted_done or auto_done) and not dry_run and all(ok for _l, ok, _o in results)
+                        and not spill_warned):
                     # 手と done を同じ返事で受けた（2026-09-06 夜）。14 走行のうち 10 走行が「1 往復目に手・
                     # 2 往復目に actions 空の done」の形で、2 往復目は 12,000〜16,000 トークン・4 秒の儀式だった。
                     # 全部通ったので次の往復を待たずに関所へ進む。関所が差し戻すときは AI がまだ結果を見ていない

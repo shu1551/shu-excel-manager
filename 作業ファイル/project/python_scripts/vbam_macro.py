@@ -63,6 +63,13 @@ actions に並べられる手（この 13 個だけ）:
    対象は ActiveSheet でなく、そのマクロが使われるシートを名指しできるならそちらを使う。
  - 書き換えの前に、読んでいないコードを想像で書かない。呼び先のコードが要るなら get で読む。
  - Option Explicit を足さない。引数つきの Sub や Function を新しく作らない。宣言部や他のマクロを消さない。
+ - 作ったマクロを rehearse したら、差分に出た値を**頼みの言葉と 1 つずつ照らしてから** report に「正しい」と書く
+   （全角空白のはずが「田中0太郎」・半角のままの空白を「期待どおり」と書いた・2026-10-02 題 10）。合わない値があれば直す。
+ - 全角・半角の直しは文字コードの計算（AscW と 16 進の範囲）で書かない（AscW は &H8000 以上を負の数で返し、範囲が空になる）。
+   全角↔半角は StrConv(文字, vbNarrow／vbWide)、種類の判定は Like（英数字だけ＝1 文字ずつ c Like "[０-９Ａ-Ｚａ-ｚ]"、
+   日本語＝c Like "[ぁ-んァ-ヶ一-龠々]"）。全角空白は ChrW(&H3000)（Chr は 255 まで）。
+ - **「コピー」「写す」と頼まれたら Range.Copy（Destination 付き）で書式ごと写す**。セルの .Value の代入は値しか移らず、
+   日付が数字に・#,##0 や色が消える（2026-10-02 オフィス田中の題 06）。代入は「値だけ」「値で」と頼まれたときだけ。
  - replace の code は宣言（Sub/Function 〜）から End Sub/End Function まで 1 本だけ。名前は name と同じ。
  - 書き換えた後は道具がコンパイルする。通らなければ次の返事で直す。通ったら done にして report を書く。
  - 手は上から順に実行し、1 つ失敗すると残りは実行しない（結果に「止めました」と出る。それまでの書き換えが済んでいればコンパイルは行う）。失敗した手を直して、残りと一緒に並べ直す。
@@ -185,7 +192,9 @@ def _code_violations(before, now, allowed=(), allow_new=False):
             continue
         if (mod, name) not in now:
             bad.append(f"頼んでいないマクロが消えた: {mod}.{name}")
-        elif now[(mod, name)] != body:
+        elif now[(mod, name)].rstrip() != body.rstrip():
+            # 末尾の空行は数えない（モジュールの最後のマクロの後ろに足すと、区切りの空行がその本文に付く。
+            # 2026-10-02 オフィス田中の題 06 で、触っていない CHECK を咎めて往復を 2 回捨てた）
             bad.append(f"頼んでいないマクロが変わった: {mod}.{name}")
     for (mod, name) in sorted(now):
         if allow_new:
@@ -703,6 +712,11 @@ def _macro_action_to_tokens(act, allow_rehearse=False, existing=None, default_mo
         decl = _one_declared_name(code, 'add')
         if decl.lower() != name.lower():
             raise ValueError(f"add の code の名前（{decl}）が name（{name}）と違います")
+        head = next((ln for ln in code.splitlines() if _PROC_DECL_RE.match(ln)), '')
+        if re.search(r'\bFunction\b', head, re.IGNORECASE) or re.search(r'\(\s*[^)\s]', head):
+            # 規則にあっても「1 本だけ」で断られた後に Function を別の add で足していた（2026-10-02 オフィス田中の題 10）
+            raise ValueError("新しく作るのは引数なしの Sub だけ（Function・引数つき Sub は作らない）。"
+                             "下請けの処理は Sub の中に書く")
         if existing and name.lower() in {n.lower() for n in existing}:
             raise ValueError(f"'{name}' は既にあります（新しく作るのでなく直すなら replace か code_replace）")
         return f"add {name} → {module}", ['add-procedure', '-y', module], True
@@ -918,7 +932,60 @@ def _macro_materials_create(wb=None):
         ok, out = va._run_cmd(toks, wb)
         parts.append((label, ok, out))
     text = [f"--- {label} {'' if ok else '（失敗）'}---\n" + out.rstrip()[:va._RESULT_LIMIT] for label, ok, out in parts]
+    text.append(_active_sheet_note(wb))
     return "\n".join(text), parts[0][1]
+
+
+def _sheet_heads_note(wb, request):
+    """頼みに出てくるシートといま開いているシートの、使用範囲と見出し（1 行目）を材料に足す（2026-10-02 オフィス田中の題 09:
+    作るときの材料にシートの形が無く、AI が名前の列を 1 列目と決めて 0 件のブックを保存した）。値の行は出さない。"""
+    try:
+        act = str(wb.ActiveSheet.Name)
+        sheets = [s for s in wb.Worksheets]
+    except Exception:
+        return ""
+    req = request or ''
+    pick = [s for s in sheets if str(s.Name) == act or (str(s.Name) and str(s.Name) in req)]
+    hide = False
+    with contextlib.suppress(Exception):
+        import vbam_structure
+        hide = vbam_structure.no_values_mode()       # 値なしの切り替え中は見出しの語も出さない（使用範囲だけ）
+    lines = []
+    for s in pick[:6]:
+        try:
+            ur = s.UsedRange
+            r0, c0 = int(ur.Row), int(ur.Column)
+            nr, nc = int(ur.Rows.Count), int(ur.Columns.Count)
+            heads = []
+            if hide:
+                lines.append(f"「{s.Name}」 使用範囲 {ur.Address.replace('$', '')}（{nr} 行・見出しは値なしの切り替え中で出さない）")
+                continue
+            for c in range(c0, c0 + min(nc, 20)):
+                v = s.Cells(r0, c).Value
+                col = s.Cells(r0, c).Address.split('$')[1]
+                heads.append(f"{col}={'' if v is None else str(v)[:20]}")
+            lines.append(f"「{s.Name}」 使用範囲 {ur.Address.replace('$', '')}（{nr} 行）  {r0} 行目: " + " | ".join(heads))
+        except Exception:
+            continue
+    if not lines:
+        return ""
+    return ("--- シートの形（頼みに出てくるシートと、いま開いているシート。値の行は出さない） ---\n" + "\n".join(lines)
+            + "\n列は見出しで決める（名前の列・日付の列を 1 列目と決めつけない）。")
+
+
+def _active_sheet_note(wb):
+    """使う人がいま開いているシート（頼みの「このシート」）を材料に足す（2026-10-02 オフィス田中の題 08:
+    「このシートの A1 から」を ThisWorkbook.Sheets(1)＝先頭の目次シートと読み、目次を消して書いた）。"""
+    try:
+        name = str(wb.Application.ActiveSheet.Name) if wb.Application.ActiveWorkbook.Name == wb.Name \
+            else str(wb.ActiveSheet.Name)
+        names = [str(s.Name) for s in wb.Worksheets]
+    except Exception:
+        return ""
+    return ("--- いま開いているシート ---\n"
+            f"「{name}」（頼みの「このシート」「今のシート」はこれ。全 {len(names)} 枚・先頭は「{names[0] if names else ''}」）\n"
+            "書く先は ActiveSheet か Worksheets(\"名前\") で決める。**Sheets(1)・Worksheets(1) のような番号で選ばない**"
+            "（先頭は目次や表紙のことが多く、人のシートを消して書く）。")
 
 
 def run_both(request, sheet, xl, wb, macro=None, ai=va._CC_AI, model=None, max_turns=va._DEFAULT_MAX_TURNS,
@@ -994,6 +1061,7 @@ def run_macro_agent(request, xl, wb, macro=None, ai=va._CC_AI, model=None, max_t
               + (f"（名前の指定: {macro}）" if macro else "（名前は依頼から AI が決める）")
               + "（この往復のあいだ固定。別のブックには触らない）")
         materials, got = _macro_materials_create(wb)
+        materials += "\n" + _sheet_heads_note(wb, request)
         target_module = None
         head = f"\n\n【材料】（ブック {wb.Name}。道具が読んだ現物）\n"
     else:
@@ -1017,6 +1085,17 @@ def run_macro_agent(request, xl, wb, macro=None, ai=va._CC_AI, model=None, max_t
                       + run_line[:300] + ("\n" + txt[i:].rstrip() if i >= 0 else "") + "\n")
         if not ok_b:
             score = None      # 撃てない（コンパイルエラー等）は比べる土台にしない＝コンパイルの直しを「関係なかった」と言わない
+    elif (rehearse and not create and not dry_run and got and macro
+          and re.search(r'エラー|止まる|止まって|落ちる|動かない', request or '')):
+        # 「エラーで止まる」の相談は、道具が先に 1 回撃って止まった所（エラーの番号と文・そこまでに書けた所）を材料に付ける
+        # （2026-10-02 オフィス田中の題 12: AI が 1 往復目を試し撃ちに使い、原因 2 つを直し終えたところで往復が尽きた）
+        ok_b, out_b = va._run_cmd(['rehearse', macro, '--timeout', '120', '--discard'], wb)
+        keep = [l for l in (out_b or '').split('\n')
+                if l.startswith(('マクロ実行', '* シート', '  使用範囲', '  セル追加', '    ')) and '書式' not in l]
+        materials += ("\n--- 直す前の試し撃ち（道具が rehearse を 1 回撃った。止まった所の確かめ） ---\n"
+                      + "\n".join(keep[:16]) + "\n"
+                      + "（止まった行の前にどこまで書けたかで、止まった行を決める。原因は止まった行でなくデータや"
+                        "シートの状態（保護・空行・列の数）のこともある＝1 つ直したら rehearse で次の止まりを見る）\n")
     print(materials)
     if not got:
         return {'done': False, 'ok': False, 'turns': 0, 'report': '', 'usage': {}}
@@ -1025,7 +1104,10 @@ def run_macro_agent(request, xl, wb, macro=None, ai=va._CC_AI, model=None, max_t
         # sheet 仕事の控えでシートを上書きしないように印を付ける（2026-09-04）
         va._mark_undo_stale(f"macro（マクロ「{macro or '新規'}」を直した。戻すなら list-backups → restore）",
                           str(getattr(wb, 'Name', '') or ''))
-    prompt = (MACRO_RULES + "\n【依頼】\n" + request.strip() + head + materials + "\n"
+    prompt = (MACRO_RULES + "\n【依頼】\n" + request.strip()
+              + (f"\n（作るマクロの名前は「{macro}」＝add の name はこれ。既にある別のマクロを直して済ませない）"
+                 if create and macro else "")     # 2026-10-02 題 06: 名前を言っても別名で作り・前のマクロを直していた
+              + head + materials + "\n"
               + ("（rehearse は使える）\n" if rehearse else ""))
     with open(va._LAST_AGENT_ASK_FILE, 'w', encoding='utf-8') as f:
         f.write(prompt)

@@ -7,6 +7,7 @@ import sys
 import os
 import re
 import shutil
+import contextlib
 import zlib
 import argparse
 import time
@@ -2578,14 +2579,32 @@ def cmd_rehearse(args):
     if os.path.exists(copy_path):
         print(f"エラー: コピー先が既に存在します: {copy_path}")
         return False
+    # 撃つ間だけコピーを本体と同じフォルダに置く（ThisWorkbook.Path の隣の CSV・設定ファイルを読むマクロが
+    # 一時フォルダでは「ファイルが見つかりません」で落ち、AI が本番の run に逃げていた・2026-10-02 オフィス田中の題 08）。
+    # 閉じた後に一時フォルダへ移す＝人のフォルダにコピーを残さない
+    run_path = copy_path
+    src_dir = ''
+    with contextlib.suppress(Exception):
+        src_dir = str(wb_src.Path or '')
+    if not out_opt and src_dir and os.path.isdir(src_dir):
+        run_path = os.path.join(src_dir, f"~予行_{stem}_{stamp}{ext}")
     try:
-        wb_src.SaveCopyAs(copy_path)
+        wb_src.SaveCopyAs(run_path)
     except Exception as e:
-        print(f"エラー: コピーを作れませんでした: {e}")
-        print("  （一度も保存していない新規ブックは、先に save-as で実体を作ってください）")
-        return False
+        if run_path != copy_path:
+            run_path = copy_path           # 本体のフォルダに書けない（読み取り専用の共有など）→ 一時フォルダで撃つ
+            try:
+                wb_src.SaveCopyAs(run_path)
+                e = None
+            except Exception as e2:
+                e = e2
+        if e is not None:
+            print(f"エラー: コピーを作れませんでした: {e}")
+            print("  （一度も保存していない新規ブックは、先に save-as で実体を作ってください）")
+            return False
     print(f"予行演習: {src_name} のコピーで '{macro_name}' を試し撃ちします（本体は無傷）")
-    print(f"  コピー: {copy_path}")
+    print(f"  コピー: {copy_path}" + ("（撃つ間は本体と同じフォルダに置き、終わったら一時フォルダへ移します）"
+                                       if run_path != copy_path else ""))
 
     before_path = copy_path + ".before.json"
     after_path = copy_path + ".after.json"
@@ -2624,7 +2643,7 @@ def cmd_rehearse(args):
         if getattr(args, 'addins', False):
             load_excel_addins_and_personal(xl2)
         cmd_progress_note("コピーを別の Excel で開いています")
-        wb2 = xl2.Workbooks.Open(copy_path, 0)   # UpdateLinks=0
+        wb2 = xl2.Workbooks.Open(run_path, 0)    # UpdateLinks=0
         try:
             xl2.EnableEvents = True        # 実行中のイベントは本番同様に生かす
         except Exception:
@@ -2727,12 +2746,22 @@ def cmd_rehearse(args):
         except ValueError:
             pass
         gc.collect()
+        if run_path != copy_path and os.path.exists(run_path):
+            import shutil
+            try:
+                shutil.move(run_path, copy_path)
+            except OSError:
+                time.sleep(1)               # 演習用の Excel がファイルを放すのを待って 1 回だけやり直す
+                with contextlib.suppress(OSError):
+                    shutil.move(run_path, copy_path)
 
     print("-" * 60)
     if run_ok:
         print(f"マクロ実行: 成功  戻り値: {result}")
     else:
         print(f"マクロ実行: 失敗  {run_err}")
+        if vba_error_reason(run_err):
+            print(f"  なぜ（よくある原因）: {vba_error_reason(run_err)}")
         print("  （落ちるまでに変えたものがあれば、下の差分に出ます）")
     if dlg_note:
         print(dlg_note)
