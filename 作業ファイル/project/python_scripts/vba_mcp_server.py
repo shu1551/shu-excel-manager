@@ -712,52 +712,32 @@ mcp = FastMCP("excel-manager", instructions=_INSTRUCTIONS)
 
 @mcp.tool()
 def vba(command: str) -> str:
-    """vba_manager のコマンドを1行実行する。対象は今アクティブに開いている Excel ブック。
+    """vba_manager のコマンドを1行実行する（CLI と同じ引数列）。対象は今アクティブに開いている Excel ブック。
 
     まずこれ（1 回撃って、その返事だけで答える）:
-      今開いているブック・シートは？ → "sheet-info"（軽い。ブック名・アクティブシート・全シートの一覧）
-      表の中身を見る → "materials"（返事が長い。表を読むときだけ）
-      ブックの仕組み・点検 → "structure"（値を出さずに形だけ。機密のブックでも AI に渡せる）
-      中身を外に出せないブック → "no-values on"（以後 materials・seiri が値を出さない。外すのは "no-values off"）
-      表を直す・整える → "seiri 頼みの文" を 1 回（先撃ち。下に詳しく）
-
-    CLI と同じ引数列をそのまま渡す。例:
-      "list"（マクロ一覧） / "list-open"（開いているブック一覧） /
-      "get モジュール名 プロシージャ名" / "run-macro マクロ名" /
-      "read-range A1:D10" / "write-range A1 値" /
-      "grep ActiveSheet" / "checkup" / "impact マクロ名" /
-      "close-form"（表示中の UserForm を閉じる。フォームを直す前に人へ頼まず自分で閉じる） /
-      "write-cells C7 値 C11 値 --show"（飛び飛びのセルを1回で） /
-      "tidy A5:G13 I5:L11"（表の仕上げ＝見出し・罫線・番号列は左寄せ・数値列は#,##0・列幅。
-      列を足したときは足した列だけでなく表全体の範囲を渡す）
-    表を直す・整える・点検する依頼は、自分で書く前に棚のマクロを使う＝先撃ち:
-      "seiri 頼みの文" を 1 回（表を整えるマクロ・頼みに当たる棚・tidy まで 1 回で撃つ。頼みの語が無ければ
-      引数なしの "seiri"）→ エラーセルが無ければそこで終わり（screenshot・気づきの直しを足さない）。
-      エラーセルがあるときだけ write-cells / write_grid と "tidy" を同じ返事に並べて 1 回。
-      報告は要点だけ 3 行程度（5 行以内）・番地で（経過・秒数・長い説明は書かない）。戻すのは agent(undo=True)。
-      棚を 1 本だけ撃つ "shelf-run 名前 --select A1:A9,C1:C9" / 目録 "shelf --grep 語"。式の元をたどる "trace D31 --depth 3"。
-    表・数式の列など TSV で書く範囲は write_grid（TSV を文字列で直接渡す。ファイル不要）。
-    よく外す手の形（2026-09-19 Gemini の実射で、形を外して使い方が返るだけの往復が 11 回あった）:
+      ブック・シートは？ "sheet-info" / 表の中身 "materials" / 仕組み・点検 "structure"（値を出さない）/
+      中身を外に出せない "no-values on"（外すのは off）/ 表を直す・整える "seiri 頼みの文"（先撃ち）
+    表の依頼は自分で書く前に "seiri 頼みの文" を 1 回（頼みの語が無ければ引数なし）。表を整えるマクロ・
+      頼みに当たる棚・tidy まで道具が撃つ。エラーセルが無ければそこで終わり（screenshot・気づきの直しを足さない）。
+      あるときだけ write-cells / write_grid と "tidy 表全体" を同じ返事に並べて 1 回。報告は番地で 3〜5 行。
+      戻すのは agent(undo=True)。棚 1 本 "shelf-run 名前 --select A1:A9,C1:C9" / 目録 "shelf --grep 語" /
+      式の元 "trace D31 --depth 3"。
+    書く: "write-cells C7 値 C11 値 --show"（飛び飛び）/ 範囲・数式の列は write_grid（TSV 文字列）/
+      仕上げ "tidy A5:G13"（列を足したら表全体）
+    よく外す形:
       "pivot create Sheet1!A1:G13 --rows 部署 --cols 区分 --values 金額 --func sum --sheet 集計 --name P1" /
-      "pivot-field set-format P1 金額 #,##0" / "pivot-field sort P1 部署 desc" /
-      "chart create A1:B5 --type column --title 題 --name G1 --at H3"（ピボットからは --pivot P1） /
-      "chart-config legend G1 bottom" / "chart-config data-labels G1 --value" /
-      "slicer add P1 部署 --name S1 --at A11" / "slicer list" /
-      "shape --list"（図形の名前と位置） / "shape G1 --left 216 --top 135 --width 300 --height 180"（動かす・大きさ） /
-      "sheet add 新シート --before 既存" / "format-range B2:N2 --merge --bold --bg #1F4E79 --color #FFFFFF --size 16" /
-      "format-range E6:E19 --number-format yyyy/m/d"（日付の形をそろえる） / "fill D6:D17"（先頭のセルの式を下へ写す） /
-      cond-format A6:D17 --formula "=$B6<$C6" --bg #FFC7CE（条件付き書式。式に文字を入れるときは " を "" と重ねる。
-      2026-09-23 Gemini が使い方を引いた 3 つ） /
-      "add-module Module1 -y" → set_procedure_code(全文) → "add-procedure Module1 -y"（新しい Sub を足す。直すのは replace_procedure）
-    手数の多い組み立て（ダッシュボード・帳票の作り直しなど、10 手を超えそうなもの）は、一手ずつ撃たずに
-    VBA のマクロ 1 本に書いて "compile" → "run-macro 名前" で撃つ（同じ仕事が 30 往復・数分 → 1 本・約 1 秒。二度目からは AI も要らない）。
-    コマンド一覧・各引数は vba_help で確認できる。
-    注意: 確認プロンプトを出すコマンドは必ず -y を付ける（例: "replace-procedure -y"）。
-    shell / batch は使えない（このセッション自体が常駐＝接続使い回しのため不要）。
-    "reload" は道具の .py を読み直す（reload_tools と同じ。サーバーの再起動は要らない）。
-    長い手（checkup・export-all・gate・rehearse・snapshot・docs）は行末に "--bg" を付けると待たずに job id が返る
-    （2026-09-17）。段は "status"、結果は agent_status("job…")。
+      "pivot-field set-format P1 金額 #,##0" / "chart create A1:B5 --type column --title 題 --name G1 --at H3"
+      （ピボットから --pivot P1）/ "chart-config legend G1 bottom" / "slicer add P1 部署 --name S1 --at A11" /
+      "shape --list" / "shape G1 --left 216 --top 135 --width 300 --height 180" / "sheet add 名 --before 既存" /
+      "format-range B2:N2 --merge --bold --bg #1F4E79 --color #FFFFFF" / "fill D6:D17" /
+      cond-format A6:D17 --formula "=$B6<$C6" --bg #FFC7CE（式の中の " は "" と重ねる）
+    10 手を超える組み立ては一手ずつ撃たず VBA 1 本に: "add-module Module1 -y" → set_procedure_code(全文)
+      → "add-procedure Module1 -y" → "compile" → "run-macro 名前"。直すのは replace_procedure / patch_procedure。
+    表示中のフォームは人に頼まず "close-form" で閉じてから直す。確認を出すコマンドは -y を付ける。長い手（checkup・gate・rehearse 等）は行末 "--bg" で job id
+      → agent_status。"reload" は道具の .py を読み直す。引数は vba_help（外れれば使い方が返る）。
     """
+    # 説明文は 2,000 字以内に保つ（Claude Code が 2,048 字で切り、後ろの段が AI に届いていなかった・2026-10-02）。
+    # 経緯: よく外す形は 2026-09-19・09-23 の Gemini の実射、--bg は 2026-09-17。
     line = command.strip()
     if line.lower() == "reload":
         return reload_tools()
