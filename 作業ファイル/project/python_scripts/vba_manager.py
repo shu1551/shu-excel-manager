@@ -1559,6 +1559,25 @@ def normalize_command_tokens(parser, tokens):
                           if not t.startswith("-") and toks[j - 1] != "--code-file"]
             if not positional:
                 toks.insert(1, mod)
+    # --book X ＝ 対象のブック X を先頭の位置引数に（多くの手は「ブック名 引数…」の形で対象を受ける。
+    # get・grep で --book を付けて「不明な引数」で落ちていた・台帳 9/27〜10/2）
+    if "--book" in toks and "--book" not in opts:
+        i = toks.index("--book")
+        if i + 1 < len(toks):
+            book = toks[i + 1]
+            del toks[i:i + 2]
+            toks.insert(1, book)
+            notes.append(f"（--book {book} は対象のブックとして撃ちました）")
+    # get 名前 --module X ＝ get X 名前（get のモジュール指定は位置引数・台帳 9/28）
+    if cmd == "get" and "--module" in toks and "--module" not in opts:
+        i = toks.index("--module")
+        if i + 1 < len(toks):
+            mod = toks[i + 1]
+            del toks[i:i + 2]
+            names = [t for t in toks[1:] if not t.startswith("-")]
+            if len(names) == 1:
+                toks.insert(toks.index(names[0]), mod)
+                notes.append(f"（--module {mod} は get {mod} {names[0]} として撃ちました）")
     # grep-files --file X ＝ 探すファイル X（grep の --file は「検索語をファイルから」なので grep-files だけ）
     if cmd == "grep-files":
         while "--file" in toks:
@@ -1667,7 +1686,13 @@ def run_command_line(parser, table, line, blocked=("shell", "batch")):
     if not ns.command or ns.command in blocked:
         print("このコマンドは MCP セッション内では実行できません")
         return False
-    return table[ns.command](ns)
+    try:
+        return table[ns.command](ns)
+    except EOFError:
+        # 確認の問い（y/N）に答える人がいない＝「EOF when reading a line」とだけ返っていた（台帳 9/27・10/2）
+        print(f"エラー: {ns.command} は確認を求めましたが、ここでは答えられません。-y を付けて撃ち直してください"
+              f"（例: {ns.command} … -y）。何も変えていません")
+        return False
 
 
 def cmd_batch(args):

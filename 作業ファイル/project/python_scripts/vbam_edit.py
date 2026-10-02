@@ -3576,8 +3576,13 @@ def cmd_open(args):
         print("使い方: open <path>")
         return False
     if len(rest) >= 2:
-        print("エラー: パスは1つだけ指定してください。使い方: open <path>")
-        return False
+        # 空白入りの名前を引用符なしで渡すと割れる（open お試し版 Excelコンボ.xlsm・台帳 9/26 ほか 2 回）。
+        # つないだ名前が実在するときだけ、それを 1 つのパスとして開く
+        joined = smart_path_resolve(' '.join(rest))
+        if not joined or not os.path.exists(joined):
+            print("エラー: パスは1つだけ指定してください（空白を含む名前は \"…\" で囲む）。使い方: open <path>")
+            return False
+        rest = [' '.join(rest)]
     path = smart_path_resolve(rest[0])
     if not path or not os.path.exists(path):
         print(f"エラー: ファイルが見つかりません: {rest[0]}")
