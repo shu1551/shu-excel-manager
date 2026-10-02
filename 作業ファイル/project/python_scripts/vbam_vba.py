@@ -780,16 +780,23 @@ def cmd_check(args):
         if decl_func != end_func:
             mod_info["errors"].append(f"Function の閉じ忘れがあります (宣言数: {decl_func}, End Function数: {end_func})")
 
-        # 未使用変数のカウントスキャン
+        # 未使用変数のカウントスキャン。行ごとに語を 1 回だけ切り出して数える
+        # （以前は 行数×変数の数 だけ正規表現を作って回し、1 万行のモジュールで数億回＝check が 141 秒・2026-10-02）。
+        # \b名前\b は「\w の連なり 1 語がまるごと名前と同じ」と同じ意味なので、数え方は変わらない
         if local_variables:
-            for idx, line in enumerate(lines):
+            names = {v.lower() for v, _ in local_variables}
+            line_words = []
+            lines_with = dict.fromkeys(names, 0)
+            for line in lines:
                 # 上と同じ理由で、文字列を潰してからコメントを落とす
                 clean_line = re.sub(r'"[^"]*"', '""', line).split("'")[0]
-                for var_name, decl_idx in local_variables:
-                    if idx == decl_idx:
-                        continue
-                    if re.search(r'\b' + re.escape(var_name) + r'\b', clean_line, re.IGNORECASE):
-                        variable_usage[var_name] += 1
+                words = names.intersection(w.lower() for w in re.findall(r'\w+', clean_line))
+                line_words.append(words)
+                for w in words:
+                    lines_with[w] += 1
+            for var_name, decl_idx in local_variables:
+                key = var_name.lower()
+                variable_usage[var_name] += lines_with[key] - (1 if key in line_words[decl_idx] else 0)
 
             for var_name, decl_idx in local_variables:
                 if variable_usage[var_name] == 0:

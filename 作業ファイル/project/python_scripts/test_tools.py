@@ -5129,3 +5129,57 @@ def test_vba_error_reason_names_the_usual_cause():
     assert '空行' in c.vba_error_reason('実行時エラー 9: インデックスが有効範囲にありません。')
     assert '宣言' in c.vba_error_reason('コンパイル エラー: 変数が定義されていません。')
     assert c.vba_error_reason('何か別の文') == ''
+
+
+def test_mcp_tool_descriptions_fit_the_client_limit():
+    """MCP の道具の説明文は 2,000 字以内（Claude Code は 2,048 字で切る。vba の説明が 2,663 字になり、
+    後ろの「10 手超はマクロ 1 本で」「-y」「--bg」が AI に届いていなかった・2026-10-02）。"""
+    import ast
+    here = os.path.dirname(os.path.abspath(__file__))
+    tree = ast.parse(open(os.path.join(here, "vba_mcp_server.py"), encoding="utf-8").read())
+    long_ = [(n.name, len(ast.get_docstring(n) or "")) for n in ast.walk(tree)
+             if isinstance(n, ast.FunctionDef) and len(ast.get_docstring(n) or "") > 2000]
+    assert long_ == []
+
+
+def test_check_unused_variable_scan_is_linear():
+    """check の未使用変数の数えは 行数×変数の数 の正規表現を回さない（1 万行で 141 秒→2 秒・2026-10-02）。
+    数え方は前と同じ: 宣言の行を除いて名前が 1 語として出れば使っている。文字列とコメントの中は数えない。"""
+    import argparse, io, contextlib, time
+
+    class CM:
+        def __init__(self, t):
+            self.t = t.split("\n")
+            self.CountOfLines = len(self.t)
+
+        def Lines(self, a, n):
+            return "\r\n".join(self.t[a - 1:a - 1 + n])
+
+    class Comp:
+        Name, Type = "M", 1
+
+        def __init__(self, t):
+            self.CodeModule = CM(t)
+
+    body = ["Option Explicit", "Sub a()", "    On Error GoTo 0",
+            "    Dim used As Long, unused As Long, inStr As String, onlyComment As Long",
+            "    Dim i_x As Long",
+            '    used = 1: inStr = "unused"   \' onlyComment', "    i_xy = 2", "End Sub"]
+    for k in range(3000):                                  # 大きいモジュール（変数 3,000・行 9,000 超）
+        body += [f"Sub p{k}()", "    On Error GoTo 0", f"    Dim v{k} As Long", f"    v{k} = {k}", "End Sub"]
+    wb = type("W", (), {"Name": "x.xlsm",
+                        "VBProject": type("P", (), {"VBComponents": [Comp("\n".join(body))]})()})()
+    orig = vv.get_workbook
+    vv.get_workbook = lambda *a, **k: (None, wb)
+    out = io.StringIO()
+    try:
+        t = time.perf_counter()
+        with contextlib.redirect_stdout(out):
+            vv.cmd_check(argparse.Namespace(posargs=[], json=True))
+        sec = time.perf_counter() - t
+    finally:
+        vv.get_workbook = orig
+    doc = json.loads(out.getvalue().strip().splitlines()[-1])
+    unused = sorted(w.split("Dim ")[1].split(" ")[0] for w in doc["modules"][0]["warnings"] if "未使用変数" in w)
+    assert unused == ["i_x", "onlyComment", "unused"]
+    assert sec < 10
