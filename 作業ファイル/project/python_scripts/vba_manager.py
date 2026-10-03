@@ -1189,6 +1189,10 @@ def build_parser():
     p.add_argument("posargs", nargs="*")
     p.add_argument("--list", action="store_true", dest="list_flag", help="閉じずに表示中フォームの一覧だけ出す")
     p.add_argument("--wait", dest="wait_opt", default=None, help="閉じるのを待つ秒数（既定3）")
+    p = sub.add_parser("form-click",   # form-click <フォーム名> <コントロール名か見出し> [--learn]
+                       help="表示中の UserForm のボタンを外から押す（窓にクリックのメッセージを直接送る。位置はコントロールの設計値）")
+    p.add_argument("posargs", nargs="*")
+    p.add_argument("--learn", action="store_true", dest="learn_flag", help="フォームが閉じているうちに位置を控える")
     p = sub.add_parser("vbe-reset",    # vbe-reset [excel_file] [--check]
                        help="VBE の「実行>リセット」を押す（中断モードの解除。走っている VBA は全部止まるので人の指示でだけ使う）")
     p.add_argument("posargs", nargs="*")
@@ -2064,6 +2068,7 @@ def _raw_command_table():
         "open":              cmd_open,
         "close":             cmd_close,
         "close-form":        cmd_close_form,
+        "form-click":        cmd_form_click,
         "vbe-reset":         cmd_vbe_reset,
         "save":              cmd_save,
         "save-as":           cmd_save_as,
