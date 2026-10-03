@@ -3891,6 +3891,74 @@ def _list_form_windows():
     return [(h, cap) for (h, pid, cap) in forms if pid in excel_pids]
 
 
+def _close_vba_error_dialogs(press=True):
+    """VBA の実行時エラーの窓（題「Microsoft Visual Basic」・［終了］［デバッグ］）を見つけて［終了］を押す。
+
+    この窓が出ている間は VBA が止まったままで、フォームの Designer も取れない＝フォームの手が全部落ちる。
+    前は人が自分で［終了］を押すまで道具が空回りしていた（2026-10-03「自分で消せるような形にしろ」）。
+    ［終了］＝その場の VBA を止めるだけで、ブックの中身は変えない。press=False は見つけるだけ。
+    戻り値: [(窓の本文, 押せたか)]。win32gui が無ければ []。
+    """
+    try:
+        import win32gui
+        import win32process
+        import win32con
+    except Exception:
+        return []
+    excel_pids, dialogs = set(), []
+
+    def _top(hwnd, _unused):
+        try:
+            cls = win32gui.GetClassName(hwnd)
+            if cls == 'XLMAIN':
+                excel_pids.add(win32process.GetWindowThreadProcessId(hwnd)[1])
+            elif (cls == '#32770' and win32gui.IsWindowVisible(hwnd)
+                  and win32gui.GetWindowText(hwnd) == 'Microsoft Visual Basic'):
+                dialogs.append((hwnd, win32process.GetWindowThreadProcessId(hwnd)[1]))
+        except Exception:
+            pass
+
+    try:
+        win32gui.EnumWindows(_top, None)
+    except Exception:
+        return []
+    found = []
+    for hwnd, pid in dialogs:
+        if pid not in excel_pids:
+            continue
+        kids = []
+        try:
+            win32gui.EnumChildWindows(hwnd, lambda h, acc: acc.append(h), kids)
+        except Exception:
+            pass
+        end_btn, text = None, []
+        for h in kids:
+            try:
+                cls, cap = win32gui.GetClassName(h), win32gui.GetWindowText(h) or ''
+            except Exception:
+                continue
+            plain = cap.replace('&', '')
+            if cls == 'Button' and (plain.startswith('終了') or plain.lower() == 'end'):
+                end_btn = h
+            elif cls == 'Static' and cap.strip():
+                text.append(cap.strip())
+        body = ' / '.join(text) or '（本文を読めませんでした）'
+        if end_btn is None:
+            continue        # ［終了］の無い窓（コンパイルエラー等の OK だけの窓）は実行時エラーではない
+        ok = False
+        if press:
+            try:
+                win32gui.PostMessage(end_btn, win32con.BM_CLICK, 0, 0)
+                deadline = time.time() + 2
+                while time.time() < deadline and win32gui.IsWindow(hwnd) and win32gui.IsWindowVisible(hwnd):
+                    time.sleep(0.1)
+                ok = not (win32gui.IsWindow(hwnd) and win32gui.IsWindowVisible(hwnd))
+            except Exception:
+                ok = False
+        found.append((body, ok))
+    return found
+
+
 def _pick_form_windows(forms, target):
     """表示中フォーム [(hwnd, キャプション)] から target に合うものを選ぶ（純粋関数）。
 
@@ -3932,8 +4000,17 @@ def cmd_close_form(args):
         print(f"エラー: win32gui が使えません（pywin32 不足）: {ex}")
         return False
 
+    # VBA の実行時エラーの窓が出ていたら、先に［終了］を押して片付ける（出たままだとフォームも Designer も動かない）
+    listing = getattr(args, 'list_flag', False)
+    for body, ok in _close_vba_error_dialogs(press=not listing):
+        if listing:
+            print(f"VBA の実行時エラーの窓が出ています: {body}（close-form で［終了］を押して閉じます）")
+        elif ok:
+            print(f"VBA の実行時エラーの窓を［終了］で閉じました: {body}")
+        else:
+            print(f"⚠ VBA の実行時エラーの窓を閉じられませんでした: {body}")
     forms = _list_form_windows()
-    if getattr(args, 'list_flag', False):
+    if listing:
         if not forms:
             print("表示中のフォームはありません。")
         else:
