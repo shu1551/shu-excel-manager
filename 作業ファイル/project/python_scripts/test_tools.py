@@ -1112,6 +1112,25 @@ def test_case_pollution_finds_lowercase_declarations():
     assert vm.declared_names("Dim value As String, name$\nSub q(ByVal x)") == {'value', 'name', 'q', 'x'}
 
 
+def test_find_project_case_clash():
+    """ブックに既にある名前と大小文字だけ違う綴りを止める（2026-10-03: T/X/Y/cb/Val を足して棚のマクロの t/x/y/cB/val が書き換わった）。"""
+    proj = ("Sub 棚()\r\n    Dim s As String, t As String, x As Variant, cB As Long\r\n"
+            "    t = \"T\" ' Dim T As String\r\n    n = val(t)\r\nEnd Sub")
+    new = ("Sub 呼び出し()\n    Dim L As String, T As String\n    T = GetSetting(\"a\", \"b\", \"c\", \"\")\n"
+           "    If Val(T) > 0 Then x0 = 1\nEnd Sub\n"
+           "Private Sub UserForm_MouseMove(ByVal Button As Integer, ByVal X As Single)\nEnd Sub\n"
+           "Private Function 状態()\n    Dim cb As Single\nEnd Function\n")
+    got = {(nm, canon) for _ln, nm, canon in vm.find_project_case_clash(new, proj)}
+    assert got == {('T', 't'), ('Val', 'val'), ('X', 'x'), ('cb', 'cB')}
+    # 文字列・コメントの中・日本語の名前・同じ綴りは対象外
+    assert vm.find_project_case_clash("Sub a()\n    s = \"T\" ' T\n    Dim 前左 As String, t As String\nEnd Sub\n", proj) == []
+    # 新しいコードの中でもブックの綴りを使っていれば止めない
+    assert vm.find_project_case_clash("Sub a()\n    t = 1: T = 2\nEnd Sub\n", proj) == []
+    # validate は止める（--force なら通す）
+    assert vm.validate_vba_code(new, project_code=lambda: proj) is False
+    assert vm.validate_vba_code(new, force=True, project_code=lambda: proj) is True
+
+
 def test_validate_vba_code_only_notes_case_polluting_declaration(capsys):
     """小文字の宣言は見た目だけで動作に影響しない（実際の仕事のブック 15 本で確認）ので、知らせるだけで止めない（2026-10-01）。"""
     bad = "Sub a()\n    Dim value As String\n    value = ActiveSheet.Range(\"A1\").Value\nEnd Sub\n"
