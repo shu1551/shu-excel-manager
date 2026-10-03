@@ -6833,6 +6833,39 @@ def _find_addin(xl, file_name):
     return None
 
 
+def _other_excel_apps(xl):
+    """焼く台（xl）以外に動いている Excel をすべて返す（窓の Hwnd で見分ける）。
+
+    焼く xlsm が使う人の Excel に開いていないと、get_workbook は見えない別の Excel で開く。
+    アドインの外す・入れ直すをその台だけでやると、使う人の Excel には載らないまま
+    「載っています」と報告していた（2026-10-03 実害＝Ctrl+Shift+M が効かなくなった）。
+    """
+    def hwnd(app):
+        try:
+            return int(app.Hwnd)
+        except Exception:
+            return None
+    mine = hwnd(xl)
+    apps, seen = [], {mine}
+    cands = []
+    for wbk in _running_excel_workbooks():
+        try:
+            cands.append(wbk.Application)
+        except Exception:
+            continue
+    try:
+        cands.append(_get_active_excel())
+    except Exception:
+        pass
+    for app in cands:
+        h = hwnd(app)
+        if h is None or h in seen:
+            continue
+        seen.add(h)
+        apps.append(app)
+    return apps
+
+
 def _addin_project_loaded(xl, addin_path):
     """その .xlam の VBA プロジェクトが今の Excel に載っているか。
 
@@ -6987,6 +7020,16 @@ def cmd_register_addin(args):
                 print(f"  焼く前にアドインを外しました: {addin_file}")
         except Exception as ex:
             print(f"  ⚠ 外せませんでした（このまま焼きます）: {ex}")
+    # 使う人の Excel（焼く台とは別の Excel）でも外す。読み込んだままだと .xlam が掴まれて上書きできず、
+    # 焼いた後に入れ直さないと使う人の Excel にだけ載らない（2026-10-03 実害）
+    others = _other_excel_apps(xl)
+    for app in others:
+        a = _find_addin(app, addin_file)
+        try:
+            if a is not None and bool(a.Installed):
+                a.Installed = False
+        except Exception as ex:
+            print(f"  ⚠ 使っている Excel のアドインを外せませんでした: {ex}")
     try:
         try:
             wb.Activate()
@@ -7015,9 +7058,33 @@ def cmd_register_addin(args):
                     print(f"  アドインを入れ直しました: {addin_file}")
             except Exception as ex:
                 print(f"⚠ アドインを入れ直せませんでした: {ex}")
+        # 使う人の Excel に入れ直して、その Excel の中で載ったかを見る（焼く台の確認だけで「載った」と言わない）
+        for app in others:
+            try:
+                try:
+                    import win32process
+                    pid = win32process.GetWindowThreadProcessId(int(app.Hwnd))[1]
+                except Exception:
+                    pid = '?'
+                a = _find_addin(app, addin_file)
+                if a is not None:
+                    if bool(a.Installed) and not _addin_project_loaded(app, addin_path):
+                        a.Installed = False        # 印だけ付いて中身が無い＝外してから入れる
+                    if not bool(a.Installed):
+                        a.Installed = True
+                if _addin_project_loaded(app, addin_path):
+                    print(f"使っている Excel（PID {pid}）: {addin_file} が載りました（ショートカットが効きます）")
+                else:
+                    print(f"⚠ 使っている Excel（PID {pid}）に {addin_file} が載っていません。"
+                          "［ファイル］→［オプション］→［アドイン］でチェックを入れ直してください")
+            except Exception as ex:
+                print(f"⚠ 使っている Excel にアドインを入れ直せませんでした: {ex}")
         if _addin_project_loaded(xl, addin_path):
-            print(f"読み込み確認: {addin_file} は今の Excel に載っています"
-                  "（このままどのブックからもショートカットが効きます）")
+            if others:
+                print(f"読み込み確認: 焼いた Excel にも {addin_file} が載っています")
+            else:
+                print(f"読み込み確認: {addin_file} は今の Excel に載っています"
+                      "（このままどのブックからもショートカットが効きます）")
             if buttons:
                 done = _addin_buttons_restore(xl, buttons, addin_file)
                 books = '・'.join(sorted({b[0] for b in buttons}))
