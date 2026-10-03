@@ -1128,6 +1128,7 @@ def cmd_inspect_gui(args):
 #   execute     任意の VBA を走らせる（何が起きるかは静的に読めない）
 _CAPABILITIES = {
     "read": [
+        ("form-read", "表示中のフォームの中身を読む（一時の読み取り用モジュールを入れて読み、すぐ消す。何も書き換えない）"),
         ("diag", "動作確認"), ("setup-check", "導入セルフ診断"),
         ("list-open", "開いているブックの点呼"), ("list", "マクロ一覧"),
         ("list-modules", "モジュール一覧"), ("list-forms", "フォーム一覧"),

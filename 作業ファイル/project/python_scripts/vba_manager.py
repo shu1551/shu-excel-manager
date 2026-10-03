@@ -1193,6 +1193,9 @@ def build_parser():
                        help="表示中の UserForm のボタンを外から押す（窓にクリックのメッセージを直接送る。位置はコントロールの設計値）")
     p.add_argument("posargs", nargs="*")
     p.add_argument("--learn", action="store_true", dest="learn_flag", help="フォームが閉じているうちに位置を控える")
+    p = sub.add_parser("form-read",    # form-read <フォーム名>
+                       help="表示中の UserForm の中身を読む（入力欄の文字・リストの項目と選択・チェックの状態・見出し）。何も書き換えない")
+    p.add_argument("posargs", nargs="*")
     p = sub.add_parser("vbe-reset",    # vbe-reset [excel_file] [--check]
                        help="VBE の「実行>リセット」を押す（中断モードの解除。走っている VBA は全部止まるので人の指示でだけ使う）")
     p.add_argument("posargs", nargs="*")
@@ -2069,6 +2072,7 @@ def _raw_command_table():
         "close":             cmd_close,
         "close-form":        cmd_close_form,
         "form-click":        cmd_form_click,
+        "form-read":         cmd_form_read,
         "vbe-reset":         cmd_vbe_reset,
         "save":              cmd_save,
         "save-as":           cmd_save_as,

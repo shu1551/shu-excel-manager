@@ -1224,6 +1224,10 @@ def test_injection_route_ledger():
         # 生成コードに埋めるのは呼び出し名だけで、check_vba_identifier を通し、さらに
         # 宣言（Sub/Function 名）と実在モジュール名に一致したときしか注入しない。固定名 VMR
         ('vbam_vba.py', '_prepare_run_harness'),
+        # 2026-10-03: form-read（表示中の UserForm の中身を読む）。表示中のフォームは Designer が取れないので、
+        # 固定の読み取り用モジュール VMFormRead（_FORM_READ_CODE＝固定のコード）を入れて VBA の中から読み、すぐ消す。
+        # 生成コードにユーザー入力は埋めない（フォーム名は Run の引数で渡す）＝識別子の流入なし
+        ('vbam_edit.py', 'cmd_form_read'),
         # 2026-08-17: form-to-vba（UserForm→作成マクロ）。捨てブックに作成マクロを入れて
         # 実際に組み立て、元と照合するだけの検証経路。入れる先は使い捨ての新規ブックで、
         # 中身は自分が生成した VBA（フォーム名・プロシージャ名とも元フォーム由来）＝

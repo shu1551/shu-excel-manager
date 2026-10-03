@@ -4013,12 +4013,18 @@ def cmd_form_click(args):
         return False
     form_name = rest[0]
     target = rest[1] if len(rest) > 1 else ''
-    xl, wb = get_workbook(None)
     geo = None
-    try:
-        geo = _learn_form_geometry(wb, form_name)
-    except Exception:
-        geo = None
+    if not _list_form_windows():
+        # フォームが出ていないときだけ設計画面（Designer）から位置を控える。出ているときに Designer を触ると
+        # フォームがクリックを受けなくなる（2026-10-03 実機: Designer を取りに行った直後の押下が全部空振りした）
+        xl, wb = get_workbook(None)
+        try:
+            geo = _learn_form_geometry(wb, form_name)
+        except Exception:
+            geo = None
+    elif learn:
+        print("エラー: フォームが表示中です。--learn は閉じているときに撃ってください（close-form で閉じてから）")
+        return False
     if geo is not None and learn:
         print(f"{form_name} のコントロール {len(geo)} 個の位置を控えました")
         if not target:
@@ -4061,15 +4067,141 @@ def cmd_form_click(args):
     if picked is None:
         print(f"エラー: 表示中のフォームが見つかりません（先に {form_name} を表示してください）")
         return False
-    l, t, r, b = win32gui.GetClientRect(picked)
+    # 送り手が DPI 非対応だと、窓の DPI と食い違って Windows がクリックの位置をずらし、押下が空振りする
+    # （2026-10-03 実機: DPI 対応にした送り手だけが効いた）。送っている間だけこのスレッドを DPI 対応にする
+    old_ctx = None
+    try:
+        old_ctx = ctypes.windll.user32.SetThreadDpiAwarenessContext(ctypes.c_void_p(-3))   # system aware
+    except Exception:
+        pass
     dpi = ctypes.windll.user32.GetDpiForWindow(picked) or 96
     cx = int((hit[0] + hit[2] / 2) * dpi / 72.0)
     cy = int((hit[1] + hit[3] / 2) * dpi / 72.0)
     lp = win32api.MAKELONG(cx, cy)
+    # MSForms は「マウスが乗った」を見てからでないと押下を受けない（先に MOUSEMOVE・押下と離しの間に少し間を置く。
+    # 間なしの押下だけでは、表示した直後の窓が受け付けないことがあった・2026-10-03 実機）
+    win32gui.PostMessage(picked, win32con.WM_MOUSEMOVE, 0, lp)
+    time.sleep(0.15)
     win32gui.PostMessage(picked, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lp)
+    time.sleep(0.1)
     win32gui.PostMessage(picked, win32con.WM_LBUTTONUP, 0, lp)
-    time.sleep(0.5)
+    time.sleep(0.6)
+    if old_ctx:
+        try:
+            ctypes.windll.user32.SetThreadDpiAwarenessContext(ctypes.c_void_p(old_ctx))
+        except Exception:
+            pass
     print(f"押しました: {form_name} の {target}（窓の {cx},{cy} 画素）")
+    return True
+
+
+_FORM_READ_MODULE = "VMFormRead"
+_FORM_READ_CODE = """Function VMFR(ByVal 形 As String) As String
+    Dim 窓 As Object, 部 As Object, 行 As String, 全 As String, 型 As String, i As Long, 項 As String
+    On Error Resume Next
+    For Each 窓 In VBA.UserForms
+        If 窓.Name = 形 Then
+            全 = "CAPTION" & vbTab & 窓.Caption & vbLf
+            For Each 部 In 窓.Controls
+                型 = TypeName(部)
+                行 = 部.Name & vbTab & 型 & vbTab & 部.Caption
+                If Err.Number <> 0 Then 行 = 部.Name & vbTab & 型 & vbTab: Err.Clear
+                Select Case 型
+                    Case "TextBox"
+                        行 = 部.Name & vbTab & 型 & vbTab & 部.Text
+                    Case "ComboBox", "ListBox"
+                        項 = ""
+                        For i = 0 To 部.ListCount - 1
+                            If i >= 50 Then Exit For
+                            項 = 項 & IIf(i = 0, "", "|") & IIf(部.Selected(i) And 型 = "ListBox", "*", "") & 部.List(i)
+                        Next i
+                        行 = 部.Name & vbTab & 型 & vbTab & 部.Text & vbTab & "index=" & 部.ListIndex & vbTab & "count=" & 部.ListCount & vbTab & 項
+                    Case "CheckBox", "OptionButton", "ToggleButton"
+                        行 = 行 & vbTab & "value=" & 部.Value
+                End Select
+                Err.Clear
+                行 = 行 & vbTab & IIf(部.Visible, "", "hidden") & vbTab & IIf(部.Enabled, "", "disabled")
+                Err.Clear
+                全 = 全 & 行 & vbLf
+            Next 部
+            VMFR = 全
+            Exit Function
+        End If
+    Next 窓
+    VMFR = "NOFORM"
+End Function
+"""
+
+
+def cmd_form_read(args):
+    """表示中の UserForm の中身を読む: form-read <フォーム名>
+
+    入力欄の文字・リスト（ComboBox/ListBox）の項目と選択・チェックの状態・ボタンの見出し・隠れた/使えない部品を
+    1 部品 1 行で返す。表示中のフォームは設計画面（Designer）が取れないので、一時の読み取り用モジュールを
+    ブックに入れて VBA の中から読み、すぐ消す（保存済みのブックは保存済みのまま）。
+    押した結果を読み戻すのに使う（form-click で押す → form-read で読む）。何も書き換えない。
+    """
+    rest = list(getattr(args, 'posargs', []) or [])
+    if not rest:
+        print("使い方: form-read <フォーム名>")
+        return False
+    form_name = rest[0]
+    xl, wb = get_workbook(None)
+    owner = None
+    try:
+        for i in range(1, int(xl.Workbooks.Count) + 1):
+            b = xl.Workbooks.Item(i)
+            try:
+                if any(c.Name == form_name for c in b.VBProject.VBComponents):
+                    owner = b
+                    break
+            except Exception:
+                continue
+    except Exception:
+        owner = None
+    if owner is None:
+        owner = wb
+    try:
+        was_saved = bool(owner.Saved)
+    except Exception:
+        was_saved = False
+    comps = owner.VBProject.VBComponents
+    comp = None
+    try:
+        for c in comps:
+            if c.Name == _FORM_READ_MODULE:
+                comps.Remove(c)
+                break
+        comp = comps.Add(1)
+        comp.Name = _FORM_READ_MODULE
+        comp.CodeModule.AddFromString(_FORM_READ_CODE)
+        q = str(owner.Name).replace("'", "''")
+        out = str(xl.Run(f"'{q}'!{_FORM_READ_MODULE}.VMFR", form_name) or '')
+    except Exception as ex:
+        print(f"エラー: フォームを読めませんでした: {ex}")
+        return False
+    finally:
+        if comp is not None:
+            try:
+                comps.Remove(comp)
+            except Exception:
+                print(f"警告: 一時モジュール '{_FORM_READ_MODULE}' が残っていたら手で削除してください", file=sys.stderr)
+        if was_saved:
+            try:
+                owner.Saved = True
+            except Exception:
+                pass
+    if out == "NOFORM":
+        print(f"エラー: '{form_name}' は表示されていません（表示中のフォームは form-click --list ではなく close-form --list で見られます）")
+        return False
+    for ln in out.split("\n"):
+        if not ln:
+            continue
+        cols = ln.split("\t")
+        if cols[0] == "CAPTION":
+            print(f"題: {cols[1] if len(cols) > 1 else ''}")
+        else:
+            print("  " + " | ".join(c for c in cols if c != ''))
     return True
 
 
@@ -4909,6 +5041,7 @@ __all__ = [
     'cmd_close',
     'cmd_close_form',
     'cmd_form_click',
+    'cmd_form_read',
     'cmd_vbe_reset',
     'cmd_col',
     'cmd_comment',
