@@ -430,8 +430,67 @@ def cleanup_excel():
         print(f"[DEBUG] CoUninitialize failed: {ex}")
 
 
+def _loaded_project_files(xl):
+    """その Excel に載っている VBA プロジェクトのファイル（正規化したフルパス）の集合。読めなければ None。"""
+    import os
+    try:
+        out = set()
+        for p in xl.VBE.VBProjects:
+            try:
+                fn = str(p.FileName or '')
+                if fn:
+                    out.add(os.path.normcase(os.path.abspath(fn)))
+            except Exception:
+                continue
+        return out
+    except Exception:
+        return None
+
+
+def ensure_addins_loaded(xl, quiet=False):
+    """「入れる」の印が付いているのに Excel に載っていない .xlam を、正規の手順（Installed の付け外し）で載せ直す。
+
+    2026-10-03 実害（同じ日に 2 回）: 印は付いたままアドインの VBA だけが外れ、ショートカット（Ctrl+Shift+O 等）が
+    効かず Excel 本来のキー（コメントの選択→「該当するセルが見つかりません」）が走った。前の load_excel_addins_and_personal は
+    「開いているか」を Workbooks で調べていたが、アドインは Workbooks の一覧に出ない＝毎回「未読込」と見て、
+    読み込み済みの .xlam を Workbooks.Open で開き直していた（抜け殻の VBA プロジェクトの出どころ）。
+    載っているかは VBE.VBProjects のファイル名で見る。→ 載せ直したアドイン名のリスト。
+    """
+    import os
+    fixed = []
+    have = _loaded_project_files(xl)
+    if have is None:
+        return fixed                      # VBA プロジェクトを読めない（信頼設定なし）なら何もしない＝壊さない
+    try:
+        addins = list(xl.AddIns)
+    except Exception:
+        return fixed
+    for a in addins:
+        try:
+            if not bool(a.Installed):
+                continue
+            full = str(a.FullName or '')
+            if not full.lower().endswith(('.xlam', '.xla')) or not os.path.isfile(full):
+                continue
+            if os.path.normcase(os.path.abspath(full)) in have:
+                continue
+            a.Installed = False
+            a.Installed = True
+            now = _loaded_project_files(xl) or set()
+            if os.path.normcase(os.path.abspath(full)) in now:
+                fixed.append(str(a.Name))
+                if not quiet:
+                    print(f"アドインが Excel から外れていたので入れ直しました: {a.Name}（ショートカットが効く状態に戻しました）")
+            elif not quiet:
+                print(f"⚠ アドインが Excel に載っていません: {a.Name}（入れ直しても載りませんでした。"
+                      "［ファイル］→［オプション］→［アドイン］で確かめてください）")
+        except Exception:
+            continue
+    return fixed
+
+
 def load_excel_addins_and_personal(xl):
-    """新規起動されたExcelにアドインとPERSONAL.XLSBをロードする"""
+    """Excel にアドインと PERSONAL.XLSB を載せる（載っていない物だけ）。"""
     import os
     import time
 
@@ -443,33 +502,11 @@ def load_excel_addins_and_personal(xl):
 
     loaded_any = False
 
-    # 1. アドインのロード
+    # 1. アドイン: 載っているかは VBE のプロジェクトで見て、載っていない物だけ正規の手順で載せる
+    #    （Workbooks.Open で開き直すと、読み込み済みのアドインが二重になり抜け殻が残る・2026-10-03）
     try:
-        for addin in xl.AddIns:
-            if addin.Installed:
-                try:
-                    # すでに開いていなければ開く
-                    opened = False
-                    for wb in xl.Workbooks:
-                        if wb.Name.lower() == os.path.basename(addin.FullName).lower():
-                            opened = True
-                            break
-                    if not opened:
-                        xl.Workbooks.Open(addin.FullName)
-                        print(f"[DEBUG] Loaded addin: {addin.Name}")
-                        loaded_any = True
-                except Exception as ex:
-                    # Excelがビジー状態の時のリトライ (0x800ac472)
-                    if "800ac472" in str(ex):
-                        time.sleep(0.5)
-                        try:
-                            xl.Workbooks.Open(addin.FullName)
-                            print(f"[DEBUG] Loaded addin (retry): {addin.Name}")
-                            loaded_any = True
-                        except Exception as ex2:
-                            print(f"[DEBUG] Failed to load addin {addin.Name} after retry: {ex2}")
-                    else:
-                        print(f"[DEBUG] Failed to load addin {addin.Name}: {ex}")
+        if ensure_addins_loaded(xl, quiet=True):
+            loaded_any = True
     except Exception as ex:
         print(f"[DEBUG] Failed to access AddIns: {ex}")
 
@@ -640,6 +677,57 @@ def _screen_book(app):
 
 
 def get_workbook(target_file_arg=None, load_addins=False, readonly=False):
+    """get_workbook の入口。使う人の Excel（見えている Excel）に触るたびに、外れたアドインが無いか確かめて載せ直す
+    （2026-10-03: 印だけ付いてアドインが外れ、ショートカットが Excel 本来のキーに化けた＝同じ日に 2 回）。"""
+    xl, wb = _get_workbook_cached(target_file_arg, load_addins, readonly)
+    try:
+        if bool(xl.Visible):
+            _log_addin_state(xl, 'before')
+            fixed = ensure_addins_loaded(xl)
+            if fixed:
+                _log_addin_state(xl, 'repaired:' + ','.join(fixed))
+    except Exception:
+        pass
+    return xl, wb
+
+
+def _log_addin_state(xl, tag):
+    """アドインが外れた瞬間を捕まえる記録（2026-10-03: 外れる原因を再現できず、外れた前後の操作を特定するため）。
+    道具が見えている Excel に触るたびに 1 行: 時刻・PID・コマンド・印の付いた .xlam が載っているか。_addin_state.jsonl。"""
+    import json as _json
+    import datetime as _dt
+    try:
+        import win32process
+        pid = win32process.GetWindowThreadProcessId(int(xl.Hwnd))[1]
+    except Exception:
+        pid = None
+    have = _loaded_project_files(xl) or set()
+    state = {}
+    try:
+        for a in xl.AddIns:
+            try:
+                if bool(a.Installed) and str(a.FullName).lower().endswith(('.xlam', '.xla')):
+                    full = os.path.normcase(os.path.abspath(str(a.FullName)))
+                    state[str(a.Name)] = full in have
+            except Exception:
+                continue
+    except Exception:
+        pass
+    try:
+        books = [str(b.Name) for b in xl.Workbooks]
+    except Exception:
+        books = []
+    rec = {'t': _dt.datetime.now().isoformat(timespec='seconds'), 'pid': pid, 'tag': tag,
+           'cmd': ' '.join(sys.argv[1:3]) if len(sys.argv) > 1 else '', 'addins': state, 'books': books}
+    try:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '_addin_state.jsonl')
+        with open(path, 'a', encoding='utf-8') as f:
+            f.write(_json.dumps(rec, ensure_ascii=False) + '\n')
+    except Exception:
+        pass
+
+
+def _get_workbook_cached(target_file_arg=None, load_addins=False, readonly=False):
     """get_workbook（接続キャッシュつきの入口）。戻り値: (xl, wb)
 
     readonly=True は診断系コマンド用。未起動ブックを自動で開く場合に
@@ -2732,6 +2820,7 @@ __all__ = ['split_command_line',
     'job_clock_set',
     'job_clock_start',
     'load_excel_addins_and_personal',
+    'ensure_addins_loaded',
     'looks_like_xl_file',
     'make_backup',
     'make_module_backup',
