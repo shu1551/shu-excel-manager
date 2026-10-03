@@ -966,6 +966,20 @@ def _get_workbook_uncached(target_file_arg=None, load_addins=False, readonly=Fal
             excel_running = False
 
     # 新規オープン
+    # ★見えない Excel は起こさない（2026-10-03 シュウさん指示でかつての形に戻す）。
+    #   DispatchEx で起こした Excel にはアドイン（秀コンボ.xlam）が読み込まれず、常駐が握ったまま
+    #   裏に残ると、シュウさんが次に開いたファイルがそこへ合流して「アドインが外れた」状態になる。
+    #   開いていないときは自分で開かず、シュウさんに開いてもらう。
+    if not excel_running:
+        raise Exception(
+            "Excel が起動していません。\n"
+            f"  ・Excel で対象ブックを開いてから再実行してください: {target_path}\n"
+            "  ※ 道具は見えない Excel を自分で起こしません（アドインが外れる原因になるため）。")
+    raise Exception(
+        "対象ブックが Excel で開いていません。\n"
+        f"  ・Excel で対象ブックを開いてから再実行してください: {target_path}\n"
+        "  ※ 道具は見えない Excel を自分で起こしません（アドインが外れる原因になるため）。")
+    # 以下は旧処理（見えない Excel を起こして開く）。上で必ず止まるので通らない。
     # ★必ず DispatchEx を使う。Dispatch は既存インスタンスがあるとそこに接続してしまい、
     #   「自分が起動した Excel」と誤認 → 後始末でユーザーの Excel ごと閉じる大事故になる
     #   （2026-07-03 実害。ユーザーのブックを巻き込んで Quit した）
