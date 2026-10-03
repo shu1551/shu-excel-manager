@@ -3429,6 +3429,18 @@ def cmd_replace_module(args):
             pass
         if pollution:                       # 知らせるだけで止めない（見た目の話。実際のブックでは動作に影響していなかった・2026-10-01）
             print("注意: " + case_pollution_message(pollution).replace('書き換えます', '書き換わります'))
+    # ブックに既にある名前と大小文字だけ違う綴りは止める（ほかのモジュールの綴りまで書き換わる・2026-10-03）
+    try:
+        clash = find_project_case_clash(bas_head, _project_code_fn(target_file)())
+    except Exception:
+        clash = []
+    if clash:
+        if not getattr(args, 'force', False):
+            print("エラー: " + project_case_clash_message(clash))
+            if tmp_norm and os.path.exists(tmp_norm):
+                _remove_export_artifacts(tmp_norm)
+            return False
+        print("警告: " + project_case_clash_message(clash))
 
     xl, wb = get_workbook(target_file)
     if make_backup(wb.FullName, f"module_{module_name}") is None and not getattr(args, 'force', False):
@@ -6176,6 +6188,20 @@ def cmd_code_replace(args):
             print("注意: 小文字の宣言がブック全体の綴りを書き換わります（VBE の仕様。宣言を消しても戻りません。動作は変わらず、見た目だけ）:")
             for w, nm, canon in poll[:8]:
                 print(f"  {w}: `{nm}` ← `.{canon}` が `.{nm}` になります（別名に: `my{canon}` など）")
+        # 置換後の行が、ブックに既にある名前と大小文字だけ違う綴りを持ち込むなら止める（2026-10-03: "Val(" → "val(" が
+        # bufVal を bufval に書き換え、ほかのモジュールの綴りまで変わった）
+        try:
+            proj = _project_code_fn(target_file)()
+        except Exception:
+            proj = ''
+        clash = []
+        for comp, changes in plans:
+            for i, old, new in changes:
+                for _ln, nm, canon in find_project_case_clash(new, proj):
+                    clash.append((i, nm, canon))
+        if clash:
+            print("エラー: " + project_case_clash_message(clash))
+            return False
 
     # 差分プレビュー
     print(f"--- 置換プレビュー: {len(plans)}モジュール / {total_lines}行 ---")

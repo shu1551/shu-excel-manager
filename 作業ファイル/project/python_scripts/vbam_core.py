@@ -1231,6 +1231,16 @@ def validate_vba_code(code, force=False, old_code='', project_code=None):
             pollution = find_case_pollution(code, (old_code or '') + '\n' + str(project_code() or ''))
         except Exception:
             pass                                 # ブックを読めなければ、読めた範囲（old_code）での判定のまま止める
+    # 5. ブックに既にある名前と大小文字だけ違う綴り（`t` があるのに `T` と書く）は止める（2026-10-03 実害・何度も繰り返した）
+    if project_code is not None:
+        try:
+            clash = find_project_case_clash(code, (old_code or '') + '\n' + str(project_code() or ''))
+        except Exception:
+            clash = []
+        if clash:
+            print(("警告: " if force else "エラー: ") + project_case_clash_message(clash))
+            if not force:
+                return False
     if pollution:
         # 知らせるだけで止めない（2026-10-01 実際の仕事のブック 15 本で確かめた: 小文字の宣言は 4 本のブックに既にあり、
         # どれも動作に影響していない。止めると書き込みが 1 往復無駄になるだけ。見た目の話なので、宣言を直すかは書く側が決める）
@@ -1717,6 +1727,61 @@ def find_case_pollution(code, old_code=''):
                 seen.add((nm, idx))
                 hits.append((idx, nm, canon))
     return hits
+
+
+_IDENT_RE = re.compile(r'[^\W\d]\w*')
+
+
+def _code_identifiers(code):
+    """コードの中の識別子を [(行番号(1始まり), 綴り)] で（文字列とコメントは見ない）。"""
+    out = []
+    for idx, ln in enumerate((code or '').replace('\r\n', '\n').split('\n'), 1):
+        st = ln.strip()
+        if st.startswith("'") or st.lower().startswith('rem ') or st.lower().startswith('attribute '):
+            continue
+        body = re.sub(r'"(?:[^"]|"")*"', '""', ln).split("'", 1)[0]
+        for m in _IDENT_RE.finditer(body):
+            out.append((idx, m.group(0)))
+    return out
+
+
+def find_project_case_clash(code, project_text):
+    """ブックに既にある名前と大小文字だけ違う綴りを、新しいコードが持ち込むか → [(行番号, 書いた綴り, ブックの綴り)]（純 Python）。
+
+    VBE は名前の綴りをプロジェクトで 1 つに保つので、`Dim T As String` を 1 行書くだけで、別のモジュールの `t` が全部 `T` に
+    書き換わる（2026-10-03 実害: 倍率回転フォームを足したら公開している棚のマクロ 3 本で t→T・x→X・y→Y・cB→cb・val→Val）。
+    宣言だけでなく、使った所（`Val(`）でも書き換わる。英字を含む名前だけ見る（日本語だけの名前に大小は無い）。
+    """
+    known = {}
+    for _idx, nm in _code_identifiers(project_text):
+        if re.search(r'[A-Za-z]', nm):
+            known.setdefault(nm.lower(), set()).add(nm)
+    ids = _code_identifiers(code)
+    mine = {}
+    for _idx, nm in ids:
+        mine.setdefault(nm.lower(), set()).add(nm)
+    hits, seen = [], set()
+    for idx, nm in ids:
+        if not re.search(r'[A-Za-z]', nm):
+            continue
+        spell = known.get(nm.lower())
+        # ブックの綴りを新しいコードの中でも使っていれば、新しい綴りを持ち込むわけではない（どちらに揃うかは元から決まっている）
+        if not spell or nm in spell or len(spell) != 1 or nm.lower() in seen or (spell & mine.get(nm.lower(), set())):
+            continue
+        seen.add(nm.lower())
+        hits.append((idx, nm, next(iter(spell))))
+    return hits
+
+
+def project_case_clash_message(hits, limit=10):
+    lines = [f"  行{idx}: `{nm}` ← ブックでは `{canon}`（このまま書くとブック全体の `{canon}` が `{nm}` になります）"
+             for idx, nm, canon in hits[:limit]]
+    if len(hits) > limit:
+        lines.append(f"  … 他 {len(hits) - limit} 件")
+    return ("ブックに既にある名前と大小文字だけ違う綴りがあります。VBE はプロジェクト全体の綴りを書き換え、"
+            "ほかのモジュール（公開している棚のマクロなど）に無関係な差分が出ます。\n"
+            "  ブックの綴りに合わせるか、別の名前（日本語の名前など）にしてください（それでも書くなら --force）:\n"
+            + '\n'.join(lines))
 
 
 _HEX_CMP_RE = re.compile(r'(?:<=|>=|<>|<|>)\s*&H([0-9A-Fa-f]{1,4})(?![0-9A-Fa-f&])'
@@ -2622,6 +2687,8 @@ __all__ = ['split_command_line',
     '_find_invalid_procedure_names',
     'find_case_pollution',
     'case_pollution_message',
+    'find_project_case_clash',
+    'project_case_clash_message',
     'find_hex_sign_traps',
     'find_chr_wide',
     'vba_error_reason',
