@@ -4,6 +4,7 @@
 vba_manager.py から機械分割（2026-07-12）。単体で実行せず、vba_manager.py 経由で使う。
 """
 import sys
+import json
 import os
 import re
 import shutil
@@ -3973,6 +3974,105 @@ def _pick_form_windows(forms, target):
     return [f for f in forms if t in f[1].lower()]
 
 
+def _form_geometry_path(form_name):
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), f"_form_geometry_{form_name}.json")
+
+
+def _learn_form_geometry(wb, form_name):
+    """フォームが閉じているとき（Designer が取れるとき）、コントロールの位置と大きさ（点）を控える。→ {名前: [Left, Top, Width, Height, Caption]}"""
+    d = wb.VBProject.VBComponents(form_name).Designer
+    if d is None:
+        return None
+    geo = {}
+    for c in d.Controls:
+        try:
+            cap = str(getattr(c, 'Caption', '') or '')
+        except Exception:
+            cap = ''
+        geo[str(c.Name)] = [float(c.Left), float(c.Top), float(c.Width), float(c.Height), cap]
+    with open(_form_geometry_path(form_name), 'w', encoding='utf-8') as f:
+        json.dump(geo, f, ensure_ascii=False)
+    return geo
+
+
+def cmd_form_click(args):
+    """表示中の UserForm のボタンを外から押す: form-click <フォーム名> <コントロール名か見出し> [--learn]
+
+    画面のクリック（マウスの合成）はフォームに届かないことがあるので、フォームの窓にクリックのメッセージ
+    （WM_LBUTTONDOWN/UP）を直接送る。MSForms のコントロールは窓を持たない部品で、窓は 1 枚だけ
+    （F3 Server）なので、位置（点）をコントロールの設計値から求めて、窓の画素に直して送る。
+    フォームが表示中は Designer が取れず位置を読めないため、閉じているうちに --learn で位置を控えておく
+    （form-click は控えが無ければ Designer から自動で控える。表示中で控えも無ければその旨を返す）。
+    押した結果は人が見る画面か、別の手（read-selection・材料の読み戻し）で確かめる。
+    """
+    import ctypes
+    rest = list(getattr(args, 'posargs', []) or [])
+    learn = bool(getattr(args, 'learn_flag', False))
+    if not rest or (len(rest) < 2 and not learn):
+        print("使い方: form-click <フォーム名> <コントロール名か見出し> [--learn]")
+        return False
+    form_name = rest[0]
+    target = rest[1] if len(rest) > 1 else ''
+    xl, wb = get_workbook(None)
+    geo = None
+    try:
+        geo = _learn_form_geometry(wb, form_name)
+    except Exception:
+        geo = None
+    if geo is not None and learn:
+        print(f"{form_name} のコントロール {len(geo)} 個の位置を控えました")
+        if not target:
+            return True
+    if geo is None:
+        path = _form_geometry_path(form_name)
+        if not os.path.isfile(path):
+            print(f"エラー: {form_name} の位置の控えがありません。フォームを閉じた状態で `form-click {form_name} --learn` を先に撃ってください"
+                  "（表示中は Designer が取れず位置を読めません）")
+            return False
+        with open(path, encoding='utf-8') as f:
+            geo = json.load(f)
+    hit = geo.get(target)
+    if hit is None:
+        cands = [k for k, v in geo.items() if v[4] == target] or [k for k, v in geo.items() if target and target in v[4]]
+        if len(cands) > 1:        # 見出し（Label）と同じ文字なら、押せる部品（ボタン）の方を選ぶ
+            cands = [k for k in cands if not k.lower().startswith(('label', 'lbl', 'sep'))] or cands
+        if len(cands) != 1:
+            print(f"エラー: '{target}' に当たるコントロールが{'ありません' if not cands else '複数あります: ' + '・'.join(cands)}")
+            return False
+        hit = geo[cands[0]]
+    try:
+        import win32gui
+        import win32api
+        import win32con
+    except Exception as ex:
+        print(f"エラー: win32gui が使えません（pywin32 不足）: {ex}")
+        return False
+    frames = [h for h, cap in _list_form_windows()]
+    picked = None
+    for h in frames:
+        kids = []
+        try:
+            win32gui.EnumChildWindows(h, lambda k, a: a.append(k), kids)
+        except Exception:
+            continue
+        if kids:
+            picked = kids[0]
+            break
+    if picked is None:
+        print(f"エラー: 表示中のフォームが見つかりません（先に {form_name} を表示してください）")
+        return False
+    l, t, r, b = win32gui.GetClientRect(picked)
+    dpi = ctypes.windll.user32.GetDpiForWindow(picked) or 96
+    cx = int((hit[0] + hit[2] / 2) * dpi / 72.0)
+    cy = int((hit[1] + hit[3] / 2) * dpi / 72.0)
+    lp = win32api.MAKELONG(cx, cy)
+    win32gui.PostMessage(picked, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lp)
+    win32gui.PostMessage(picked, win32con.WM_LBUTTONUP, 0, lp)
+    time.sleep(0.5)
+    print(f"押しました: {form_name} の {target}（窓の {cx},{cy} 画素）")
+    return True
+
+
 def cmd_close_form(args):
     """表示中の UserForm を閉じる: close-form [キャプション] [--list] [--wait 秒]
 
@@ -4808,6 +4908,7 @@ __all__ = [
     'cmd_clear_range',
     'cmd_close',
     'cmd_close_form',
+    'cmd_form_click',
     'cmd_vbe_reset',
     'cmd_col',
     'cmd_comment',

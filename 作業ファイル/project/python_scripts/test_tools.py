@@ -1112,6 +1112,13 @@ def test_case_pollution_finds_lowercase_declarations():
     assert vm.declared_names("Dim value As String, name$\nSub q(ByVal x)") == {'value', 'name', 'q', 'x'}
 
 
+def test_form_click_usage_and_registration():
+    """form-click は引数が足りなければ使い方を返し、手の表に載っている（2026-10-03）。"""
+    import argparse
+    assert vm.cmd_form_click(argparse.Namespace(posargs=[], learn_flag=False)) is False
+    assert vm.cmd_form_click(argparse.Namespace(posargs=['F'], learn_flag=False)) is False
+
+
 def test_find_project_case_clash():
     """ブックに既にある名前と大小文字だけ違う綴りを止める（2026-10-03: T/X/Y/cb/Val を足して棚のマクロの t/x/y/cB/val が書き換わった）。"""
     proj = ("Sub 棚()\r\n    Dim s As String, t As String, x As Variant, cB As Long\r\n"
