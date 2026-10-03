@@ -6,6 +6,8 @@ _calls.jsonl
 _cmd_progress.json
 _job_clock.json
 _fired.jsonl
+_addin_state.jsonl
+_form_geometry_*.json
 _exports/
 _checkup_history/
 backups/
