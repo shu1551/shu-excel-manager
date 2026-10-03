@@ -6853,6 +6853,78 @@ def _addin_project_loaded(xl, addin_path):
     return False
 
 
+def _button_addin_macro(act, addin_file, public_names):
+    """ボタンの OnAction が「このアドインのマクロ」を指していれば、そのマクロ名を返す（違えば ''）。
+
+    アドインを外して入れ直すと、他のブックのボタンの行き先が、焼くときの一時ファイル
+    （…\\Temp\\秀コンボ_焼き_….xlsm）に付け替わって、登録が終わると消えて効かなくなる（2026-10-03）。
+    アドインを指すのは: 外部ブックを指す [n]!名前（[0] はそのブック自身）・アドインのファイル名つき・焼きの一時ファイルつき。
+    ブック自身のマクロ（'そのブック.xlsm'!名前 や [0]!名前）は触らない。
+    """
+    act = str(act or '').strip()
+    if not act or '!' not in act:
+        return ''
+    head, name = act.rsplit('!', 1)
+    name = name.strip().strip("'")
+    if name not in public_names:
+        return ''
+    low = head.lower()
+    external = (head.startswith('[') and not head.startswith('[0]'))
+    mine = addin_file.lower() in low or '焼き_' in head
+    return name if (external or mine) else ''
+
+
+def _addin_buttons_snapshot(xl, source_wb, addin_file):
+    """開いている他のブックのボタンのうち、このアドインのマクロを指すもの [(ブック名, シート名, 図形名, マクロ名)]。"""
+    import re as _re
+    public_names = set()
+    try:
+        for comp in source_wb.VBProject.VBComponents:
+            try:
+                cm = comp.CodeModule
+                n = cm.CountOfLines
+                code = cm.Lines(1, n) if n else ''
+            except Exception:
+                continue
+            for m in _re.finditer(r'^[ \t]*(?:Public[ \t]+)?(?:Sub|Function)[ \t]+(\w+)', code, _re.M):
+                public_names.add(m.group(1))
+    except Exception:
+        return []
+    found = []
+    try:
+        for other in xl.Workbooks:
+            try:
+                if str(other.Name) == str(source_wb.Name):
+                    continue
+                if os.path.splitext(str(other.Name))[1].lower() == '.xlam':
+                    continue
+                for ws in other.Worksheets:
+                    for sp in ws.Shapes:
+                        try:
+                            name = _button_addin_macro(sp.OnAction, addin_file, public_names)
+                        except Exception:
+                            continue
+                        if name:
+                            found.append((str(other.Name), str(ws.Name), str(sp.Name), name))
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return found
+
+
+def _addin_buttons_restore(xl, buttons, addin_file):
+    """控えたボタンを、入れ直したアドインのマクロに付け直す。付け直した個数を返す。"""
+    n = 0
+    for book, sheet, shape, macro in buttons:
+        try:
+            xl.Workbooks(book).Worksheets(sheet).Shapes(shape).OnAction = f"'{addin_file}'!{macro}"
+            n += 1
+        except Exception as ex:
+            print(f"  ⚠ ボタンを付け直せませんでした: {book} / {sheet} / {shape} → {macro}: {ex}")
+    return n
+
+
 def cmd_register_addin(args):
     """`register-addin [ブック]`: 開いているブックを .xlam に焼き直してアドインに登録し直す（2026-09-23）。
 
@@ -6903,6 +6975,8 @@ def cmd_register_addin(args):
     # 読み込み中の .xlam をそのまま上書きすると、登録一覧は Installed=True のままなのに
     # VBA プロジェクトだけ Excel から外れる＝どのブックからもアドインのマクロが使えなくなる。
     # 焼く前に外し、焼いた後に入れ直す（2026-09-23 に実害）。
+    # 他のブックのボタンがこのアドインのマクロを指していれば控える（外して入れ直すと焼きの一時ファイルに付け替わる）
+    buttons = _addin_buttons_snapshot(xl, wb, addin_file)
     unloaded = False
     addin = _find_addin(xl, addin_file)
     if addin is not None:
@@ -6944,6 +7018,10 @@ def cmd_register_addin(args):
         if _addin_project_loaded(xl, addin_path):
             print(f"読み込み確認: {addin_file} は今の Excel に載っています"
                   "（このままどのブックからもショートカットが効きます）")
+            if buttons:
+                done = _addin_buttons_restore(xl, buttons, addin_file)
+                books = '・'.join(sorted({b[0] for b in buttons}))
+                print(f"ボタンの割り当てを付け直しました: {done}/{len(buttons)} 個（{books}）")
         else:
             print(f"⚠ {addin_file} が今の Excel に載っていません。Excel を開き直すか、"
                   "［ファイル］→［オプション］→［アドイン］でチェックを入れ直してください")
