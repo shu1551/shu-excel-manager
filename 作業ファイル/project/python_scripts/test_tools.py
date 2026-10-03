@@ -5229,3 +5229,21 @@ def test_confirm_prompt_without_answer_says_add_y(capsys):
     table = {"delete-procedure": asks}
     assert vm.run_command_line(p, table, "delete-procedure Mod1 A") is False
     assert "-y を付けて" in capsys.readouterr().out
+
+
+
+def test_更新登録のボタン控えはアドインのマクロだけ拾う():
+    """register-addin が登録のあとで付け直すボタンの判定（2026-10-03）。ブック自身のマクロは触らない。"""
+    names = {'Excelコンボ', '保存して閉じる'}
+    f = vv._button_addin_macro
+    # アドインを指すもの: 外部ブック [n]!・アドインのファイル名つき・焼きの一時ファイルつき（登録のあとに付け替わった形）
+    assert f('[1]!Excelコンボ', '秀コンボ.xlam', names) == 'Excelコンボ'
+    assert f(r"\Users\x\AppData\Roaming\Microsoft\AddIns\秀コンボ.xlam!Excelコンボ", '秀コンボ.xlam', names) == 'Excelコンボ'
+    assert f(r"\Users\x\AppData\Local\Temp\秀コンボ_焼き_20261003_125306.xlsm!Excelコンボ", '秀コンボ.xlam', names) == 'Excelコンボ'
+    assert f("'秀コンボ.xlam'!Excelコンボ", '秀コンボ.xlam', names) == 'Excelコンボ'
+    # ブック自身のマクロ・アドインに無い名前・空は触らない
+    assert f('[0]!保存して閉じる', '秀コンボ.xlam', names) == ''
+    assert f("'お試し版 Excelコンボ.xlsm'!保存して閉じる", '秀コンボ.xlam', names) == ''
+    assert f('[1]!ほかのマクロ', '秀コンボ.xlam', names) == ''
+    assert f('', '秀コンボ.xlam', names) == ''
+    assert f('Excelコンボ', '秀コンボ.xlam', names) == ''
