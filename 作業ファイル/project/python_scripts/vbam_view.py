@@ -1117,8 +1117,9 @@ def dirt_notes(grid, r0=1, c0=1, header_idx=None, col_formats=None, limit=12, lo
             continue
         for i in body:
             v = rows[i][j]
-            if isinstance(v, str) and v.strip():
-                d = re.sub(r'\D', '', unicodedata.normalize('NFKC', v))
+            s = str(int(v)) if isinstance(v, (int, float)) and not isinstance(v, bool) and float(v).is_integer() else (v if isinstance(v, str) else '')
+            if s and s.strip():
+                d = re.sub(r'\D', '', unicodedata.normalize('NFKC', s))
                 if d and len(d) not in (10, 11):        # 固定・0120 は 10 桁、携帯は 11 桁
                     phone_len.append(f"{addr(i, j)}（{len(d)} 桁）")
     if phone_len:
@@ -1881,6 +1882,9 @@ def seiri_formula_hints(fa, fr, grid, r0, c0, hidx):
 
 # seiri が先に撃つ「表の書き方と罫線と列幅をそろえる」で済む物（Excelコンボの 先撃ちの並び と同じ扱い）
 _SEIRI_COVERED = {'表の書き方と罫線と列幅をそろえる', '住所と郵便番号の形をそろえる'}
+# 表の右に報告の表を書く棚。頼みの文が報告・一覧を求めているときだけ撃つ（「直して」が報告の棚に当たって
+# 表の右に一覧が増えるのを止める・2026-10-07）
+_SEIRI_REPORT_WORDS_RE = re.compile(r'報告|一覧|洗い出|書き出|リスト|調べ|点検|チェック')
 
 
 def _seiri_request_plan(request, entries):
@@ -1894,6 +1898,8 @@ def _seiri_request_plan(request, entries):
     for p in (parts if len(parts) >= 2 else [str(request or '').strip()]):
         n = vp.shelf_pick(p, entries)
         if n and n not in _SEIRI_COVERED and n not in plan:
+            if n.endswith('報告する') and not _SEIRI_REPORT_WORDS_RE.search(p):
+                continue
             plan.append(n)
     return plan
 
@@ -1942,8 +1948,25 @@ def _seiri_fire_request(xl, wb, ws, request, before_snap):
         print(f"依頼の文に当たる棚: なし（表を整えるで済むか、棚に無い仕事＝下の「残り」として直す）")
         return []
     sel_of = {r['name']: r['sel'] for r in _parse_shelf_catalog(lines)}
+    by_request = vp.request_column_macros("\n".join(lines))
     cells, fired = None, []
     for nm in plan:
+        if nm in by_request:
+            # 列は頼みの文から決める棚（ピボット等・2026-10-09）: 列を選ばずに頼みの文を渡して撃つ。
+            # 決まらなければマクロが撃たずに候補の見出しを返す（勝手な列で作らない）
+            t0 = time.time()
+            why = vp.fire_with_request(xl, src, ws, nm, request)
+            try:
+                wb.Activate()
+                ws.Activate()
+            except Exception:
+                pass
+            if why:
+                print(f"棚: {nm} は撃っていません: {why}")
+                continue
+            fired.append(nm)
+            print(f"棚: {nm}（依頼の文に当たった・列は頼みの文から・{time.time() - t0:.2f} 秒）")
+            continue
         need = sel_of.get(nm, '-')
         if need and need != '-':
             lo, _sep, hi = need.partition('-')
@@ -1998,6 +2021,27 @@ def _seiri_hints_now(ws):
     hints = []
     dirt_notes(grid, r0, c0, hidx, None, hints=hints)
     hints += seiri_formula_hints(fa, fr, grid, r0, c0, hidx)
+    # マクロの付いていない図形（グラフ・セルのメモは除く）は知らせるだけ。ロゴ・印影・説明の図は人の物なので
+    # seiri が撃って消さない（_seiri_needs_human）。消すのは人が「図形を消して」と頼んだとき
+    try:
+        shapes = ws.Shapes
+        n_shp = int(shapes.Count)
+        if 0 < n_shp <= 50:
+            junk = []
+            for i in range(1, n_shp + 1):
+                shp = shapes.Item(i)
+                try:
+                    oa = str(shp.OnAction or '').strip()
+                    typ = int(shp.Type)
+                    if not oa and typ not in (3, 4):  # msoChart=3・msoComment=4 は数えない
+                        junk.append(str(shp.Name))
+                except Exception:
+                    pass
+            if junk:
+                hints.append((90, "シートの図形と画像を全部削除する", None,
+                              f"マクロの付いていない図形 {len(junk)}個（{'・'.join(junk[:4])}）"))
+    except Exception:
+        pass
     return hints
 
 
@@ -2007,7 +2051,9 @@ def _seiri_hint_key(name, sel):
 
 
 def _seiri_needs_human(name, why):
-    """撃たずに人へ回す手（番号の重複＝同じ件の二重入力かもしれない）。"""
+    """撃たずに人へ回す手（番号の重複＝同じ件の二重入力かもしれない／図形＝ロゴや印影かもしれない）。"""
+    if name == "シートの図形と画像を全部削除する":
+        return True
     return name == "番号の列を連番に振り直す" and "二重入力" in (why or '')
 
 
@@ -2163,7 +2209,19 @@ def cmd_seiri(args):
     nv = no_values_mode()
     print(f"ブック: {wb.Name}   シート: {ws.Name}" + ("   【値なし】" if nv else ""))
     owner = _macro_book(xl, _SEIRI_MODULE, _SEIRI_TIDY)
+    # マクロ撃ち（全自動修復）はここで撃たない: 原本の控えシートを足し、図形を消し、式の無い列に式を入れ、
+    # エラーを IFERROR で 0 にする＝使う人の値と形を変える手。人がボタンで選んで撃つ物（2026-10-07）
     names = [_SEIRI_TIDY] + ([_SEIRI_DEDUPE] if getattr(args, 'dedupe', False) else [])
+    # ピボットのシートには表を整える手（マクロ・気づきの棚・tidy）を当てない＝ピボットの表の一部にだけ見出しの色と罫線が付いて
+    # 読めなくなった（2026-10-09 段 4: ピボットのシートで「棒グラフにして」）。頼みの文の棚（ピボットグラフ等）だけ撃つ
+    on_pivot = False
+    try:
+        on_pivot = int(ws.PivotTables().Count) > 0
+    except Exception:
+        pass
+    if on_pivot:
+        names = []
+        print("ピボットのシートなので、表を整える手（書き方・罫線・列幅）は当てません")
     tried = None                    # 気づきから撃った手の鍵（撃っていなければ None＝残りの手をそのまま並べる）
     has_changes = False
     if owner:
@@ -2183,7 +2241,8 @@ def cmd_seiri(args):
             from vbam_vba import run_book_macro
             for nm in names:
                 run_book_macro(xl, owner, nm)      # 実行時エラーで窓を出して止まらない（2026-09-24 総点検）
-            print(f"マクロ: {' → '.join(names)}（{owner}・{time.time() - t0:.2f} 秒）")
+            if names:
+                print(f"マクロ: {' → '.join(names)}（{owner}・{time.time() - t0:.2f} 秒）")
         except Exception as e:
             print(f"マクロを撃てませんでした: {e}（残りだけ出します）")
         fired = []
@@ -2195,11 +2254,12 @@ def cmd_seiri(args):
         # 気づき（重複行・空行・消えた先頭のゼロ・空白の揺れ・文字の日付・式のずれ）で棚が直せる手は、報告に並べずにここで撃つ
         # （2026-09-25 shu「検知した定型の異常を AI への宿題として突き返さず、seiri がその場でやり切る」）
         try:
-            auto_fired, tried = _seiri_autofix(xl, wb, ws)
-            fired += [n for n, _s, _w in auto_fired]
+            if not on_pivot:
+                auto_fired, tried = _seiri_autofix(xl, wb, ws)
+                fired += [n for n, _s, _w in auto_fired]
         except Exception as e:
             print(f"気づきの棚を撃てませんでした: {e}（残りとして直す）")
-        if fired:
+        if fired and not on_pivot:
             try:
                 _seiri_tidy(wb, ws, before_snap)
             except Exception as e:

@@ -157,7 +157,17 @@ def test_data_cleaner_detects_outliers_iqr():
     outliers = [i for i in issues if i["type"] == "outlier_value"]
     assert len(outliers) == 1
     assert outliers[0]["cell"] == "A7"
-    assert "著しく乖離しています" in outliers[0]["msg"]
+    assert "10 倍以上離れています" in outliers[0]["msg"]
+
+
+def test_outliers_small_column_not_noisy_20261008():
+    """件数の少ない列で、単価 45〜150 の 380・個数 0〜40 の 200 を「著しく乖離」と出していた（2026-10-08 初見の受注の表）。
+    桁違い（1 桁以上離れた値）だけを出す。"""
+    for col in ([120, 120, 45, 380, 150, 150], [12, 30, 200, 5, 0, 40]):
+        vals = [["列"]] + [[v] for v in col]
+        assert [i for i in va.check_data_cleaner(vals, 0, 0) if i["type"] == "outlier_value"] == []
+    vals = [["単価"]] + [[v] for v in (120, 120, 45, 3800, 150, 150)]
+    assert [i["cell"] for i in va.check_data_cleaner(vals, 0, 0) if i["type"] == "outlier_value"] == ["A5"]
 
 
 def test_data_cleaner_outliers_skip_total_rows():

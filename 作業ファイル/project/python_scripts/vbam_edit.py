@@ -1041,8 +1041,18 @@ def cmd_format_range(args):
                 except Exception:
                     continue
         else:
-            rng.NumberFormatLocal = nf
-        applied.append(f"numfmt={nf}")
+            # 日本語の書式（"yyyy年m月d日"・"[$-ja-JP]…"）は Local、英語の書式は NumberFormat で通る。
+            # 両方だめなら書けていない＝「numfmt=」を報告に載せない（黙って成功扱いにしない）
+            try:
+                rng.NumberFormatLocal = nf
+            except Exception:
+                try:
+                    rng.NumberFormat = nf
+                except Exception as ex:
+                    print(f"表示形式を当てられませんでした: {nf}（{ex}）", file=sys.stderr)
+                    nf = None
+        if nf is not None:
+            applied.append(f"numfmt={nf}")
     if getattr(args, 'align', None):
         rng.HorizontalAlignment = _XL_ALIGN_H[args.align]; applied.append(f"align={args.align}")
     if getattr(args, 'valign', None):
@@ -2095,6 +2105,52 @@ def _header_mixed(header):
         return False
 
 
+def _char_display_width(v):
+    """セルの値の画面上の概算文字幅（全角2・半角1）。"""
+    if v is None:
+        return 0
+    s = str(v).strip()
+    if not s:
+        return 0
+    w = 0
+    for ch in s:
+        w += 2 if unicodedata.east_asian_width(ch) in ('F', 'W', 'A') else 1
+    return w
+
+
+def _fix_col_widths_from_long_notes(rng, grid, blocks, min_w, max_w):
+    """表の下の長い注記に引っ張られて広がりすぎた列を、表の本体の幅に戻す（注記は右のセルへはみ出して読める）。
+
+    戻り値: 補正した列文字の一覧（例: ['A']）。
+    """
+    if not grid or len(grid) < 2:
+        return []
+    main_r_end = blocks[0][2] if blocks else len(grid)
+    if main_r_end >= len(grid):
+        return []
+    ncols = int(rng.Columns.Count)
+    fixed = []
+    for j in range(1, ncols + 1):
+        col_idx = j - 1
+        main_max = max((_char_display_width(grid[r-1][col_idx])
+                        for r in range(1, main_r_end + 1)
+                        if col_idx < len(grid[r-1])), default=0)
+        outside_max = max((_char_display_width(grid[r-1][col_idx])
+                           for r in range(main_r_end + 1, len(grid) + 1)
+                           if col_idx < len(grid[r-1])), default=0)
+        if outside_max >= 20 and outside_max >= max(main_max * 1.8, 15):
+            fit_w = max(min_w, min(float(main_max + 3), max_w))
+            col = rng.Columns(j)
+            try:
+                curr_w = float(col.ColumnWidth)
+                if curr_w > fit_w + 3:
+                    col.ColumnWidth = fit_w
+                    fixed.append(_col_letters(int(col.Column)))
+            except Exception:
+                pass
+    return fixed
+
+
 def _border_blocks(rows):
     """tidy の罫線を引く範囲 → ([(行1, 列1, 行2, 列2), …]（範囲の中の 1 始まり）, 説明)。
 
@@ -2191,6 +2247,8 @@ def cmd_tidy(args):
         _unfilter_for_write(ws)                        # 絞り込みが掛かっていると書式が隠れた行を飛ばす
     for ws, rng in targets:
         applied = []
+        grid = None
+        blocks = []
         ncols = int(rng.Columns.Count)
         header = ws.Range(rng.Cells(1, 1), rng.Cells(1, ncols))
         # 二段見出し（上期・下期の下に 4月・5月…）は 2 行目も見出し。列の型は 2 行目を見出しにして 3 行目から見る
@@ -2312,8 +2370,10 @@ def cmd_tidy(args):
                 elif w > max_w:
                     col.ColumnWidth = max_w
                     clamped += 1
+            note_fixed = _fix_col_widths_from_long_notes(rng, grid, blocks, min_w, max_w)
             restored = _undo_narrowing_that_broke_outside(ws, rng, before_w)
             applied.append("列幅=自動" + (f"（{clamped}列を{min_w:g}〜{max_w:g}に丸め）" if clamped else "")
+                           + (f"（{'・'.join(note_fixed)}は注記による過剰拡大を防ぎ補正）" if note_fixed else "")
                            + (f"（{'・'.join(restored)}は表の外が ### になるので元の幅に戻した）" if restored else ""))
         print(f"整えました: {ws.Name}!{rng.Address.replace('$', '')}  [{', '.join(applied)}]")
         _show_range(ws, rng, label="仕上がり")

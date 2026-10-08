@@ -9,7 +9,6 @@ AI は「何をどこに書くか」だけを JSON で返す。道具が実行�
                  [--ai claude-code|gemini|claude] [--model 名] [--max-turns N] [--dry-run] [--image]
   agent --continue "補足"      前回の続き（記録の会話を引き継ぐ。手順書が報告で止まった後の承認に）
   agent --undo                 直前に書き換えたシートを、書き換える前の控えで置き換える（保存はしない）
-  agent --fire [名前 ...]      自動実射（まっさらなブックに練習台を組み、依頼を撃ってセルの実物で答え合わせ）
 
 入口の振り分け（--mode で指定できる。省略時は道具が決めて 1 行で言う）:
   sheet  既存シートを直す … materials → AI に聞く → write_cells/write_grid/format/tidy → 読み戻し＋見た目の画像 → … → 検査
@@ -29,7 +28,7 @@ chart_config/hyperlink/comment/sheet_op/name_add）を足して 35 手。「並�
 回るように。控えの図形を --undo で貼り戻すので戻せる。マクロ付きの図＝ボタンは拒む）。行・列は row_delete／col_delete で
 消せる（2026-09-05・承認の言葉があるときだけ。--undo で戻せる）。
 書けるのは対象シートの中だけ（番地にシート名は付けさせない）。
-手順書（sheet の定型 22 本・2026-09-06 夜に 25 本から 20 本に切り直し、09-09 に read_file の 2 本を足した）と練習台は vbam_recipes.py（agent --recipes / --recipe 名前 [補足] / --fire recipe）。
+手順書（sheet の定型 22 本・2026-09-06 夜に 25 本から 20 本に切り直し、09-09 に read_file の 2 本を足した）と練習台は vbam_recipes.py（agent --recipes / --recipe 名前 [補足]）。
 保存はしない（気に入らなければ保存せずに閉じる＝元に戻す）。最初の書き込みの前に控え（SaveCopyAs）を取るので
 `agent --undo` でそのシートだけ戻せる。終わりに「変わったセル」の**明細**（番地・前・後）を道具が出し、全部を
 _last_agent_changes.tsv に残す（後から見るのは `agent --changes`）＝AI の報告を信じずに、戻さずに検分できる。
@@ -61,7 +60,7 @@ import urllib.error
 from vbam_core import (SCRIPT_DIR, BACKUP_DIR, LAST_PROC_FILE, get_workbook, parse_target_and_rest,
                        job_clock_elapsed, job_clock_get, job_clock_set, job_clock_start,
                        _LAST_VALUES_FILE, _com_is_busy, _col_letter, _get_active_excel)
-from vbam_recipes import (SHEET_RECIPES, RECIPE_CASES, recipe_when, compose_recipe_request,
+from vbam_recipes import (SHEET_RECIPES, recipe_when, compose_recipe_request,
                           _RECIPE_MAX_TURNS)
 from vbam_vba import _all_procedure_names, _suggest_similar
 from vbam_build import (_AI_DEFAULT_MODEL, _AI_TIMEOUT, _extract_json, plan_sheet, _apply,
@@ -3169,7 +3168,7 @@ def run_agent(request, sheet, wb, ai=_CC_AI, model=None, max_turns=_DEFAULT_MAX_
     return r
 
 
-# 実射（練習台・弾・答え合わせ・状態・写し取り・点数）は vbam_fire.py へ切り出した（2026-09-11）
+# 実射（練習台・弾・答え合わせ・状態・写し取り・点数・vbam_fire.py）は 2026-10-08 に鍛える回路ごと外した
 # 不変条件の検査 は vbam_inv.py へ切り出した（2026-09-11）
 
 
@@ -3406,9 +3405,7 @@ def cmd_agent(args):
     """
     try:
         if (getattr(args, 'recipes', False) or getattr(args, 'undo', False)
-                or getattr(args, 'score', False) or getattr(args, 'changes', False)
-                or getattr(args, 'backups', False)
-                or getattr(args, 'mend', False)):      # 修理の試験は子プロセスが状態を置き場へ逃がす＝本番の記録に触らない
+                or getattr(args, 'changes', False) or getattr(args, 'backups', False)):
             return _cmd_agent_body(args)
         with _agent_lock():
             return _cmd_agent_body(args)
@@ -3466,11 +3463,9 @@ def _cmd_agent_body(args):
     """依頼文 1 つを道具が回す薄い入口:
     agent [excel_file] "依頼文" [--sheet 名] [--mode sheet|build|macro] [--macro 名] [--new-book]
                          [--ai claude-code|gemini|claude] [--model 名] [--max-turns N] [--dry-run]
-    agent --fire [名前 ...]      自動実射（まっさらなブックに練習台を組み、依頼を撃って答え合わせ）
+    （鍛える回路＝--forge・--mend・--exam・--shake・--fire・--harvest は 2026-10-08 に外した）
     """
     from vbam_macro import (_find_macro_in_request, run_both, run_macro_agent)   # vbam_macro は別ファイル（2026-09-11・遅延 import）
-    from vbam_fire import (fire_agent, keep_case, drop_case, cases_list, score_history,   # 実射は別ファイル（2026-09-11）
-                           harvest_book, _HARVEST_KEEP_ROWS)
     target_file, rest = parse_target_and_rest(args.posargs)
     ai = getattr(args, 'ai', None)
     model = getattr(args, 'model', None)
@@ -3478,7 +3473,7 @@ def _cmd_agent_body(args):
         for n in SHEET_RECIPES:
             print(f"{n}　{recipe_when(n)}")
         print(f"（{len(SHEET_RECIPES)} 本。使い方: agent --recipe 名前 [補足]。補足＝承認の言葉（置き換えてよい・埋めてよい・"
-              "切ってよい・並べてよい）や番地・仕様。自動実射: agent --fire recipe [名前 ...]）")
+              "切ってよい・並べてよい）や番地・仕様）")
         return True
     if getattr(args, 'undo', False):
         which = args.undo if isinstance(args.undo, str) else None     # --undo 番号／名札（無指定＝直前）
@@ -3496,130 +3491,10 @@ def _cmd_agent_body(args):
             return False
     if getattr(args, 'backups', False):
         return backups_list()
-    if getattr(args, 'drop_case', None):
-        return drop_case(args.drop_case)
     if getattr(args, 'changes', False):
         return show_changes()
-    if getattr(args, 'score', False):
-        return score_history()
     if getattr(args, 'runs', False):
         return runs_history()
-    if getattr(args, 'cases', False):
-        return cases_list()
-    if getattr(args, 'forged', False):
-        from vbam_forge import forged_list          # 鍛える回路（2026-09-17）
-        return forged_list()
-    if getattr(args, 'mend', False):
-        from vbam_mend import mend_exam          # 修理の試験（鍛えたマクロを種ごとに壊して直させる・2026-09-17 夜）
-        try:
-            return mend_exam(getattr(args, 'seed', None), getattr(args, 'only', None), getattr(args, 'kinds', None),
-                             bool(getattr(args, 'dry_run', False)), ai=ai, model=model,
-                             max_turns=int(getattr(args, 'max_turns', None) or 4),
-                             redo=getattr(args, 'mend_from', None), blind=bool(getattr(args, 'blind', False)))
-        except Exception as ex:
-            print(f"エラー: {ex}")
-            return False
-    if getattr(args, 'forge', None):
-        from vbam_forge import forge
-        # --test は nargs="+"＝後ろに書いた依頼文まで飲み込む。ブックに見えないものは依頼文へ戻す
-        _tests = list(getattr(args, 'forge_tests', None) or [])
-        _book_re = re.compile(r'\.(xlsx|xlsm|xlsb|xls)$', re.I)
-        rest = list(rest) + [t for t in _tests if not _book_re.search(str(t))]
-        args.forge_tests = [t for t in _tests if _book_re.search(str(t))]
-        # 会話している AI が自分でマクロを書くとき（2026-09-19・API の鍵は要らない）: --prompt で問いを書き出し、
-        # --answer 答えのファイル で 1 往復ぶん採点する（採点は道具）。不合格なら問いのファイルが次の問いに書き換わる
-        answer = getattr(args, 'forge_answer', None)
-        extra = {}
-        if answer or getattr(args, 'forge_prompt', False):
-            import vbam_forge as _vf
-            os.makedirs(_vf._AGENT_FORGE_DIR, exist_ok=True)
-            extra['prompt_out'] = os.path.join(_vf._AGENT_FORGE_DIR, _vf._safe_name(args.forge) + '_prompt.txt')
-            if answer:
-                if args.forge not in _vf._forge_load():
-                    print(f"エラー: 台帳に「{args.forge}」がありません。先に agent --forge {args.forge} --prompt"
-                          "（--before・--truth・依頼文つき）で問いを書き出してください")
-                    return False
-                if not os.path.isfile(answer):
-                    print(f"エラー: 答えのファイルがありません: {answer}")
-                    return False
-                ai, model = 'file', os.path.abspath(answer)
-            else:
-                extra['prompt_only'] = True
-        try:
-            ok = forge(args.forge, target_file, ai=ai, model=model,
-                       max_turns=1 if answer else int(getattr(args, 'max_turns', None) or 3),
-                       register=bool(getattr(args, 'register', False)),
-                       dry_run=bool(getattr(args, 'dry_run', False)),
-                       truth=getattr(args, 'truth', None), before=getattr(args, 'forge_before', None),
-                       tests=getattr(args, 'forge_tests', None), sheet=getattr(args, 'sheet_opt', None),
-                       request=" ".join(rest).strip() or None, to=getattr(args, 'register_to', None),
-                       phrases=getattr(args, 'forge_phrases', None), **extra)
-        except Exception as ex:
-            print(f"エラー: {ex}")
-            return False
-        if ok is None:
-            print(f"問いを読んでマクロ（Sub 全文）を書いたら: agent --forge {args.forge} --answer 答えのファイル")
-            return True
-        if ok and extra:
-            _vf._write_prompt(extra['prompt_out'], "（合格しました。次の問いはありません）\n")
-        return ok
-    if getattr(args, 'keep_case', None):
-        try:
-            return keep_case(args.keep_case, target_file, getattr(args, 'seed', None))
-        except Exception as ex:
-            print(f"エラー: {ex}")
-            return False
-    if getattr(args, 'harvest', None):
-        # 出力パス（"agent --harvest 元.xlsm 出力.xlsm" の "出力.xlsm"）は posargs の先頭で、
-        # .xlsm/.xlsx に見える先頭引数は parse_target_and_rest が target_file 側へ取ってしまう
-        # （harvest には「触る対象ブック」という概念が無いのに、この関数だけがそれを前提にしている）。
-        # rest 側が空でも target_file を出力パスとして拾う（2026-09-05）
-        keep = getattr(args, 'keep_rows', None)
-        seed = getattr(args, 'seed', None)
-        out = rest[0] if rest else target_file
-        return bool(harvest_book(args.harvest, out,
-                                 int(keep) if keep else _HARVEST_KEEP_ROWS,
-                                 int(seed) if seed else None))
-    if getattr(args, 'shake', None) is not None:
-        from vbam_shake import shake        # 揺らし（記録の返事を書き換えて AI なしで再生）は別ファイル（2026-09-11 夜）
-        try:
-            return shake(args.shake or None, target_file, bool(getattr(args, 'dry_run', False)),
-                         getattr(args, 'only', None), imagine=int(getattr(args, 'imagine', 0) or 0),
-                         ai=ai, model=model)
-        except Exception as ex:
-            print(f"エラー: {ex}")
-            return False
-    if getattr(args, 'exam', False):
-        from vbam_exam import exam          # 試験（正解の表を持つお題を種ごとに作って撃つ）は別ファイル（2026-09-11 夜）
-        try:
-            return exam(getattr(args, 'seed', None), getattr(args, 'only', None),
-                        bool(getattr(args, 'dry_run', False)), ai=ai, model=model,
-                        grade_always=bool(getattr(args, 'grade', False)),
-                        macro_bas=getattr(args, 'by_macro', None), with_macro=getattr(args, 'with_macro', None))
-        except Exception as ex:
-            print(f"エラー: {ex}")
-            return False
-    if getattr(args, 'fire', False):
-        try:
-            if target_file:
-                xl, _wb = get_workbook(target_file)
-            else:
-                from vbam_core import get_or_start_excel
-                xl = get_or_start_excel()          # 練習台は自分で作る＝人のブックは要らない（2026-09-06 深夜）
-            seed = getattr(args, 'seed', None)
-            rep = getattr(args, 'repeat', None)
-            # 2026-09-09: 実射の既定を claude-code にした。9/7 に対話側だけ claude-code へ変え、実射は
-            # 「大量反復で Max のレート制限に当たらない」を理由に gemini（従量課金）のまま残していた。
-            # その 1 行が残り続けた結果、9/4〜9/9 に実射 108 回・のべ 2,488 発が従量課金へ流れ、
-            # 残高切れ（HTTP 429）で 83 本が全滅した。**金のかかる頭は、名指ししたときだけ使う。**
-            return fire_agent(xl, ai or _CC_AI, model, rest or None, getattr(args, 'state', None),
-                              int(seed) if seed else None, getattr(args, 'twice', False),
-                              getattr(args, 'bed', None), repeat=int(rep) if rep else 1,
-                              show_image=bool(getattr(args, 'image', False)),
-                              grade_ai=getattr(args, 'grade_ai', None), grade_model=getattr(args, 'grade_model', None))
-        except Exception as ex:
-            print(f"エラー: {ex}")
-            return False
     replay_path = getattr(args, 'replay', None)
     if replay_path is not None:
         return _cmd_agent_replay(args, target_file, rest, replay_path or _LAST_AGENT_LOG_FILE)
@@ -3664,7 +3539,6 @@ def _cmd_agent_body(args):
         print('使い方: agent "依頼文" [--sheet 名] [--mode sheet|build|macro] [--macro 名] [--new-book]')
         print('              [--ai claude-code|gemini|claude] [--model 名] [--max-turns N] [--dry-run] [--request-file f]')
         print('        agent --recipe 手順書の名前 [補足]   （手順書を依頼文にして回す。--recipes で一覧）')
-        print('        agent --fire [sheet|macro|recipe|名前 ...]   （自動実射）')
         return False
     request = rest[0]
     # --continue は前回と同じ往復数を既定にする（手順書の続きが 4 回に戻っていた・2026-09-04）
@@ -4067,7 +3941,7 @@ def _direct_action(act, sheet, wb):
 # clean-table は vbam_clean.py へ切り出した（2026-09-11）
 
 
-__all__ = ['cmd_agent', 'run_agent', 'run_build', 'RULES', # fire_agent・FIRE_CASES は vbam_fire（2026-09-11）
-           'SHEET_RECIPES', 'RECIPE_CASES',
+__all__ = ['cmd_agent', 'run_agent', 'run_build', 'RULES',
+           'SHEET_RECIPES',
            '_snapshot_book', '_inv_violations', '_grid_diff', '_cell_name',
            'cmd_set_key', 'cmd_clear_key', '_mask_key', '_key_problem', '_KEY_ENV']

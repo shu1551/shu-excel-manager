@@ -26,7 +26,7 @@ description: |
 | 読む場面 | ファイル |
 |---|---|
 | コマンドの引数・注意（全文） | `references/commands.md` |
-| agent（依頼文 1 つを道具が回す）・--fire・--shake・--recipe・--undo・関所 | `references/agent.md` |
+| agent（依頼文 1 つを道具が回す）・--recipe・--undo・先撃ち・関所 | `references/agent.md` |
 | UserForm（form_inspect・form_tool・form_layout・form_builder） | `references/userform.md` |
 | 現地調査・動作検証・標準作業フロー・絶対ルールの経緯・変更前チェック | `references/workflows.md` |
 
@@ -248,7 +248,7 @@ export-pdf 出力.pdf [--sheet|--range] / print-setup [--area --title-rows --lan
 cond-format 範囲 --gt 値 --bg 色 / hyperlink セル URL / validation 範囲 --list "A,B" / freeze セル|off / comment セル 文
 shape --list | --delete 名… | 名 --left N / calc-mode [manual|auto|recalc]
 build-sheet [設計図.json] [--ask 依頼文] [--recipe 名] [--new-book] [--dry-run] [--fire]   # 設計図からシートを組む
-agent "依頼文" [--sheet 名] [--mode sheet|build|macro] [--macro 名] [--dry-run] [--undo] [--runs] [--fire …]   # 全文は references/agent.md
+agent "依頼文" [--sheet 名] [--mode sheet|build|macro] [--macro 名] [--dry-run] [--undo] [--runs]   # 全文は references/agent.md
 
 # --- 重量級 ---
 chart create 範囲 --type column --title … / chart list|delete / chart-config <set-title|set-type|legend|axis-scale|add-series|set-source|trendline …>

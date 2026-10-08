@@ -1147,6 +1147,13 @@ def _normalize_value(v, rules, keep_zero=True):
                 if new != cur:
                     applied.append(name)
                     cur = new
+            elif name == 'postal' and isinstance(cur, (int, float)) and not isinstance(cur, bool):
+                s = str(int(cur))
+                if len(s) == 6:
+                    s = '0' + s
+                if len(s) == 7:
+                    cur = f"{s[:3]}-{s[3:]}"
+                    applied.append(name)
             continue                                   # 数値・日付には文字の規則は当たらない
         s = cur
         if name == 'trim':
@@ -1201,7 +1208,7 @@ def _normalize_value(v, rules, keep_zero=True):
             new = _HANKANA_RE.sub(lambda m: unicodedata.normalize('NFKC', m.group(0)), s)
         elif name in ('space_zenkaku', 'space_hankaku'):
             new = _INNER_WS_RE.sub('　' if name == 'space_zenkaku' else ' ', s)
-        else:                                          # as_text（文字はそのまま）
+        else:                                         # as_text（文字はそのまま）
             new = s
         if new != cur:
             applied.append(name)
@@ -1228,7 +1235,7 @@ def _normalize_column(col, rules, keep_zero=True, skip=None):
     if 'phone' in names:
         learned = _phone_learn(out)
         for i, v in enumerate(out):
-            if (skip and skip[i]) or not isinstance(v, str):
+            if (skip and skip[i]) or v is None or v == '':
                 continue
             new = _phone_format(v, learned)
             if new != v:
@@ -1508,17 +1515,35 @@ def _phone_learn(col):
 
 def _phone_format(v, learned=None):
     """1 つの電話番号を 03-1234-5678 の形に。区切りが決まらなければ元のまま（純 Python）。"""
-    if not isinstance(v, str) or not v.strip():
+    if v is None or v == '':
         return v
-    t = unicodedata.normalize('NFKC', v).strip()
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        s = str(int(v)) if float(v).is_integer() else str(v)
+    elif isinstance(v, str):
+        s = v.strip()
+    else:
+        return v
+    if not s:
+        return v
+    t = unicodedata.normalize('NFKC', s).strip()
     p81 = _phone_plus81(t)
     if p81:
         return p81
     d = _PHONE_SEP_RE.sub('', t)
     if d.startswith('+81'):
         d = '0' + d[3:]
-    if not d.isdigit() or not d.startswith('0'):
+    if not d.isdigit():
         return v
+    # 先頭0落ちの補正（Excelで数値化されて先頭0が落ちた電話番号）
+    if not d.startswith('0'):
+        if len(d) == 9:
+            # 9桁の市外局番0落ち（例: 312345678 → 0312345678）
+            d = '0' + d
+        elif len(d) == 10 and d.startswith(('90', '80', '70', '50')):
+            # 10桁の携帯/IP電話0落ち（例: 9012345678 → 09012345678）
+            d = '0' + d
+        else:
+            return v
     for pre, parts in _PHONE_SPECIAL:
         if d.startswith(pre) and len(d) == 10:
             return _phone_split(d, parts)
@@ -1761,8 +1786,16 @@ def _near_dup_pairs(rows, header_idx=None):
         return []
     width = max(len(r) for r in rows)
     keys = _key_rows(rows, body, width)
-    return [(i, k, [j for j in range(width) if keys[i][j] != keys[k][j]])
-            for i, k, _e in _fuzzy_pairs(rows, header_idx) if (i, k) not in full]
+    out = []
+    for i, k, _e in _fuzzy_pairs(rows, header_idx):
+        if (i, k) in full:
+            continue
+        diff = [j for j in range(width) if keys[i][j] != keys[k][j]]
+        # 違う列が 1〜2 列の組だけ。照合は両方に値のある列でするので、ほぼ空の行（式の 0 と #DIV/0! だけ）が
+        # 違う行と組になり「行7 と 行4（受注日・得意先・品名・個数・単価が違う）」と出ていた（2026-10-08 初見の受注の表）
+        if 1 <= len(diff) <= 2:
+            out.append((i, k, diff))
+    return out
 
 
 def _fuzzy_pairs(rows, header_idx=None):

@@ -84,6 +84,19 @@ def clean_plan(grid, hdr_idx):
         if n_date + n_datestr >= 2 and not [v for v in col if not blank(v) and not vh._is_date_value(v)
                                             and not (isinstance(v, str) and vh._DATELIKE_RE.match(v.strip(vh._WS_CHARS)))]:
             date_cols.append(j)
+        hd = heads[j] if j < len(heads) and isinstance(heads[j], str) else ''
+        # 「電話料」「郵便代」「携帯手当」は金額の列＝番号の規則を当てない（2026-10-08）
+        money_head = re.search(r'料|代|費|額|金|手当|件数|回数', hd)
+        if re.search(r'電話|TEL|携帯|FAX', hd, re.I) and not money_head:
+            names.append('phone')
+        elif re.search(r'郵便|〒', hd) and not money_head:
+            names.append('postal')
+        elif re.search(r'科目|費目', hd):
+            pass        # 勘定科目の名前は言い換えない（科目の体系は組織ごとに違う・2026-10-08 shu）
+        elif any(isinstance(v, str) and re.search(r'0\d{1,4}-\d{1,4}-\d{3,4}', v) for v in texts):
+            names.append('phone')
+        if any(isinstance(v, str) and re.search(r'^[¥￥$]\s*[\d,]+', v.strip()) for v in texts):
+            names.append('number')
         if names:
             rules[j] = names
     seen, dups = {}, []

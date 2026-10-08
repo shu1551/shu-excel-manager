@@ -242,7 +242,7 @@ def _shape_of_sheet(ws, wb, rows=60):
     """アクティブなシートの形（COM）→ shape_signals の集合。読めなければ空（＝形の要る仕事は候補にしない・安全側）。"""
     from vbam_hands import _rows_of
     try:
-        from vbam_forge import _kind_of, _texts
+        from vbam_rehearse import _kind_of, _texts
         ur = ws.UsedRange
         r0, c0 = int(ur.Row), int(ur.Column)
         nr = min(int(ur.Rows.Count), rows)
@@ -435,6 +435,54 @@ def current_columns(ws):
         return cols
     except Exception:
         return []
+
+
+_REG_BY_REQUEST_RE = re.compile(r"^\s*'\s*列は頼みから\s*[:：]")
+
+
+def request_column_macros(text):
+    """モジュールの本文 → 頭に ' 列は頼みから: の行がある Sub の名前の集合（純 Python・2026-10-09）。
+    その棚は列を選ばずに撃つ（頼みの文をコンボ道具に渡せば、マクロが見出しから行・列・値を決める）。"""
+    out, name, n = set(), None, 0
+    for ln in str(text or '').splitlines():
+        m = _REG_SUB_RE.match(ln)
+        if m:
+            name, n = m.group(1), 0
+            continue
+        if name is None:
+            continue
+        n += 1
+        if n > 12 or not ln.strip().startswith("'"):
+            name = None                                  # 頭のコメントの並びが切れたら、その Sub は見終わり
+        elif _REG_BY_REQUEST_RE.match(ln):
+            out.add(name)
+            name = None
+    return out
+
+
+def fire_with_request(xl, owner, ws, name, request):
+    """頼みの文をコンボ道具に渡して棚のマクロを撃つ（COM・2026-10-09）。→ 断り（撃てなかった理由と候補の見出し。撃てたら ''）。
+    前の撃ちで選んだ列が残っているとマクロがそれを使うので、表の左上の 1 セルを選んでから撃つ。撃った後は頼みの文を消す
+    （残すと、後で人が棚から撃ったときに古い頼みで動く）。"""
+    from vbam_vba import run_book_macro
+    q = str(owner).replace("'", "''")
+    xl.Run(f"'{q}'!コンボ道具.頼みの文を入れる", str(request or ''))
+    try:
+        try:
+            anchor = _table_anchor(ws)
+            ws.Range(anchor or 'A1').Select()
+        except Exception:
+            pass
+        run_book_macro(xl, owner, name)
+        try:
+            return str(xl.Run(f"'{q}'!コンボ道具.棚の断りを返す") or '')
+        except Exception:
+            return ''
+    finally:
+        with contextlib.suppress(Exception):
+            xl.Run(f"'{q}'!コンボ道具.頼みの文を入れる", '')
+        with contextlib.suppress(Exception):
+            xl.StatusBar = False
 
 
 def select_columns(ws, cols):
@@ -858,7 +906,7 @@ def _rehearse(xl, wb, sheet, plan, owner, sel_cols=None):
     保存状態とパスは変わらない）。"""
     import os
     import tempfile
-    from vbam_forge import rehearse_steps
+    from vbam_rehearse import rehearse_steps
     extras = list(plan['extras'])
     by_owner = {}
     for e in extras:

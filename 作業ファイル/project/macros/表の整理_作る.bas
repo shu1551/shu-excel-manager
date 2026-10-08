@@ -3443,7 +3443,7 @@ NextSheet:
     numLike = False
     Dim nlS As String
     nlS = Trim$(nlIn)
-    nlS = Replace(nlS, Chr(160), "")
+    nlS = Replace(nlS, ChrW(160), "")
     Dim nlW As String
     nlW = ""
     Dim nlCi As Long
@@ -3468,7 +3468,7 @@ NextSheet:
 
 正規化数値チェック:
     s = Trim$(s)
-    s = Replace(s, Chr(160), "")
+    s = Replace(s, ChrW(160), "")
     Dim sW As String
     sW = ""
     Dim ci As Long
@@ -3519,14 +3519,19 @@ End Sub
 
 Sub 項目と金額の円グラフを作る()
     ' 依頼の語: 円グラフ|パイグラフ|内訳を円|割合を円|構成比を円|構成比の円|構成比のグラフ
-    ' 依頼の組: 円,パイ+グラフ,図
+    ' 依頼の組: 円,パイ+グラフ,図+-変え,替え,種類
     ' 扱う: 円グラフ 構成比 合計
     ' 見出し: なし
     ' 形: 数の列
+    ' 列は頼みから: 項目 値
     ' 左端の文字列列を項目、右端の数値列（%列除く）を値にした円グラフを作る。合計行・0値行は除外し、棚が前に作ったグラフは作り直す（人のグラフは残す）
+    ' 頼みの文に見出しがあれば、それで項目と値を決めて項目ごとに合計して描く。ピボットのシートならそのピボットから（2026-10-09）
 
     Dim ws As Worksheet
     Set ws = ActiveSheet
+    If Len(先撃ちの頼みの文()) > 0 Then
+        If 頼みでグラフを作る(ws, 先撃ちの頼みの文(), "円") = 1 Then Exit Sub
+    End If
 
     Dim ur As Range
     Set ur = ws.UsedRange
@@ -3653,7 +3658,7 @@ skipRow:
     If cnt = 0 Then Exit Sub
 
     Dim co As ChartObject
-    棚のグラフを消す ws      ' 人が作ったグラフは残す（全部消していた・2026-09-24 総点検）
+    ' 作り直すのは同じ種類の棚のグラフだけ（下の 棚のグラフの置き場 が消す）。人のグラフ・棚の別の種類のグラフは残す（2026-10-09）
 
     Dim rightMost As Long
     rightMost = ur.Column + ur.Columns.Count - 1
@@ -3662,7 +3667,7 @@ skipRow:
     Dim chartTop As Double
     chartTop = ws.Cells(hdrRow, rightMost + 2).Top
 
-    Set co = ws.ChartObjects.Add(chartLeft, chartTop, 300, 250)
+    Set co = ws.ChartObjects.Add(chartLeft, 棚のグラフの置き場(ws, "棚_円グラフ", chartTop), 300, 250)   ' 棒グラフ等は残して下に（2026-10-09）
     co.Name = "棚_円グラフ"
     Dim ch As Chart
     Set ch = co.Chart
@@ -3720,13 +3725,15 @@ skipRow:
 End Sub
 
 Sub 選んだ3列でピボットを作る()
-    ' 依頼の語: ピボットで集計|ピボットテーブルを作|ピボットテーブルにし|ピボット表を作|行と列|列でピボット|課と科目
-    ' 依頼の組: ピボット+集計,作,テーブル+-月別,月ごと,月で,構成比,割合,比率,値,範囲,累計,表形式,デザイン,見た目,体裁,解除,縦,スライサー,ダッシュボード,グラフ
+    ' 依頼の語: ピボットで集計|ピボットテーブルを作|ピボットテーブルにし|ピボット表を作|行と列|列でピボット|課と科目|クロス集計|ピボットにして|ピボットで
+    ' 依頼の組: ピボット+集計,作,テーブル,別,ごと,単位,毎,まとめ,にして+-構成比,割合,比率,値だけ,値で貼,値貼,値に変,範囲,累計,表形式,デザイン,見た目,体裁,解除,縦,スライサー,ダッシュボード,グラフ,足し,追加,加え,外し,絞,以外,上位,下位,トップ
     ' 扱う: ピボット クロス集計 合計 テーブルに 集計
     ' 見出し: なし
     ' 選ぶ列: 3
+    ' 列は頼みから: 行 列 値
     ' 形: 数の列 日付の列
-    ' 選んだ3列(1:行,2:列,3:値)で新シートにピボットテーブルを作る。合計行を除いた明細範囲を使う。
+    ' 頼みの文の見出しで 行・列・値 を決めて（「部署別・区分ごとに金額をピボットで」）新シートにピボットテーブルを作る。
+    ' 頼みで決まらなければ選んだ3列(1:行,2:列,3:値)。合計行を除いた明細範囲を使い、表形式・#,##0・総計ありまで仕上げる。
 
     Dim ws As Worksheet
     Dim ur As Range
@@ -3736,7 +3743,6 @@ Sub 選んだ3列でピボットを作る()
     Dim s As String
     Dim wb As Workbook
     Dim pvSh As Worksheet
-    Dim sh As Worksheet
     Dim pc As PivotCache
     Dim pt As PivotTable
     Dim fldRow As String, fldCol As String, fldVal As String
@@ -3746,19 +3752,28 @@ Sub 選んだ3列でピボットを作る()
     Dim v As Variant, cv As String
     Dim isTotRow As Boolean
     Dim maxRow As Long
+    Dim 頼 As String, 候補 As String, 集計 As Long, 月列 As Long, 月位置 As Long, df As PivotField, 値の名 As String
 
     Set ws = ActiveSheet
     Set wb = ActiveWorkbook
+    頼 = 先撃ちの頼みの文()
+    ' ピボットのシートで頼まれたら、そのピボットの元の明細のシートで作る（ピボットを見ながら「次は月別に」と頼む流れ・2026-10-09）
+    If Len(頼) > 0 And ws.PivotTables.Count > 0 Then
+        Dim 元 As String
+        On Error Resume Next
+        元 = CStr(ws.PivotTables(1).SourceData)
+        On Error GoTo 0
+        If InStr(元, "!") > 0 Then
+            元 = Replace(Left$(元, InStr(元, "!") - 1), "'", "")
+            On Error Resume Next
+            Set ws = wb.Worksheets(元)
+            On Error GoTo 0
+            ws.Activate
+        End If
+    End If
     Set ur = ws.UsedRange
     fcol = ur.Column
     frow = ur.Row
-
-    If Selection Is Nothing Then Exit Sub
-    If Selection.Areas.Count < 3 Then Exit Sub
-    colRow = Selection.Areas(1).Column
-    colCol = Selection.Areas(2).Column
-    colVal = Selection.Areas(3).Column
-
     lastC = fcol + ur.Columns.Count - 1
 
     hrow = 0
@@ -3778,19 +3793,58 @@ Sub 選んだ3列でピボットを作る()
             Exit For
         End If
     Next rr
-    If hrow = 0 Then Exit Sub
+    If hrow = 0 Then
+        If Len(頼) > 0 Then 先撃ちに断る "ピボットの元になる見出しの行が見つかりません。"
+        Exit Sub
+    End If
     ' 二段見出しは下の段に空のセル（縦の結合の下側）があり、Excel がピボットの元にできない＝止まらずに言って終わる（2026-09-24 棚の試験 F10）
     If 見出しの下の段(ws, hrow, fcol, lastC) <> hrow Then
-        Application.StatusBar = "二段見出しの表はピボットの元にできません。先に「二段の見出しを一行に畳む」を撃ってください。"
+        先撃ちに断る "二段見出しの表はピボットの元にできません。先に「二段の見出しを一行に畳む」を撃ってください。"
+        Exit Sub
+    End If
+    maxRow = 表の本文の最終行(ws)   ' 表の下のメモの行まで明細と見て、合計・平均の行が総計に入っていた（2026-09-24 棚の試験 F6・F7）
+
+    ' 行・列・値の列: 頼みの文の見出しで決める（2026-10-09）。決まらなければ人が選んだ 3 列。どちらも無ければ候補を返して作らない
+    ' 集計の種類（件数・平均・最大・最小。言わなければ合計）と月でまとめる日付の列も頼みの文から（2026-10-09）
+    集計 = 頼みの集計(頼)
+    If Len(頼) > 0 Then
+        If Not 頼みからピボットの列(ws, hrow, fcol, lastC, maxRow, 頼, colRow, colCol, colVal, 候補, 集計 = xlCount) Then colRow = 0
+        月列 = 頼みの月の列(ws, hrow, fcol, lastC, maxRow, ピボットの語ならし(頼), 月位置)
+    End If
+    If colRow = 0 Then
+        If TypeName(Selection) = "Range" Then
+            If Selection.Areas.Count >= 3 Then
+                colRow = Selection.Areas(1).Column
+                colCol = Selection.Areas(2).Column
+                colVal = Selection.Areas(3).Column
+            End If
+        End If
+    End If
+    If colRow = 0 Then
+        If Len(候補) = 0 Then 候補 = "行・列・値の見出しを頼みの文に書くか、3 列を選んでから撃ってください。"
+        先撃ちに断る "ピボットの行・列・値が決まらないので作っていません。" & 候補 & _
+            "（頼み方の例: 「部署別・区分ごとに金額をピボットで」）"
         Exit Sub
     End If
 
     fldRow = Trim(CStr(ws.Cells(hrow, colRow).Value))
-    fldCol = Trim(CStr(ws.Cells(hrow, colCol).Value))
+    If colCol > 0 Then fldCol = Trim(CStr(ws.Cells(hrow, colCol).Value))
+    If 集計 = xlCount And (colVal = colRow Or colVal = colCol) Then
+        ' 件数は行・列に使っていない列を数える（同じフィールドを値にも置くと行から消えた）。空欄の無い列を左から
+        For cc = fcol To lastC
+            If cc <> colRow And cc <> colCol And Len(Trim$(セルの字(ws.Cells(hrow, cc).Value))) > 0 _
+               And Len(Trim$(セルの字(ws.Cells(hrow + 1, cc).Value))) > 0 Then colVal = cc: Exit For
+        Next cc
+    End If
     fldVal = Trim(CStr(ws.Cells(hrow, colVal).Value))
+    If 集計 = 0 Then 集計 = xlSum
+    If 集計 = xlCount And InStr(fldVal, "件数") > 0 And colVal <> colRow Then 集計 = xlSum   ' 「件数」という数の列を足す頼み
+    値の名 = Choose(Abs(集計 = xlCount) + 1, fldVal, "件数")
+    If 集計 = xlAverage Then 値の名 = fldVal & "平均"
+    If 集計 = xlMax Then 値の名 = fldVal & "最大"
+    If 集計 = xlMin Then 値の名 = fldVal & "最小"
 
     lastRow = hrow
-    maxRow = 表の本文の最終行(ws)   ' 表の下のメモの行まで明細と見て、合計・平均の行が総計に入っていた（2026-09-24 棚の試験 F6・F7）
     For rr = hrow + 1 To maxRow
         s = Trim(CStr(ws.Cells(rr, colRow).Value))
         isTotRow = False
@@ -3805,41 +3859,71 @@ Sub 選んだ3列でピボットを作る()
             lastRow = rr
         End If
     Next rr
-    If lastRow <= hrow Then Exit Sub
+    If lastRow <= hrow Then
+        先撃ちに断る "見出しの下に明細の行がありません。"
+        Exit Sub
+    End If
 
     dataAddr = "'" & ws.Name & "'!" & ws.Range(ws.Cells(hrow, fcol), ws.Cells(lastRow, lastC)).Address(True, True)
 
-    shName = シート名にできる字(fldRow & "別" & fldCol & "別")     ' 見出しの / : でシート名を付けられずに止まらない（2026-09-24 総点検）
-
-    Application.DisplayAlerts = False
-    For Each sh In wb.Sheets
-        If sh.Name = shName Then
-            sh.Delete
-            Exit For
-        End If
-    Next sh
-    Application.DisplayAlerts = True
+    ' 前に棚が作った同じ名前のシートは作り直し、人のシートは残して (2) を付ける（2026-10-09）
+    ' 名前: 部門別区分別／部門別売上高／月別件数（月でまとめた列は「月」・合計以外は集計の名を付ける）
+    shName = IIf(colRow = 月列, "月", fldRow) & "別"
+    If colCol > 0 Then shName = shName & IIf(colCol = 月列, "月", fldCol) & "別"
+    If colCol = 0 Or 集計 <> xlSum Then shName = shName & 値の名
+    shName = 棚のシート名(wb, shName)
 
     Set pvSh = wb.Sheets.Add(after:=wb.Sheets(wb.Sheets.Count))
     pvSh.Name = shName
+    棚のシートの印 pvSh
 
     Set pc = wb.PivotCaches.Create(SourceType:=xlDatabase, SourceData:=dataAddr)
-    Set pt = pc.CreatePivotTable(TableDestination:=pvSh.Cells(3, 1), TableName:=shName & "PT")
+    Set pt = pc.CreatePivotTable(TableDestination:=pvSh.Cells(3, 1), TableName:=シート名にできる字(shName & "PT"))
 
     With pt
         .ManualUpdate = True
-        .AddFields RowFields:=fldRow, ColumnFields:=fldCol
-        With .PivotFields(fldVal)
-            .Orientation = xlDataField
-            .Function = xlSum
-            .NumberFormat = "#,##0"
-        End With
+        If colCol > 0 Then
+            .AddFields RowFields:=fldRow, ColumnFields:=fldCol
+        Else
+            .AddFields RowFields:=fldRow
+        End If
+        ' 値: 頼みの集計で（件数は行の項目そのものを数える＝行と同じ列でも AddDataField なら行に残る）
+        Set df = .AddDataField(.PivotFields(fldVal), , 集計)
+        df.NumberFormat = "#,##0"
+        If 集計 <> xlSum Then
+            On Error Resume Next      ' 見出しは「件数」「売上高の平均」（同じ名前のフィールドがあると付けられない＝既定の名のまま）
+            df.Caption = IIf(集計 = xlCount, "件数", Replace(Replace(Replace(値の名, "平均", "の平均"), "最大", "の最大"), "最小", "の最小"))
+            On Error GoTo 0
+        End If
         .RowGrand = True
         .ColumnGrand = True
         .ManualUpdate = False
     End With
     ' 明細のあいだの小計・合計の行を項目から外す（総計が 2 倍になっていた・2026-09-24）
     ピボットの集計の行を外す pt, ws.Range(ws.Cells(hrow, fcol), ws.Cells(lastRow, lastC))
+    ' 「月別」＝日付の列を年と月でまとめる（年をまたいでも月が混ざらない）。日付が文字の行があるとまとめられない＝言って残す
+    If 月列 > 0 And (月列 = colRow Or 月列 = colCol) Then
+        ' 1 年の中に収まっていれば月だけ（年の欄と「2026年 集計」が余分に出た）。年をまたぐときだけ年も付け、年の小計は出さない
+        Dim 年をまたぐ As Boolean, 年の欄 As PivotField
+        On Error Resume Next
+        With Application.WorksheetFunction
+            年をまたぐ = (Year(.Max(ws.Range(ws.Cells(hrow + 1, 月列), ws.Cells(lastRow, 月列)))) <> _
+                          Year(.Min(ws.Range(ws.Cells(hrow + 1, 月列), ws.Cells(lastRow, 月列)))))
+        End With
+        pt.PivotFields(Trim(CStr(ws.Cells(hrow, 月列).Value))).dataRange.Cells(1).Group Start:=True, End:=True, _
+            Periods:=Array(False, False, False, False, True, False, 年をまたぐ)
+        If Err.Number <> 0 Then Application.StatusBar = "日付を月でまとめられませんでした（日付が文字で入っている行があります）。"
+        For Each 年の欄 In pt.PivotFields
+            If 年の欄.Orientation = xlRowField Or 年の欄.Orientation = xlColumnField Then
+                年の欄.Subtotals = Array(False, False, False, False, False, False, False, False, False, False, False, False)
+            End If
+        Next 年の欄
+        On Error GoTo 0
+    End If
+    ' 1 回で仕上げまで（表形式・小計なし・#,##0）＝「ピボットをいつもの形にそろえる」を後から撃たない（2026-10-09）
+    pvSh.Activate
+    ピボットをいつもの形にそろえる
+    Application.StatusBar = False
 
 End Sub
 
@@ -4104,15 +4188,21 @@ End Sub
 
 Sub 項目と金額の棒グラフを作る()
     ' 依頼の語: 見やすい棒|棒グラフ|いつもの棒|見栄えのいい棒|いつもの型で棒|方で棒グラフ|課別支出|課別の支出|課ごとの支出額
-    ' 依頼の組: 棒+グラフ+-積み上げ,折れ線,2本,二本,並べ,予算と,前と後,前年と今年
+    ' 依頼の組: 棒,グラフ+グラフ+-積み上げ,積上げ,折れ線,2本,二本,並べ,予算と,前と後,前年と今年,円,パイ,構成比,割合,推移,移り変わり,スパーク,セル内,ミニ,小さ,滝,ウォーター,階段,要因,複合,2軸,第2軸,ダッシュボード,スライサー,見た目,見せ方,体裁,フォント,デザイン,そろえ,揃え,統一,変え,替え,種類
     ' 扱う: 棒グラフ作成
     ' 見出し: なし
     ' 形: 数の列
+    ' 列は頼みから: 項目 値
     ' 左端の文字列列を項目・右端の数値列を値にした棒グラフを作る。棚が前に作ったグラフは作り直す（人のグラフは残す）。
+    ' 頼みの文に見出しがあれば、それで項目と値を決めて項目ごとに合計して描く（「部署別に実績金額を棒グラフで」）。
+    ' 項目が 2 つならピボットとピボットグラフ・ピボットのシートならそのピボットからピボットグラフ（2026-10-09）
 
     Dim ws As Object
     Dim ur As Object
     Set ws = ActiveSheet
+    If Len(先撃ちの頼みの文()) > 0 Then
+        If 頼みでグラフを作る(ws, 先撃ちの頼みの文(), "棒") = 1 Then Exit Sub
+    End If
     Set ur = ws.UsedRange
 
     Dim rr As Long, cc As Long
@@ -4215,7 +4305,7 @@ Sub 項目と金額の棒グラフを作る()
     End If
 
     Dim j As Long
-    棚のグラフを消す ws      ' 人が作ったグラフは残す（全部消していた・2026-09-24 総点検）
+    ' 作り直すのは同じ種類の棚のグラフだけ（下の 棚のグラフの置き場 が消す）。人のグラフ・棚の別の種類のグラフは残す（2026-10-09）
 
     Dim leftPos As Double, topPos As Double
     Dim NextCol As Long: NextCol = valCol + 1
@@ -4225,7 +4315,7 @@ Sub 項目と金額の棒グラフを作る()
     Dim useHoriz As Boolean: useHoriz = (n >= 9)
 
     Dim newCO As Object
-    Set newCO = ws.ChartObjects.Add(leftPos, topPos, 420, 300)
+    Set newCO = ws.ChartObjects.Add(leftPos, 棚のグラフの置き場(ws, "棚_棒グラフ", topPos), 420, 300)
     newCO.Name = "棚_棒グラフ"
     Dim ch As Object: Set ch = newCO.Chart
 
@@ -4279,6 +4369,7 @@ Sub 項目と金額の棒グラフを作る()
         End If
     Next pi
     ch.SeriesCollection(1).HasDataLabels = True
+    ch.SeriesCollection(1).DataLabels.NumberFormat = "#,##0"      ' 値の表示もカンマ（軸と合わせる・2026-10-09）
     On Error GoTo 0
 
 End Sub
@@ -4290,7 +4381,18 @@ Sub 選んだ3列で月別ピボットを作る()
     ' 見出し: なし
     ' 選ぶ列: 3
     ' 形: 数の列 日付の列
+    ' 列は頼みから: 行 列 値
     ' 選んでいる3列（外側行・内側行・値）を使い、日付列を月でグループ化した月別ピボットをシートに作る
+    ' 列を選ばずに頼みの文で頼まれたら（「部署別・月別に金額をピボットで」）、頼みの文で列を決める ピボットを作る に渡す（2026-10-09）
+
+    If Len(先撃ちの頼みの文()) > 0 Then
+        Dim 選んだ数 As Long
+        If TypeName(Selection) = "Range" Then 選んだ数 = Selection.Areas.Count
+        If 選んだ数 < 3 Then
+            選んだ3列でピボットを作る
+            Exit Sub
+        End If
+    End If
 
     Dim ws As Worksheet
     Dim wb As Workbook
@@ -5571,7 +5673,7 @@ End Sub
 
 Sub 積み上げ縦棒グラフを作る()
     ' 依頼の語: 積み上げ縦棒|積み上げ棒グラフ|積み上げグラフ|積み上げの棒|積み上げの縦棒|内訳を積み上げ|構成を積み上げ
-    ' 依頼の組: 積み上げ,積上げ+グラフ,棒,見せ
+    ' 依頼の組: 積み上げ,積上げ+グラフ,棒,見せ+-変え,替え,種類
     ' 扱う: 積み上げグラフ 合計 ピボット
     ' 見出し: なし
     ' 形: 数の列
@@ -6107,7 +6209,7 @@ End Sub
 
 Sub 推移の折れ線グラフを作る()
     ' 依頼の語: 推移グラフ|推移を折れ線|いつもの推移|推移のグラフ|見せ方の折れ線|グラフでお願|推移をいつも|支出の推移|折れ線グラフ
-    ' 依頼の組: 推移,折れ線,移り変わり+グラフ,見せ,線+-スパーク,セル,小さ,棒
+    ' 依頼の組: 推移,折れ線,移り変わり+グラフ,見せ,線+-スパーク,セル,小さ,棒,変え,替え,種類
     ' 扱う: 推移グラフ グラフ 合計
     ' 見出し: なし
     ' 形: 数の列
@@ -6652,7 +6754,7 @@ End Sub
 
 Sub 選んだ列の項目別件数表を右に作る()
     ' 依頼の語: 項目別件数|ごとの件数|の件数を数え|COUNTIF|項目ごとに何件|項目ごとの件数|選んだ列で項目|項目別の件数|件数表を右|列で件数
-    ' 依頼の組: ごと,別,項目+件数,何件,数え+-度数,区間,金額帯,価格帯,階級,空欄,重複,上位,平均
+    ' 依頼の組: ごと,別,項目+件数,何件,数え+-度数,区間,金額帯,価格帯,階級,空欄,重複,上位,平均,グラフ,ピボット
     ' 扱う: 項目別件数 COUNTIF件数表 合計 行を足す
     ' 見出し: なし
     ' 選ぶ列: 1
@@ -10894,4 +10996,217 @@ Sub 左右に並んだ表を突き合わせる()
     Set m仕上げ手本 = ws.Cells(hdr, chkCol - 1)
     Set m仕上げ範囲 = ws.Range(ws.Cells(hdr, chkCol), ws.Cells(lastR, chkCol))
     Call 表の仕上げ
+End Sub
+
+Sub 頼みの文でピボットを手直しする()
+    ' 依頼の語: も行に|も列に|行に足|列に足|行に追加|列に追加|に絞|だけに絞|だけ表示|だけにして|以外を|上位|下位|トップ|大きい順|多い順|小さい順|少ない順|絞り込みを解除|件数に変|平均に変|合計に変|最大に変|最小に変|行から外|列から外|を外して|以外にして|以外に絞|以外を表示|件数にして|平均にして|合計にして|最大にして|最小にして|件数で見|平均で見
+    ' 依頼の組: ピボット,この表,これ,行,列+足し,追加,加え,外し,消し,絞,だけ,のみ,以外,順,上位,下位,トップ,件数に,平均に,合計に,最大に,最小に,変え,解除+-グラフ,値だけ,値で貼,値貼,値に変,範囲,累計,表形式,体裁,デザイン,見た目,作って,作る,作成,テーブルに,抜き出,シート
+    ' 扱う: ピボット 絞り込 並べ替 上位 集計 平均 件数
+    ' 見出し: なし
+    ' 列は頼みから: 手直し
+    ' 形: ピボット
+    ' 前に出ているピボットを頼みの文で手直しする（2026-10-09）: 「担当者も行に足して」「区分を列から外して」「総務課だけに絞って」
+    ' 「総務課以外」「大きい順に」「上位3件だけ」「平均に変えて」「件数にして」「絞り込みを解除」。ピボットグラフはついてくる。
+    ' ピボットのシートでないとき・頼みの文が無いときは何もしない（AI に回る）。分からない頼みは直さずに、できる頼みを返す
+
+    Dim ws As Worksheet, pt As PivotTable, df As PivotField, pf As PivotField, pi As PivotItem, 行 As PivotField
+    Dim 生 As String, 頼 As String, した As String, 当 As String, 集計 As Long, p As Long, n As Long, i As Long
+    Dim 足す As Boolean, 外す As Boolean, 絞る As Boolean, 以外 As Boolean, 当たり As Long, 当て名 As String, 一覧 As String
+    Dim 語 As Variant, 後 As String
+
+    生 = 先撃ちの頼みの文()
+    If Len(生) = 0 Then Exit Sub
+    Set ws = ActiveSheet
+    If ws.PivotTables.Count = 0 Then Exit Sub
+    Set pt = ws.PivotTables(1)
+    頼 = ピボットの語ならし(生)
+    If pt.DataFields.Count > 0 Then Set df = pt.DataFields(1)
+    足す = 含む語(頼, "足|追加|加え|入れ|も行|も列")
+    外す = 含む語(頼, "外|消|除|削除|なくし|いらない|要らない")
+    絞る = 含む語(頼, "だけ|のみ|絞")
+    以外 = 含む語(頼, "以外")
+
+    On Error Resume Next
+    ' 1. 絞り込みを解除
+    If 含む語(頼, "解除|全部表示|すべて表示|全て表示|元に戻") Then
+        pt.ClearAllFilters
+        した = した & "・絞り込みを解除"
+    End If
+    ' 2. フィールドを足す・外す（見出しの言い換えでも当てる。数の列を足すときは値に）
+    For Each pf In pt.PivotFields
+        p = 見出しの語の位置(頼, pf.Name, 当)
+        If p > 0 And Len(当) > 0 Then
+            後 = Mid$(頼, p + Len(当), 2)
+            If 足す And pf.Orientation = xlHidden Then
+                If pf.DataType = xlNumber And Not (Left$(後, 1) = "別" Or 後 = "ごと") Then
+                    pt.AddDataField pf, , xlSum
+                    した = した & "・" & pf.Name & " を値に足した"
+                ElseIf ピボットの置き場(頼, 当) = 2 Then
+                    pf.Orientation = xlColumnField
+                    した = した & "・" & pf.Name & " を列に足した"
+                Else
+                    pf.Orientation = xlRowField
+                    pf.Position = pt.RowFields.Count
+                    した = した & "・" & pf.Name & " を行に足した"
+                End If
+            ElseIf 外す And Not 絞る And Not 以外 And (pf.Orientation = xlRowField Or pf.Orientation = xlColumnField) Then
+                pf.Orientation = xlHidden
+                した = した & "・" & pf.Name & " を外した"
+            End If
+        End If
+    Next pf
+    ' 3. 集計の種類を変える（件数・平均・最大・最小・合計）
+    集計 = 頼みの集計(生)
+    If 集計 <> xlSum Or InStr(頼, "合計に") > 0 Or InStr(頼, "合計で") > 0 Then
+        For i = 1 To pt.DataFields.Count
+            pt.DataFields(i).Function = 集計
+            pt.DataFields(i).NumberFormat = "#,##0"
+            pt.DataFields(i).Caption = Choose(Abs(集計 = xlCount) + 1, IIf(集計 = xlSum, "合計 / ", "") & pt.DataFields(i).SourceName & _
+                IIf(集計 = xlAverage, "の平均", IIf(集計 = xlMax, "の最大", IIf(集計 = xlMin, "の最小", ""))), "件数")
+        Next i
+        If pt.DataFields.Count > 0 Then した = した & "・値を" & Choose(Abs(集計 = xlCount) + 1, IIf(集計 = xlAverage, "平均", IIf(集計 = xlMax, "最大", IIf(集計 = xlMin, "最小", "合計"))), "件数") & "に"
+        Set df = pt.DataFields(1)
+    End If
+    ' 4. 項目で絞る（「総務課だけ」「総務課と企画課だけ」）・除く（「総務課以外」）
+    If 絞る Or 以外 Then
+        For Each pf In pt.VisibleFields
+            If pf.Orientation = xlRowField Or pf.Orientation = xlColumnField Or pf.Orientation = xlPageField Then
+                当たり = 0: 当て名 = ""
+                For Each pi In pf.PivotItems
+                    If Len(ピボットの語ならし(pi.Name)) > 0 And InStr(1, 頼, ピボットの語ならし(pi.Name), vbBinaryCompare) > 0 Then
+                        当たり = 当たり + 1
+                        当て名 = 当て名 & "・" & pi.Name
+                    End If
+                Next pi
+                If 当たり > 0 Then
+                    If 以外 Then
+                        For Each pi In pf.PivotItems
+                            If InStr(1, 頼, ピボットの語ならし(pi.Name), vbBinaryCompare) > 0 Then pi.Visible = False
+                        Next pi
+                        した = した & "・" & pf.Name & " から " & Mid$(当て名, 2) & " を除いた"
+                    Else
+                        pf.ClearAllFilters
+                        For Each pi In pf.PivotItems
+                            pi.Visible = (InStr(1, 頼, ピボットの語ならし(pi.Name), vbBinaryCompare) > 0)
+                        Next pi
+                        した = した & "・" & pf.Name & " を " & Mid$(当て名, 2) & " だけに"
+                    End If
+                End If
+            End If
+        Next pf
+    End If
+    ' 5. 並べ替え・上位／下位
+    If pt.RowFields.Count > 0 And Not df Is Nothing Then
+        Set 行 = pt.RowFields(1)
+        n = 0
+        For Each 語 In Array("上位", "トップ", "ベスト", "下位", "ワースト")
+            p = InStr(1, 頼, 語, vbBinaryCompare)
+            If p > 0 Then
+                n = val(Mid$(頼, p + Len(語)))
+                If n <= 0 Then n = 5
+                行.ClearValueFilters
+                If 語 = "下位" Or 語 = "ワースト" Then
+                    行.PivotFilters.Add2 Type:=xlBottomCount, dataField:=df, Value1:=n
+                    行.AutoSort xlAscending, df.Name
+                    した = した & "・下位 " & n & " 件だけに"
+                Else
+                    行.PivotFilters.Add2 Type:=xlTopCount, dataField:=df, Value1:=n
+                    行.AutoSort xlDescending, df.Name
+                    した = した & "・上位 " & n & " 件だけに"
+                End If
+                Exit For
+            End If
+        Next 語
+        If n = 0 Then
+            If 含む語(頼, "大きい順|多い順|降順|高い順") Then
+                行.AutoSort xlDescending, df.Name
+                した = した & "・" & 行.Name & " を大きい順に"
+            ElseIf 含む語(頼, "小さい順|少ない順|昇順|低い順") Then
+                行.AutoSort xlAscending, df.Name
+                した = した & "・" & 行.Name & " を小さい順に"
+            End If
+        End If
+    End If
+    On Error GoTo 0
+
+    If Len(した) = 0 Then
+        For Each pf In pt.PivotFields
+            一覧 = 一覧 & "・" & pf.Name
+        Next pf
+        先撃ちに断る "ピボットをどう直すか分かりませんでした。頼み方の例: 「担当者も行に足して」「総務課だけに絞って」「大きい順に」" & _
+            "「上位3件だけ」「平均に変えて」「絞り込みを解除して」。フィールド: " & Mid$(一覧, 2)
+        Exit Sub
+    End If
+    ピボットをいつもの形にそろえる
+    Application.StatusBar = "ピボットを直しました: " & Mid$(した, 2)
+End Sub
+
+
+Sub 頼みの文でグラフの種類を変える()
+    ' 依頼の語: 折れ線に変|横棒に変|縦棒に変|円グラフに変|棒グラフに変|積み上げに変|グラフの種類|グラフを折れ線|グラフを横棒|グラフを円|グラフを縦棒|グラフを積み上げ|グラフを棒|折れ線にして|横棒にして|縦棒にして|面グラフに
+    ' 依頼の組: グラフ,これ,この+変え,替え,種類,にして,に直+-見た目,体裁,フォント,凡例,デザイン,そろえ,揃え,作って,作る,作成,で見,スパーク,ダッシュボード
+    ' 扱う: グラフ 折れ線 横棒 縦棒 円グラフ 積み上げ
+    ' 見出し: なし
+    ' 列は頼みから: 種類
+    ' 形: グラフ
+    ' 前に出ているシートのグラフの種類を頼みの文で変える（2026-10-09）: 「折れ線に変えて」「横棒にして」「円グラフに変えて」「積み上げにして」。
+    ' 棚が作ったグラフ（名前の頭「棚_」）の最後の 1 つ、無ければシートの最後のグラフ。値・項目・ピボットとのつながりはそのまま
+
+    Dim ws As Worksheet, co As ChartObject, ch As Chart, i As Long, 頼 As String, 型 As Long, 種類 As String
+    頼 = ピボットの語ならし(先撃ちの頼みの文())
+    If Len(頼) = 0 Then Exit Sub
+    Set ws = ActiveSheet
+    If ws.ChartObjects.Count = 0 Then Exit Sub
+    For i = ws.ChartObjects.Count To 1 Step -1
+        If Left$(ws.ChartObjects(i).Name, 2) = "棚_" Then Set co = ws.ChartObjects(i): Exit For
+    Next i
+    If co Is Nothing Then Set co = ws.ChartObjects(ws.ChartObjects.Count)
+    Set ch = co.Chart
+
+    If InStr(頼, "折れ線") > 0 Then
+        型 = xlLineMarkers: 種類 = "折れ線"
+    ElseIf InStr(頼, "円") > 0 Or InStr(頼, "パイ") > 0 Then
+        型 = xlPie: 種類 = "円"
+    ElseIf InStr(頼, "ドーナツ") > 0 Then
+        型 = xlDoughnut: 種類 = "ドーナツ"
+    ElseIf InStr(頼, "面") > 0 Then
+        型 = xlArea: 種類 = "面"
+    ElseIf InStr(頼, "積み上げ") > 0 Or InStr(頼, "積上げ") > 0 Then
+        型 = IIf(InStr(頼, "横") > 0, xlBarStacked, xlColumnStacked): 種類 = "積み上げ"
+    ElseIf InStr(頼, "横棒") > 0 Or InStr(頼, "横向き") > 0 Then
+        型 = xlBarClustered: 種類 = "横棒"
+    ElseIf InStr(頼, "縦棒") > 0 Or InStr(頼, "棒") > 0 Then
+        型 = xlColumnClustered: 種類 = "縦棒"
+    Else
+        先撃ちに断る "グラフをどの種類に変えるか分かりませんでした。頼み方の例: 「折れ線に変えて」「横棒にして」「円グラフに変えて」「積み上げにして」"
+        Exit Sub
+    End If
+    If 型 = xlPie And ch.SeriesCollection.Count > 1 Then
+        先撃ちに断る "系列が " & ch.SeriesCollection.Count & " 本あるグラフ（" & co.Name & "）は円グラフにできません。棒か折れ線で頼んでください。"
+        Exit Sub
+    End If
+
+    ch.ChartType = 型
+    On Error Resume Next
+    If 型 = xlPie Or 型 = xlDoughnut Then
+        ch.HasLegend = True
+        ch.Legend.Position = xlLegendPositionRight
+        ch.SeriesCollection(1).HasDataLabels = True
+        ch.SeriesCollection(1).DataLabels.ShowPercentage = True
+        ch.SeriesCollection(1).DataLabels.ShowValue = False
+        ch.SeriesCollection(1).DataLabels.ShowCategoryName = False
+    Else
+        ch.Axes(xlValue).TickLabels.NumberFormat = "#,##0"
+        ch.Axes(xlCategory).ReversePlotOrder = (型 = xlBarClustered Or 型 = xlBarStacked)
+        If 型 = xlColumnStacked Or 型 = xlBarStacked Then ch.SeriesCollection(1).HasDataLabels = False
+        If ch.SeriesCollection.Count > 1 Then
+            ch.HasLegend = True
+            ch.Legend.Position = xlLegendPositionRight
+        End If
+        For i = 1 To ch.SeriesCollection.Count
+            If ch.SeriesCollection(i).HasDataLabels Then ch.SeriesCollection(i).DataLabels.NumberFormat = "#,##0"
+        Next i
+    End If
+    On Error GoTo 0
+    Application.StatusBar = co.Name & " を" & 種類 & "にしました"
 End Sub

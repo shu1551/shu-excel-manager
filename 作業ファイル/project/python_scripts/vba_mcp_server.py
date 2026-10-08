@@ -315,8 +315,9 @@ _RELOAD_ORDER = ['vbam_core', 'vbam_view', 'vbam_edit', 'vbam_vba', 'vbam_form2v
                  'vbam_recipes', 'vbam_heavy',
                  # 2026-09-11 の分割: 下の層から順に（from X import * で結んでいるので、依存の順でないと古い物が残る）
                  'vbam_keys', 'vbam_ai', 'vbam_hands', 'vbam_inv', 'vbam_ledger', 'vbam_undo', 'vbam_grade', 'vbam_view_ai',
-                 'vbam_agent', 'vbam_fire', 'vbam_macro', 'vbam_clean', 'vbam_shake',
-                 'vbam_prefire', 'vbam_forge',   # 2026-09-17 先撃ちの登録簿と鍛える回路（vbam_agent の上・遅延 import）
+                 'vbam_agent', 'vbam_macro', 'vbam_clean',
+                 'vbam_objects', 'vbam_rehearse',   # 2026-10-08 先撃ちの試し撃ち（鍛える回路を外したとき vbam_forge から移した）
+                 'vbam_prefire',   # 2026-09-17 先撃ちの登録簿（vbam_agent の上・遅延 import）
                  'format_bas',              # 2026-09-16 format-module の中身（vbam_devtools が関数の中で import する）
                  'vbam_devtools',           # 2026-09-16 職場向けの手（vbam_core・vbam_vba の上・vba_manager の下）
                  'vbam_lineage',            # 2026-09-17 系譜と閉じたブック（vbam_devtools の上）
@@ -892,12 +893,10 @@ def agent(request: str = "", sheet: str = "", mode: str = "", macro: str = "", m
           dry_run: bool = False, new_book: bool = False, ai: str = "", model: str = "", recipe: str = "",
           cont: bool = False, undo: bool = False, force: bool = False,
           no_image: bool = False, image: bool = False, no_grade: bool = False, grade: bool = False,
-          score: bool = False,
           rehearse: bool = False, grade_ai: str = "", grade_model: str = "",
-          runs: bool = False, cases: bool = False, keep_case: str = "",
-          drop_case: str = "", backups: bool = False, undo_to: str = "",
+          runs: bool = False, backups: bool = False, undo_to: str = "",
           recipes: bool = False, request_file: str = "", wait: bool = True,
-          changes: bool = False, prune_days: int = 0, shake: str = "", only: str = "", imagine: int = 0) -> str:
+          changes: bool = False, prune_days: int = 0) -> str:
     """依頼文を 1 つ渡すと、道具（Python）が Excel のアクティブブックにループを回す薄い入口。
 
     使い方（要点）:
@@ -913,15 +912,11 @@ def agent(request: str = "", sheet: str = "", mode: str = "", macro: str = "", m
       prune_days=N で控えの置き場の N 日より古いものを数えて見せる（force=True のときだけ消す）。
       dry_run=True は Excel に触らず 1 往復目の手だけ見る。
     - 見る: changes=True（直前の仕事で変わったセルの明細＝シート・番地・前・後と書式の変化。Excel に触らない）／
-      runs=True（本番の走行台帳。人が戻した・保存した印つき）／score=True（実射の点数）／cases=True・
-      keep_case="名前"・drop_case="名前"（本番の走行を弾にする）。
+      runs=True（本番の走行台帳。人が戻した・保存した印つき）。
     - 調整: max_turns（既定 4。関所の差し戻しは別枠）／image=True（AI に画像を見せる。既定は見せない＝2026-09-08 に反転。
       no_image は互換のため残っているだけ）／no_grade=True（採点を
       止める）／grade_ai・grade_model（採点だけ別の AI）／ai・model（既定 claude-code＝ヘッドレスの Claude Code・sonnet・
       鍵なし。gemini／claude は API 鍵）／request_file（依頼文をファイルで）。
-    - 揺らし（2026-09-11 夜）: shake="latest"（直前の記録）か記録のパスで、返事を Python で書き換えた 22 通りを
-      AI なしで開いているブックに再生（一発合格しなかった版＝直す候補）。imagine=N で AI（既定 haiku）に N 通り
-      書かせた版も足す。only="名前,名前" で絞る。dry_run=True は版の一覧だけ。
     - wait=False は待たずにジョブ id を返し、agent_status(id) で様子を見る。
     - 道具の .py を直した後は reload_tools() で読み直せる（サーバーの再起動は要らない）。
     仕組みの詳細（手 44 本・関所・不変条件・控え・台帳・経緯）は excel-vba-manager の SKILL.md「agent」の段にある。
@@ -955,8 +950,6 @@ def agent(request: str = "", sheet: str = "", mode: str = "", macro: str = "", m
             cmd += " --force"
     if backups:
         cmd += " --backups"
-    if drop_case:
-        cmd += " --drop-case " + shlex.quote(drop_case)
     if no_image:
         cmd += " --no-image"
     if image:
@@ -965,21 +958,8 @@ def agent(request: str = "", sheet: str = "", mode: str = "", macro: str = "", m
         cmd += " --no-grade"
     if grade:
         cmd += " --grade"                      # 一発で通った回でも採点する（既定はその回だけ省く・2026-09-11）
-    if shake:
-        # 揺らし（2026-09-11 夜）: shake="latest" で直前の記録、パスならその記録。only="名前,名前" で絞る
-        cmd += " --shake" + ("" if shake == "latest" else " " + shlex.quote(shake))
-        if only:
-            cmd += " --only " + shlex.quote(only)
-        if imagine:
-            cmd += f" --imagine {int(imagine)}"      # AI に N 通り書かせた版も足す（1 往復・既定 haiku）
-    if score:
-        cmd += " --score"
     if runs:
         cmd += " --runs"
-    if cases:
-        cmd += " --cases"
-    if keep_case:
-        cmd += " --keep-case " + shlex.quote(keep_case)
     if grade_ai:
         cmd += " --grade-ai " + shlex.quote(grade_ai)
     if grade_model:
