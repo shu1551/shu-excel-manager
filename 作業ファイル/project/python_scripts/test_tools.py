@@ -1236,35 +1236,14 @@ def test_injection_route_ledger():
         ('test_e2e_com.py', 'book'),                  # E2E の使い捨てブック生成。固定リテラルの
                                                       # テストコードのみ＝外から名前が流入しない
         ('test_e2e_com.py', 'gate_book'),             # 同上（2026-08-23 gate / rehearse 用。固定リテラルのみ）
-        # 2026-09-03: agent --fire（macro）の練習台。一時フォルダの使い捨てブックに、固定リテラルの
-        # 壊れたマクロ（_FIRE_MACRO_CASES）を植えて修理させるだけ＝外から名前が流入しない。
-        # AI が返す書き換えは replace-procedure / code-replace 経由（識別子検査はそちら）
-        # 2026-09-11: 実射は vbam_fire.py へ切り出した（中身は同じ）
-        ('vbam_fire.py', '_fire_macro_cases'),
-        # 2026-09-11 夜: agent --exam --by-macro。AI の代わりにマクロで試験を撃つとき、道具が起こした Excel の
-        # 使い捨ての新しいブックへ .bas を取り込む。取り込む前に exam() が _check_bas_one（文字コード・識別子）を通す。
-        # 人のブックには書かない（台本は子プロセスの文字列＝_probe_source の中）
-        ('vbam_exam.py', '_probe_source'),
         # 2026-09-17: compile の行名指しの E2E。使い捨てブック（book fixture）に固定リテラルの壊れた Sub を
         # 植えて全体コンパイルを押すだけ＝外から名前が流入しない。人のブックには書かない
         ('test_e2e_com.py', 'test_compile_names_the_failing_line'),
-        # 2026-09-17: 鍛える回路（agent --forge）。AI が書いたマクロを、道具が起こした Excel の使い捨ての新しいブックへ
-        # .bas で取り込み、撃つ前のブックの写しに撃って値で突き合わせる。取り込む前に _check_bas（文字コード・識別子）と
-        # _validate_code（Sub 1 本・引数なし・Function なし・既定の名前と重ねない）を通す。人のブックには書かない。
-        # 合格したコードの登録は add-procedure／replace-procedure 経由（識別子検査はそちら）
-        # 2026-09-17 夕: 別の表でも試すため、1 つの Excel で写しを順に撃つ _run_on_copies に移した（中身は同じ）
-        ('vbam_forge.py', '_run_on_copies'),
         # 2026-09-17 夕: 先撃ちの試し撃ち。人の Excel で撃つ前に、道具が起こした Excel の使い捨てのブックへ、人の Excel に
         # 既に登録されている「表の整理」の本文と固定の台（鍛冶_撃つN）を入れ、ブックの写しに撃つ。台に埋める名前は
         # 登録簿（Sub 宣言の正規表現で取った名前）と既定のマクロ名だけ。人のブックには書かない
-        ('vbam_forge.py', 'rehearse_steps'),
-        # 2026-09-17 夜: 修理の試験（agent --mend）の子プロセス。前の表の写し（一時の置き場）に、鍛えた台帳の
-        # マクロを Python が 1〜2 行だけ壊したコードを入れて、macro モードに直させる。Sub 名・識別子は鍛えたとき
-        # （_validate_code・check-bas を通った物）のまま変えない。人のブックには書かない（台本は _probe_source の中）
-        ('vbam_mend.py', '_probe_source'),
-        # 同じ夜: 表の書き方と罫線と列幅をそろえる を修理の試験に載せる正解づくり。使い捨ての新しいブックに 表の整理.bas から抜いた元の Sub と
-        # 固定の台（鍛冶_撃つ・名前は Sub 宣言から取った 表の書き方と罫線と列幅をそろえる だけ）を入れ、試験の表の写しに撃つ。人のブックには書かない
-        ('vbam_mend.py', '_capture'),
+        # 2026-10-08: 鍛える回路（vbam_forge・実射・試験・修理）を外したとき、この部品だけ vbam_rehearse.py へ移した（中身は同じ）
+        ('vbam_rehearse.py', 'rehearse_steps'),
     }
     found = set()
     for fname in sorted(os.listdir(base)):
@@ -2568,7 +2547,7 @@ def test_write_helpers_exposed_by_recipe_fire():
 
 _JA_ALIASES = {'健康診断', '影響範囲', '予行演習', 'テスト',
                '全体コンパイル', '関所', 'フォーム書き出し', '配線図', 'エージェント',
-               'キー設定', 'キー削除'}
+               'キー設定', 'キー削除', 'format'}
 
 
 def test_capabilities_classifies_every_command():
@@ -2998,18 +2977,20 @@ def test_tidy_evens_out_a_mixed_number_format_20260911():
 
 
 @_needs_srv
-def test_mcp_agent_passes_backups_undo_to_and_drop_case(monkeypatch):
-    """MCP の agent ツールにも同じ口（backups／undo_to／drop_case）。"""
+def test_mcp_agent_passes_backups_and_undo_to(monkeypatch):
+    """MCP の agent ツールにも同じ口（backups／undo_to）。本番の弾（drop_case 等）は 2026-10-08 に鍛える回路ごと外した。"""
+    import inspect
     import vba_mcp_server as ms
     seen = []
     monkeypatch.setattr(ms, "_submit", lambda line, timeout=600: seen.append(line) or "ok")
     fn = ms.agent.fn if hasattr(ms.agent, 'fn') else ms.agent
     fn(backups=True)
     fn(undo_to="2", force=True)
-    fn(drop_case="観光")
     assert seen[0].endswith("--backups")
     assert "--undo 2 --force" in seen[1]
-    assert "--drop-case" in seen[2] and "観光" in seen[2]
+    params = inspect.signature(fn).parameters
+    for gone in ("drop_case", "keep_case", "cases", "score", "shake", "imagine", "only"):
+        assert gone not in params, gone
 
 
 # ================================================================
@@ -3909,6 +3890,19 @@ def test_duplicates_are_matched_through_spelling_and_lost_rows_are_seen_20260911
     assert vh._no_twin(rows_b, 0, {3}) == [3]                         # 状態の違う行は消させない
     notes_b = "\n".join(vv.dirt_notes(rows_b, r0=5, c0=1, header_idx=0))
     assert "重複の疑い" in notes_b and "行8 と 行6（状態が違う）" in notes_b
+
+
+def test_near_dup_skips_almost_empty_row_20261008():
+    """式の 0 と #DIV/0! だけ残った空の行が、違う行と「重複の疑い」の組になっていた（2026-10-08 初見の受注の表）。"""
+    import vbam_hands as vh
+    rows = [["受注日", "得意先", "品名", "個数", "単価", "金額", "備考", "単価率"],
+            ["2026/04/01", "北日本商事", "ボールペン", 12, 120, 1440, "", 120],
+            ["2026/04/03", "北日本商事", "ボールペン", 30, 120, 3600, "金額が空", 120],
+            ["", "", "", "", "", 0, "", "#DIV/0!"],
+            ["2026/04/07", "アキタ文具", "クリアファイル", 200, 45, 9999, "", 49.995],
+            ["2026/04/12", "南商店", "ノート", 0, 150, 0, "", "#DIV/0!"],
+            ["2026/04/15", "南商店", "ノート", 40, 150, 6000, "", 150]]
+    assert all(3 not in (i, k) for i, k, _ in vh._near_dup_pairs(rows, 0))
 
 
 def test_normalize_reads_yen_man_english_dates_and_lowercases_20260911():
@@ -5277,3 +5271,77 @@ def test_更新登録のボタン控えはアドインのマクロだけ拾う()
     assert f('[1]!ほかのマクロ', '秀コンボ.xlam', names) == ''
     assert f('', '秀コンボ.xlam', names) == ''
     assert f('Excelコンボ', '秀コンボ.xlam', names) == ''
+
+
+def test_phone_format_recovers_leading_zero_and_numeric():
+    """電話番号の先頭0落ち（9桁市外局番・10桁携帯）および数値型セルの自動補正（2026-10-04）。"""
+    assert vh._phone_format(312345678) == '03-1234-5678'
+    assert vh._phone_format('529511111') == '052-951-1111'
+    assert vh._phone_format(662031234) == '06-6203-1234'
+    assert vh._phone_format('112111111') == '011-211-1111'
+    assert vh._phone_format(9012345678) == '090-1234-5678'
+    assert vh._phone_format('03-1234-5678') == '03-1234-5678'
+
+
+def test_normalize_value_postal_numeric():
+    """郵便番号の数値型補正（2026-10-04）。"""
+    assert vh._normalize_value(1000001, [('postal', None)])[0] == '100-0001'
+    assert vh._normalize_value(600001, [('postal', None)])[0] == '060-0001'
+
+
+def test_clean_plan_detects_phone_postal_number():
+    """clean_plan が見出し・値から phone, postal, number 規則を自動計画に含めること（2026-10-04）。"""
+    grid = [
+        ['ID', '電話番号', '郵便番号', '勘定科目', '金額'],
+        [1, '312345678', 1000001, '交通費', '￥3,500'],
+        [2, '03-1234-5678', '100-0001', '旅費交通費', 5000],
+    ]
+    plan = vc.clean_plan(grid, 0)
+    assert 'phone' in plan['rules'].get(1, [])
+    assert 'postal' in plan['rules'].get(2, [])
+    assert 'number' in plan['rules'].get(4, [])
+
+
+def test_account_titles_are_never_renamed_20261008():
+    """勘定科目の名前は言い換えない（交通費と旅費交通費が混ざっていても・科目の体系は組織ごとに違う）。"""
+    grid = [['勘定科目', '金額'], ['交通費', 100], ['旅費交通費', 200], ['消耗品', 300]]
+    assert vc.clean_plan(grid, 0)['rules'].get(0, []) == []
+    assert 'acct' not in vh._NORMALIZE_RULES
+
+
+def test_seiri_does_not_fire_the_full_auto_repair_or_rewrite_error_formulas_20261007():
+    """seiri は使う人の値と形を変えるマクロ撃ちを撃たない・エラーの式を勝手に書き換えない（番地で報告するだけ）。"""
+    import pathlib
+    import vbam_view as vw
+    src = pathlib.Path(vw.__file__).read_text(encoding="utf-8")
+    body = src.split("def cmd_seiri(", 1)[1]
+    assert "'マクロ撃ち'" not in body and "表の自律修復" not in body
+    assert "c.Formula =" not in body
+
+
+def test_seiri_report_shelves_fire_only_when_asked_and_shapes_need_a_human_20261007(monkeypatch):
+    import vbam_prefire as vp
+    import vbam_view as vw
+    monkeypatch.setattr(vp, "shelf_pick", lambda p, e: "重複している行を右に報告する")
+    assert vw._seiri_request_plan("重複を直して", []) == []
+    assert vw._seiri_request_plan("重複している行を報告して", []) == ["重複している行を右に報告する"]
+    assert vw._seiri_needs_human("シートの図形と画像を全部削除する", "マクロの付いていない図形 1個")
+
+
+def test_clean_plan_skips_number_rules_on_money_heads_20261008():
+    """「電話料」「郵便代」は金額の列＝電話番号・郵便番号の規則を当てない。"""
+    grid = [['電話番号', '電話料', '郵便番号', '郵便代'],
+            ['312345678', 1234567, 1000001, 1000001],
+            ['03-1234-5678', 2345, '100-0001', 84]]
+    rules = vc.clean_plan(grid, 0)['rules']
+    assert 'phone' in rules.get(0, []) and 'phone' not in rules.get(1, [])
+    assert 'postal' in rules.get(2, []) and 'postal' not in rules.get(3, [])
+
+
+def test_cmd_test_has_no_book_specific_cleanup_20261007():
+    """test の後始末に特定のブック名・モジュール名を書かない（対象は今開いているブック）。"""
+    import pathlib
+    import vbam_vba as vvba
+    src = pathlib.Path(vvba.__file__).read_text(encoding="utf-8")
+    body = src.split("def cmd_test(", 1)[1].split("\ndef ", 1)[0]
+    assert "秀コンボ" not in body and "modMacroUchi50" not in body

@@ -16,7 +16,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import vba_manager as vm
 import form_layout as fl
 import form_inspect as fi
-import vbam_fire as vf                # 実射（練習台・弾・状態・写し取り・点数）は 2026-09-11 に別ファイルへ
 import vbam_view_ai as vva               # vv は vbam_vba（1844 行目）で使っている
 import vbam_grade as vg
 import vbam_undo as vu
@@ -161,8 +160,6 @@ def test_agent_is_wired():
                                       "--model", "gemini-3.7-flash", "--max-turns", "3", "--dry-run"])
     assert ns.command == "agent" and ns.posargs == ["郵便番号を揃えて"] and ns.sheet_opt == "テスト用4"
     assert ns.ai == "gemini" and ns.max_turns == "3" and ns.dry_run and not unknown
-    ns = p.parse_args(["agent", "--fire", "金額の合計"])
-    assert ns.fire and ns.posargs == ["金額の合計"]
 
 
 def test_agent_prompt_and_reply_shape():
@@ -554,15 +551,6 @@ def test_agent_macro_actions_and_guards():
             vmac._macro_action_to_tokens(bad)
     assert vmac._find_macro_in_request("集計テスト が動かない", ["集計", "集計テスト", "印字"]) == "集計テスト"
     assert vmac._find_macro_in_request("何も無い", ["集計"]) is None
-    # 実射の弾（macro）は修理 9 本＋新規作成 1 本。修理の弾は壊れたコード・依頼文・期待するセルを持つ
-    # （2026-09-04 夜に 4 本 → 10 本。現場で実際に出る止まり方を足した＝母数不足の是正）
-    assert [c["name"] for c in vf._FIRE_MACRO_CASES] == ["コンパイルエラーの修理", "打ち間違いの修理",
-                                                          "存在しないマクロ呼びの修理", "新しいマクロを作る",
-                                                          "存在しないシート", "型が一致しません", "Set の付け忘れ",
-                                                          "引数付きで実行できない", "エラーは出ないが数が合わない",
-                                                          "合計が0になる"]
-    assert all(c["macro"] in c["code"] and c["request"] and c["expect"]
-               for c in vf._FIRE_MACRO_CASES if not c.get('create'))
 
 
 def test_agent_macro_create_hand_and_route():
@@ -587,11 +575,6 @@ def test_agent_macro_create_hand_and_route():
     assert va._route("マクロを追加して", macro_names=[]) == 'macro'
     assert va._route("数式が動かない", macro_names=["集計"]) == 'sheet'
     assert va._route("VBA で作った表を新しいシートに写して", macro_names=["集計"]) == 'build'
-    # 実射の弾（新しく作る）は code を植えず、依頼文にシート名とモジュール名が入る
-    case = [c for c in vf._FIRE_MACRO_CASES if c.get('create')][0]
-    assert 'code' not in case and case['macro'] == "実射の集計を書く"
-    req = case['request'].format(sheet="実射4", module="M実射4")
-    assert "実射4" in req and "M実射4" in req and case['expect'] == {"A1": "合計", "B1": 60}
 
 
 def test_agent_pins_target_book(tmp_path):
@@ -707,12 +690,6 @@ def test_agent_big_table_profile_and_hands():
     big = "x" * 10000
     msg = va._result_prompt([("read A1:F300", True, big), ("write_cells 3 セル", True, big)], 2)
     assert "字を省略" in msg.split("--- 2:")[1] and "字を省略" not in msg.split("--- 2:")[0]
-    # 弾: 300 行の練習台は決め打ちで 4 通りの乱れを含む
-    rows = vf._big_dirty_rows()
-    assert len(rows) == 300 and rows[0][0] == "0001"
-    kinds = {va._shape_of(r[2].strip(va._WS_CHARS)) for r in rows}
-    assert {"999-9999", "9999999", "９９９－９９９９"} <= kinds
-    assert sum(1 for r in rows if isinstance(r[3], str)) == 200 and len(vf._big_match_right()) == 56
 
 
 def test_agent_shows_the_image_to_the_ai(tmp_path, monkeypatch):
@@ -928,42 +905,6 @@ def test_agent_ai_setup_and_fire_cases(tmp_path, monkeypatch):
             os.environ["GEMINI_API_KEY"] = saved
     with pytest.raises(ValueError):
         va._ai_setup("gpt", None)
-    # 実射の弾は sheet 3 本＋重い道具 4 本（2026-09-04）＋ピボットの難しい弾 6 本（同日深夜）、どれも依頼文と答え合わせ
-    # （現物を見る関数）を持つ。練習台は plan_sheet を通る（難しい弾は build で明細 45 行）
-    assert [c["name"] for c in vf.FIRE_CASES] == ["郵便番号の統一", "会員番号で突き合わせ", "金額の合計",
-                                                  "テーブル化", "ピボット集計", "スライサー", "パワークエリで読み込み",
-                                                  "月別×担当の構成比", "売上上位3地域", "前月比", "スライサー2枚連動",
-                                                  "ピボットグラフ", "データモデルの平均単価",
-                                                  # 2026-09-09: 既存のピボットを「直す」12 本。それまでの
-                                                  # ピボットの弾 8 本は全部「白紙から作る」で、pivot_field /
-                                                  # pivot_calc のほとんどの手は一度も撃たれていなかった
-                                                  "ピボットに列を足す", "ピボットを平均に変える",
-                                                  "ピボットを月別に組み替える", "ピボットの小計と総計を消す",
-                                                  "ピボットを表形式にする", "ピボットに税込を足す",
-                                                  "ピボットの元範囲を広げる", "ピボットを担当で絞る",
-                                                  "ピボットを数量の区分でまとめる", "ピボットの空欄と見た目",
-                                                  "ピボットのフィールドを外して並べ替える", "ピボットと言わずに集計",
-                                                  "300行の掃除", "300行の突き合わせ",
-                                                  "見やすくして", "未入力が分かるように", "合計を出して",
-                                                  "多い順に並べて", "担当ごとの件数",
-                                                  "部署の列を足す",          # 2026-09-06 夜: 手順書「列を足す」を畳んで弾だけ残した
-                                                  "印刷したら切れる", "鈴木さんの分だけ",
-                                                  "金額が足せない", "同じ人が二重",
-                                                  # 2026-09-06: Claude for Excel の失敗型 4 本＋止まるべき弾 3 本
-                                                  "3行目が見出し", "3行目が見出し・列を足す",
-                                                  "行を足すと合計が漏れる", "文字の数字を数値に",
-                                                  # 2026-09-06 夜: 失敗型の残り 2 本＋image の手の弾
-                                                  "月別集計の式が横にコピーできる", "前提シートの参照を伸ばす", "写真を入れる",
-                                                  "写真のファイルが無い", "人の表がある所へ書けと言われる",
-                                                  "見るだけの依頼"]
-    assert all(c["request"] and callable(c["check"]) for c in vf.FIRE_CASES)
-    # 止まるべき弾は、現物が無事なだけでは合格にしない（report で言えたかも見る＝黙殺を不合格にする）
-    weak = [c for c in vf.FIRE_CASES if c.get("kind") == "weak"]
-    assert len(weak) == 10 and sum(1 for c in weak if callable(c.get("check_run"))) == 3
-    assert "weak" in vf._FIRE_GROUPS
-    import vbam_build as vb
-    p = vb.plan_sheet(dict(vf._FIRE_BASE, sheet="実射1"))
-    assert p['header_row'] == 3 and p['first'] == 4 and p['last'] == 9 and p['full_addr'] == 'A3:E9'
 
 
 # ---- 手順書（2026-09-04・20 本を道具の手で回る形に書き直し、練習台と答え合わせを付けた。
@@ -994,23 +935,6 @@ def test_recipes_are_22_and_well_formed():
     assert vr.compose_recipe_request("表と数式の点検").rstrip().endswith("補足: なし")
     with pytest.raises(ValueError):
         vr.compose_recipe_request("無い手順書")
-    # 練習台と答え合わせ: 統合した手順書は練習台を複数持つ（variant）。名前の並びは手順書の並びと同じ
-    names = [c["name"] for c in vr.RECIPE_CASES]
-    assert list(dict.fromkeys(names)) == list(vr.SHEET_RECIPES)
-    assert len(vr.RECIPE_CASES) == 26 and names.count("値を直す") == 3 and names.count("表と数式の点検") == 2
-    assert names.count("印刷とPDF") == 2
-    assert all(callable(c["build"]) and callable(c["check"]) and c["kind"] == "recipe" for c in vr.RECIPE_CASES)
-    # 練習台と答え合わせは弾ごとに別物（2026-09-09: 後から足した手順書が _b25/_k25 という名前を
-    # 先客（印刷とPDF の PDF 側）と取り合い、あとの def が前の def を黙って上書きした。
-    # 全弾で「印刷とPDF（PDF）」の弾に突合の答え合わせが当たり、そこで初めて分かった）
-    for key in ("build", "check"):
-        fns = [c[key] for c in vr.RECIPE_CASES]
-        assert len(set(fns)) == len(fns), (
-            f"{key} を 2 つ以上の弾が共有しています（同じ名前で定義し直していないか）: "
-            + " / ".join(sorted({f.__name__ for f in fns if fns.count(f) > 1})))
-    assert [c["no"] for c in vr.RECIPE_CASES] == list(range(1, 27))
-    assert vr.recipe_case_label(vr.RECIPE_CASES[0]) == "手順書「値を直す」（表記の乱れ）"
-    assert vr.recipe_case_label(vr.RECIPE_CASES[5]) == "手順書「月次の集計表」"
     # 承認の言葉は補足だけで見る（本文の「置き換えてよい」は説明＝承認ではない）
     import vbam_agent as va
     assert va._has_approval(va._approval_scope(vr.compose_recipe_request("値を直す", ""))) is False
@@ -1022,18 +946,6 @@ def test_recipe_option_and_fire_groups():
     p = vm.build_parser()
     ns, unknown = p.parse_known_args(["agent", "--recipe", "値を直す", "置き換えてよい"])
     assert ns.recipe == "値を直す" and ns.posargs == ["置き換えてよい"] and not unknown
-    ns = p.parse_args(["agent", "--fire", "recipe", "表と数式の点検"])
-    assert ns.fire and ns.posargs == ["recipe", "表と数式の点検"]
-    cases = [{"name": "a", "kind": "sheet"}, {"name": "b", "kind": "macro"}, {"name": "c", "kind": "recipe"}]
-    picked, unknown = vf._select_fire_cases(cases, None)
-    assert [c["name"] for c in picked] == ["a", "b", "c"] and not unknown
-    # 組の名前と弾の名前を混ぜたら弾の名前だけ（2026-09-04。組が効くと通っている弾まで撃ち直していた）
-    picked, unknown = vf._select_fire_cases(cases, ["recipe", "a"])
-    assert [c["name"] for c in picked] == ["a"] and not unknown
-    picked, unknown = vf._select_fire_cases(cases, ["recipe"])
-    assert [c["name"] for c in picked] == ["c"] and not unknown
-    picked, unknown = vf._select_fire_cases(cases, ["x"])
-    assert unknown == ["x"]
     assert va._RECIPE_MAX_TURNS >= va._DEFAULT_MAX_TURNS
 
 
@@ -1398,12 +1310,6 @@ def test_agent_heavy_hands_tokens_and_guards():
     assert set(vh._SHOW_AS_BASE_ITEM) <= set(vh._SHOW_AS_BASE_FIELD) <= set(vh._XL_SHOW_AS)
     assert vh._cube_name("T売上.地域") == "[T売上].[地域]" and vh._cube_name("平均単価") == "[Measures].[平均単価]"
     assert vh._cube_name("[T].[c]") == "[T].[c]" and vh._cube_name("T売上.地域", measure=True) == "[Measures].[T売上.地域]"
-    # 難しい弾 6 本が sheet の組にあり、練習台（build）と答え合わせを持つ
-    for n in ("月別×担当の構成比", "売上上位3地域", "前月比", "スライサー2枚連動", "ピボットグラフ", "データモデルの平均単価"):
-        c = next(c for c in vf.FIRE_CASES if c["name"] == n)
-        assert callable(c["check"]) and callable(c["build"]), n
-    rows = vf._fire_sales_rows()
-    assert len(rows) == 45 and rows[0][0].tzinfo is not None and all(r[5] == r[4] * vf._FIRE_SALES_PRICE[r[3]] for r in rows)
     # RULES に新しい手が載っている
     # M の型付けの段は 2026-09-06 夜に規則文から外し、要る依頼のときだけ材料に足す（_DATAMODEL_NOTE）
     for word in ('show_as', 'top_n', 'group_date', '"model":true', '"pivot":"ピボット名"', 'set_source', 'TransformColumnTypes',
@@ -1419,10 +1325,6 @@ def test_agent_heavy_hands_tokens_and_guards():
     assert '{"日付", type date}, {"数量", Int64.Type}, {"売上", type number}, {"地域", type text}' in typed
     assert vh._m_with_types(typed, [("x", "type text")]) == typed       # 既に型付きなら触らない
     assert vh._m_with_types(m, []) == m
-    # 実射の弾（重い道具 4 本）が sheet の組に入っている
-    names = [c["name"] for c in vf.FIRE_CASES]
-    for n in ("テーブル化", "ピボット集計", "スライサー", "パワークエリで読み込み"):
-        assert n in names and callable(next(c for c in vf.FIRE_CASES if c["name"] == n)["check"])
     assert callable(va._heavy_materials)
 
 
@@ -2771,25 +2673,6 @@ def test_formula_blocks_rewrite_only_formula_cells_and_fold_them_into_rectangles
     assert vu._formula_blocks([["値", 1]]) == []
 
 
-def test_build_fix_loop_requires_zero_errors_not_merely_no_increase():
-    """2: 直しのループが材料を読み直す＝壊れた組み上げ後の数が基準になり、何もしなくても合格していた。"""
-    import vbam_agent as va
-    assert "base=None" in inspect.signature(va.run_agent).parameters['base'].__str__() or \
-        va.run_agent.__defaults__ is not None
-    src = inspect.getsource(va.run_agent)
-    assert "if base is None:" in src
-    assert "base=(0, 0)" in inspect.getsource(va.run_build)
-
-
-def test_macro_mode_returns_ok_not_the_dict():
-    """3: dict をそのまま返す＝`ok is not False` が真で、失敗しても終了コード 0 だった。"""
-    import vbam_agent as va
-    src = inspect.getsource(va._cmd_agent_body)
-    assert "return rm['ok']" in src
-    assert "return run_macro_agent(" not in src
-    assert ({'ok': False} is not False) is True      # dict は必ず「成功」に見える＝これが元の穴
-
-
 def test_code_replace_zero_match_is_reported_as_a_failure():
     """4: 1 行も当たらなくても成功で返り、AI は「直した」と思って done にしていた。"""
     import vbam_agent as va
@@ -3199,21 +3082,6 @@ def test_gates_count_every_pushback_and_split_the_pass(tmp_path, monkeypatch):
     assert va._gate_grade(False, {}) == '不合格'
 
 
-def test_first_shot_line_reads_the_inside_of_the_pass():
-    """点数の中身: 一発合格 / 関所で直して合格 / 不合格 を数える（古い 3 つ組も受ける）。"""
-    import vbam_agent as va
-    rows = [("A", True, "ok", {'turns': 1, 'gates': {'audit': 0}}),
-            ("B", True, "ok", {'turns': 3, 'gates': {'audit': 1, 'grade': 1}}),
-            ("C", False, "だめ", {'turns': 4, 'gates': {'inv': 2}})]
-    line = vf._first_shot_line(rows)
-    assert "一発合格 1" in line and "関所で直して合格 1" in line and "不合格 1" in line
-    assert "仕上げ検査 1" in line and "頼んでいない変化 2" in line
-    # 古い 3 つ組（関所の記録が無い）でも落ちない
-    assert vf._fire_rows([("A", True, "ok")]) == [("A", True, "ok", {})]
-    assert "数えていません" in vf._first_shot_line([("A", True, "ok")])
-    assert "弾なし" in vf._first_shot_line([])
-
-
 def test_runs_ledger_records_the_real_work_and_the_undo(tmp_path, monkeypatch):
     """本番の走行台帳（2026-09-06）: 1 走行 1 行・記録も控える・undo で印が付く。
 
@@ -3268,120 +3136,6 @@ def test_runs_ledger_records_the_real_work_and_the_undo(tmp_path, monkeypatch):
     assert "1 走行" in line and "人が戻した（undo）1/1" in line and "一発 1/1" in line
 
 
-def test_keep_case_turns_a_real_run_into_a_bullet(tmp_path, monkeypatch, capsys):
-    """本番の 1 走行を弾にする（2026-09-06）。依頼文は記録から、練習台はそのブックの写し取り。
-
-    練習台は全部こちらの想像で組んだもので、撃つ依頼まで想像だった。ここが実戦から弾を供給する口。
-    """
-    import vbam_agent as va
-    log = tmp_path / "log.jsonl"
-    log.write_text(json.dumps({'meta': {'book': "件名簿.xlsm", 'sheet': "2024", 'mode': 'sheet',
-                                        'request': "観光関係一般の分だけ抜き出して。"}},
-                              ensure_ascii=False) + "\n"
-                   + json.dumps({'turn': 1, 'prompt': 'p', 'reply': 'r'}, ensure_ascii=False) + "\n",
-                   encoding='utf-8')
-    monkeypatch.setattr(va, "_LAST_AGENT_LOG_FILE", str(log))
-    monkeypatch.setattr(vf, "_AGENT_CASES_DIR", str(tmp_path / "cases"))
-    src = tmp_path / "件名簿.xlsm"
-    src.write_text("dummy", encoding='utf-8')
-    wb = type("WB", (), {"Name": "件名簿.xlsm", "Path": str(tmp_path),
-                         "FullName": str(src), "Saved": True})()
-    monkeypatch.setattr(va, "get_workbook", lambda t=None: (None, wb))
-    harvested = []
-    monkeypatch.setattr(vf, "harvest_book", lambda p, o=None, k=1, seed=None: harvested.append((p, o)) or o)
-    assert vf.keep_case("観光だけ抜き出す") is True
-    # 元のブックは触らない（写し取りの元は元ファイル・出力は弾の置き場）
-    assert harvested and harvested[0][0] == str(src)
-    assert harvested[0][1].startswith(str(tmp_path / "cases"))
-    saved = vf._cases_load()
-    assert list(saved) == ["観光だけ抜き出す"]
-    c = saved["観光だけ抜き出す"]
-    assert c['sheet'] == "2024" and "観光関係一般" in c['request'] and c['from_book'] == "件名簿.xlsm"
-    # 一覧に出る
-    vf.cases_list()
-    assert "観光だけ抜き出す" in capsys.readouterr().out
-    # 別のブックを開いたまま登録しようとしたら断る（違うブックを写し取らない）
-    wb2 = type("WB", (), {"Name": "別.xlsm", "Path": str(tmp_path), "FullName": str(src), "Saved": True})()
-    monkeypatch.setattr(va, "get_workbook", lambda t=None: (None, wb2))
-    assert vf.keep_case("だめな弾") is False
-    assert "だめな弾" not in vf._cases_load()
-
-
-def test_keep_case_refuses_what_it_cannot_replay(tmp_path, monkeypatch):
-    """弾にできるのはシートの走行だけ・保存していないブックは断る。"""
-    import vbam_agent as va
-    log = tmp_path / "log.jsonl"
-    monkeypatch.setattr(va, "_LAST_AGENT_LOG_FILE", str(log))
-    monkeypatch.setattr(vf, "_AGENT_CASES_DIR", str(tmp_path / "cases"))
-    log.write_text(json.dumps({'meta': {'book': "b.xlsm", 'sheet': None, 'mode': 'macro',
-                                        'request': "マクロを直して"}}, ensure_ascii=False) + "\n",
-                   encoding='utf-8')
-    assert vf.keep_case("マクロの弾") is False          # macro の走行は弾にしない
-    log.write_text(json.dumps({'meta': {'book': "b.xlsm", 'sheet': "名簿", 'mode': 'sheet',
-                                        'request': "整えて"}}, ensure_ascii=False) + "\n",
-                   encoding='utf-8')
-    wb = type("WB", (), {"Name": "b.xlsm", "Path": "", "FullName": "b.xlsm", "Saved": False})()
-    monkeypatch.setattr(va, "get_workbook", lambda t=None: (None, wb))
-    assert vf.keep_case("未保存の弾") is False          # 保存していない＝写し取る元が無い
-    assert vf._cases_load() == {}
-
-
-def test_fire_mine_shoots_the_saved_bullets_with_the_bed_judgement(tmp_path, monkeypatch, capsys):
-    """--fire mine: 登録した弾を、写し取りと同じ判定（正解表なし）で撃つ。"""
-    import vbam_agent as va
-    bed = tmp_path / "bed.xlsm"
-    bed.write_text("x", encoding='utf-8')
-    vf._cases_save({"抜き出す": {'name': "抜き出す", 'bed': str(bed), 'sheet': "2024",
-                                 'request': "観光関係一般の分だけ抜き出して。", 'mode': 'sheet',
-                                 'from_book': "件名簿.xlsm", 'time': '2026-09-06 09:00'}})
-    closed = []
-    wb = type("WB", (), {"Name": "bed.xlsm", "Close": staticmethod(lambda SaveChanges=True: closed.append(1))})()
-    monkeypatch.setattr(va, "get_workbook", lambda p=None: (None, wb))
-    seen = {}
-
-    def fake_case(book, sheet, request, ai, model, twice=True, max_turns=4):
-        seen.update(sheet=sheet, request=request, twice=twice)
-        return True, "壊さず・指摘は増えず", {'turns': 2, 'gates': {'audit': 1}}
-
-    monkeypatch.setattr(vf, "_fire_bed_case", fake_case)
-    rows = vf._fire_mine(None, 'gemini', 'm')
-    assert seen['sheet'] == "2024" and "観光関係一般" in seen['request']
-    assert closed, "弾の練習台を閉じていない（次に撃つときは同じ姿から）"
-    assert len(rows) == 1 and rows[0][1] is True and rows[0][3]['gates'] == {'audit': 1}
-    assert "本番の弾" in rows[0][0]
-    # 練習台のファイルが消えていたら、黙って合格にしない
-    vf._cases_save({"消えた": {'name': "消えた", 'bed': str(tmp_path / "no.xlsm"), 'sheet': "S",
-                               'request': "整えて", 'mode': 'sheet', 'time': '2026-09-06 09:00'}})
-    rows = vf._fire_mine(None, 'gemini', 'm')
-    assert rows[0][1] is False and "ありません" in rows[0][2]
-
-
-def test_fire_mine_is_opt_in_and_named():
-    """mine は組の名前として通り、名前を書かない全部撃ちには黙って混ざらない。"""
-    import inspect as _inspect
-    import vbam_agent as va
-    assert 'mine' in vf._FIRE_GROUPS
-    src = _inspect.getsource(vf.fire_agent) + _inspect.getsource(vf._fire_agent_body)
-    assert "want_mine = 'mine' in names" in src
-    assert "if want_mine or mine_pick:" in src
-    ns = vm.build_parser().parse_args(["agent", "--keep-case", "観光だけ"])
-    assert ns.keep_case == "観光だけ"
-    assert vm.build_parser().parse_args(["agent", "--cases"]).cases is True
-
-
-def test_undo_marks_the_run_it_rolled_back():
-    """--undo は控えの覚書にある run_id を台帳へ書き戻す（配線の見張り番）。"""
-    import inspect as _inspect
-    import vbam_agent as va
-    assert "'run_id': run_id" in _inspect.getsource(va._agent_backup), "控えに走行の名札が無い"
-    assert "run_id" in _inspect.signature(va._agent_backup).parameters
-    src = _inspect.getsource(va.undo_agent)
-    assert "runs_append({'undo': meta['run_id']" in src, "戻したことを台帳に残していない"
-    # 実射・build の直しループは台帳に残さない（実戦の記録を練習で薄めない）
-    assert "if backup and not dry_run:" in _inspect.getsource(va.run_agent)
-    assert "ledger=False" in _inspect.getsource(vf._fire_macro_cases)
-
-
 def test_grade_reply_is_read_loosely():
     """採点の返事が読めない・空でも落ちない（採点は関所であって落とし穴にしない）。"""
     import vbam_agent as va
@@ -3391,25 +3145,6 @@ def test_grade_reply_is_read_loosely():
     assert va._parse_unmet('これは JSON ではない') == []
     assert va._parse_unmet('{"note":"満たしている"}') == []
     assert len(va._parse_unmet('{"unmet":[' + ",".join('"x"' for _ in range(20)) + ']}')) == 8
-
-
-def test_score_history_records_and_finds_the_regression(tmp_path, monkeypatch):
-    """点数: 撃つたびに記録し、前回と比べて落ちた弾（退行）を出す。"""
-    import vbam_agent as va
-    monkeypatch.setattr(vf, "_AGENT_SCORE_FILE", str(tmp_path / "score.jsonl"))
-    vf._score_save({'time': '2026-09-04 10:00', 'ai': 'gemini', 'model': 'm', 'n': 3, 'ok': 3,
-                    'sec': 10, 'cases': {'A': True, 'B': True, 'C': True}})
-    rec = {'time': '2026-09-04 12:00', 'ai': 'gemini', 'model': 'm', 'n': 3, 'ok': 2, 'sec': 9,
-           'cases': {'A': True, 'B': False, 'C': True}}
-    prev, worse, better = vf._score_compare(rec, vf._score_load())
-    assert prev['ok'] == 3 and worse == ['B'] and better == []
-    vf._score_save(rec)
-    rec2 = dict(rec, time='2026-09-04 13:00', ok=3, cases={'A': True, 'B': True, 'C': True})
-    prev2, worse2, better2 = vf._score_compare(rec2, vf._score_load())
-    assert worse2 == [] and better2 == ['B']
-    assert vf.score_history() is True
-    other = {'time': 't', 'n': 1, 'ok': 1, 'cases': {'Z': True}}
-    assert vf._score_compare(other, vf._score_load())[0] is None
 
 
 def test_notes_remember_the_last_jobs_per_sheet(tmp_path, monkeypatch):
@@ -3425,22 +3160,6 @@ def test_notes_remember_the_last_jobs_per_sheet(tmp_path, monkeypatch):
     assert "こっちの依頼" not in text
     assert "材料を優先" in text
     assert va._notes_recall("b.xlsx", "別表").count("こっちの依頼") == 1
-
-
-def test_vague_cases_are_on_the_bench_with_machine_checks():
-    """曖昧な依頼の弾 5 本が台に載っていて、答え合わせが全部「実物を見る関数」であること。"""
-    import vbam_agent as va
-    vague = [c for c in vf.FIRE_CASES if c.get('kind') == 'vague']
-    assert [c['name'] for c in vague] == ["見やすくして", "未入力が分かるように", "合計を出して",
-                                          "多い順に並べて", "担当ごとの件数", "部署の列を足す",
-                                          "印刷したら切れる", "鈴木さんの分だけ",
-                                          "金額が足せない", "同じ人が二重"]
-    for c in vague:
-        assert callable(c['check']) and callable(c['build'])
-        assert len(c['request']) < 40
-    assert 'vague' in vf._FIRE_GROUPS
-    picked, unknown = vf._select_fire_cases(vf.FIRE_CASES, ['vague'])
-    assert not unknown and [c['name'] for c in picked] == [c['name'] for c in vague]
 
 
 def test_notes_go_into_the_materials_and_are_written_back(tmp_path, monkeypatch):
@@ -3777,94 +3496,10 @@ def test_inv_reports_row_count_and_limits_noise():
     assert len(va._grid_diff(b, a, "A1", "値")) == 3
 
 
-def test_inv_is_wired_into_every_fire_case():
-    """弾を 1 本も書き足さずに、全弾へ自動で当たっていること（そこが①の値打ち）。"""
-    import inspect as _inspect
-    import vbam_agent as va
-    import vbam_recipes as vr
-    for fn in (vf._fire_sheet_cases, vr._fire_recipe_cases):
-        src = _inspect.getsource(fn)
-        assert "_snapshot_book(wb" in src, f"{fn.__name__} が撃つ前の控えを取っていない"
-        assert "_inv_violations(" in src and "inv_skip" in src, f"{fn.__name__} が照らしていない"
-        assert "ok = False" in src, f"{fn.__name__} が違反を不合格にしていない"
-
-
 # ----------------------------------------------------------------
 # 練習台の状態（2026-09-05）: 弾はそのままに、撃つ前のシートの姿を本物のブック寄りにする。
 # 59 本が同じきれいな表から始まる限り、本数を増やしても踏む地雷は増えない、への手当て。
 # ----------------------------------------------------------------
-
-def test_fire_states_are_defined_and_reproducible():
-    import vbam_agent as va
-    # 本物のブックにある姿が一通りそろっている（きれいな表だけで撃たない）
-    for want in ("なし", "絞り込み中", "隠れ行", "前のフィルタ", "枠固定", "名前定義",
-                 "条件付き書式", "他シート参照", "結合タイトル", "書式ばらばら"):
-        assert want in vf._FIRE_STATES, f"状態「{want}」が無い"
-    cases = [{"name": f"弾{i}"} for i in range(12)]
-
-    # seed が同じなら同じ姿＝落ちた組み合わせをそのまま撃ち直せる（--seed）
-    a = vf._pick_states(cases, None, 12345)
-    assert a == vf._pick_states(cases, None, 12345)
-    assert a != vf._pick_states(cases, None, 999), "seed を変えても同じ姿では掛け算にならない"
-    # 弾ごとにばらけている（全部同じ状態を引いていたら掛け算の意味がない）
-    assert len(set(a.values())) >= 3
-    # 「なし」は自動では引かない（きれいな表に戻らない）
-    assert "なし" not in set(a.values())
-
-    # --state で全弾に同じ状態を固定できる
-    b = vf._pick_states(cases, "隠れ行", 1)
-    assert set(b.values()) == {"隠れ行"} and len(b) == len(cases)
-
-
-def test_fire_states_are_wired_and_validated():
-    import inspect as _inspect
-    import vbam_agent as va
-    import vbam_recipes as vr
-    for fn in (vf._fire_sheet_cases, vr._fire_recipe_cases):
-        src = _inspect.getsource(fn)
-        assert "_apply_state(ws" in src, f"{fn.__name__} が状態を当てていない"
-        assert "states" in _inspect.signature(fn).parameters, f"{fn.__name__} が状態を受け取らない"
-    src = _inspect.getsource(vf.fire_agent) + _inspect.getsource(vf._fire_agent_body)
-    assert "_pick_states(" in src and "--seed" in src, "fire_agent が seed を出していない"
-    # 状態は控えを取る前に当てる（「元からそうだった」姿にする＝後から当てたら不変条件が誤検知する）
-    body = _inspect.getsource(vf._fire_sheet_cases)
-    assert body.index("_apply_state(ws") < body.index("_snapshot_book(wb")
-    # 知らない状態名は撃つ前に弾く
-    ns = vm.build_parser().parse_args(["agent", "--fire", "--state", "隠れ行", "--seed", "7"])
-    assert ns.state == "隠れ行" and ns.seed == "7"
-
-
-def test_fire_state_functions_touch_the_right_things():
-    """状態の中身（COM を呼ぶ前に、何を触るつもりかを型で押さえる）。"""
-    import inspect as _inspect
-    import vbam_agent as va
-    src = {n: _inspect.getsource(f) for n, f in vf._FIRE_STATES.items()}
-    assert "Hidden = True" in src["隠れ行"]
-    # 「絞り込み中」は AutoFilter でなければならない。手で隠した行（Rows.Hidden）では書き込みは
-    # 壊れず、本物のブックの欠陥 1 を再現できない（2026-09-05 実測で判明。最初これを取り違えた）
-    assert "AutoFilter(" in src["絞り込み中"] and "Hidden = True" not in src["絞り込み中"]
-    assert "AutoFilter" in src["前のフィルタ"] and "AutoFilterMode = False" in src["前のフィルタ"]
-    assert "FreezePanes = True" in src["枠固定"]
-    assert "Names.Add" in src["名前定義"]
-    assert "FormatConditions.Add" in src["条件付き書式"]
-    assert "Worksheets.Add" in src["他シート参照"] and "COUNTA" in src["他シート参照"]
-    assert "Merge()" in src["結合タイトル"]
-    assert "Interior.Color" in src["書式ばらばら"]
-    # 状態は「答えを変えない」のが約束。行の挿入は番地で書かれた弾（名簿は A3:E9）を全部ずらす
-    # ＝入れた直後に実機で踏んだ（2026-09-05）。どの状態も行・列を挿入しない
-    for n, s in src.items():
-        assert ".Insert(" not in s and "Rows(1).Insert" not in s, f"状態「{n}」が行を挿入している"
-        # 消す手を持たせない。Worksheet.Delete は削除の確認ダイアログを出し、実射が丸ごと固まる
-        # （2026-09-05・vague 9 本の 2 本目で 12 分止まった。Excel は「応答あり」のままだった）
-        assert ".Delete()" not in s, f"状態「{n}」が消す手を持っている（確認ダイアログで実射が固まる）"
-    # 実射は 1 冊のブックに 実射1・実射2 … と並ぶ＝状態が置く名前は弾ごとに一意でなければ 2 本目で衝突する
-    assert "{ws.Name}" in src["名前定義"] and "{ws.Name}" in src["他シート参照"]
-    # 当てられない練習台（小さすぎる等）でも実射を止めない
-    class Boom:
-        def __getattr__(self, k):
-            raise RuntimeError("この練習台には当てられない")
-    assert vf._apply_state(Boom(), "隠れ行") == ""
-    assert vf._apply_state(Boom(), "なし") == "" and vf._apply_state(Boom(), "無い状態") == ""
 
 
 # ----------------------------------------------------------------
@@ -3872,180 +3507,10 @@ def test_fire_state_functions_touch_the_right_things():
 # 「合計行がもう 1 本足された」は 1 回目の答え合わせでは PASS のまま通る。
 # ----------------------------------------------------------------
 
-def test_idempotence_catches_double_application():
-    import vbam_agent as va
-    done = {"sheets": {"実射1": _snap([["氏名", "金額"], ["青木", "100"], ["合計", "100"]],
-                                      {"B3": "=SUM(B2:B2)"})}, "names": {}}
-    # 2 回目で何も起きないのが正しい
-    assert vf._idempotence_violations(done, done, "実射1") == []
-
-    # 合計行がもう 1 本足された（1 回目の check は「合計が合っている」で PASS のまま通る形）
-    twice = {"sheets": {"実射1": _snap([["氏名", "金額"], ["青木", "100"], ["合計", "100"], ["合計", "100"]],
-                                       {"B3": "=SUM(B2:B2)", "B4": "=SUM(B2:B3)"})}, "names": {}}
-    bad = vf._idempotence_violations(done, twice, "実射1")
-    assert any("値が変わった" in b and "行数が 3 → 4" in b for b in bad)
-    assert any("数式が変わった" in b and "増えた 1 本" in b and "B4" in b for b in bad)
-
-    # ピボットをもう 1 枚作った
-    more = {"sheets": {"実射1": done["sheets"]["実射1"], "Sheet4": _snap([["集計"]])}, "names": {}}
-    assert vf._idempotence_violations(done, more, "実射1") == ["シートが増えた: Sheet4"]
-
-
-def test_idempotence_is_wired_behind_a_flag():
-    import inspect as _inspect
-    import vbam_agent as va
-    src = _inspect.getsource(vf._fire_sheet_cases)
-    assert "twice" in _inspect.signature(vf._fire_sheet_cases).parameters
-    assert "_idempotence_violations(" in src and "if twice and ok:" in src, "2 回目が配線されていない"
-    # 合格した弾にだけ撃つ（落ちた弾にもう 1 回課金しない）
-    assert src.index("if twice and ok:") > src.index("ok = ok and (r['done']")
-    ns = vm.build_parser().parse_args(["agent", "--fire", "--twice"])
-    assert ns.twice
-    # 既定では撃たない（往復が 2 倍になるので、明示したときだけ）
-    assert vm.build_parser().parse_args(["agent", "--fire"]).twice is False
-
 
 # ----------------------------------------------------------------
 # 他人のブックの構造を写し取る（2026-09-05）: 自分の想像で組んだ練習台の外から的を供給する口。
 # ----------------------------------------------------------------
-
-def test_harvest_dummy_keeps_the_shape_not_the_content():
-    import datetime as _dt
-    import random as _rnd
-    import vbam_agent as va
-    memo, rnd = {}, _rnd.Random(1)
-
-    # 同じ元値は同じダミーへ（左の会員番号と右の会員番号の関係が壊れない＝突き合わせが成り立つ）
-    a1 = vf._dummy_value("青木 誠", memo, rnd)
-    a2 = vf._dummy_value("青木 誠", memo, rnd)
-    b1 = vf._dummy_value("石川 恵", memo, rnd)
-    assert a1 == a2 and a1 != b1
-    # 一目で偽物と分かる形（実在しそうな氏名・住所を作らない）
-    assert a1.startswith("ダミー") and b1.startswith("ダミー")
-
-    # 数値は桁数を保つ（列幅の ### も桁区切りの検査も、桁が変わると意味を失う）
-    for src in (5, 1234, 1875000):
-        got = vf._dummy_value(src, memo, rnd)
-        assert len(str(abs(int(got)))) == len(str(abs(src))), f"{src} → {got} で桁が変わった"
-    # 同じ数値は同じダミー
-    assert vf._dummy_value(1234, memo, rnd) == vf._dummy_value(1234, memo, rnd)
-
-    # 日付は同じ年月のまま（月別集計・前月比の弾が成り立つ）
-    d = vf._dummy_value(_dt.datetime(2026, 4, 17, tzinfo=_dt.timezone.utc), memo, rnd)
-    assert d.year == 2026 and d.month == 4
-
-    # 数式・空・真偽は触らない（None＝そのまま）
-    assert vf._dummy_value("=SUM(B2:B4)", memo, rnd) is None
-    assert vf._dummy_value(None, memo, rnd) is None and vf._dummy_value(True, memo, rnd) is None
-    assert vf._dummy_value("   ", memo, rnd) is None
-
-    # 引いたダミーが元と同じ値になったら引き直す。1 桁の数値は 1/10、同じ月の日付は 1/27 でぶつかり、
-    # そのぶんだけ中身が元のまま残る（2026-09-05・読み戻しの関所が実物で 22 個捕まえた）
-    for s in range(40):
-        for src in (0, 1, 5, 9, 42):
-            got = vf._dummy_value(src, {}, _rnd.Random(s))
-            assert got != src, f"seed {s}: 数値 {src} がそのまま残った"
-        d0 = _dt.datetime(2026, 4, 17, tzinfo=_dt.timezone.utc)
-        got = vf._dummy_value(d0, {}, _rnd.Random(s))
-        assert got.day != d0.day and got.month == 4, f"seed {s}: 日付 {d0} がそのまま残った"
-
-
-def test_harvest_counts_what_is_left_after_writing():
-    """書きっぱなしにせず、読み戻して「元の中身が残ったセル」を数えること。
-
-    2026-09-05: 範囲でまとめて書いたら、隠れた行のある 2023 シートで 70 セルが元の氏名のまま残った
-    （9/4 に本物のブックで見つけた欠陥 1 と同じ形を、写し取りの側でもう一度踏んだ）。
-    人に渡せるかが懸かっているので、作った後に数える。
-    """
-    import inspect as _inspect
-    import vbam_agent as va
-    src = _inspect.getsource(vf.harvest_book)
-    # 1 行ずつ書く（隠れ行を飛ばさない）。範囲へのまとめ書きに戻したらここで落ちる
-    assert "for i, line in enumerate(new):" in src and "ur.Value = tuple(" not in src
-    # 書いた後に読み戻して数え、残っていたら「作りました」で終わらせない
-    assert "back = va._rows_of(sh.UsedRange.Value)" in src
-    assert "中身が元のまま残ったセル" in src and "人に渡せません" in src
-
-
-def test_fire_bed_judges_only_what_the_run_changed():
-    """写し取った本物の構造に撃つとき、元からの歪みを咎めないこと。
-
-    本物のブックは元から歪んでいる（見出しの無い列・継ぎはぎの罫線・旧範囲の _FilterDatabase）。
-    2026-09-05 の初回実射は「見出しが空の列（O,P）」で 3 本とも落ちた＝元からそうだった。
-    直せと頼んでいないものを不合格にすると、どんな本物のブックでも 0 点になり、テストにならない。
-    """
-    import inspect as _inspect
-    import vbam_agent as va
-    # 判定の中身は _fire_bed_case（2026-09-06・本番から拾った弾 --fire mine も同じ判定を使うので部品化した）
-    src = _inspect.getsource(vf._fire_bed_case)
-    # 撃つ前の指摘を控え、増えた分だけを見る
-    assert "before_audit = set(" in src and "if str(x) not in before_audit" in src
-    assert src.index("before_audit = set(") < src.index("r = va.run_agent("), "控えは撃つ前に取る"
-    # 正解の表を持たない＝どんな構造にも撃てる（判定は 不変条件・仕上げ検査の差分・冪等性の 3 つだけ）
-    assert "_inv_violations(" in src and "_idempotence_violations(" in src
-    assert "expect" not in src and "check" not in src.replace("仕上げ検査", "").replace("audit_table", "")
-    # audit_table は ws.UsedRange でなく A1 の CurrentRegion で見る（2026-09-05・本物のブックの実射で発見。
-    # 使用範囲が実データより大きく膨張した台帳で「G1001 まで罫線が無い」と誤検知していた）
-    assert "audit_table(ws, ws.UsedRange)" not in src
-    assert 'ws.Range("A1").CurrentRegion' in src
-    # 練習台は使い捨て（保存しない）
-    assert "wb.Close(SaveChanges=False)" in _inspect.getsource(vf._fire_bed)
-    assert "_fire_bed_case(" in _inspect.getsource(vf._fire_bed), "写し取りは共通の判定を通す"
-    for c in vf._BED_REQUESTS:
-        assert set(c) == {"name", "request"}, "写し取りの依頼に正解表を持たせない"
-    ns = vm.build_parser().parse_args(["agent", "--fire", "--bed", r"C:\x\台.xlsm", "2024"])
-    assert ns.bed.endswith("台.xlsm") and ns.posargs == ["2024"]
-
-
-def test_harvest_never_touches_the_original(tmp_path, capsys):
-    import inspect as _inspect
-    import vbam_agent as va
-    src = _inspect.getsource(vf.harvest_book)
-    # 元は複製してから複製の側だけを開く（元のブックを開いて書き換えない）
-    assert "shutil.copy2(path, out)" in src and "get_workbook(out)" in src
-    assert "Workbooks.Open(path" not in src
-    # 出力先が元と同じなら断る
-    f = tmp_path / "本物.xlsx"
-    f.write_bytes(b"dummy")
-    assert vf.harvest_book(str(f), str(f)) is None
-    assert "元のブックと同じ" in capsys.readouterr().out
-    # 無いファイルは静かに断る
-    assert vf.harvest_book(str(tmp_path / "無い.xlsx")) is None
-
-    # 配線
-    ns = vm.build_parser().parse_args(["agent", "--harvest", r"C:\x\本物.xlsx", "--keep-rows", "2"])
-    assert ns.harvest.endswith("本物.xlsx") and ns.keep_rows == "2"
-    body = _inspect.getsource(va._cmd_agent_body)
-    assert "harvest_book(args.harvest" in body
-    assert body.index("harvest") < body.index("if getattr(args, 'fire'"), "--harvest が --fire より後ろだと届かない"
-
-
-def test_harvest_falls_back_to_saveas_when_save_fails():
-    """9-2: 修復モードで開いたブック（_open_maybe_repair）は素の Save も同じ理由で弾かれることがある
-    （2026-09-05・本物のブックの実射で発見。Google スプレッドシート書き出しの xlsx）。
-    パスと形式を明示した SaveAs に切り替える。
-    """
-    import inspect as _inspect
-    import vbam_agent as va
-    src = _inspect.getsource(vf.harvest_book)
-    assert "wb.Save()" in src
-    assert "wb.SaveAs(out, FileFormat=out_fmt)" in src
-    assert src.index("wb.Save()") < src.index("wb.SaveAs(out, FileFormat=out_fmt)"), "素の Save をまず試す"
-
-
-def test_harvest_output_path_is_recovered_when_swallowed_by_target_file():
-    """9-0: 'agent --harvest 元.xlsm 出力.xlsm' で出力名が既定のテンプレへ落ちていた（2026-09-05）。
-
-    .xlsm に見える先頭の位置引数は parse_target_and_rest が target_file 側に取る＝rest は空になり、
-    harvest_book への出力パスが None のまま渡っていた（harvest には「触る対象ブック」という概念が無い）。
-    """
-    import inspect as _inspect
-    import vbam_agent as va
-    target_file, rest = va.parse_target_and_rest(["出力.xlsm"])
-    assert target_file == "出力.xlsm" and rest == []          # 出力名が rest でなく target_file 側に落ちる
-    assert (rest[0] if rest else target_file) == "出力.xlsm"   # 直した式はここから拾い直す
-    body = _inspect.getsource(va._cmd_agent_body)
-    assert "out = rest[0] if rest else target_file" in body
 
 
 # ----------------------------------------------------------------
@@ -4191,30 +3656,6 @@ def test_backups_keep_their_own_memo_and_undo_can_pick_one(tmp_path, monkeypatch
     assert ns.undo == "2" and ns.force
     ns, _ = p.parse_known_args(["agent", "--backups"])
     assert ns.backups and ns.undo is None
-
-
-def test_drop_case_removes_the_bullet_and_its_bed(tmp_path, monkeypatch, capsys):
-    """③: 弾を消す口。台帳の項目と、弾の置き場にある練習台だけを消す（人のブックを指していたら残す）。"""
-    import vbam_agent as va
-    cases_dir = tmp_path / "cases"
-    cases_dir.mkdir()
-    monkeypatch.setattr(vf, "_AGENT_CASES_DIR", str(cases_dir))
-    bed = cases_dir / "観光.xlsx"
-    bed.write_text("x", encoding="utf-8")
-    outside = tmp_path / "人のブック.xlsx"
-    outside.write_text("x", encoding="utf-8")
-    vf._cases_save({"観光": {'name': "観光", 'bed': str(bed), 'sheet': "S", 'request': "r", 'time': "t"},
-                    "外": {'name': "外", 'bed': str(outside), 'sheet': "S", 'request': "r", 'time': "t"}})
-    assert vf.drop_case("無い弾") is False
-    assert "その弾はありません" in capsys.readouterr().out
-    assert vf.drop_case("観光") is True
-    assert not bed.exists() and "観光" not in vf._cases_load()
-    assert vf.drop_case("外") is True
-    assert outside.exists() and vf._cases_load() == {}          # 置き場の外のファイルは残す
-    assert "置き場の外" in capsys.readouterr().out
-    p = vm.build_parser()
-    ns, _ = p.parse_known_args(["agent", "--drop-case", "観光"])
-    assert ns.drop_case == "観光"
 
 
 def test_runs_ledger_sees_whether_the_book_was_saved_afterwards(tmp_path, monkeypatch):
@@ -4389,7 +3830,7 @@ def test_the_tool_adds_the_missing_report_sections_itself():
     import vbam_agent as va
     assert '【やったこと】' in va.RULES and '【確認していないこと】' in va.RULES
     src = open('vbam_agent.py', encoding='utf-8').read()
-    body = src[src.index('def run_agent('):src.index('# 実射（練習台・弾・答え合わせ・状態・写し取り・点数）は vbam_fire.py へ')]
+    body = src[src.index('def run_agent('):src.index('# 実射（練習台・弾・答え合わせ・状態・写し取り・点数・vbam_fire.py）は 2026-10-08 に')]
     for head in ('【人に判断してほしいこと】', '【できなかったこと（往復が尽きました）】',
                  '【頼んでいない変化', '【報告に出た番地のうち、いま空のもの】'):
         assert head in body
@@ -4410,7 +3851,7 @@ def test_the_gates_do_not_eat_the_turns_meant_for_the_work():
     import vbam_agent as va
     assert va._GATE_EXTRA_TURNS == 4
     src = open('vbam_agent.py', encoding='utf-8').read()
-    body = src[src.index('def run_agent('):src.index('# 実射（練習台・弾・答え合わせ・状態・写し取り・点数）は vbam_fire.py へ')]
+    body = src[src.index('def run_agent('):src.index('# 実射（練習台・弾・答え合わせ・状態・写し取り・点数・vbam_fire.py）は 2026-10-08 に')]
     assert 'while turn < limit:' in body and 'limit = max_turns' in body
     # 4 つの関所＋事前の門＋承認の言葉（2026-09-06 夜）で枠が 1 回ずつ伸びる
     assert body.count('limit = min(limit + 1, max_turns + _GATE_EXTRA_TURNS)') == 6
@@ -4986,22 +4427,6 @@ def test_the_request_paths_are_peeked_before_the_first_turn(tmp_path):
     assert '**ありません**' in va._peek_files_note(f'「{tmp_path / "無い.csv"}」を取り込んで')
 
 
-def test_the_score_ledger_keeps_why_a_case_failed(tmp_path, monkeypatch, capsys):
-    """点数台帳に落ちた理由を残す（2026-09-10）。83 本全滅の行に理由が無かった。"""
-    import json
-    import vbam_agent as va
-    f = tmp_path / 'score.jsonl'
-    monkeypatch.setattr(vf, '_AGENT_SCORE_FILE', str(f))
-    vf._score_save({'time': 't', 'ai': 'claude-code', 'model': 'sonnet', 'n': 2, 'ok': 1, 'sec': 3.0,
-                    'cases': {'郵便番号の統一': True, '鈴木さんの分だけ': False},
-                    'why': {'鈴木さんの分だけ': 'HTTP 429 残高なし'}})
-    assert json.loads(f.read_text(encoding='utf-8'))['why'] == {'鈴木さんの分だけ': 'HTTP 429 残高なし'}
-    vf.score_history()
-    assert '└ 鈴木さんの分だけ: HTTP 429 残高なし' in capsys.readouterr().out
-    src = open(vf.__file__, encoding='utf-8').read()
-    assert "**({'why': why} if why else {})" in src                             # 実射の記録に載せている
-
-
 def test_every_hand_translates_to_what_the_cli_accepts():
     """pytest にも実射にも出ていなかった手の翻訳（JSON → CLI の引数列）を 1 本ずつ当てる（2026-09-10）。
 
@@ -5131,19 +4556,12 @@ def test_plan_discovered_items_report_silence_and_ledger_metrics():
     new = va._parse_plan([{'item': 'A', 'state': '済'}, {'item': 'B', 'state': '未', 'why': '文字の数値が混ざっていた'}])
     assert [p['item'] for p in va._plan_added(old, new)] == ['B'] and new[1]['why'] == '文字の数値が混ざっていた'
     assert va._merge_plan(old, new)[1].get('why') == '文字の数値が混ざっていた'
-    assert vf._report_is_silent({'report': '【やったこと】A1 に書いた\n【できなかったこと】なし'})
-    assert vf._report_is_silent({'report': '【やったこと】A1 に書いた'})
-    assert not vf._report_is_silent({'report': '【やったこと】…\n【できなかったこと】写真は手が無い'})
-    assert not vf._report_is_silent({'report': '', 'asks': ['どちらの列が正か']})
     rows = [{'time': '2026-09-06 20:00:00', 'book': 'a.xlsx', 'sheet': 'S', 'done': True, 'asks': 1},
             {'time': '2026-09-06 20:10:00', 'book': 'a.xlsx', 'sheet': 'S', 'done': True},
             {'time': '2026-09-06 22:00:00', 'book': 'a.xlsx', 'sheet': 'S', 'done': True}]
     assert va._rework_count(rows) == 1
     s = va._runs_summary(rows)
     assert '聞き返し 1/3' in s and '30 分以内の手直し 1/3' in s
-    line = vf._first_shot_line([('x', True, '', {'gates': {'inv': 0}, 'report': 'ok'}),
-                                ('y', False, '', {'gates': {'inv': 1}, 'report': '【できなかったこと】なし'})])
-    assert '範囲外変化ゼロ 1/2' in line and '黙殺（不合格なのに報告に無い）1/1' in line
     assert 'approval' in va._GATE_LABELS
 
 
@@ -5426,14 +4844,6 @@ def test_report_head_skips_section_headers():
     assert va._report_head("【やったこと】\nA5:E20 に tidy\n【できなかったこと】") == "A5:E20 に tidy"
     assert va._report_head("【やったこと】") == "【やったこと】"
     assert va._report_head("") == ""
-
-
-def test_fire_rates_counts_pass_and_first_shot_per_case():
-    """10: --repeat N の弾ごとの (合格, 撃った数, 一発合格)。"""
-    import vbam_agent as va
-    rows = [("a", True, "", {"gates": {}}), ("a", False, "", {"gates": {"hand": 1}}), ("a", True, "", {"gates": {"grade": 1}}),
-            ("b", True, "", {"gates": {}})]
-    assert vf._fire_rates(rows) == {"a": (2, 3, 1), "b": (1, 1, 1)}
 
 
 def test_id_columns_and_zenkaku_digits():

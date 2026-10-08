@@ -897,9 +897,11 @@ def _get_workbook_uncached(target_file_arg=None, load_addins=False, readonly=Fal
         if wb is None:
             raise Exception(
                 "起動中の Excel に開いているブックが見つかりません。\n"
-                "  ・Excel で対象ブックを開いてから再実行してください。\n"
-                "  ・非表示のゾンビ EXCEL.EXE が残っている場合があります。"
-                "タスクマネージャーで余分な EXCEL.EXE を終了し、対象ブックを開いて再実行してください。\n"
+                "  ・ブックは open で開く: vba(\"open ブックのパス\")（見えている Excel に合流して開く。"
+                "Excel が無ければ普通に起動する＝アドインも読み込まれる）。\n"
+                "  ・Excel のプロセスを終了しない（taskkill・Stop-Process は使う人が作業中のブックを保存せずに落とす）。"
+                "COM（Dispatch・New-Object）で別の Excel を立てない（道具から見えないので、この失敗を繰り返す）。"
+                "それでも見つからなければ、使う人に「Excel でブックを開いてください」と頼む。\n"
                 "  ※ COM 接続できないからといって .bas を手書きスクリプトで処理しないこと"
                 "(改行二重化の原因)。")
         xl = wb.Application

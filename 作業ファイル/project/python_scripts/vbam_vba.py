@@ -7601,6 +7601,45 @@ def cmd_test(args):
     print(f"テスト実行: {_book_name}  （{len(tests)}本）")
     print("-" * 60)
 
+    # テストは一時コピー（別ファイル）で回す＝テストが作るシートや書き換えが本体に残らない（2026-10-07）。
+    # 保存したことのないブック・--in-place のときだけ本体で回す（そのときはテストが作ったシートを消して戻す）
+    target_wb = wb
+    temp_copy_path = None
+    is_isolated = False
+    if not getattr(args, 'in_place', False) and str(getattr(wb, 'Path', '') or ''):
+        try:
+            import tempfile
+            stem, ext = os.path.splitext(wb.Name)
+            stamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            temp_copy_path = os.path.join(tempfile.gettempdir(), f"{stem}_隔離テスト_{stamp}{ext or '.xlsm'}")
+            wb.SaveCopyAs(temp_copy_path)
+            prev_events = xl.EnableEvents
+            try:
+                xl.EnableEvents = False
+                target_wb = xl.Workbooks.Open(temp_copy_path, 0)
+                is_isolated = True
+                print(f"一時コピーでテスト: {os.path.basename(temp_copy_path)}（本体には書かない・終われば捨てる）")
+            finally:
+                xl.EnableEvents = prev_events
+        except Exception as ex_iso:
+            # 黙って本体に戻さない（本体で回ったことが報告に出ないと「本体は無傷」と誤解する）
+            print(f"一時コピーを開けなかったので本体でテストします: {ex_iso}", file=sys.stderr)
+            if temp_copy_path and os.path.exists(temp_copy_path):
+                try:
+                    os.remove(temp_copy_path)
+                except Exception:
+                    pass
+            target_wb = wb
+            temp_copy_path = None
+            is_isolated = False
+
+    # 本体で回すときだけ使う: テスト前のシート構成（テストが作って残したシートを後で消す）
+    initial_sheet_names = set()
+    try:
+        initial_sheet_names = {ws.Name for ws in wb.Worksheets}
+    except Exception:
+        pass
+
     # ダイアログ対策は既定で常設（run-macro / write-range と同じ）。test は任意の
     # テスト Sub を Application.Run する＝最も VBA を発火させる経路で、テスト内の
     # MsgBox で無言ハングする（--auto-dialog 明示時だけ監視、では守れない）。
@@ -7645,11 +7684,11 @@ def cmd_test(args):
     harness_comp = None
     try:
         # 前回の残骸があれば先に撤去
-        for c in wb.VBProject.VBComponents:
+        for c in target_wb.VBProject.VBComponents:
             if c.Name == _HARNESS:
-                wb.VBProject.VBComponents.Remove(c)
+                target_wb.VBProject.VBComponents.Remove(c)
                 break
-        harness_comp = wb.VBProject.VBComponents.Add(1)
+        harness_comp = target_wb.VBProject.VBComponents.Add(1)
         harness_comp.Name = _HARNESS
         harness_comp.CodeModule.AddFromString(harness_code)
     except Exception as ex:
@@ -7659,11 +7698,25 @@ def cmd_test(args):
         # ここで確実に撤去する
         if harness_comp is not None:
             try:
-                wb.VBProject.VBComponents.Remove(harness_comp)
+                target_wb.VBProject.VBComponents.Remove(harness_comp)
             except Exception:
                 print("警告: 注入途中のモジュールを撤去できませんでした"
                       "（既定名のモジュールが残っていたら手で削除してください）", file=sys.stderr)
         _watchdog.stop()
+        if is_isolated and target_wb is not None:
+            try:
+                target_wb.Close(SaveChanges=False)
+            except Exception:
+                pass
+            if temp_copy_path and os.path.exists(temp_copy_path):
+                try:
+                    os.remove(temp_copy_path)
+                except Exception:
+                    pass
+            try:
+                wb.Activate()
+            except Exception:
+                pass
         if _dlg_watcher is not None:
             _dlg_watcher.stop()
             # 失敗して抜ける経路でも、検出したダイアログは必ず報告する
@@ -7679,7 +7732,7 @@ def cmd_test(args):
 
     results = []
     # ブック名の ' は Excel 規約どおり '' に重ねる（cmd_run_macro と同じ流儀）
-    quoted_wb = wb.Name.replace("'", "''")
+    quoted_wb = target_wb.Name.replace("'", "''")
     try:
         for i, (mod_name, sub_name) in enumerate(tests, 1):
             if _watchdog.fired:
@@ -7718,12 +7771,55 @@ def cmd_test(args):
                 print(f"    {err}")
     finally:
         _watchdog.stop()
-        if harness_comp is not None:
+        if is_isolated and target_wb is not None:
+            # 一時コピーは保存せずに閉じて捨てる（ハーネスもコピーと一緒に消える）
             try:
-                wb.VBProject.VBComponents.Remove(harness_comp)
+                target_wb.Close(SaveChanges=False)
             except Exception:
-                print("警告: テストハーネスの撤去に失敗しました（モジュール "
-                      f"'{_HARNESS}' が残っていたら手で削除してください）", file=sys.stderr)
+                pass
+            left = False
+            if temp_copy_path and os.path.exists(temp_copy_path):
+                try:
+                    os.remove(temp_copy_path)
+                except Exception:
+                    left = True
+            if left:
+                print(f"警告: 一時コピーを消せませんでした（{temp_copy_path}）", file=sys.stderr)
+            try:
+                wb.Activate()               # コピーを閉じた後に前へ出るブックを Excel 任せにしない
+            except Exception:
+                pass
+        else:
+            if harness_comp is not None:
+                try:
+                    target_wb.VBProject.VBComponents.Remove(harness_comp)
+                except Exception:
+                    print("警告: テストハーネスの撤去に失敗しました（モジュール "
+                          f"'{_HARNESS}' が残っていたら手で削除してください）", file=sys.stderr)
+            # 本体で回したときは、テストが作って残したシートだけ消す（前からあったシートには触らない）
+            if initial_sheet_names:
+                removed = []
+                prev_alerts = xl.DisplayAlerts
+                try:
+                    xl.DisplayAlerts = False
+                    for cur_ws in list(wb.Worksheets):
+                        if cur_ws.Name not in initial_sheet_names:
+                            nm = cur_ws.Name
+                            try:
+                                cur_ws.Visible = -1  # xlSheetVisible（隠れたシートは消せない）
+                                cur_ws.Delete()
+                                removed.append(nm)
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+                finally:
+                    try:
+                        xl.DisplayAlerts = prev_alerts
+                    except Exception:
+                        pass
+                if removed:
+                    print(f"  テストが残したシートを消しました: {'・'.join(removed)}")
         if _dlg_watcher is not None:
             _dlg_watcher.stop()
             # 解除したダイアログがあれば必ず本文で報告する（無言で握りつぶさない）

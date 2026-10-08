@@ -104,8 +104,8 @@ VBAマネージャー (アクティブブック対応版)
   datamodel      <list|relation|measure>             データモデル一覧／リレーション・メジャー(DAX)の作成削除
   -- AI に回させる（道具が材料を集め・API の AI に 1 回ずつ聞き・書き・読み戻し・仕上げ・検査まで自分で回す） --
   agent          "依頼文" [--sheet 名][--mode sheet|build|macro][--macro 名][--new-book][--dry-run]
-                 [--recipes][--recipe 名前 [補足]][--continue][--undo [番号]][--backups][--changes][--rehearse][--fire ...]
-                 [--runs][--keep-case 名前][--cases][--drop-case 名前][--ai gemini|claude]
+                 [--recipes][--recipe 名前 [補足]][--continue][--undo [番号]][--backups][--changes][--rehearse]
+                 [--runs][--ai gemini|claude]
   build-sheet    [--ask "仕様"]                      白紙から表を組む（agent --mode build の下回り）
   set-key        <gemini|claude> [キー]              API キーを金庫（DPAPI）に預ける／確認（--check）
   clear-key      <gemini|claude>                     預けたキーを消す
@@ -558,6 +558,8 @@ def build_parser():
     p.add_argument("posargs", nargs="*")
     p.add_argument("--module", dest="module", default=None, help="対象モジュールを限定")
     p.add_argument("--json", action="store_true", help="結果をJSON形式でも出力")
+    p.add_argument("--in-place", dest="in_place", action="store_true",
+                   help="一時コピーを作らず本体でテストする（既定は一時コピーで回して捨てる）")
     p.add_argument("--auto-dialog", dest="auto_dialog", default=None,
                    help="テスト中に出るMsgBox等を自動応答 ok|cancel|yes|no")
     p.add_argument("--input-text", dest="input_text", action="append", default=None,
@@ -791,7 +793,7 @@ def build_parser():
                    help="対象シート名（rangeと分離指定）")
 
     # format-range [excel_file] <range> [書式オプション...]
-    p = sub.add_parser("format-range")
+    p = sub.add_parser("format-range", aliases=["format"])
     p.add_argument("posargs", nargs="*")
     p.add_argument("--font")
     p.add_argument("--size")
@@ -801,7 +803,7 @@ def build_parser():
     p.add_argument("--plain", action="store_true", help="斜体・下線・取り消し線を外す")
     p.add_argument("--color")
     p.add_argument("--bg")
-    p.add_argument("--number-format", dest="number_format")
+    p.add_argument("--number-format", "--numfmt", dest="number_format")
     p.add_argument("--align", choices=['left', 'center', 'right', 'fill', 'justify'])
     p.add_argument("--valign", choices=['top', 'center', 'bottom'])
     p.add_argument("--wrap", action="store_true")
@@ -888,7 +890,7 @@ def build_parser():
     p.add_argument("--ask", default=None,
                    help="依頼文を渡して AI に設計図を 1 回書かせてから組み上げる（GEMINI_API_KEY / ANTHROPIC_API_KEY）")
     p.add_argument("--ai", default=None, help="設計図を書かせる先: claude-code（既定・ヘッドレスの Claude Code・鍵なし）| gemini | claude（API 鍵）")
-    p.add_argument("--model", default=None, help="モデル名（既定 claude-code=sonnet・--forge でマクロを書く頭だけ既定 opus / gemini-3.7-flash / claude-haiku-4-5-20251001。gemini で始まる名前なら --ai 省略時も gemini）")
+    p.add_argument("--model", default=None, help="モデル名（既定 claude-code=sonnet / gemini-3.7-flash / claude-haiku-4-5-20251001。gemini で始まる名前なら --ai 省略時も gemini）")
     p.add_argument("--new-book", dest="new_book", action="store_true",
                    help="まっさらな新しいブックに組み上げる（訓練場。人のブックに触らない）")
     p.add_argument("--recipes", action="store_true", help="手順書（帳票の型）の一覧")
@@ -913,7 +915,7 @@ def build_parser():
     p.add_argument("posargs", nargs="*")
     p.add_argument("-y", "--yes", dest="yes", action="store_true", help="確認を出さずに消す")
 
-    # agent [excel_file] "依頼文" [--sheet 名] [--ai] [--model] [--max-turns N] [--dry-run] / --fire（2026-09-03・ループ）
+    # agent [excel_file] "依頼文" [--sheet 名] [--ai] [--model] [--max-turns N] [--dry-run]（2026-09-03・ループ）
     p = sub.add_parser("agent", aliases=["エージェント"],
                        help="依頼文をシート 1 枚に対して回す（materials→AI に 1 回聞く→書く→読み戻す→…→tidy→検査）。"
                             "AI は JSON で手（read/write_cells/write_grid/format/tidy＋inspect/view/page_setup/chart/shape/"
@@ -932,7 +934,7 @@ def build_parser():
     p.add_argument("--rehearse", action="store_true",
                    help="mode=macro: 直したあと rehearse（コピーで試し撃ち）まで回して結果を AI に見せる")
     p.add_argument("--ai", default=None, help="聞く先: claude-code（既定・ヘッドレスの Claude Code・鍵なし）| gemini | claude（API 鍵）")
-    p.add_argument("--model", default=None, help="モデル名（既定 claude-code=sonnet・--forge でマクロを書く頭だけ既定 opus / gemini-3.7-flash / claude-haiku-4-5-20251001。gemini で始まる名前なら --ai 省略時も gemini）")
+    p.add_argument("--model", default=None, help="モデル名（既定 claude-code=sonnet / gemini-3.7-flash / claude-haiku-4-5-20251001。gemini で始まる名前なら --ai 省略時も gemini）")
     p.add_argument("--max-turns", dest="max_turns", default=None, help="往復の上限（既定 4）")
     p.add_argument("--dry-run", dest="dry_run", action="store_true",
                    help="1 往復目の手（JSON）を表示するだけで Excel には触らない")
@@ -942,101 +944,11 @@ def build_parser():
     p.add_argument("--recipe", default=None,
                    help="手順書の名前を依頼文として使う。後ろに補足（承認の言葉「置き換えてよい」等・番地・仕様）を続けられる"
                         "（--recipes で一覧）")
-    p.add_argument("--shake", nargs="?", const="", default=None, metavar="記録",
-                   help="揺らし: 記録（既定は _last_agent_log.jsonl）の返事を Python で書き換えた版（消す手の形・消した後の番地・"
-                        "書体落とし・表示形式の当て忘れ…22 通り）を作り、開いているブックに 1 通りずつ再生する（AI は呼ばない・"
-                        "毎回、保存せずに閉じて開き直す）。一発合格しなかった版＝道具が吸収できない揺れ＝直す候補。"
-                        "--dry-run で一覧だけ・--only 名前,名前 で絞る（2026-09-11 夜）")
-    p.add_argument("--only", default=None, metavar="名前,名前",
-                   help="--shake で作る版を名前で絞る（原本は必ず入る）。--exam ではお題を名前で絞る")
-    p.add_argument("--exam", action="store_true",
-                   help="試験: 正解の表を持つお題 5 種（顧客名簿・売上明細・会員名簿・経費精算・在庫表）を種ごとに違う汚れ方で作り、"
-                        "本番と同じ道で撃って、終わった表を正解の表とセルの値で突き合わせる（道具の合格判定・採点係とは別）。"
-                        "--seed で同じお題・--only で絞る・--dry-run はお題を作って見せるだけ。点数は _agent_exam.jsonl（2026-09-11 夜）")
-    p.add_argument("--by-macro", dest="by_macro", default=None, metavar=".bas",
-                   help="--exam を AI の代わりにマクロで撃つ（.bas の「表の書き方と罫線と列幅をそろえる」、依頼が消すことを承認していれば続けて「全列が同じ重複行を削除する」）")
-    p.add_argument("--with-macro", dest="with_macro", default=None, metavar=".bas",
-                   help="--exam を、その .bas を読み込んだ Excel で agent に撃たせる（入口のマクロの先撃ちが効くか＝秀コンボと同じ姿）")
-    p.add_argument("--imagine", type=int, default=0, metavar="N",
-                   help="--shake に足す: AI に「別の AI ならこの返事をどう書くか」を N 通り書かせて版にする（1 往復・"
-                        "既定は claude-code の haiku＝頭と癖の違う方。--ai／--model で変える）。Python の型に無い揺れを広げる")
-    p.add_argument("--fire", action="store_true",
-                   help="自動実射: まっさらなブックに練習台を組み、依頼を撃って現物で答え合わせ→PASS/FAIL→保存せず閉じる。"
-                        "後ろに組（sheet / vague / macro / recipe）か弾の名前で絞れる。撃つたびに点数を記録し、"
-                        "前回と比べて退行した弾を出す（履歴は --score）")
-    p.add_argument("--score", action="store_true",
-                   help="実射の点数の履歴を出す（何本中何本・いつ・落ちた弾。--fire のたびに記録される）")
     p.add_argument("--runs", action="store_true",
                    help="本番の走行台帳を出す（いつ・どのブック・done か・関所で何回止まったか・人が戻したか。"
                         "1 走行 1 行で溜まる。記録は _agent_logs に控えるので agent --replay で撃ち直せる）")
-    p.add_argument("--forge", default=None, metavar="名前",
-                   help="鍛える: 直前の走行（AI が残りをやった走行）を弾にし、その残りの型を AI にマクロ 1 本として書かせ、"
-                        "撃つ前の写しに読み込んで AI の後の表と値で突き合わせる（合うまで --max-turns・既定 3）。"
-                        "合格した .bas は _agent_forge に置く。--register で開いているブックの「表の整理」に足す（2026-09-17）")
-    p.add_argument("--forged", action="store_true", help="鍛えたマクロの一覧（弾・合格・登録先）")
-    p.add_argument("--mend", action="store_true",
-                   help="修理の試験: 鍛えたマクロ（前の表と正解を持つ）を Python が種ごとに壊し（End If 抜け・変数名の打ち間違い・"
-                        "For の 1 ずれ…）、写しで撃って症状（コンパイル・実行時エラー・何も書かない・数が合わない）を確かめてから、"
-                        "人の言い方の症状だけを添えて macro モードに直させ、直ったマクロを前の表と別の表で正解と突き合わせる。"
-                        "--seed・--only 名,名・--kinds・--dry-run（壊し方を選ぶだけ）。点数は _agent_mend.jsonl（2026-09-17 夜）")
-    p.add_argument("--kinds", default=None, metavar="症状,症状",
-                   help="--mend で出す症状を絞る（compile / runtime / nothing / wrong。難しい型: edge＝ある表でだけ合わない・"
-                        "double＝コンパイルエラー＋数が合わない）")
-    p.add_argument("--blind", action="store_true",
-                   help="--mend で repair に鍛えた正本との差分を出さない（台帳に無い手書きのマクロと同じ条件で測る）")
-    p.add_argument("--from", dest="mend_from", default=None, metavar="置き場",
-                   help="--mend を前の回の置き場（_agent_mend\\日時）と同じお題で撃ち直す（--only で題の id かマクロ名に絞る）")
-    p.add_argument("--register", action="store_true",
-                   help="--forge と: 合格したマクロを「表の書き方と罫線と列幅をそろえる」を持つ開いているブック（--to で名指し）の標準モジュール"
-                        "「表の整理」の末尾に足し、全体コンパイルまで")
-    p.add_argument("--to", dest="register_to", default=None, metavar="ブック名",
-                   help="--forge --register の登録先（開いているブック。省略時は「表の書き方と罫線と列幅をそろえる」を持つブックが 1 冊のときだけそこ）")
-    p.add_argument("--truth", default=None, metavar="正解.xlsx",
-                   help="--forge と: 人が直した正解のブック（同じシート名）。AI の後の姿の代わりにこれを正解にする")
-    p.add_argument("--before", dest="forge_before", default=None, metavar="直す前.xlsx",
-                   help="--forge と: 直す前のブック。--truth と 2 冊で弾を作る（agent の走行は要らない・依頼文は位置引数）")
-    p.add_argument("--phrases", dest="forge_phrases", default=None, metavar="phrases.txt",
-                   help="--forge と: 同じ仕事の言い換え（UTF-8・1 行 1 つ）。マクロの「依頼の語」が全部に当たるまで鍛える")
-    p.add_argument("--test", dest="forge_tests", nargs="+", default=None, metavar="xlsx",
-                   help="--forge と: 別の表でも試す（直す前 正解 の 2 冊ずつ並べる）。合格の条件に入る（AI なしで撃つ）")
-    p.add_argument("--prompt", dest="forge_prompt", action="store_true",
-                   help="--forge と: 会話している AI（Gemini・Claude など）が自分でマクロを書くとき（API の鍵は要らない）。"
-                        "AI を呼ばずに、書き手への問い（決まり・依頼・表・前回の外れ）を _agent_forge\\名前_prompt.txt に書いて止まる（2026-09-19）")
-    p.add_argument("--answer", dest="forge_answer", default=None, metavar="答え.txt",
-                   help="--forge と: 会話している AI が書いた答え（Sub 全文・UTF-8 可）を 1 往復ぶん採点する（採点は道具）。"
-                        "不合格なら _agent_forge\\名前_prompt.txt が次の問い（外れの説明と前回のマクロつき）に書き換わる")
-    p.add_argument("--keep-case", dest="keep_case", default=None, metavar="名前",
-                   help="直前の本番の走行を弾にする（そのブックを写し取って練習台にし、依頼文と一緒に控える）。"
-                        "撃ち直すのは --fire mine。判定は写し取りと同じ＝正解の表は要らない")
-    p.add_argument("--cases", action="store_true",
-                   help="本番から拾った弾の一覧（--keep-case で登録したもの）")
-    p.add_argument("--drop-case", dest="drop_case", default=None, metavar="名前",
-                   help="本番から拾った弾を消す（台帳の項目と、弾の置き場にある練習台のファイル）")
-    p.add_argument("--state", default=None,
-                   help="実射の練習台に当てる状態を固定する（隠れ行／前のフィルタ／枠固定／名前定義／条件付き書式／"
-                        "他シート参照／結合タイトル／書式ばらばら／なし）。無指定なら弾ごとに seed から選ぶ"
-                        "＝きれいな表だけで撃たない（2026-09-05）")
-    p.add_argument("--seed", default=None,
-                   help="実射の状態を選ぶ種。落ちた組み合わせを同じ姿でもう一度撃つときに使う（--fire の出力に出る）")
-    p.add_argument("--twice", action="store_true",
-                   help="実射で合格した弾に、同じ依頼をもう 1 回撃つ（冪等性の検査）。済んだ仕事なので何も"
-                        "変わらないのが正しい＝合計行の二重足し・列の二重生成を、正解を持たずに捕まえる。往復は 2 倍")
-    p.add_argument("--repeat", default=None, metavar="N",
-                   help="--fire で同じ弾を N 回ずつ撃ち、弾ごとの合格率を出す（1 発の合否では見えない揺れを数字にする。"
-                        "--no-image・--grade-ai と組めば、その効果を同じ弾で測れる）")
     p.add_argument("--prune-days", dest="prune_days", default=None, metavar="N",
                    help="控えの置き場（backups）で N 日より古いファイルを数えて見せる（消すのは --force を付けたときだけ）")
-    p.add_argument("--harvest", default=None,
-                   help="本物のブックの構造だけを写し取った練習台を作る（--harvest 元のブックのパス）。"
-                        "値は一目で偽物と分かるダミーに置き換え、構造（結合・絞り込み・隠れ行・数式・名前定義・"
-                        "条件付き書式・入力規則・保護・印刷設定）は元のまま。元のブックには触らない。"
-                        "自分の想像で組んだ練習台の外から弾の的を供給する口（2026-09-05）")
-    p.add_argument("--keep-rows", dest="keep_rows", default=None,
-                   help="--harvest で残す見出しの行数（既定 1）")
-    p.add_argument("--bed", default=None,
-                   help="--fire の的を、写し取った練習台（--harvest で作ったブック）にする。弾ごとの正解表を"
-                        "持たない依頼（整える・重複に印・合計）を撃ち、仕上げ検査＋不変条件＋冪等性だけで判定する"
-                        "＝どんな構造のブックにも撃てる。後ろにシート名を並べると、そのシートに撃つ")
     p.add_argument("--changes", action="store_true",
                    help="直前の仕事で変わったセルの明細（シート・番地・前・後）と、書式の変化"
                         "（列幅・表示形式・寄せ・太字・罫線）を出す。Excel には触らない。"
@@ -1458,6 +1370,7 @@ _COMMAND_ALIASES = {
     "delete-col": ["col", "delete"],
     "run": ["run-macro"],
     "compile-all": ["compile"],
+    "format": ["format-range"],
 }
 
 # コマンドごとの引数の言い換え（意図が一つに決まるものだけ）
@@ -2044,6 +1957,7 @@ def _raw_command_table():
         "write-cells":       cmd_write_cells,
         "clear-range":       cmd_clear_range,
         "format-range":      cmd_format_range,
+        "format":            cmd_format_range,
         "tidy":              cmd_tidy,
         "clean-table":       cmd_clean_table,
         "表の掃除":            cmd_clean_table,

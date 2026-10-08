@@ -237,13 +237,8 @@ def runs_history(limit=15):
         print(f"      依頼「{(r.get('request') or '')[:60]}」  {gl}"
               + (f"  記録: {os.path.basename(r['log'])}" if r.get('log') else ""))
     print(_runs_summary(rows))
-    try:
-        # 登録簿の Sub 名は台帳（鍛えた仕事）から＝Excel を起こさない。引退した仕事は数えない
-        import vbam_forge as _vf
-        names = [v.get('sub') for v in _vf._forge_load().values() if v.get('sub') and v.get('passed') and not v.get('retired')]
-    except Exception:
-        names = []
-    print(fired_summary(names))
+    # 先撃ちの回数だけを出す（鍛える回路の台帳を読んで「撃たれていない本」を並べていたのは 2026-10-08 に回路ごと外した）
+    print(fired_summary())
     print("（撃ち直すなら agent --replay " + os.path.join(_AGENT_LOGS_DIR, "記録の名前.jsonl") + "）")
     return True
 

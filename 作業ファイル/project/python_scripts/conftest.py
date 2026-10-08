@@ -57,10 +57,9 @@ _TMP_STATE = {
     "_AGENT_LOCK_FILE": "_agent_running.lock",
     "_KEY_STORE": "keys.json",                          # API キーの金庫
     "_LAST_VALUES_FILE": "_last_values.tsv",            # write_grid の受け渡し
-    "_AGENT_SHAKE_DIR": "_agent_shake",                 # 揺らした版と再生の報告（2026-09-11 夜）
 }
 _STATE_MODULES = ("vbam_core", "vbam_agent", "vbam_keys", "vbam_ai", "vbam_hands", "vbam_inv", "vbam_undo",
-                  "vbam_grade", "vbam_ledger", "vbam_fire", "vbam_macro", "vbam_clean", "vbam_shake",
+                  "vbam_grade", "vbam_ledger", "vbam_macro", "vbam_clean",
                   "vbam_devtools")
 
 

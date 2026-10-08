@@ -543,36 +543,28 @@ def check_data_cleaner(
                 inside = [v for _, v in num_entries if lower_bound <= v <= upper_bound]
                 hi_in = max(inside) if inside else None
                 lo_in = min(inside) if inside else None
-                # 正の値だけの列は、桁（対数）でも囲いの外かを見る。単価・数量は 30〜12,000 のように
-                # 桁をまたいで散らばるのがふつうで、実の値の幅だけで見ると上の方がみな外れに見える
-                log_bounds = None
-                if sorted_vals[0] > 0:
-                    lv = [math.log10(x) for x in sorted_vals]
-                    lq1, lq3 = lv[int(n * 0.25)], lv[int(n * 0.75)]
-                    if lq3 > lq1:
-                        log_bounds = (lq1 - 3.0 * (lq3 - lq1), lq3 + 3.0 * (lq3 - lq1))
-
+                # 桁違いは、残りの値のいちばん端から 10 倍以上（1 桁以上）ぽつんと離れた値だけ。
+                # 前は 5 倍と桁（対数）の囲いで見ていて、件数の少ない列では囲いが狭く、単価 45〜150 の列の 380・
+                # 個数 0〜40 の列の 200 を「著しく乖離」と出していた（2026-10-08 初見の受注の表）
                 def _far(v):
-                    if log_bounds is not None and v > 0:
-                        if not (log_bounds[0] <= math.log10(v) <= log_bounds[1]):
-                            return True
-                        # 桁の幅が広い列でも、残りのいちばん上から 10 倍以上ぽつんと離れた値は桁違い
-                        # （2026-09-24 通しの実測 4: 2,800〜88,000 の金額の列の 1,100,000 を対数の囲いの中として黙って通した）
-                        return v > upper_bound and hi_in is not None and hi_in > 0 and v >= hi_in * 10
                     if v > upper_bound:
-                        return hi_in is not None and hi_in > 0 and v >= hi_in * 5
+                        return hi_in is not None and hi_in > 0 and v >= hi_in * 10
                     if v < 0 <= (lo_in if lo_in is not None else 0):
                         return not signed                   # 正の列にマイナス＝符号の打ち間違い（増減・差の列は当たり前）
-                    return lo_in is not None and v > 0 and v * 5 <= lo_in
+                    return lo_in is not None and v > 0 and v * 10 <= lo_in
 
                 for r, v in num_entries:
                     if (v < lower_bound or v > upper_bound) and _far(v):
                         addr = _rowcol_to_a1(start_row + r, start_col + c)
+                        near = hi_in if v > upper_bound else lo_in
+                        msg = (f"値 {v:,.4g} は同じ列のほかの値（いちばん近い {near:,.4g}）から 10 倍以上離れています（桁違いの疑い）"
+                               if v > 0 and near else
+                               f"値 {v:,.4g} は同じ列のほかの値（中央値 {median:,.4g}）から離れています（符号の打ち間違いの疑い）")
                         issues.append({
                             "cell": addr,
                             "severity": "warning",
                             "type": "outlier_value",
-                            "msg": f"値 {v:,.4g} は同列の中央値 ({median:,.4g}) から著しく乖離しています（桁違い・マイナス誤入力疑い）",
+                            "msg": msg,
                             "value": v
                         })
 
@@ -671,7 +663,7 @@ def format_audit_report(
         acts.append("前後の空白は TRIM 関数または Python クレンジングで一括除去してください。")
     if any(i["type"] == "text_number" for i in warns):
         acts.append("文字列型数字は VALUE 関数または数値変換で統一してください。")
-    if any(i["type"] == "outlier" for i in issues) or any("乖離" in i.get("msg", "") for i in issues):
+    if any(i["type"] in ("outlier", "outlier_value") for i in issues):
         acts.append("外れ値は入力の誤りか本当の値かを人が確かめてください（道具は直しません）。")
     for n, a in enumerate(acts, 1):
         lines.append(f"  {n}. {a}")
