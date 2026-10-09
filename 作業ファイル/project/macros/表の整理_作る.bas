@@ -11210,3 +11210,335 @@ Sub 頼みの文でグラフの種類を変える()
     On Error GoTo 0
     Application.StatusBar = co.Name & " を" & 種類 & "にしました"
 End Sub
+
+Sub 上限内で最大になる組み合わせを選ぶ()
+    ' 依頼の語: 最大になる組み合わせ|最も大きくなる組み合わせ|一番大きくなる組み合わせ|いちばん大きくなる組み合わせ|最大になる組合せ|ナップサック
+    ' 依頼の組: 組み合わせ,組合せ,組み合せ+最大,最も大き,一番大き,いちばん大き,最も多,一番多,大きく,多く+-ちょうど,一致,消し込,消込,ピボット,グラフ
+    ' 扱う: 組み合わせ 最大 上限 以下 以内 ソルバー 最適
+    ' 見出し: なし
+    ' 列は頼みから: 上限 最大
+    ' 上限の中で、別の列の合計がいちばん大きくなる行の組み合わせを選び、表の右の列「最適な組み合わせ」に ○ を付ける（2026-10-09）。
+    ' 頼みの例:「面積の合計が10以下で手数料が最大になる組み合わせを選んで」。ソルバーのアドインも設定も要らない（0.01 刻みの動的計画法で必ず最適）。
+    ' 最大が同じ組み合わせが複数あるときは、上限の列の合計がいちばん小さい方。絞り込みで隠れた行・数の入っていない行は使わない
+
+    Dim ws As Worksheet, 表 As Range, why As String, 頼 As String
+    Dim 上限 As Double, 数の位置 As Long, 列s() As Long, 位置s() As Long, 候補 As String, 唯一 As Long, n As Long
+    Dim 重列 As Long, 値列 As Long, i As Long, 近 As Long, 大の位置 As Long, p As Long
+    Dim 行s() As Long, 重s() As Long, 値s() As Double, 件数 As Long, 容量 As Long, 倍 As Double
+    Dim 最良() As Double, 取る() As Boolean, k As Long, c As Long, 最大値 As Double
+    Dim 出列 As Long, 選数 As Long, 合重 As Double, 合値 As Double, 語 As Variant
+
+    頼 = ピボットの語ならし(先撃ちの頼みの文())
+    If Len(頼) = 0 Then 先撃ちに断る "頼みの文がありません。例:「面積の合計が10以下で手数料が最大になる組み合わせを選んで」": Exit Sub
+    Set ws = ActiveSheet
+    Set 表 = 明細の表の範囲(ws, why)
+    If 表 Is Nothing Then 先撃ちに断る why: Exit Sub
+    上限 = 頼みの数(頼, 数の位置)
+    If 上限 <= 0 Then 先撃ちに断る "上限の数が頼みの文にありません。例:「面積の合計が10以下で手数料が最大になる組み合わせを選んで」": Exit Sub
+    n = 組み合わせの数の列(ws, 表, 頼, 列s, 位置s, 候補, 唯一)
+    If n < 2 Then 先撃ちに断る "上限をかける列と、最大にする列を、見出しの語で 2 つ書いてください（数の列: " & 候補 & "）": Exit Sub
+
+    ' 上限の列＝数の手前でいちばん近い見出し
+    For i = 1 To n
+        If 位置s(i) < 数の位置 Then
+            If 近 = 0 Then
+                近 = i
+            ElseIf 位置s(i) > 位置s(近) Then
+                近 = i
+            End If
+        End If
+    Next i
+    If 近 = 0 Then 先撃ちに断る "上限をかける列の見出しを、数の前に書いてください（例:「面積の合計が10以下で…」）": Exit Sub
+    重列 = 列s(近)
+    ' 最大にする列＝「最大・大きく・多く」の手前でいちばん近い見出し（無ければ残りの最初）
+    For Each 語 In Array("最大", "最も", "一番", "いちばん", "大きく", "多く")
+        p = InStr(頼, 語)
+        If p > 0 And (大の位置 = 0 Or p < 大の位置) Then 大の位置 = p
+    Next 語
+    For i = 1 To n
+        If i <> 近 Then
+            If 値列 = 0 Then
+                値列 = 列s(i): p = 位置s(i)
+            ElseIf 大の位置 > 0 And 位置s(i) < 大の位置 And (p > 大の位置 Or 位置s(i) > p) Then
+                値列 = 列s(i): p = 位置s(i)
+            End If
+        End If
+    Next i
+
+    件数 = 組み合わせの行(ws, 表, 重列, 値列, 上限, 行s, 重s, 値s, 容量, 倍)
+    If 件数 < 0 Then 先撃ちに断る "数が大きすぎて計算できません（上限 " & 組の数字(上限) & "）。上限の単位を大きくしてください": Exit Sub
+    If 件数 = 0 Then 先撃ちに断る "使える行がありません（" & 見出しの字(ws.Cells(表.Row, 重列)) & " に上限以下の正の数、" & 見出しの字(ws.Cells(表.Row, 値列)) & " に正の数が入っている行）": Exit Sub
+    If CDbl(件数) * (容量 + 1) > 30000000# Then 先撃ちに断る "数が大きすぎて計算できません（" & 件数 & " 行 × 上限 " & 組の数字(上限) & "）。上限の単位を大きくしてください": Exit Sub
+
+    ReDim 最良(0 To 容量)
+    ReDim 取る(1 To 件数, 0 To 容量)
+    For k = 1 To 件数
+        For c = 容量 To 重s(k) Step -1
+            If 最良(c - 重s(k)) + 値s(k) > 最良(c) + 0.0000001 Then
+                最良(c) = 最良(c - 重s(k)) + 値s(k)
+                取る(k, c) = True
+            End If
+        Next c
+    Next k
+    ' 最大になる中で、上限の列の合計がいちばん小さい組み合わせ
+    最大値 = 最良(容量)
+    c = 0
+    Do While 最良(c) < 最大値 - 0.000001
+        c = c + 1
+    Loop
+
+    出列 = 組み合わせの出し列(ws, 表, "最適な組み合わせ", True)
+    ws.Range(ws.Cells(表.Row + 1, 出列), ws.Cells(表.Row + 表.rows.Count - 1, 出列)).ClearContents
+    For k = 件数 To 1 Step -1
+        If 取る(k, c) Then
+            ws.Cells(行s(k), 出列).Value = "○"
+            選数 = 選数 + 1
+            合重 = 合重 + 重s(k) / 倍
+            合値 = 合値 + 値s(k)
+            c = c - 重s(k)
+        End If
+    Next k
+    Application.StatusBar = "○ " & 選数 & " 件: " & 見出しの字(ws.Cells(表.Row, 重列)) & " の合計 " & 組の数字(合重) & "（上限 " & 組の数字(上限) & "）・" & _
+        見出しの字(ws.Cells(表.Row, 値列)) & " の合計 " & 組の数字(合値) & "（いちばん大きい組み合わせ）"
+End Sub
+
+Sub 合計がこの額になる組み合わせを探す()
+    ' 依頼の語: 消し込み|消込|ちょうどになる組み合わせ|合計が一致する組み合わせ|になる組み合わせを探|になる組合せを探
+    ' 依頼の組: 組み合わせ,組合せ,組み合せ,足すと,足したら+になる,ちょうど,一致,合う,なるか+-最大,最も,一番,いちばん,大きく,多く,ピボット,グラフ
+    ' 扱う: 組み合わせ 消し込み 合計 一致 入金 ソルバー
+    ' 見出し: なし
+    ' 列は頼みから: 額
+    ' 数の列から、合計がちょうど頼みの額になる行の組み合わせを探し、表の右の列「合う組み合わせ」に ○ を付ける（2026-10-09）。
+    ' 頼みの例:「金額の合計が125,400になる組み合わせを探して」（入金の消し込み＝どの請求を足すと入金額になるか）。小数は 0.01 まで
+    ' 合う組み合わせが複数あるときは行の数がいちばん少ない方。無ければ ○ を付けずに、いちばん近い（下回る）合計を知らせる。絞り込みで隠れた行は使わない
+
+    Dim ws As Worksheet, 表 As Range, why As String, 頼 As String
+    Dim 目標 As Double, 数の位置 As Long, 列s() As Long, 位置s() As Long, 候補 As String, 唯一 As Long, n As Long
+    Dim 額列 As Long, i As Long, 近 As Long
+    Dim 行s() As Long, 重s() As Long, 値s() As Double, 件数 As Long, 容量 As Long, 倍 As Double
+    Dim 最少() As Long, 取る() As Boolean, k As Long, c As Long, 大 As Long
+    Dim 出列 As Long, 選数 As Long
+
+    頼 = ピボットの語ならし(先撃ちの頼みの文())
+    If Len(頼) = 0 Then 先撃ちに断る "頼みの文がありません。例:「金額の合計が125,400になる組み合わせを探して」": Exit Sub
+    Set ws = ActiveSheet
+    Set 表 = 明細の表の範囲(ws, why)
+    If 表 Is Nothing Then 先撃ちに断る why: Exit Sub
+    目標 = 頼みの数(頼, 数の位置)
+    If 目標 <= 0 Then 先撃ちに断る "合計にしたい額が頼みの文にありません。例:「金額の合計が125,400になる組み合わせを探して」": Exit Sub
+    n = 組み合わせの数の列(ws, 表, 頼, 列s, 位置s, 候補, 唯一)
+    If n = 0 Then
+        If 唯一 = 0 Then 先撃ちに断る "どの列を足すのか、見出しの語で書いてください（数の列: " & 候補 & "）": Exit Sub
+        額列 = 唯一
+    Else
+        ' 数の手前でいちばん近い見出し（無ければ最初）
+        For i = 1 To n
+            If 位置s(i) < 数の位置 Then
+                If 近 = 0 Then
+                    近 = i
+                ElseIf 位置s(i) > 位置s(近) Then
+                    近 = i
+                End If
+            End If
+        Next i
+        If 近 = 0 Then 近 = 1
+        額列 = 列s(近)
+    End If
+
+    件数 = 組み合わせの行(ws, 表, 額列, 0, 目標, 行s, 重s, 値s, 容量, 倍)
+    If 件数 < 0 Then 先撃ちに断る "額が大きすぎて計算できません（" & 組の数字(目標) & "）": Exit Sub
+    If 件数 = 0 Then 先撃ちに断る "使える行がありません（" & 見出しの字(ws.Cells(表.Row, 額列)) & " に " & 組の数字(目標) & " 以下の正の数が入っている行）": Exit Sub
+    If CDbl(件数) * (容量 + 1) > 30000000# Then 先撃ちに断る "数が大きすぎて計算できません（" & 件数 & " 行 × 額 " & 組の数字(目標) & "）": Exit Sub
+
+    大 = 1000000000
+    ReDim 最少(0 To 容量)
+    ReDim 取る(1 To 件数, 0 To 容量)
+    For c = 1 To 容量
+        最少(c) = 大
+    Next c
+    For k = 1 To 件数
+        For c = 容量 To 重s(k) Step -1
+            If 最少(c - 重s(k)) < 大 Then
+                If 最少(c - 重s(k)) + 1 < 最少(c) Then
+                    最少(c) = 最少(c - 重s(k)) + 1
+                    取る(k, c) = True
+                End If
+            End If
+        Next c
+    Next k
+
+    出列 = 組み合わせの出し列(ws, 表, "合う組み合わせ", (最少(容量) < 大))
+    If 出列 > 0 Then ws.Range(ws.Cells(表.Row + 1, 出列), ws.Cells(表.Row + 表.rows.Count - 1, 出列)).ClearContents
+    If 最少(容量) >= 大 Then
+        For c = 容量 To 0 Step -1
+            If 最少(c) < 大 Then Exit For
+        Next c
+        先撃ちに断る "合計がちょうど " & 組の数字(目標) & " になる組み合わせはありません（いちばん近いのは " & 組の数字(c / 倍) & "・差 " & 組の数字(目標 - c / 倍) & "）"
+        Exit Sub
+    End If
+    c = 容量
+    For k = 件数 To 1 Step -1
+        If 取る(k, c) Then
+            ws.Cells(行s(k), 出列).Value = "○"
+            選数 = 選数 + 1
+            c = c - 重s(k)
+        End If
+    Next k
+    Application.StatusBar = "○ " & 選数 & " 件で " & 見出しの字(ws.Cells(表.Row, 額列)) & " の合計が " & 組の数字(目標) & " になります（行の数がいちばん少ない組み合わせ）"
+End Sub
+
+' 頼みの文の最初の数（全角の数字・カンマも読む・後ろに「万」があれば 1 万倍）と、その位置。無ければ -1
+Function 頼みの数(ByVal 頼 As String, ByRef 位置 As Long) As Double
+    Dim i As Long, ch As String, 字 As String, s As String
+    位置 = 0
+    頼みの数 = -1
+    For i = 1 To Len(頼)
+        ch = Mid$(頼, i, 1)
+        If ch Like "[０-９]" Then ch = ChrW(AscW(ch) - AscW("０") + AscW("0"))
+        If ch = "，" Then ch = ","
+        If ch = "．" Then ch = "."
+        s = s & ch
+    Next i
+    For i = 1 To Len(s)
+        If Mid$(s, i, 1) Like "#" Then 位置 = i: Exit For
+    Next i
+    If 位置 = 0 Then Exit Function
+    i = 位置
+    Do While i <= Len(s)
+        ch = Mid$(s, i, 1)
+        If ch Like "#" Or ch = "." Then
+            字 = 字 & ch
+        ElseIf ch <> "," Then
+            Exit Do
+        End If
+        i = i + 1
+    Loop
+    頼みの数 = val(字)
+    If Mid$(s, i, 1) = "万" Then 頼みの数 = 頼みの数 * 10000
+End Function
+
+' 表の数の列のうち、頼みの文に見出し（括弧の単位を外した形も）が出てくる列とその位置。返り値は当たった数
+'   候補＝数の列の見出しを「・」でつないだ字、唯一＝数の列が 1 本だけならその列（2 本以上なら 0）
+Function 組み合わせの数の列(ByVal ws As Worksheet, ByVal 表 As Range, ByVal 頼 As String, ByRef 列s() As Long, ByRef 位置s() As Long, _
+        ByRef 候補 As String, ByRef 唯一 As Long) As Long
+    Dim 値 As Variant, r As Long, c As Long, 数 As Long, 字 As Long, 見 As String, 素 As String, p As Long, p2 As Long, 全 As Long, n As Long, q As Long, 括 As Variant
+    値 = 表.Value2
+    ReDim 列s(1 To 表.Columns.Count)
+    ReDim 位置s(1 To 表.Columns.Count)
+    候補 = "": 唯一 = 0
+    For c = 1 To 表.Columns.Count
+        見 = 見出しの字(表.Cells(1, c))
+        If 見 <> "" And 見 <> "最適な組み合わせ" And 見 <> "合う組み合わせ" Then
+            数 = 0: 字 = 0
+            For r = 2 To 表.rows.Count
+                If Not isEmpty(値(r, c)) Then
+                    If VarType(値(r, c)) = vbDouble Then 数 = 数 + 1 Else 字 = 字 + 1
+                End If
+            Next r
+            If 数 > 0 And 数 >= 字 Then
+                全 = 全 + 1
+                唯一 = 表.Column + c - 1
+                候補 = 候補 & IIf(候補 = "", "", "・") & 見
+                p = 見出しの語の位置(頼, 見)
+                素 = 見
+                For Each 括 In Array("(", "（", "[", "［")
+                    q = InStr(素, 括)
+                    If q > 1 Then 素 = Left$(素, q - 1)
+                Next 括
+                素 = Trim$(素)
+                If 素 <> 見 And Len(素) > 0 Then
+                    p2 = 見出しの語の位置(頼, 素)
+                    If p2 > 0 And (p = 0 Or p2 < p) Then p = p2
+                End If
+                ' 「予算」は費用・金額の列（「予算100万以内で効果が最大」）
+                If p = 0 And InStr(頼, "予算") > 0 Then
+                    For Each 括 In Array("費用", "コスト", "経費", "投資", "金額", "価格")
+                        If InStr(見, 括) > 0 Then p = InStr(頼, "予算"): Exit For
+                    Next 括
+                End If
+                If p > 0 Then
+                    n = n + 1
+                    列s(n) = 表.Column + c - 1
+                    位置s(n) = p
+                End If
+            End If
+        End If
+    Next c
+    If 全 <> 1 Then 唯一 = 0
+    If 候補 = "" Then 候補 = "なし"
+    組み合わせの数の列 = n
+End Function
+
+' 組み合わせに使う行（見えていて、重さの列に上限以下の正の数・値の列があれば正の数）を集める。重さは整数に直す（小数があれば 0.01 刻み）
+'   返り値は行の数。上限が大きすぎて整数にできないときは -1
+Function 組み合わせの行(ByVal ws As Worksheet, ByVal 表 As Range, ByVal 重列 As Long, ByVal 値列 As Long, ByVal 上限 As Double, _
+        ByRef 行s() As Long, ByRef 重s() As Long, ByRef 値s() As Double, ByRef 容量 As Long, ByRef 倍 As Double) As Long
+    Dim 値 As Variant, r As Long, w As Variant, v As Variant, n As Long, 使う As Boolean
+    値 = 表.Value2
+    倍 = 1
+    If Abs(上限 - Round(上限, 0)) > 0.000001 Then 倍 = 100
+    For r = 2 To 表.rows.Count
+        w = 値(r, 重列 - 表.Column + 1)
+        If VarType(w) = vbDouble Then
+            If Abs(w - Round(w, 0)) > 0.000001 Then 倍 = 100
+        End If
+    Next r
+    If 上限 * 倍 > 2000000000# Then 組み合わせの行 = -1: Exit Function
+    容量 = CLng(Int(上限 * 倍 + 0.000001))
+    ReDim 行s(1 To 表.rows.Count)
+    ReDim 重s(1 To 表.rows.Count)
+    ReDim 値s(1 To 表.rows.Count)
+    For r = 2 To 表.rows.Count
+        If Not ws.rows(表.Row + r - 1).Hidden Then
+            w = 値(r, 重列 - 表.Column + 1)
+            使う = (VarType(w) = vbDouble)
+            If 使う Then 使う = (w > 0 And w <= 上限 + 0.000001)
+            If 使う And 値列 > 0 Then
+                v = 値(r, 値列 - 表.Column + 1)
+                使う = (VarType(v) = vbDouble)
+                If 使う Then 使う = (v > 0)
+            End If
+            If 使う Then
+                n = n + 1
+                行s(n) = 表.Row + r - 1
+                重s(n) = CLng(Round(w * 倍, 0))
+                If 重s(n) > 容量 Then 重s(n) = 容量
+                If 値列 > 0 Then 値s(n) = v
+            End If
+        End If
+    Next r
+    組み合わせの行 = n
+End Function
+
+' 答えを書く列（見出しが同じ列が表の中か右隣にあればそこ）。無ければ表の右に足す（見出しの書式は左の列から写す）。作らないときは 0
+Function 組み合わせの出し列(ByVal ws As Worksheet, ByVal 表 As Range, ByVal 見出し As String, ByVal 作る As Boolean) As Long
+    Dim c As Long, c2 As Long, 最終 As Long
+    c2 = 表.Column + 表.Columns.Count - 1
+    最終 = 表.Row + 表.rows.Count - 1
+    For c = 表.Column To c2 + 1
+        If 見出しの字(ws.Cells(表.Row, c)) = 見出し Then 組み合わせの出し列 = c: Exit Function
+    Next c
+    If Not 作る Then Exit Function
+    c = c2 + 1
+    If Application.WorksheetFunction.CountA(ws.Range(ws.Cells(表.Row, c), ws.Cells(最終, c))) > 0 Then ws.Columns(c).Insert
+    ws.Range(ws.Cells(表.Row, c2), ws.Cells(最終, c2)).Copy ws.Range(ws.Cells(表.Row, c), ws.Cells(最終, c))
+    Application.CutCopyMode = False
+    With ws.Range(ws.Cells(表.Row + 1, c), ws.Cells(最終, c))
+        .ClearContents
+        .NumberFormat = "General"
+        .HorizontalAlignment = xlCenter
+    End With
+    ws.Cells(表.Row, c).Value = 見出し
+    ws.Columns(c).AutoFit
+    組み合わせの出し列 = c
+End Function
+
+' 数を字に（整数はカンマ区切り・小数は 2 桁まで）
+Function 組の数字(ByVal v As Double) As String
+    If Abs(v - Round(v, 0)) < 0.000001 Then
+        組の数字 = Format$(v, "#,##0")
+    Else
+        組の数字 = Format$(v, "#,##0.0#")
+    End If
+End Function
+

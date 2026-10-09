@@ -1799,6 +1799,7 @@ def _macro_book(xl, module, sub):
         projects = list(xl.VBE.VBProjects)
     except Exception:
         return None
+    candidates = []
     for p in projects:
         try:
             if module == SHELF_MODULE:           # 棚は「表の整理_〜」に分かれていても探す（2026-09-23）
@@ -1810,10 +1811,12 @@ def _macro_book(xl, module, sub):
             if hit:
                 name = _project_book_name(xl, p)
                 if name:
-                    return name
+                    if name.lower() == '秀コンボ.xlam':
+                        return name
+                    candidates.append(name)
         except Exception:
             continue
-    return None
+    return candidates[0] if candidates else None
 
 
 def error_hint(text, formula, empty_refs):
@@ -2417,12 +2420,13 @@ def _shelf_source(xl):
 
     make_catalog.py（作業ファイル\\project\\fixtures\\shelf_exam）と同じ畳み方を道具側に持たせた。
     固定の shelf_catalog.tsv を鵜呑みにせず、開いているブック・アドインの中身から毎回組み立てる
-    （棚が増減しても道具の目録が古くならない）。
+    （棚が増減しても道具の目録が古くならない）。秀コンボ.xlam が載っていれば優先して持ち主にする（2026-10-09）。
     """
     try:
         projects = list(xl.VBE.VBProjects)
     except Exception:
         return None, None
+    candidates = []
     for p in projects:
         try:
             text = shelf_text(p)            # 「表の整理_〜」に分かれていても全部（2026-09-23）
@@ -2431,10 +2435,13 @@ def _shelf_source(xl):
             from vbam_vba import _project_book_name
             name = _project_book_name(xl, p)
             if name:
-                return name, text.split('\r\n')
+                res = (name, text.split('\r\n'))
+                if name.lower() == '秀コンボ.xlam':
+                    return res
+                candidates.append(res)
         except Exception:
             continue
-    return None, None
+    return candidates[0] if candidates else (None, None)
 
 
 def _shelf_module_name(xl, owner, sub):
