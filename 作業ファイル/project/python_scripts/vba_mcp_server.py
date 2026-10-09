@@ -740,7 +740,7 @@ def vba(command: str) -> str:
     # 説明文は 2,000 字以内に保つ（Claude Code が 2,048 字で切り、後ろの段が AI に届いていなかった・2026-10-02）。
     # 経緯: よく外す形は 2026-09-19・09-23 の Gemini の実射、--bg は 2026-09-17。
     line = command.strip()
-    if line.lower() == "reload":
+    if line.lower() in ("reload", "reload_tools", "reload-tools"):
         return reload_tools()
     if line.endswith("--bg"):
         # 待たずに返す（無言消し・2026-09-17）。関所は _submit_async の中で同期と同じに通る。

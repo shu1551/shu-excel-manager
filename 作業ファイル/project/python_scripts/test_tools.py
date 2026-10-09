@@ -3289,6 +3289,14 @@ def test_seiri_one_command_names_the_error_cause_and_takes_the_screen_book_20260
     assert vw._macro_book(xl, "表の整理", "表の書き方と罫線と列幅をそろえる") == "秀コンボ.xlam"
     assert vw._macro_book(xl, "表の整理", "無いマクロ") is None
 
+    # 対象ブック自身に古い「表の整理」が入っていても秀コンボ.xlam を優先する（2026-10-09）
+    projects_multi = [
+        _Proj("お試し版 Excelコンボ.xlsm", {"表の整理": "Sub 表の書き方と罫線と列幅をそろえる()\nEnd Sub"}),
+        _Proj("秀コンボ.xlam", {"表の整理": "Sub 表の書き方と罫線と列幅をそろえる()\nEnd Sub"}),
+    ]
+    xl_multi = type("X", (), {"VBE": type("V", (), {"VBProjects": projects_multi})()})()
+    assert vw._macro_book(xl_multi, "表の整理", "表の書き方と罫線と列幅をそろえる") == "秀コンボ.xlam"
+
 
 def test_fresh_instance_tells_our_own_stage_from_the_users_excel_20260923():
     """弱点 8・16（2026-09-23）: DispatchEx が使う人の Excel に合流したら「自分の台」と思わない。
@@ -3377,6 +3385,14 @@ def test_shelf_catalog_folds_the_shelf_and_marks_macros_that_open_a_window_20260
     monkeypatch.setattr(vvba, "_project_book_name", lambda _xl, p: p.name)
     owner, lines = vw._shelf_source(xl)
     assert owner == "秀コンボ.xlam" and lines[0].startswith("Sub 表の書き方と罫線と列幅をそろえる")
+
+    # 対象ブック自身に古い「表の整理」が入っていても秀コンボ.xlam を優先する（2026-10-09）
+    xl_multi = type("X", (), {"VBE": type("V", (), {"VBProjects": [
+        _Proj("お試し版 Excelコンボ.xlsm", {"表の整理": 1}),
+        _Proj("秀コンボ.xlam", {"表の整理": 1}),
+    ]})()})()
+    owner_multi, _ = vw._shelf_source(xl_multi)
+    assert owner_multi == "秀コンボ.xlam"
 
 
 def test_trace_reads_refs_across_sheets_and_skips_function_names_20260923():
