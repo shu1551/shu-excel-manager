@@ -6914,13 +6914,15 @@ def _addin_project_loaded(xl, addin_path):
     return False
 
 
-def _button_addin_macro(act, addin_file, public_names):
+def _button_addin_macro(act, addin_file, public_names, source_book=''):
     """ボタンの OnAction が「このアドインのマクロ」を指していれば、そのマクロ名を返す（違えば ''）。
 
     アドインを外して入れ直すと、他のブックのボタンの行き先が、焼くときの一時ファイル
     （…\\Temp\\秀コンボ_焼き_….xlsm）に付け替わって、登録が終わると消えて効かなくなる（2026-10-03）。
-    アドインを指すのは: 外部ブックを指す [n]!名前（[0] はそのブック自身）・アドインのファイル名つき・焼きの一時ファイルつき。
-    ブック自身のマクロ（'そのブック.xlsm'!名前 や [0]!名前）は触らない。
+    アドインを指すのは: 外部ブックを指す [n]!名前（[0] はそのブック自身）・アドインのファイル名つき・焼きの一時ファイルつき・
+    焼く元のブック（'秀コンボ.xlsm'!名前）つき。焼く元は焼くときに一時ファイルへ名前が変わるので、そこを指すボタンも
+    一時ファイルに付け替わって切れる（2026-10-09 お試し版のテスト用6〜15 の［Excelコンボ］20 個）。アドインに付け直す。
+    ボタンが置いてあるブック自身のマクロ（'そのブック.xlsm'!名前 や [0]!名前）は触らない。
     """
     act = str(act or '').strip()
     if not act or '!' not in act:
@@ -6931,7 +6933,7 @@ def _button_addin_macro(act, addin_file, public_names):
         return ''
     low = head.lower()
     external = (head.startswith('[') and not head.startswith('[0]'))
-    mine = addin_file.lower() in low or '焼き_' in head
+    mine = addin_file.lower() in low or '焼き_' in head or (bool(source_book) and source_book.lower() in low)
     return name if (external or mine) else ''
 
 
@@ -6962,7 +6964,7 @@ def _addin_buttons_snapshot(xl, source_wb, addin_file):
                 for ws in other.Worksheets:
                     for sp in ws.Shapes:
                         try:
-                            name = _button_addin_macro(sp.OnAction, addin_file, public_names)
+                            name = _button_addin_macro(sp.OnAction, addin_file, public_names, str(source_wb.Name))
                         except Exception:
                             continue
                         if name:
@@ -8141,6 +8143,39 @@ def cmd_compile(args):
     return res["ok"]
 
 
+def _blank_book_names(xl):
+    """使う人の Excel で開いている「保存していない空のブック」（Book1 など・シート 1 枚・何も書いていない）の名前。"""
+    names = []
+    try:
+        for wb in xl.Workbooks:
+            try:
+                if str(wb.Path or '') or wb.Worksheets.Count != 1:
+                    continue
+                ur = wb.Worksheets(1).UsedRange
+                if ur.Count == 1 and ur.Formula in ('', None):
+                    names.append(str(wb.Name))
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return names
+
+
+def _close_new_blank_books(xl, before):
+    """関所の間に使う人の Excel に増えた空のブックだけを保存せずに閉じる。閉じた名前を返す（2026-10-09: テストが落ちるたびに
+    Book1〜6 が残り、それがあると次の関所のテストが途中で止まる、を繰り返した）。前からあった空のブックは人の物なので触らない。"""
+    closed = []
+    for name in _blank_book_names(xl):
+        if name in before:
+            continue
+        try:
+            xl.Workbooks(name).Close(SaveChanges=False)
+            closed.append(name)
+        except Exception:
+            pass
+    return closed
+
+
 def cmd_gate(args):
     """関所（停止条件）: gate [excel_file] [絞り込み] [--module 名] [--addins] [--timeout 秒]
                            [--auto-dialog ok] [--input-text 値] [--keep] [--json]
@@ -8178,6 +8213,11 @@ def cmd_gate(args):
     # 本体は健診モードで掴む（閉じているブックを自動で開く場合に Workbook_Open を起こさない）
     xl_src, wb_src = get_workbook(target_file, readonly=True)
     src_name = wb_src.Name
+    # 使う人の Excel の空のブックを控える（関所の後に増えた分だけ閉じる）。前からある空のブックはテストを途中で止めるので知らせる
+    blanks_before = _blank_book_names(xl_src)
+    if blanks_before:
+        print(f"⚠ 保存していない空のブックが開いています: {'・'.join(blanks_before)}"
+              "（開いていると関所のテストが途中で止まることがあります。要らなければ閉じてください）")
     stem, ext = os.path.splitext(src_name)
     if not ext:
         ext = '.xlsx'
@@ -8310,6 +8350,10 @@ def cmd_gate(args):
                 os.kill(pid, signal.SIGTERM)
             except Exception:
                 pass
+
+    left = _close_new_blank_books(xl_src, blanks_before)
+    if left:
+        print(f"  関所の間に増えた空のブックを閉じました: {'・'.join(left)}")
 
     elapsed = time.time() - t_start
     total = int(test_doc.get('total', 0) or 0) if test_doc else 0

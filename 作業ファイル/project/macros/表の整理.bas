@@ -37,7 +37,7 @@ Sub 表の書き方と罫線と列幅をそろえる()
     Dim tv As String, tbm As String, tv0 As String, tb0 As String, rgC As Range, arr As Variant, 集計行() As Boolean
     Dim colV As Variant, colF As Variant, tmpA() As Variant, 半カナ列 As Boolean
     Dim want As String, wantAl As Long, fmtGen As Long, alNum As Long, alTxt As Long, 罫線様式 As Boolean, 自由記述 As Boolean
-    Dim zp As Long, hp As Long, 全角括弧 As Boolean, 欄 As Boolean
+    Dim zp As Long, hp As Long, 全角括弧 As Boolean, 欄 As Boolean, 下の表 As Boolean
 
     Set ws = ActiveSheet
     Set ur = ws.UsedRange
@@ -110,7 +110,7 @@ Sub 表の書き方と罫線と列幅をそろえる()
             If Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, c0), ws.Cells(i, c0 + NC - 1))) >= 2 Then
                 If i + 1 <= r0 + nr - 1 Then
                     If Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i + 1, c0), ws.Cells(i + 1, c0 + NC - 1))) >= 1 Then
-                        hr = i
+                        hr = i: 下の表 = True
                         GoTo 表の始まり
                     End If
                 End If
@@ -169,7 +169,7 @@ Sub 表の書き方と罫線と列幅をそろえる()
             If InStr(hd, "年") = 0 And InStr(hd, "率") = 0 And InStr(hd, "%") = 0 Then want = "#,##0"
             wantAl = xlRight
         ElseIf kind = "code" Then
-            wantAl = xlCenter     ' 番号・コードの列は中央揃え（tidy / 表の仕上げと同じ決まり）
+            wantAl = xlLeft     ' 番号・コードの列は左寄せ（tidy と同じ決まり。中央にしていた・2026-10-09 shu「会員番号がなんで右寄せなんだよ」）
         Else
             wantAl = xlLeft
         End If
@@ -288,7 +288,7 @@ Sub 表の書き方と罫線と列幅をそろえる()
                 End If
             Next
         End If
-        If alNum = 0 Or alTxt = 0 Then Return
+        If (alNum = 0 Or alTxt = 0) And kind <> "code" Then Return     ' 番号の列は標準のままだと数が右に寄る＝左にそろえる（2026-10-09）
         u = CStr(wantAl)
     Else
         Set dv = CreateObject("Scripting.Dictionary")
@@ -305,7 +305,7 @@ Sub 表の書き方と罫線と列幅をそろえる()
         If dv.Count = 0 Then Return
         If dv.Count = 1 Then
             If dv.keys()(0) <> CStr(xlGeneral) Then Return
-            If alNum = 0 Or alTxt = 0 Then Return
+            If (alNum = 0 Or alTxt = 0) And kind <> "code" Then Return     ' 番号の列は標準のままだと数が右に寄る＝左にそろえる（2026-10-09）
             u = CStr(wantAl)
         Else
             u = "": n = 0
@@ -342,16 +342,17 @@ Sub 表の書き方と罫線と列幅をそろえる()
     If rr < hr + 1 Then Return
     i = hr + 1: GoSub 行の罫線
     tv0 = tv: tb0 = tbm
-    ' 表のどこにも罫線が無い（見出し・明細の 1 行目・最後の行）＝罫線を引かない一覧という様式＝引かない
-    ' （罫線なしの回答一覧に格子を引いた・2026-10-08 Sonnet の採点 S8）。途切れているときだけ引き直す
+    ' 明細の 1 行目に罫線が無い本体の表（列が 3 つ以上）＝罫線が出来上がっていない表＝引く（2026-10-09 shu「なんで罫線とかちゃんと
+    ' 全部引かれないんだよ」。10/8 は「表のどこにも罫線が無ければ、罫線を引かない様式」として引かず、テスト用4 の左の表が罫線なしの
+    ' まま・右に足した突き合わせの列だけ罫線が付いた）。表の下に見つけた 2 つ目の塊・2 列の「項目｜値」の組（請求書の振込先）は
+    ' 表ではない＝引かない
     If InStr(tv0 & tb0, "1") = 0 Then
-        i = hr: GoSub 行の罫線
-        If InStr(tv & tbm, "1") > 0 Then Return
-        i = rr: GoSub 行の罫線
-        If InStr(tv & tbm, "1") > 0 Then Return
-        罫線様式 = True
+        If 下の表 Or hc2 - hc1 + 1 < 3 Then 罫線様式 = True
         Return
     End If
+    ' 明細の 1 行目で、下の線がある列と無い列が混ざっている＝一部の列にだけ罫線（足した列だけ格子・2026-10-09 テスト用4 の
+    ' 突き合わせの F・G 列）＝継ぎはぎ＝引く。外枠だけ（下の線は全部無し）・横罫だけ・格子（全部有り）は様式のまま
+    If InStr(tb0, "0") > 0 And InStr(tb0, "1") > 0 Then Return
     ' 200 行を超える表は、等間隔の約 100 行と最後の 20 行だけ比べる（2 回目に撃つと引いた罫線を 1 万行ぶん 1 セルずつ読み、
     ' 1 回目の倍近くかかった・2026-10-08 Sonnet の採点。足した行の罫線抜けは表の下に出るので下の 20 行は全部見る）
     n = 1
@@ -2364,11 +2365,16 @@ Sub 二段の見出しを一行に畳む()
 
     Dim topLabel() As String
     ReDim topLabel(urLeft To urRight)
+    Dim 縦結合() As Boolean
+    ReDim 縦結合(urLeft To urRight)
     Dim lastTop As String
     lastTop = ""
     For c = urLeft To urRight
         Dim maC As Range
         Set maC = ws.Cells(row1, c).MergeArea
+        ' 上下 2 段に縦に結合した見出し（整理番号・備考）は、上の段の書式を下の段へ写す（下の段は塗りも太字も無いので、
+        ' 上の段を消すと見出しの色が抜けた・2026-10-09 shu「表題の色とかついてないところある」テスト用5 A7・F7）
+        If maC.rows.Count >= 2 And maC.Row = row1 Then 縦結合(c) = True
         Dim topVal As String
         topVal = Trim(CStr(maC.Cells(1, 1).Value))
         If セルの字(topVal) <> "" Then lastTop = topVal
@@ -2385,6 +2391,9 @@ Sub 二段の見出しを一行に畳む()
     ws.rows(row1).UnMerge
     ws.rows(row2).UnMerge
     On Error GoTo 0
+    For c = urLeft To urRight
+        If 縦結合(c) Then ws.Cells(row1, c).Copy ws.Cells(row2, c)     ' 書式ごと写す（字は下で書き直す）
+    Next c
 
     Dim t As String, b As String, combined As String
     For c = urLeft To urRight

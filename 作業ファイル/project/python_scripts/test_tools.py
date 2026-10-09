@@ -5271,6 +5271,57 @@ def test_更新登録のボタン控えはアドインのマクロだけ拾う()
     assert f('[1]!ほかのマクロ', '秀コンボ.xlam', names) == ''
     assert f('', '秀コンボ.xlam', names) == ''
     assert f('Excelコンボ', '秀コンボ.xlam', names) == ''
+    # 焼く元のブックを指すボタンも拾う（焼くときに一時ファイルへ名前が変わって切れた・2026-10-09）。焼く元を渡さなければ従来どおり
+    assert f("'秀コンボ.xlsm'!Excelコンボ", '秀コンボ.xlam', names, '秀コンボ.xlsm') == 'Excelコンボ'
+    assert f("'秀コンボ.xlsm'!Excelコンボ", '秀コンボ.xlam', names) == ''
+    assert f("'お試し版 Excelコンボ.xlsm'!保存して閉じる", '秀コンボ.xlam', names, '秀コンボ.xlsm') == ''
+
+
+def test_関所は増えた空のブックだけ閉じる():
+    """gate の後に使う人の Excel に増えた空のブックだけを閉じる。前からある空のブック・名前のあるブック・中身のあるブックは触らない（2026-10-09）。"""
+    class UR:
+        def __init__(self, n, f):
+            self.Count, self.Formula = n, f
+
+    class WS:
+        def __init__(self, n, f):
+            self.UsedRange = UR(n, f)
+
+    class Sheets:
+        def __init__(self, ws):
+            self._ws = ws
+            self.Count = len(ws)
+
+        def __call__(self, i):
+            return self._ws[i - 1]
+
+    class WB:
+        def __init__(self, name, path='', sheets=None):
+            self.Name, self.Path = name, path
+            self.Worksheets = Sheets(sheets or [WS(1, '')])
+            self.closed = False
+
+        def Close(self, SaveChanges=False):
+            self.closed = True
+
+    class Books:
+        def __init__(self, books):
+            self._b = books
+
+        def __iter__(self):
+            return iter([b for b in self._b if not b.closed])
+
+        def __call__(self, name):
+            return next(b for b in self._b if b.Name == name)
+
+    old, new, named, filled = WB('Book1'), WB('Book2'), WB('売上.xlsx', r'C:\x'), WB('Book3', sheets=[WS(4, 'x')])
+    xl = type('XL', (), {})()
+    xl.Workbooks = Books([old, named, filled])
+    before = vv._blank_book_names(xl)
+    assert before == ['Book1']
+    xl.Workbooks = Books([old, named, filled, new])
+    assert vv._close_new_blank_books(xl, before) == ['Book2']
+    assert new.closed and not old.closed and not named.closed and not filled.closed
 
 
 def test_phone_format_recovers_leading_zero_and_numeric():
