@@ -8213,11 +8213,17 @@ def cmd_gate(args):
     # 本体は健診モードで掴む（閉じているブックを自動で開く場合に Workbook_Open を起こさない）
     xl_src, wb_src = get_workbook(target_file, readonly=True)
     src_name = wb_src.Name
-    # 使う人の Excel の空のブックを控える（関所の後に増えた分だけ閉じる）。前からある空のブックはテストを途中で止めるので知らせる
+    # 使う人の Excel の空のブックを控える（関所の後に増えた分だけ閉じる）
     blanks_before = _blank_book_names(xl_src)
-    if blanks_before:
-        print(f"⚠ 保存していない空のブックが開いています: {'・'.join(blanks_before)}"
-              "（開いていると関所のテストが途中で止まることがあります。要らなければ閉じてください）")
+    # 抜け殻の VBA プロジェクトが残った Excel（更新登録を重ねた・落ちて立ち上がり直した）では、演習用 Excel のテストが途中で
+    # 止まり、使う人の Excel に空のブックが増えた。開き直した Excel では空のブックがあっても 65/65 通った（2026-10-09 実測）
+    try:
+        _ghosts = _ghost_projects(xl_src)
+    except Exception:
+        _ghosts = 0
+    if _ghosts:
+        print(f"⚠ 抜け殻の VBA プロジェクトが {_ghosts} 個残っています。この Excel のままだと関所のテストが途中で止まる"
+              "ことがあります（テストが一斉に「RPC サーバーを利用できません」になったら、Excel を開き直してからやり直してください）")
     stem, ext = os.path.splitext(src_name)
     if not ext:
         ext = '.xlsx'
