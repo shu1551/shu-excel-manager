@@ -12,6 +12,7 @@ import argparse
 import time
 import datetime
 import unicodedata
+from typing import Optional
 import pythoncom
 import pywintypes
 import win32com.client
