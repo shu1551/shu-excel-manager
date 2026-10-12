@@ -2541,6 +2541,17 @@ def cmd_sheet(args):
     return True
 
 
+def _escape_table_col_ref(col_name: str) -> str:
+    """テーブルの構造化参照用に列名をエスケープして [@列名] 形式を返す。"""
+    if not col_name:
+        return "[@]"
+    need_brackets = bool(re.search(r'[\s\-+*/\\()（）\[\]#@,.:;!?^%&|<>=~`"\']', col_name))
+    if need_brackets:
+        escaped = col_name.replace("'", "''").replace("[", "'[").replace("]", "']")
+        return f"[@[{escaped}]]"
+    return f"[@{col_name}]"
+
+
 @protect_safe
 def cmd_table(args):
     """テーブル(ListObject)操作: create/list/delete"""
@@ -2566,11 +2577,7 @@ def cmd_table(args):
             print("使い方: table create <range> [name] [--no-headers]"); return False
         ws, rng = _resolve_range(xl, wb, rest[1])
         has_headers = 2 if getattr(args, 'no_headers', False) else 1  # xlNo=2 / xlYes=1
-        # シートにオートフィルタ（▼）が付いていると Excel はテーブルを作れない（「このタスクでは
-        # ワークシート上のフィルターされた範囲が変更されます」）。ここで断ると AI は Excel の生の
-        # 文言だけを見て往復を使い切る（2026-09-09 の実射「スライサー」×状態「絞り込み中」＝
-        # 4 往復すべてを使って「不可」で終わった）。絞り込みは見せ方であってデータではないので、
-        # 書き込みのとき（_unfilter_for_write）と同じ流儀＝外して、外した範囲を報告する。
+        # シートにオートフィルタ（▼）が付いていると Excel はテーブルを作れない
         try:
             if bool(ws.AutoFilterMode):
                 gone = str(ws.AutoFilter.Range.Address).replace('$', '')
@@ -2582,6 +2589,35 @@ def cmd_table(args):
                       "外した範囲に▼が要るなら autofilter で付け直してください）")
         except Exception:
             pass
+        # 結合セルの解除（結合セルがあると ListObjects.Add は 1004 エラーで失敗する）
+        try:
+            is_merged = False
+            try:
+                is_merged = bool(rng.MergeCells) or (rng.MergeCells is None)
+            except Exception:
+                pass
+            if is_merged:
+                merged_areas = []
+                r_cnt = min(int(rng.Rows.Count), 500)
+                c_cnt = min(int(rng.Columns.Count), 100)
+                for r in range(1, r_cnt + 1):
+                    for c in range(1, c_cnt + 1):
+                        cell = rng.Cells(r, c)
+                        if cell.MergeCells:
+                            ma = cell.MergeArea
+                            addr = str(ma.Address)
+                            if addr not in [m[0] for m in merged_areas]:
+                                val = ma.Cells(1, 1).Value
+                                merged_areas.append((addr, ma, val))
+                if merged_areas:
+                    for addr, ma, val in merged_areas:
+                        ma.UnMerge()
+                        ma.Cells(1, 1).Value = val
+                    print(f"（結合セルを解除しました: {len(merged_areas)}箇所の結合を解除し、値を保持しました＝Excelは結合セルを含む範囲をテーブルに変換できません）")
+                else:
+                    rng.UnMerge()
+        except Exception:
+            pass
         lo = ws.ListObjects.Add(1, rng, None, has_headers)             # xlSrcRange=1
         tname = getattr(args, 'name', None) or (rest[2] if len(rest) >= 3 else None)
         if tname:
@@ -2589,10 +2625,9 @@ def cmd_table(args):
         print(f"テーブル作成: [{ws.Name}] {lo.Name}  範囲={lo.Range.Address}")
         if not tname and not str(lo.Name).isascii():
             # 日本語版の標準名は「テーブル1」。関数名にカタカナは無いので、数式で = のあとに打っても入力補完の候補に出ない
-            # （オフィス田中「列をドラッグで移動できる&テーブルの名前を簡単設定できる」）。名前を付けるなら英数字で短く
             print(f"（名前が「{lo.Name}」のままです。数式の入力補完を使うなら、英数字の短い名前＝例 data にすると = d で候補に出ます。"
                   "table create 範囲 data のように名前を足すか、テーブルデザインで変えてください）")
-        # 範囲に集計の行・題の行が入っていると、並べ替え・絞り込みで明細と混ざる（2026-09-24）。黙って渡さない
+        # 範囲に集計の行・題の行が入っていると、並べ替え・絞り込みで明細と混ざる
         try:
             from vbam_view import _is_total_label
             hv = lo.HeaderRowRange.Value[0] if lo.HeaderRowRange is not None else ()
@@ -2645,7 +2680,7 @@ def cmd_table(args):
         return None
 
     if action == 'column':
-        # table column <add|remove|rename|format> <table> ...
+        # table column <add|remove|rename|format|formula> <table> ...
         sub = rest[1].lower() if len(rest) >= 2 else ''
         tname = rest[2] if len(rest) >= 3 else None
         sh, lo = _find_lo(tname) if tname else (None, None)
@@ -2657,7 +2692,35 @@ def cmd_table(args):
             lc = lo.ListColumns.Add(int(pos)) if pos else lo.ListColumns.Add()
             if col_name:
                 lc.Name = col_name
-            print(f"列追加: {tname}[{lc.Name}]（位置 {lc.Index}）")
+            formula_str = getattr(args, 'formula', None)
+            if formula_str:
+                if lc.DataBodyRange is not None:
+                    try:
+                        lc.DataBodyRange.Formula2 = formula_str
+                    except Exception:
+                        lc.DataBodyRange.Formula = formula_str
+                    print(f"列追加: {tname}[{lc.Name}]（位置 {lc.Index}、数式={formula_str}）")
+                else:
+                    print(f"列追加: {tname}[{lc.Name}]（位置 {lc.Index}、数式={formula_str}※データ行なし）")
+            else:
+                print(f"列追加: {tname}[{lc.Name}]（位置 {lc.Index}）")
+            print("（保存はしていません）"); return True
+        if sub in ('formula', 'calc'):
+            if len(rest) < 5:
+                print("使い方: table column formula <table> <列名> <数式>"); return False
+            col_name = rest[3]
+            formula_str = rest[4]
+            if _col_field(lo, col_name) is None:
+                print(f"エラー: 列 '{col_name}' が見つかりません。"); return False
+            lc = lo.ListColumns.Item(col_name)
+            if lc.DataBodyRange is not None:
+                try:
+                    lc.DataBodyRange.Formula2 = formula_str
+                except Exception:
+                    lc.DataBodyRange.Formula = formula_str
+                print(f"数式設定: {tname}[{col_name}] = {formula_str}")
+            else:
+                print(f"数式設定: {tname}[{col_name}] = {formula_str}（※データ行なし）")
             print("（保存はしていません）"); return True
         if sub == 'remove':
             col_name = rest[3] if len(rest) >= 4 else None
@@ -2679,17 +2742,21 @@ def cmd_table(args):
                 print(f"エラー: 列 '{col_name}' が見つかりません。"); return False
             lc = lo.ListColumns.Item(col_name)
             if len(rest) >= 5:                       # set
-                lc.DataBodyRange.NumberFormat = rest[4]
+                if lc.DataBodyRange is not None:
+                    lc.DataBodyRange.NumberFormat = rest[4]
                 print(f"列書式設定: {tname}[{col_name}] = {rest[4]}")
                 print("（保存はしていません）"); return True
             else:                                    # get
-                try:
-                    fmt = lc.DataBodyRange.Cells(1, 1).NumberFormat
-                except Exception:
-                    fmt = '(取得不可)'
+                fmt = '(データ行なし)'
+                if lc.DataBodyRange is not None:
+                    try:
+                        fmt = lc.DataBodyRange.Cells(1, 1).NumberFormat
+                    except Exception:
+                        fmt = '(取得不可)'
                 print(f"列書式: {tname}[{col_name}] = {fmt}"); return True
-        print("使い方: table column <add|remove|rename|format> <table> ...")
+        print("使い方: table column <add|remove|rename|format|formula> <table> ...")
         return False
+
 
     if action in ('filter', 'filter-values', 'filter-clear', 'filters'):
         tname = rest[1] if len(rest) >= 2 else None
@@ -4770,18 +4837,361 @@ def cmd_printer_setup(args):
 _XL_COND_OP = {'gt': 5, 'lt': 6, 'eq': 3, 'ne': 4, 'ge': 7, 'le': 8, 'between': 1}
 
 
+def _inspect_cond_formats(ws, target_rng=None):
+    """シートまたは指定範囲の条件付き書式を走査し、ルール一覧・重複・分裂・#REF!ゾンビを分析する。"""
+    try:
+        fc_coll = target_rng.FormatConditions if target_rng is not None else ws.Cells.FormatConditions
+        count = int(fc_coll.Count)
+    except Exception:
+        count = 0
+        fc_coll = None
+
+    if count == 0 or fc_coll is None:
+        return {
+            "rules": [],
+            "total_count": 0,
+            "ref_errors": [],
+            "exact_duplicates": [],
+            "fragmented_groups": [],
+        }
+
+    rules = []
+    _TYPE_NAMES = {
+        1: "CellValue",
+        2: "Expression",
+        3: "ColorScale",
+        4: "DataBar",
+        5: "Top10",
+        6: "IconSet",
+        8: "UniqueValues",
+        9: "ConditionValue",
+        10: "TimePeriod",
+        11: "AboveAverage",
+    }
+    _OP_NAMES = {
+        1: "between", 2: "not_between", 3: "equal", 4: "not_equal",
+        5: "greater", 6: "less", 7: "greater_equal", 8: "less_equal",
+    }
+
+    for idx in range(1, count + 1):
+        try:
+            fc = fc_coll.Item(idx)
+        except Exception:
+            continue
+
+        try:
+            fc_type = int(fc.Type)
+        except Exception:
+            fc_type = 0
+        type_name = _TYPE_NAMES.get(fc_type, f"Type_{fc_type}")
+
+        applies_to = ""
+        try:
+            applies_to = str(fc.AppliesTo.Address)
+        except Exception:
+            pass
+
+        f1 = ""
+        f2 = ""
+        try:
+            f1 = str(fc.Formula1 or "")
+        except Exception:
+            pass
+        try:
+            f2 = str(fc.Formula2 or "")
+        except Exception:
+            pass
+
+        op = None
+        op_name = None
+        try:
+            op = int(fc.Operator)
+            op_name = _OP_NAMES.get(op, str(op))
+        except Exception:
+            pass
+
+        bg = None
+        color = None
+        bold = False
+        try:
+            c = int(fc.Interior.Color)
+            if c not in (16777215, 0xFFFFFF, -4142):
+                bg = f"#{c & 0xFF:02X}{(c >> 8) & 0xFF:02X}{(c >> 16) & 0xFF:02X}"
+        except Exception:
+            pass
+        try:
+            c = int(fc.Font.Color)
+            if c not in (16777215, 0xFFFFFF, -4142):
+                color = f"#{c & 0xFF:02X}{(c >> 8) & 0xFF:02X}{(c >> 16) & 0xFF:02X}"
+        except Exception:
+            pass
+        try:
+            bold = bool(fc.Font.Bold)
+        except Exception:
+            pass
+
+        is_ref_error = ("#REF!" in f1.upper()) or ("#REF!" in f2.upper()) or ("#REF!" in applies_to.upper())
+        sig = (fc_type, op, f1, f2, bg, color, bold)
+
+        rules.append({
+            "index": idx,
+            "fc": fc,
+            "type": type_name,
+            "type_code": fc_type,
+            "applies_to": applies_to,
+            "formula1": f1,
+            "formula2": f2,
+            "operator": op_name,
+            "bg": bg,
+            "color": color,
+            "bold": bold,
+            "is_ref_error": is_ref_error,
+            "signature": sig,
+        })
+
+    ref_errors = [r for r in rules if r["is_ref_error"]]
+
+    seen_exact = {}
+    exact_duplicates = []
+    for r in rules:
+        key = (r["signature"], r["applies_to"].upper())
+        if key in seen_exact:
+            exact_duplicates.append(r)
+        else:
+            seen_exact[key] = r
+
+    sig_groups = {}
+    for r in rules:
+        if r["is_ref_error"]:
+            continue
+        sig_groups.setdefault(r["signature"], []).append(r)
+
+    fragmented_groups = []
+    for sig, grp in sig_groups.items():
+        if len(grp) > 1:
+            addrs = {r["applies_to"].upper() for r in grp}
+            if len(addrs) > 1:
+                fragmented_groups.append({
+                    "signature": sig,
+                    "count": len(grp),
+                    "rules": grp,
+                    "addresses": [r["applies_to"] for r in grp],
+                })
+
+    return {
+        "rules": rules,
+        "total_count": len(rules),
+        "ref_errors": ref_errors,
+        "exact_duplicates": exact_duplicates,
+        "fragmented_groups": fragmented_groups,
+    }
+
+
+def _clean_cond_formats(xl, ws, target_rng=None):
+    """条件付き書式の #REF! ゾンビ削除・完全重複削除・細切れルールの結合を行う。"""
+    info = _inspect_cond_formats(ws, target_rng)
+    rules = info["rules"]
+    if not rules:
+        return {"deleted_ref": 0, "deleted_dups": 0, "merged_groups": 0, "before": 0, "after": 0}
+
+    before_count = len(rules)
+    deleted_ref_count = 0
+    deleted_dup_count = 0
+    merged_group_count = 0
+
+    to_delete_idx = set()
+
+    for r in info["ref_errors"]:
+        to_delete_idx.add(r["index"])
+        deleted_ref_count += 1
+
+    for r in info["exact_duplicates"]:
+        if r["index"] not in to_delete_idx:
+            to_delete_idx.add(r["index"])
+            deleted_dup_count += 1
+
+    for grp in info["fragmented_groups"]:
+        active_rules = [r for r in grp["rules"] if r["index"] not in to_delete_idx]
+        if len(active_rules) <= 1:
+            continue
+
+        primary = active_rules[0]
+        combined_rng = None
+        for r in active_rules:
+            try:
+                curr_rng = r["fc"].AppliesTo
+                if combined_rng is None:
+                    combined_rng = curr_rng
+                else:
+                    combined_rng = xl.Union(combined_rng, curr_rng)
+            except Exception:
+                pass
+
+        if combined_rng is not None:
+            try:
+                primary["fc"].ModifyAppliesToRange(combined_rng)
+                merged_group_count += 1
+                for r in active_rules[1:]:
+                    if r["index"] not in to_delete_idx:
+                        to_delete_idx.add(r["index"])
+                        deleted_dup_count += 1
+            except Exception:
+                pass
+
+    # コレクションから降順で削除
+    fc_coll = target_rng.FormatConditions if target_rng is not None else ws.Cells.FormatConditions
+    for idx in sorted(to_delete_idx, reverse=True):
+        try:
+            fc_coll.Item(idx).Delete()
+        except Exception:
+            pass
+
+    after_info = _inspect_cond_formats(ws, target_rng)
+    after_count = after_info["total_count"]
+
+    return {
+        "deleted_ref": deleted_ref_count,
+        "deleted_dups": deleted_dup_count,
+        "merged_groups": merged_group_count,
+        "before": before_count,
+        "after": after_count,
+    }
+
+
 @protect_safe
 def cmd_cond_format(args):
-    """条件付き書式(セルの値): cond-format <range> --gt 100 --bg '#FFC7CE'"""
+    """条件付き書式(設定・一覧・診断・クレンジング): cond-format <range> --gt 100 --bg '#FFC7CE' / --list / --audit / --clean"""
     target_file, rest = parse_target_and_rest(args.posargs)
+
+    action = None
+    if rest and rest[0].lower() in ('list', 'audit', 'clean'):
+        action = rest[0].lower()
+        rest = rest[1:]
+    elif getattr(args, 'list_opt', False):
+        action = 'list'
+    elif getattr(args, 'audit_opt', False):
+        action = 'audit'
+    elif getattr(args, 'clean_opt', False):
+        action = 'clean'
+
+    xl, wb = get_workbook(target_file)
+
+    # 1. 一覧・診断・クレンジング アクション
+    if action in ('list', 'audit', 'clean'):
+        spec = rest[0] if rest else None
+        target_rng = None
+        ws = None
+        if spec:
+            whole = _whole_sheet_spec(wb, spec)
+            if whole is not None:
+                ws = wb.Worksheets(whole)
+            else:
+                ws, target_rng = _resolve_range(xl, wb, spec)
+        else:
+            ws = wb.ActiveSheet
+
+        if action == 'list':
+            info = _inspect_cond_formats(ws, target_rng)
+            if getattr(args, 'json', False):
+                import json
+                clean_rules = []
+                for r in info["rules"]:
+                    cr = {k: v for k, v in r.items() if k not in ("fc", "signature")}
+                    clean_rules.append(cr)
+                print(json.dumps({"sheet": ws.Name, "total": info["total_count"], "rules": clean_rules}, ensure_ascii=False), file=sys.stdout)
+            else:
+                print(f"===== 条件付き書式一覧: {ws.Name}" + (f" ({target_rng.Address})" if target_rng else "") + f" (全 {info['total_count']} 件) =====")
+                if not info["rules"]:
+                    print("  条件付き書式は設定されていません。")
+                for r in info["rules"]:
+                    parts = [f"#{r['index']} [{r['type']}]", f"適用: {r['applies_to']}"]
+                    if r["operator"]: parts.append(f"条件: {r['operator']}")
+                    if r["formula1"]: parts.append(f"式1: {r['formula1']}")
+                    if r["formula2"]: parts.append(f"式2: {r['formula2']}")
+                    if r["bg"]: parts.append(f"背景: {r['bg']}")
+                    if r["color"]: parts.append(f"文字: {r['color']}")
+                    if r["bold"]: parts.append("太字")
+                    if r["is_ref_error"]: parts.append("⚠ #REF! エラー")
+                    print("  " + " | ".join(parts))
+            return True
+
+        elif action == 'audit':
+            info = _inspect_cond_formats(ws, target_rng)
+            n_ref = len(info["ref_errors"])
+            n_dup = len(info["exact_duplicates"])
+            n_frag = len(info["fragmented_groups"])
+            is_clean = (n_ref == 0 and n_dup == 0 and n_frag == 0)
+
+            if getattr(args, 'json', False):
+                import json
+                out = {
+                    "sheet": ws.Name,
+                    "total_rules": info["total_count"],
+                    "is_clean": is_clean,
+                    "ref_errors": [{"index": r["index"], "applies_to": r["applies_to"], "formula1": r["formula1"]} for r in info["ref_errors"]],
+                    "exact_duplicates": [{"index": r["index"], "applies_to": r["applies_to"]} for r in info["exact_duplicates"]],
+                    "fragmented_groups": [{"count": g["count"], "addresses": g["addresses"]} for g in info["fragmented_groups"]],
+                }
+                print(json.dumps(out, ensure_ascii=False), file=sys.stdout)
+            else:
+                print(f"===== 条件付き書式 診断レポート: {ws.Name}" + (f" ({target_rng.Address})" if target_rng else "") + f" =====")
+                print(f"  総ルール数: {info['total_count']} 件")
+                if info["ref_errors"]:
+                    print(f"  ⚠ #REF! ゾンビルール: {n_ref} 件")
+                    for r in info["ref_errors"][:5]:
+                        print(f"    - #{r['index']} {r['applies_to']} 式: {r['formula1'] or r['formula2']}")
+                else:
+                    print("  ✓ #REF! ゾンビ: 0 件")
+
+                if info["exact_duplicates"]:
+                    print(f"  ⚠ 完全重複ルール: {n_dup} 件")
+                    for r in info["exact_duplicates"][:5]:
+                        print(f"    - #{r['index']} {r['applies_to']}")
+                else:
+                    print("  ✓ 完全重複: 0 件")
+
+                if info["fragmented_groups"]:
+                    print(f"  ⚠ 細切れ分裂グループ: {n_frag} グループ")
+                    for g in info["fragmented_groups"][:5]:
+                        print(f"    - {g['count']} 個に分裂: {', '.join(g['addresses'][:5])}{' ...' if len(g['addresses']) > 5 else ''}")
+                else:
+                    print("  ✓ 細切れ分裂: 0 件")
+
+                print("-" * 50)
+                if is_clean:
+                    print("  判定: 良好（整理の必要はありません）")
+                else:
+                    print(f"  判定: 要整理（cond-format clean で一括整理・高速化を推奨）")
+            return is_clean
+
+        elif action == 'clean':
+            res = _clean_cond_formats(xl, ws, target_rng)
+            if getattr(args, 'json', False):
+                import json
+                print(json.dumps({"sheet": ws.Name, "success": True, **res}, ensure_ascii=False), file=sys.stdout)
+            else:
+                print(f"===== 条件付き書式 クレンジング完了: {ws.Name} =====")
+                print(f"  整理前ルール数: {res['before']} 件 → 整理後: {res['after']} 件")
+                if res['deleted_ref']:
+                    print(f"  - 削除した #REF! ゾンビ: {res['deleted_ref']} 件")
+                if res['deleted_dups']:
+                    print(f"  - 削除した重複/細切れ: {res['deleted_dups']} 件")
+                if res['merged_groups']:
+                    print(f"  - 統合した細切れグループ: {res['merged_groups']} 組")
+                if res['before'] == res['after']:
+                    print("  整理対象の重複・ゾンビルールはありませんでした。")
+                print("（保存はしていません）")
+            return True
+
+    # 2. 従来の追加・削除
     if not rest:
         print("使い方: cond-format <range> [--gt|--lt|--ge|--le|--eq|--ne 値 | --between v1 v2]")
         print("         [--bg '#RRGGBB'] [--color '#RRGGBB'] [--bold] [--clear]")
+        print("         [--list] [--audit] [--clean]")
         return False
     spec = rest[0]
-    if _reject_extra_args(rest, 1, '使い方: cond-format [excel_file] <range> [--gt 値 ...|--clear]'):
+    if _reject_extra_args(rest, 1, '使い方: cond-format [excel_file] <range> [--gt 値 ...|--clear|--list|--audit|--clean]'):
         return False
-    xl, wb = get_workbook(target_file)
     whole = _whole_sheet_spec(wb, spec)
     if whole is not None and not getattr(args, 'whole_sheet', False):
         print(f"エラー: '{spec}' はシート '{whole}' の使用範囲全域を指します。")
@@ -5090,8 +5500,11 @@ __all__ = [
     '_XL_BORDER_WEIGHT',
     '_XL_COND_OP',
     '_alerts_off',
+    '_clean_cond_formats',
     '_col_num',
+    '_escape_table_col_ref',
     '_hex_to_excel_color',
+    '_inspect_cond_formats',
     '_list_form_windows',
     '_pick_form_windows',
     '_read_tsv_grid',

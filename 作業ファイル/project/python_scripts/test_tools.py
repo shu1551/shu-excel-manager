@@ -1244,6 +1244,13 @@ def test_injection_route_ledger():
         # 登録簿（Sub 宣言の正規表現で取った名前）と既定のマクロ名だけ。人のブックには書かない
         # 2026-10-08: 鍛える回路（vbam_forge・実射・試験・修理）を外したとき、この部品だけ vbam_rehearse.py へ移した（中身は同じ）
         ('vbam_rehearse.py', 'rehearse_steps'),
+        # 2026-10-11: test_vba_lint.py / test_run_macro_trace.py の実機テスト用コード注入
+        # （tmp_path 上の使い捨てブックに固定リテラルのテスト用マクロを植えるのみ＝外から名前が流入しない）
+        ('test_vba_lint.py', 'test_vba_lint_detects_implicit_variant_and_unused'),
+        ('test_vba_lint.py', 'test_vba_lint_clean_module_passes'),
+        ('test_run_macro_trace.py', 'test_run_macro_zero_divide_trace'),
+        ('test_run_macro_trace.py', 'test_run_macro_runtime_1004_trace'),
+        ('test_run_macro_trace.py', 'test_run_macro_success_intact'),
     }
     found = set()
     for fname in sorted(os.listdir(base)):

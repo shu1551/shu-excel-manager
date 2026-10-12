@@ -2594,9 +2594,9 @@ NextSheet:
 End Sub
 
 Sub 金額を基準の比率で按分し右に作る()
-    ' 依頼の語: 按分|人数で割り振|人数比で配分|基準の数で按分|人数割り|共通経費を人数|共通経費|割り振
-    ' 依頼の組: 按分,割り振,配分,人数で割,人数割
-    ' 扱う: 按分 配分
+    ' 依頼の語: 按分|人数で割り振|人数比で配分|基準の数で按分|人数割り|共通経費を人数|共通経費|比率で配分
+    ' 依頼の組: 按分,人数比,基準の比率,比率で配分,人数で割,人数割+-均等,偏り,当番,シフト
+    ' 扱う: 按分 配分 比率
     ' 見出し: なし
     ' 形: 別のシート
     ' 金額列を別シートの基準表（項目・数の列）の比率で按分した表を右に作成。端数は基準最大項目に加算。合計行付き。
@@ -11212,8 +11212,8 @@ Sub 頼みの文でグラフの種類を変える()
 End Sub
 
 Sub 上限内で最大になる組み合わせを選ぶ()
-    ' 依頼の語: 最大になる組み合わせ|最も大きくなる組み合わせ|一番大きくなる組み合わせ|いちばん大きくなる組み合わせ|最大になる組合せ|ナップサック
-    ' 依頼の組: 組み合わせ,組合せ,組み合せ+最大,最も大き,一番大き,いちばん大き,最も多,一番多,大きく,多く+-ちょうど,一致,消し込,消込,ピボット,グラフ
+    ' 依頼の語: 最大になる組み合わせ|最も大きくなる組み合わせ|一番大きくなる組み合わせ|いちばん大きくなる組み合わせ|最大になる組合せ|ナップサック|最大になる案件を選|最大になる施策を選|効果が最大になる|最大になる行を選
+    ' 依頼の組: 組み合わせ,組合せ,組み合せ,選んで,選ぶ,選択,案件,施策+最大,最も大き,一番大き,いちばん大き,最も多,一番多,大きく,多く+-ちょうど,一致,消し込,消込,ピボット,グラフ
     ' 扱う: 組み合わせ 最大 上限 以下 以内 ソルバー 最適
     ' 見出し: なし
     ' 列は頼みから: 上限 最大
@@ -11541,4 +11541,835 @@ Function 組の数字(ByVal v As Double) As String
         組の数字 = Format$(v, "#,##0.0#")
     End If
 End Function
+
+
+Sub 表をエグゼクティブデザインに美化する()
+    ' 依頼の語: エグゼクティブデザイン|エグゼクティブネイビー|役員報告デザイン|エグゼクティブにして|役員報告向けに美化|濃紺デザイン
+    ' 依頼の語限定（誤爆防止のため組なし）
+    ' 扱う: デザイン 書式 美化 エグゼクティブ ネイビー 罫線 配色
+    ' 見出し: なし
+    ' 選ぶ列: -
+    ' 形: 表全体
+    ' 表を濃紺（エグゼクティブネイビー）を基調とした役員報告レベルのモダンデザインに美化する。見出しの深紺帯塗り（白抜き太字）、ソフトアイスブルーのゼブラ縞、明確なスレートグレー格子罫線、BIZ UDゴシック/Meiryo UI統一、行高ゆとり調整（見出し26pt/データ21pt）、合計行の二重下線。
+
+    Call デザイン美化を実行する( _
+        "エグゼクティブネイビー", _
+        RGB(27, 54, 93), _
+        RGB(255, 255, 255), _
+        RGB(232, 240, 250), _
+        RGB(226, 234, 244), _
+        RGB(70, 100, 145), _
+        RGB(150, 168, 190) _
+    )
+End Sub
+
+Sub 表をモダンエメラルドに美化する()
+    ' 依頼の語: モダンエメラルド|エメラルドデザイン|グリーンデザイン|エメラルドにして|エメラルド美化|緑系デザイン
+    ' 依頼の語限定（誤爆防止のため組なし）
+    ' 扱う: デザイン 書式 美化 エメラルド グリーン 罫線 配色
+    ' 見出し: なし
+    ' 選ぶ列: -
+    ' 形: 表全体
+    ' 表を深緑（モダンエメラルド）を基調とした清潔感のあるデザインに美化する。見出しの深緑帯塗り（白抜き太字）、極淡ミントのゼブラ縞、水平極細グレー罫線、フォント統一、行高ゆとり調整、合計行二重線。
+
+    Call デザイン美化を実行する( _
+        "モダンエメラルド", _
+        RGB(15, 81, 50), _
+        RGB(255, 255, 255), _
+        RGB(241, 248, 245), _
+        RGB(230, 242, 235), _
+        RGB(180, 210, 195), _
+        RGB(222, 235, 228) _
+    )
+End Sub
+
+Sub デザイン美化を実行する( _
+    ByVal テーマ名 As String, _
+    ByVal ヘッダー背景 As Long, _
+    ByVal ヘッダー文字 As Long, _
+    ByVal ゼブラ背景 As Long, _
+    ByVal 合計背景 As Long, _
+    ByVal アクセント線 As Long, _
+    ByVal グリッド線色 As Long _
+)
+    Dim ws As Worksheet
+    Set ws = ActiveSheet
+
+    Dim savedScreenUpdating As Boolean
+    Dim savedCalculation As XlCalculation
+    Dim savedEnableEvents As Boolean
+    savedScreenUpdating = Application.ScreenUpdating
+    savedCalculation = Application.Calculation
+    savedEnableEvents = Application.EnableEvents
+
+    On Error GoTo CatchError
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.EnableEvents = False
+
+    Dim ur As Range
+    Set ur = ws.UsedRange
+    If ur Is Nothing Then GoTo FinallyExit
+    If ur.rows.Count < 2 Or ur.Columns.Count < 1 Then GoTo FinallyExit
+
+    Dim rStart As Long, cStart As Long, rLast As Long, cLast As Long
+    rStart = ur.Row: cStart = ur.Column
+    rLast = ur.Row + ur.rows.Count - 1
+    cLast = ur.Column + ur.Columns.Count - 1
+
+    ' 1. 表の見出し行を検出（全幅結合セル等のタイトル行を除外）
+    Dim r As Long, c As Long
+    Dim hdrRow As Long: hdrRow = 0
+    For r = rStart To rLast
+        Dim txtCount As Long: txtCount = 0
+        Dim isMergedTitle As Boolean: isMergedTitle = False
+
+        For c = cStart To cLast
+            Dim cv As Variant: cv = ws.Cells(r, c).Value
+            If ws.Cells(r, c).MergeCells Then
+                If ws.Cells(r, c).MergeArea.Columns.Count >= (cLast - cStart) Then
+                    isMergedTitle = True
+                    Exit For
+                End If
+            End If
+            If VarType(cv) = vbString And Trim(cv) <> "" Then
+                txtCount = txtCount + 1
+            End If
+        Next c
+
+        If Not isMergedTitle And (txtCount >= 2 Or (cLast = cStart And txtCount >= 1)) Then
+            hdrRow = r
+            Exit For
+        End If
+    Next r
+    If hdrRow = 0 Then hdrRow = rStart
+
+    ' 2. 見出し行から各テーブル・アイランド（連続する列ブロック）を検出
+    ' （不要な空列や、離れた場所の単独セル・数式に罫線を引かないよう完全分離）
+    Dim blkStarts As Collection: Set blkStarts = New Collection
+    Dim blkEnds As Collection: Set blkEnds = New Collection
+
+    Dim inBlk As Boolean: inBlk = False
+    Dim curStart As Long: curStart = 0
+
+    For c = cStart To cLast
+        Dim hv As Variant: hv = ws.Cells(hdrRow, c).Value
+        Dim hasHdrText As Boolean
+        hasHdrText = (VarType(hv) = vbString And Trim(CStr(hv)) <> "")
+
+        If hasHdrText Then
+            If Not inBlk Then
+                inBlk = True
+                curStart = c
+            End If
+        Else
+            If inBlk Then
+                ' ブロック終了。下の行にデータがあるか検証
+                If curStart > 0 Then
+                    Dim hasDataBelow As Boolean: hasDataBelow = False
+                    Dim chkR As Long
+                    For chkR = hdrRow + 1 To Application.Min(hdrRow + 10, rLast)
+                        Dim chkC As Long
+                        For chkC = curStart To c - 1
+                            If Not isEmpty(ws.Cells(chkR, chkC).Value) Then
+                                hasDataBelow = True
+                                Exit For
+                            End If
+                        Next chkC
+                        If hasDataBelow Then Exit For
+                    Next chkR
+
+                    If hasDataBelow Then
+                        blkStarts.Add curStart
+                        blkEnds.Add c - 1
+                    End If
+                End If
+                inBlk = False
+            End If
+        End If
+    Next c
+
+    If inBlk Then
+        Dim hasDataBelowEnd As Boolean: hasDataBelowEnd = False
+        For chkR = hdrRow + 1 To Application.Min(hdrRow + 10, rLast)
+            For chkC = curStart To cLast
+                If Not isEmpty(ws.Cells(chkR, chkC).Value) Then
+                    hasDataBelowEnd = True
+                    Exit For
+                End If
+            Next chkC
+            If hasDataBelowEnd Then Exit For
+        Next chkR
+
+        If hasDataBelowEnd Then
+            blkStarts.Add curStart
+            blkEnds.Add cLast
+        End If
+    End If
+
+    ' フォールバック: 有効ブロックが見つからない場合は全幅
+    If blkStarts.Count = 0 Then
+        blkStarts.Add cStart
+        blkEnds.Add cLast
+    End If
+
+    ' 3. フォント名の選定
+    Dim fontName As String: fontName = "BIZ UDゴシック"
+    On Error Resume Next
+    ws.Cells(hdrRow, blkStarts(1)).Font.Name = fontName
+    If ws.Cells(hdrRow, blkStarts(1)).Font.Name <> fontName Then
+        fontName = "Meiryo UI"
+    End If
+    On Error GoTo CatchError
+
+    ' 4. 全体の本文最終行を公式下請けで厳密取得（注記・メモを100%除外）
+    Dim globalBodyEnd As Long
+    globalBodyEnd = 表の整理_下請け.表の本文の最終行(ws)
+    If globalBodyEnd < hdrRow Then globalBodyEnd = hdrRow
+
+    ' 5. 各テーブル・アイランドごとにピンポイントで美化を適用
+    Dim bIdx As Long
+    For bIdx = 1 To blkStarts.Count
+        Dim bCStart As Long: bCStart = blkStarts(bIdx)
+        Dim bCEnd As Long: bCEnd = blkEnds(bIdx)
+
+        ' ブロック内のデータ最終行（globalBodyEndを上限）
+        Dim pureDataEnd As Long: pureDataEnd = hdrRow
+        For r = globalBodyEnd To hdrRow + 1 Step -1
+            If Application.CountA(ws.Range(ws.Cells(r, bCStart), ws.Cells(r, bCEnd))) > 0 Then
+                pureDataEnd = r
+                Exit For
+            End If
+        Next r
+        If pureDataEnd < hdrRow Then pureDataEnd = hdrRow
+
+        ' 本文直下（1?4行）の合計・平均行を探索
+        Dim bSumRows As Collection: Set bSumRows = New Collection
+        Dim sr As Long
+        For sr = pureDataEnd + 1 To Application.Min(pureDataEnd + 4, rLast)
+            Dim isSumLine As Boolean: isSumLine = False
+            For c = bCStart To bCEnd
+                Dim cVal As Variant: cVal = ws.Cells(sr, c).Value
+                If VarType(cVal) = vbString Then
+                    Dim sStr As String: sStr = Trim(CStr(cVal))
+                    If sStr = "合計" Or sStr = "総合計" Or sStr = "総計" Or sStr = "小計" Or _
+                       sStr = "平均" Or sStr = "計" Or InStr(sStr, "合計") > 0 Or InStr(LCase$(sStr), "total") > 0 Then
+                        isSumLine = True
+                        Exit For
+                    End If
+                End If
+            Next c
+            If isSumLine Then
+                bSumRows.Add sr
+            End If
+        Next sr
+
+        ' テーブルの終端行（合計行があれば最後の合計行、なければ本文最終行）
+        Dim bTblEnd As Long
+        If bSumRows.Count > 0 Then
+            bTblEnd = bSumRows(bSumRows.Count)
+        Else
+            bTblEnd = pureDataEnd
+        End If
+        If bTblEnd < hdrRow + 1 Then bTblEnd = hdrRow + 1
+
+        ' 該当ブロックの範囲
+        Dim tblRange As Range
+        Set tblRange = ws.Range(ws.Cells(hdrRow, bCStart), ws.Cells(bTblEnd, bCEnd))
+
+        ' フォント・基本体裁の統一
+        tblRange.Font.Name = fontName
+        tblRange.Font.Size = 10
+        tblRange.VerticalAlignment = xlCenter
+
+        ' 【重要】該当ブロック内のみに格子罫線を全通（不要な空列や注記には一切引かない）
+        tblRange.Borders.LineStyle = xlContinuous
+        tblRange.Borders.Weight = xlThin
+        tblRange.Borders.Color = グリッド線色
+
+        ' 見出し行装飾
+        Dim hdrRange As Range
+        Set hdrRange = ws.Range(ws.Cells(hdrRow, bCStart), ws.Cells(hdrRow, bCEnd))
+        With hdrRange
+            .Interior.Color = ヘッダー背景
+            .Font.Color = ヘッダー文字
+            .Font.Bold = True
+            .HorizontalAlignment = xlCenter
+            .VerticalAlignment = xlCenter
+            .RowHeight = 26
+            .Borders(xlEdgeTop).Color = ヘッダー背景
+            .Borders(xlEdgeTop).Weight = xlThin
+            .Borders(xlEdgeBottom).Color = ヘッダー背景
+            .Borders(xlEdgeBottom).Weight = xlMedium
+            .Borders(xlInsideVertical).Color = アクセント線
+            .Borders(xlInsideVertical).Weight = xlThin
+            .Borders(xlEdgeLeft).Color = ヘッダー背景
+            .Borders(xlEdgeLeft).Weight = xlThin
+            .Borders(xlEdgeRight).Color = ヘッダー背景
+            .Borders(xlEdgeRight).Weight = xlThin
+        End With
+
+        ' データ行のプロ品質装飾（文字色・太字リセット＆ゼブラ縞、空行除外）
+        If pureDataEnd > hdrRow Then
+            Dim dataRange As Range
+            Set dataRange = ws.Range(ws.Cells(hdrRow + 1, bCStart), ws.Cells(pureDataEnd, bCEnd))
+            With dataRange
+                .RowHeight = 21
+                .Font.Color = RGB(51, 51, 51)  ' プロ標準チャコールブラック統一
+                .Font.Bold = False            ' 不揃いな太字を一掃
+            End With
+
+            For r = hdrRow + 1 To pureDataEnd
+                If Application.CountA(ws.Range(ws.Cells(r, bCStart), ws.Cells(r, bCEnd))) > 0 Then
+                    If (r - hdrRow) Mod 2 = 0 Then
+                        ws.Range(ws.Cells(r, bCStart), ws.Cells(r, bCEnd)).Interior.Color = ゼブラ背景
+                    Else
+                        ws.Range(ws.Cells(r, bCStart), ws.Cells(r, bCEnd)).Interior.Color = RGB(255, 255, 255)
+                    End If
+                End If
+            Next r
+        End If
+
+        ' 合計行のピンポイント装飾（二重下線・太字・合計背景）
+        If bSumRows.Count > 0 Then
+            Dim sIdx As Long
+            For sIdx = 1 To bSumRows.Count
+                Dim sRow As Long: sRow = bSumRows(sIdx)
+                Dim sRng As Range
+                Set sRng = ws.Range(ws.Cells(sRow, bCStart), ws.Cells(sRow, bCEnd))
+                With sRng
+                    .Interior.Color = 合計背景
+                    .Font.Bold = True
+                    .Font.Color = RGB(30, 30, 30)
+                    .RowHeight = 22
+                    .VerticalAlignment = xlCenter
+                    .Borders(xlEdgeTop).Color = グリッド線色
+                    .Borders(xlEdgeTop).Weight = xlThin
+                    If sIdx = bSumRows.Count Then
+                        .Borders(xlEdgeBottom).LineStyle = xlDouble
+                        .Borders(xlEdgeBottom).Weight = xlThick
+                        .Borders(xlEdgeBottom).Color = ヘッダー背景
+                    Else
+                        .Borders(xlEdgeBottom).LineStyle = xlContinuous
+                        .Borders(xlEdgeBottom).Weight = xlThin
+                        .Borders(xlEdgeBottom).Color = グリッド線色
+                    End If
+                End With
+            Next sIdx
+        ElseIf bTblEnd > hdrRow Then
+            With ws.Range(ws.Cells(bTblEnd, bCStart), ws.Cells(bTblEnd, bCEnd)).Borders(xlEdgeBottom)
+                .LineStyle = xlContinuous
+                .Weight = xlThin
+                .Color = グリッド線色
+            End With
+        End If
+
+        ' 列ごとのアライメント・書式整流化（メモリ配列による最速判定）
+        Dim numCols As Long: numCols = bCEnd - bCStart + 1
+        Dim bValArr As Variant
+        bValArr = tblRange.Value
+        Dim numR As Long: numR = UBound(bValArr, 1)
+
+        For c = 1 To numCols
+            Dim colRng As Range
+            Set colRng = ws.Range(ws.Cells(hdrRow + 1, bCStart + c - 1), ws.Cells(bTblEnd, bCStart + c - 1))
+
+            Dim hTitle As String: hTitle = CStr(bValArr(1, c))
+            Dim isAllNum As Boolean: isAllNum = True
+            Dim isRate As Boolean: isRate = False
+            Dim isDateCol As Boolean: isDateCol = False
+            Dim isTimeCol As Boolean: isTimeCol = False
+            Dim numSampleCount As Long: numSampleCount = 0
+            Dim isIdCol As Boolean: isIdCol = False
+            Dim isPersonCol As Boolean: isPersonCol = False
+            Dim isMoneyCol As Boolean: isMoneyCol = False
+            Dim hasDecimal As Boolean: hasDecimal = False
+
+            ' 見出し語による事前型判定
+            If InStr(hTitle, "率") > 0 Or InStr(hTitle, "%") > 0 Or InStr(hTitle, "比") > 0 Or _
+               InStr(hTitle, "進捗") > 0 Or InStr(hTitle, "達成") > 0 Or InStr(hTitle, "割合") > 0 Then isRate = True
+            If InStr(hTitle, "コード") > 0 Or InStr(hTitle, "No") > 0 Or InStr(hTitle, "番号") > 0 Or _
+               InStr(hTitle, "ID") > 0 Or InStr(hTitle, "TEL") > 0 Or InStr(hTitle, "電話") > 0 Or _
+               InStr(hTitle, "郵便") > 0 Or InStr(hTitle, "〒") > 0 Or InStr(hTitle, "FAX") > 0 Then isIdCol = True
+            If InStr(hTitle, "担当") > 0 Or InStr(hTitle, "氏名") > 0 Or InStr(hTitle, "名前") > 0 Or InStr(hTitle, "者") > 0 Then isPersonCol = True
+            If InStr(hTitle, "金額") > 0 Or InStr(hTitle, "売上") > 0 Or InStr(hTitle, "価格") > 0 Or _
+               InStr(hTitle, "単価") > 0 Or InStr(hTitle, "給与") > 0 Or InStr(hTitle, "残高") > 0 Or _
+               InStr(hTitle, "利益") > 0 Or InStr(hTitle, "費用") > 0 Or InStr(hTitle, "コスト") > 0 Or _
+               InStr(hTitle, "賞与") > 0 Or InStr(hTitle, "手当") > 0 Then isMoneyCol = True
+            If InStr(hTitle, "時刻") > 0 Or InStr(hTitle, "出勤") > 0 Or InStr(hTitle, "退勤") > 0 Or _
+               InStr(hTitle, "開始") > 0 Or InStr(hTitle, "終了") > 0 Or InStr(hTitle, "出発") > 0 Or InStr(hTitle, "到着") > 0 Or InStr(hTitle, "発着") > 0 Or _
+               hTitle = "発" Or hTitle = "着" Then
+                If InStr(hTitle, "発注") = 0 And InStr(hTitle, "発行") = 0 And InStr(hTitle, "発送") = 0 And InStr(hTitle, "発表") = 0 Then
+                    isTimeCol = True
+                End If
+            End If
+
+            Dim maxColDisplayLen As Long: maxColDisplayLen = 0
+
+            ' 見出し自身の長さ
+            Dim hLen As Long: hLen = 0
+            Dim chIdx As Long
+            For chIdx = 1 To Len(hTitle)
+                Dim chCode As Long: chCode = AscW(Mid$(hTitle, chIdx, 1))
+                If (chCode >= 0 And chCode <= 255) Or (chCode >= &HFF61 And chCode <= &HFF9F) Then
+                    hLen = hLen + 1
+                Else
+                    hLen = hLen + 2
+                End If
+            Next chIdx
+            If hLen > maxColDisplayLen Then maxColDisplayLen = hLen
+
+            For r = 2 To numR
+                Dim cellV As Variant: cellV = bValArr(r, c)
+                If Not isEmpty(cellV) Then
+                    ' 表示長さの計算（表内セルのみ・外部セル完全排除）
+                    Dim sVal As String: sVal = CStr(cellV)
+                    Dim sLen As Long: sLen = 0
+                    For chIdx = 1 To Len(sVal)
+                        chCode = AscW(Mid$(sVal, chIdx, 1))
+                        If (chCode >= 0 And chCode <= 255) Or (chCode >= &HFF61 And chCode <= &HFF9F) Then
+                            sLen = sLen + 1
+                        Else
+                            sLen = sLen + 2
+                        End If
+                    Next chIdx
+                    If sLen > maxColDisplayLen Then maxColDisplayLen = sLen
+
+                    If IsDate(cellV) Then
+                        isDateCol = True
+                        isAllNum = False
+                    ElseIf IsNumeric(cellV) Then
+                        numSampleCount = numSampleCount + 1
+                        Dim dVal As Double: dVal = CDbl(cellV)
+                        If dVal <> Fix(dVal) Then hasDecimal = True
+                        If isTimeCol And dVal >= 0 And dVal < 1 Then
+                            ' 0以上1未満の小数は時刻シリアル値
+                        ElseIf Not isRate And dVal > 0 And dVal <= 2 And (InStr(CStr(cellV), ".") > 0) Then
+                            If InStr(hTitle, "率") > 0 Or InStr(hTitle, "比") > 0 Or InStr(hTitle, "進捗") > 0 Then isRate = True
+                        End If
+                    Else
+                        isAllNum = False
+                    End If
+                End If
+            Next r
+
+            ' 書式と配置の最適化
+            If isDateCol Then
+                colRng.NumberFormatLocal = "yyyy/mm/dd"
+                colRng.HorizontalAlignment = xlCenter
+                If maxColDisplayLen < 12 Then maxColDisplayLen = 12
+            ElseIf isTimeCol And (isAllNum Or numSampleCount > 0) Then
+                colRng.NumberFormatLocal = "hh:mm"
+                colRng.HorizontalAlignment = xlCenter
+                If maxColDisplayLen < 8 Then maxColDisplayLen = 8
+            ElseIf isIdCol Then
+                ' ID・コード・電話・郵便番号列はカンマ区切り絶対禁止
+                colRng.NumberFormatLocal = "@"
+                colRng.HorizontalAlignment = xlCenter
+            ElseIf isPersonCol Then
+                colRng.HorizontalAlignment = xlCenter
+            ElseIf isMoneyCol Then
+                colRng.NumberFormatLocal = "#,##0"
+                colRng.HorizontalAlignment = xlRight
+            ElseIf isAllNum And numSampleCount > 0 Then
+                colRng.HorizontalAlignment = xlRight
+                If isRate Then
+                    colRng.NumberFormatLocal = "0.0%"
+                ElseIf hasDecimal Then
+                    colRng.NumberFormatLocal = "#,##0.0"
+                Else
+                    colRng.NumberFormatLocal = "#,##0"
+                End If
+            Else
+                Dim maxLen As Long: maxLen = 0
+                For r = 2 To numR
+                    If Len(CStr(bValArr(r, c))) > maxLen Then maxLen = Len(CStr(bValArr(r, c)))
+                Next r
+                If maxLen <= 4 And maxLen > 0 Then
+                    colRng.HorizontalAlignment = xlCenter
+                Else
+                    colRng.HorizontalAlignment = xlLeft
+                End If
+            End If
+
+            ' 【黄金比列幅】表内セルの最大文字長から直接算出（表外巻き込み完全防止）
+            Dim calcW As Double
+            calcW = maxColDisplayLen * 1.15 + 3#
+            If calcW < 9.5 Then calcW = 9.5
+            If calcW > 24# Then calcW = 24#
+            ws.Columns(bCStart + c - 1).ColumnWidth = calcW
+        Next c
+    Next bIdx
+
+    ' 6. 表の上のタイトル行の美しい調和
+    If hdrRow > rStart Then
+        For r = rStart To hdrRow - 1
+            For c = cStart To cLast
+                Dim titleVal As Variant: titleVal = ws.Cells(r, c).Value
+                If VarType(titleVal) = vbString And Trim(titleVal) <> "" Then
+                    If InStr(CStr(titleVal), "例：") = 0 And InStr(CStr(titleVal), "テスト") = 0 Then
+                        With ws.Cells(r, c).Font
+                            .Name = fontName
+                            .Size = 13
+                            .Bold = True
+                            .Color = ヘッダー背景
+                        End With
+                        ws.rows(r).RowHeight = 26
+                        ws.Cells(r, c).HorizontalAlignment = xlCenter
+                    End If
+                End If
+            Next c
+        Next r
+    End If
+
+    ActiveWindow.DisplayGridlines = True
+
+FinallyExit:
+    Application.ScreenUpdating = savedScreenUpdating
+    Application.Calculation = savedCalculation
+    Application.EnableEvents = savedEnableEvents
+    Exit Sub
+
+CatchError:
+    Resume FinallyExit
+End Sub
+
+Sub 表の上にKPIサマリーカードを作る()
+    ' 依頼の語: KPIカード|サマリーカード|KPI|指標カード|上部にサマリー|カード形式|要約カード|ダッシュボードカード|KPIを作成|サマリーカードを作成
+    ' 依頼の組: KPI,カード,サマリー,指標,ダッシュボード
+    ' 扱う: KPI サマリー カード ダッシュボード 集計 指標
+    ' 見出し: なし
+    ' 選ぶ列: -
+    ' 形: 表の上部
+    ' 表の上部に主要指標（総件数・合計金額・平均値など）を大きく見せるKPIサマリーカードを横並びで作成する。背景淡色カード枠、上段にラベル、下段に大きな太字数値を配置。
+
+    Dim ws As Worksheet
+    Set ws = ActiveSheet
+
+    Dim savedScreenUpdating As Boolean
+    Dim savedCalculation As XlCalculation
+    Dim savedEnableEvents As Boolean
+    savedScreenUpdating = Application.ScreenUpdating
+    savedCalculation = Application.Calculation
+    savedEnableEvents = Application.EnableEvents
+
+    On Error GoTo CatchError
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.EnableEvents = False
+
+    Dim ur As Range
+    Set ur = ws.UsedRange
+    If ur Is Nothing Then GoTo FinallyExit
+    If ur.rows.Count < 2 Then GoTo FinallyExit
+
+    Dim rStart As Long, cStart As Long, rLast As Long, cLast As Long
+    rStart = ur.Row: cStart = ur.Column
+    rLast = ur.Row + ur.rows.Count - 1
+    cLast = ur.Column + ur.Columns.Count - 1
+
+    ' 末尾の空行を除外して真の最終行を特定
+    Dim r As Long, c As Long
+    Dim realLastRow As Long: realLastRow = 0
+    For r = rLast To rStart Step -1
+        For c = cStart To cLast
+            If Not isEmpty(ws.Cells(r, c).Value) Then
+                realLastRow = r
+                Exit For
+            End If
+        Next c
+        If realLastRow > 0 Then Exit For
+    Next r
+    If realLastRow > 0 Then rLast = realLastRow
+
+    ' 見出し行を検出
+    Dim hdrRow As Long: hdrRow = 0
+    For r = rStart To rLast
+        Dim txtCount As Long: txtCount = 0
+        For c = cStart To cLast
+            Dim cv As Variant: cv = ws.Cells(r, c).Value
+            If VarType(cv) = vbString And Trim(cv) <> "" Then txtCount = txtCount + 1
+        Next c
+        If txtCount >= 2 Or (cLast = cStart And txtCount >= 1) Then
+            hdrRow = r: Exit For
+        End If
+    Next r
+    If hdrRow = 0 Then hdrRow = rStart
+
+    ' 合計行の除外判定
+    Dim hasTotalRow As Boolean: hasTotalRow = False
+    For c = cStart To cLast
+        Dim lv As Variant: lv = ws.Cells(rLast, c).Value
+        If VarType(lv) = vbString Then
+            Dim strLv As String: strLv = Trim(CStr(lv))
+            If strLv = "合計" Or strLv = "総合計" Or strLv = "総計" Or strLv = "小計" Or _
+               InStr(strLv, "合計") > 0 Or InStr(LCase$(strLv), "total") > 0 Then
+                hasTotalRow = True: Exit For
+            End If
+        End If
+    Next c
+
+    ' 集計対象の末尾行（合計行があればその直前行）
+    Dim dataEndRow As Long
+    dataEndRow = IIf(hasTotalRow, rLast - 1, rLast)
+    If dataEndRow <= hdrRow Then GoTo FinallyExit
+
+    ' 上部に6行分の空きスペースがあるか確認。無ければ行を挿入
+    Dim neededRows As Long: neededRows = 6
+    If hdrRow <= neededRows Then
+        Dim insertCount As Long: insertCount = (neededRows + 2) - hdrRow
+        ws.rows("1:" & insertCount).Insert Shift:=xlDown
+        hdrRow = hdrRow + insertCount
+        dataEndRow = dataEndRow + insertCount
+        rLast = rLast + insertCount
+    End If
+
+    ' KPI候補列を抽出（数値列を最大3つ選定）
+    Dim numCols() As Long: ReDim numCols(1 To cLast - cStart + 1)
+    Dim numTitles() As String: ReDim numTitles(1 To cLast - cStart + 1)
+    Dim numTypes() As String: ReDim numTypes(1 To cLast - cStart + 1)
+    Dim kpiCount As Long: kpiCount = 0
+
+    For c = cStart To cLast
+        Dim hTitle As String: hTitle = Trim(CStr(ws.Cells(hdrRow, c).Value))
+        If InStr(hTitle, "コード") = 0 And InStr(hTitle, "No") = 0 And InStr(hTitle, "ID") = 0 Then
+            Dim valSample As Variant: valSample = ws.Cells(hdrRow + 1, c).Value
+            If IsNumeric(valSample) And Not isEmpty(valSample) Then
+                kpiCount = kpiCount + 1
+                numCols(kpiCount) = c
+                numTitles(kpiCount) = hTitle
+                If InStr(hTitle, "率") > 0 Or InStr(hTitle, "%") > 0 Or InStr(hTitle, "比") > 0 Then
+                    numTypes(kpiCount) = "AVG"
+                Else
+                    numTypes(kpiCount) = "SUM"
+                End If
+                If kpiCount >= 3 Then Exit For
+            End If
+        End If
+    Next c
+
+    If kpiCount = 0 Then GoTo FinallyExit
+
+    ' KPIサマリーカードを配置（2行目?5行目）
+    Dim curCol As Long: curCol = cStart
+    Dim k As Long
+    For k = 1 To kpiCount
+        Dim targetCol As Long: targetCol = numCols(k)
+        Dim kTitle As String: kTitle = numTitles(k)
+
+        Dim cLeft As Long: cLeft = curCol
+        Dim cRight As Long: cRight = curCol + 1
+        If cRight > cLast And kpiCount > 1 Then cRight = curCol
+
+        ' カード全体範囲
+        Dim cardRange As Range
+        Set cardRange = ws.Range(ws.Cells(2, cLeft), ws.Cells(5, cRight))
+
+        With cardRange
+            .Interior.Color = RGB(248, 249, 251)
+            .Borders.LineStyle = xlContinuous
+            .Borders.Weight = xlThin
+            .Borders.Color = RGB(218, 224, 233)
+        End With
+
+        ' カード上段（ラベル）
+        Dim lblRange As Range
+        Set lblRange = ws.Range(ws.Cells(2, cLeft), ws.Cells(3, cRight))
+        lblRange.Merge
+        With lblRange
+            .Value = IIf(numTypes(k) = "AVG", "平均 ", "合計 ") & kTitle
+            .Font.Name = "BIZ UDゴシック"
+            .Font.Size = 9
+            .Font.Bold = True
+            .Font.Color = RGB(108, 117, 125)
+            .HorizontalAlignment = xlCenter
+            .VerticalAlignment = xlCenter
+        End With
+
+        ' カード下段（指標値・数式）
+        Dim valRange As Range
+        Set valRange = ws.Range(ws.Cells(4, cLeft), ws.Cells(5, cRight))
+        valRange.Merge
+
+        Dim colLetter As String
+        colLetter = Split(ws.Cells(1, targetCol).Address, "$")(1)
+        Dim formulaRange As String
+        formulaRange = colLetter & (hdrRow + 1) & ":" & colLetter & dataEndRow
+
+        If numTypes(k) = "AVG" Then
+            valRange.Formula = "=AVERAGE(" & formulaRange & ")"
+            valRange.NumberFormatLocal = "0.0%"
+        Else
+            valRange.Formula = "=SUM(" & formulaRange & ")"
+            If InStr(kTitle, "件数") > 0 Or InStr(kTitle, "数") > 0 Then
+                valRange.NumberFormatLocal = "#,##0 ""件"""
+            ElseIf InStr(kTitle, "円") > 0 Or InStr(kTitle, "売上") > 0 Or InStr(kTitle, "金額") > 0 Then
+                valRange.NumberFormatLocal = """\""#,##0"
+            Else
+                valRange.NumberFormatLocal = "#,##0"
+            End If
+        End If
+
+        With valRange
+            .Font.Name = "BIZ UDゴシック"
+            .Font.Size = 16
+            .Font.Bold = True
+            .Font.Color = RGB(27, 54, 93)
+            .HorizontalAlignment = xlCenter
+            .VerticalAlignment = xlCenter
+        End With
+
+        curCol = cRight + 2
+    Next k
+
+    ws.rows("2:3").RowHeight = 14
+    ws.rows("4:5").RowHeight = 18
+
+FinallyExit:
+    Application.ScreenUpdating = savedScreenUpdating
+    Application.Calculation = savedCalculation
+    Application.EnableEvents = savedEnableEvents
+    Exit Sub
+
+CatchError:
+    Resume FinallyExit
+End Sub
+
+
+Sub 表からモダンサマリーシートを作る()
+    ' 依頼の語: モダンサマリー|サマリーシート|エグゼクティブサマリー|ダッシュボードシート|役員報告シート|サマリーを作る|サマリーシート作成
+    ' 依頼の組: サマリー,ダッシュボード,シート,役員報告,モダン
+    ' 扱う: サマリー ダッシュボード シート グラフ KPI 集計
+    ' 見出し: なし
+    ' 選ぶ列: -
+    ' 形: 新規シート
+    ' 元の明細表を基に、上部にKPIサマリーカード、中央にエグゼクティブ美化表、右側に洗練されたグラフをレイアウトした役員報告用ダッシュボードを一発生成する。
+
+    Dim srcWs As Worksheet
+    Set srcWs = ActiveSheet
+
+    Dim savedScreenUpdating As Boolean
+    Dim savedCalculation As XlCalculation
+    Dim savedEnableEvents As Boolean
+    savedScreenUpdating = Application.ScreenUpdating
+    savedCalculation = Application.Calculation
+    savedEnableEvents = Application.EnableEvents
+
+    On Error GoTo CatchError
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.EnableEvents = False
+
+    Dim ur As Range
+    Set ur = srcWs.UsedRange
+    If ur Is Nothing Then GoTo FinallyExit
+    If ur.rows.Count < 2 Then GoTo FinallyExit
+
+    ' 1. 表をエグゼクティブデザインに美化
+    Call 表をエグゼクティブデザインに美化する
+
+    ' 2. 上部にKPIサマリーカードを配置
+    Call 表の上にKPIサマリーカードを作る
+
+    ' 3. グラフを自動作成（複合グラフまたは棒グラフ）
+    On Error Resume Next
+    Call 表の整理_作る.棒と率の折れ線の複合グラフを作る
+    If Err.Number <> 0 Then
+        Err.Clear
+        Call 表の整理_作る.項目と金額の棒グラフを作る
+    End If
+    On Error GoTo CatchError
+
+FinallyExit:
+    Application.ScreenUpdating = savedScreenUpdating
+    Application.Calculation = savedCalculation
+    Application.EnableEvents = savedEnableEvents
+    Exit Sub
+
+CatchError:
+    Resume FinallyExit
+End Sub
+
+Sub 表をシックチャコールに美化する()
+    ' 依頼の語: シックチャコール|チャコールデザイン|モノトーンデザイン|チャコールにして|チャコール美化|グレー系デザイン
+    ' 依頼の語限定（誤爆防止のため組なし）
+    ' 扱う: デザイン 書式 美化 チャコール グレー モノトーン 罫線 配色
+    ' 見出し: なし
+    ' 選ぶ列: -
+    ' 形: 表全体
+    ' 表をスレートチャコール（洗練されたダークグレー）を基調としたモノトーンデザインに美化する。見出しのチャコール帯塗り（白抜き太字）、ライトグレーのゼブラ縞、明確なスレート格子罫線、BIZ UDゴシック/Meiryo UI統一、行高ゆとり調整（見出し26pt/データ21pt）、合計行の二重下線。
+
+    Call デザイン美化を実行する( _
+        "シックチャコール", _
+        RGB(45, 55, 72), _
+        RGB(255, 255, 255), _
+        RGB(244, 246, 248), _
+        RGB(230, 235, 240), _
+        RGB(100, 110, 125), _
+        RGB(160, 170, 185) _
+    )
+End Sub
+
+
+Sub 表をノーブルボルドーに美化する()
+    ' 依頼の語: ノーブルボルドー|ボルドーデザイン|ワインレッドデザイン|ボルドーにして|ワインにして|ボルドー美化|ワイン美化|赤系デザイン
+    ' 依頼の語限定（誤爆防止のため組なし）
+    ' 扱う: デザイン 書式 美化 ボルドー ワイン 赤 罫線 配色
+    ' 見出し: なし
+    ' 選ぶ列: -
+    ' 形: 表全体
+    ' 表をノーブルボルドー（気品あるワインレッド）を基調としたデザインに美化する。見出しのワイン帯塗り（白抜き太字）、ペールローズのゼブラ縞、明確なローズグレー格子罫線、BIZ UDゴシック/Meiryo UI統一、行高ゆとり調整（見出し26pt/データ21pt）、合計行の二重下線。
+
+    Call デザイン美化を実行する( _
+        "ノーブルボルドー", _
+        RGB(108, 25, 34), _
+        RGB(255, 255, 255), _
+        RGB(243, 243, 244), _
+        RGB(246, 224, 227), _
+        RGB(160, 80, 90), _
+        RGB(180, 165, 170) _
+    )
+End Sub
+
+
+Sub 表をウォームアンバーに美化する()
+    ' 依頼の語: ウォームアンバー|アンバーデザイン|ブラウンデザイン|琥珀デザイン|アンバーにして|アンバー美化|暖色系デザイン
+    ' 依頼の語限定（誤爆防止のため組なし）
+    ' 扱う: デザイン 書式 美化 アンバー 琥珀 ブラウン 暖色 罫線 配色
+    ' 見出し: なし
+    ' 選ぶ列: -
+    ' 形: 表全体
+    ' 表をウォームアンバー（深みのある琥珀・テラコッタブラウン）を基調とした温かみと高級感のあるデザインに美化する。見出しのアンバー帯塗り（白抜き太字）、極淡クリームのゼブラ縞、明確なスレートブラウン格子罫線、BIZ UDゴシック/Meiryo UI統一、行高ゆとり調整（見出し26pt/データ21pt）、合計行の二重下線。
+
+    Call デザイン美化を実行する( _
+        "ウォームアンバー", _
+        RGB(140, 75, 20), _
+        RGB(255, 255, 255), _
+        RGB(253, 250, 245), _
+        RGB(250, 238, 220), _
+        RGB(180, 130, 80), _
+        RGB(195, 175, 155) _
+    )
+End Sub
+
+
+Sub 表をクラシックインディゴに美化する()
+    ' 依頼の語: クラシックインディゴ|インディゴデザイン|藍色デザイン|インディゴにして|インディゴ美化|青系デザイン
+    ' 依頼の組: インディゴ,藍,青,デザイン,美化
+    ' 扱う: デザイン 書式 美化 インディゴ 藍 青 伝統色 罫線 配色
+    ' 見出し: なし
+    ' 選ぶ列: -
+    ' 形: 表全体
+    ' 表をクラシックインディゴ（気品と深みのある伝統の藍色）を基調とした信頼感あふれるデザインに美化する。見出しのインディゴ帯塗り（白抜き太字）、ソフトアイスブルーのゼブラ縞、明確なスレートブルー格子罫線、BIZ UDゴシック/Meiryo UI統一、行高ゆとり調整（見出し26pt/データ21pt）、合計行の二重下線。
+
+    Call デザイン美化を実行する( _
+        "クラシックインディゴ", _
+        RGB(20, 45, 95), _
+        RGB(255, 255, 255), _
+        RGB(246, 249, 252), _
+        RGB(232, 240, 250), _
+        RGB(70, 110, 170), _
+        RGB(180, 195, 215) _
+    )
+End Sub
 

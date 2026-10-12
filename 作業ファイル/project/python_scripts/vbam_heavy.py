@@ -1627,7 +1627,7 @@ def cmd_calc_mode(args):
 # ================================================================
 
 def _refresh_connection_sync(cn):
-    """接続を「完了まで待って」更新する。
+    """接続を「完了まで待って」更新する（OLEDB / ODBC 両対応）。
 
     WorkbookConnection.Refresh は BackgroundQuery=True（Excel が作る Query 接続では
     しばしば既定で True）だと即座に戻り、更新はバックグラウンドで走る。そのまま
@@ -1636,20 +1636,34 @@ def _refresh_connection_sync(cn):
     そこで一時的に BackgroundQuery=False にして同期実行させ、元に戻す。
     """
     ole = None
-    prev = None
+    prev_ole = None
+    odbc = None
+    prev_odbc = None
     try:
         ole = cn.OLEDBConnection
-        prev = bool(ole.BackgroundQuery)
-        if prev:
+        prev_ole = bool(ole.BackgroundQuery)
+        if prev_ole:
             ole.BackgroundQuery = False
     except Exception:
-        ole = None                      # OLEDB でない接続（テキスト等）はそのまま撃つ
+        ole = None
+    try:
+        odbc = cn.ODBCConnection
+        prev_odbc = bool(odbc.BackgroundQuery)
+        if prev_odbc:
+            odbc.BackgroundQuery = False
+    except Exception:
+        odbc = None
     try:
         cn.Refresh()
     finally:
-        if ole is not None and prev:
+        if ole is not None and prev_ole:
             try:
-                ole.BackgroundQuery = prev
+                ole.BackgroundQuery = prev_ole
+            except Exception:
+                pass
+        if odbc is not None and prev_odbc:
+            try:
+                odbc.BackgroundQuery = prev_odbc
             except Exception:
                 pass
 
@@ -1863,9 +1877,19 @@ def cmd_powerquery(args):
             print("  （読み込みなしクエリは更新対象がありません。powerquery list で名前を確認）")
             return False
         else:
-            wb.RefreshAll()
-            print("全クエリ/接続を更新しました (RefreshAll)")
-            print("  ※ バックグラウンド更新の場合、完了まで数秒かかることがあります。")
+            conns = [cn for cn in wb.Connections] if wb.Connections.Count > 0 else []
+            if not conns:
+                wb.RefreshAll()
+                print("全クエリ/接続を更新しました (RefreshAll)")
+                return True
+            done = []
+            for cn in conns:
+                try:
+                    _refresh_connection_sync(cn)
+                    done.append(cn.Name)
+                except Exception as ex:
+                    print(f"⚠ 接続 '{cn.Name}' の更新で警告: {ex}")
+            print(f"全クエリ/接続を同期更新しました ({len(done)}件): {', '.join(done)}")
             return True
 
     if action == 'add':

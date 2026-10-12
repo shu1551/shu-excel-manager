@@ -36,7 +36,7 @@ Sub 表の書き方と罫線と列幅をそろえる()
     Dim kanaHira As Boolean, bigN As Long
     Dim tv As String, tbm As String, tv0 As String, tb0 As String, rgC As Range, arr As Variant, 集計行() As Boolean
     Dim colV As Variant, colF As Variant, tmpA() As Variant, 半カナ列 As Boolean
-    Dim want As String, wantAl As Long, fmtGen As Long, alNum As Long, alTxt As Long, 罫線様式 As Boolean, 自由記述 As Boolean
+    Dim want As String, wantAl As Long, alNum As Long, alTxt As Long, 罫線様式 As Boolean, 自由記述 As Boolean
     Dim zp As Long, hp As Long, 全角括弧 As Boolean, 欄 As Boolean, 下の表 As Boolean
 
     Set ws = ActiveSheet
@@ -1440,7 +1440,6 @@ Sub 表の下に合計行を足す()
     ' 見出しのキーワードで除外列を判定（全角のまま比較）
     Dim skipByHeader() As Boolean
     ReDim skipByHeader(urLeft To urRight)
-    Dim hv As String
     For c = urLeft To urRight
         s = CStr(ws.Cells(headerRow, c).MergeArea.Cells(1, 1).Value)   ' 縦に結合した見出し（コード・前年比）は上のセルの名前
         ' 全角英字を半角にして比較するが、カタカナはそのまま
@@ -1885,11 +1884,7 @@ Sub 選んだ列の空白を上の値で埋める()
     Dim aCol As Long
     Dim cc As Long
     Dim lastVal As Variant
-    Dim cellVal As String
     Dim rowEmpty As Boolean
-    Dim isTotal As Boolean
-    Dim i As Integer
-    Dim totalWords As Variant
 
     Set ws = ActiveSheet
     Set sel = Selection
@@ -2846,7 +2841,7 @@ Sub テーブルの範囲を下と右へ広げる()
     Dim ws As Worksheet
     Dim lo As ListObject
     Dim lastCol As Long, lastRow As Long
-    Dim hdrRow As Long, hdrCol As Long, tblLastCol As Long, tblLastRow As Long
+    Dim hdrRow As Long, tblLastCol As Long, tblLastRow As Long
     Dim c As Long, r As Long
     Dim newLastCol As Long, newLastRow As Long
     Dim hasVal As Boolean
@@ -4646,7 +4641,7 @@ Sub 番号に先頭のゼロを付けてそろえる()
     Dim ws As Worksheet, ur As Range
     Dim urTop As Long, urLeft As Long, urRight As Long, lastRow As Long
     Dim headerRow As Long, dataStart As Long
-    Dim r As Long, c As Long, cnt As Long, L As Long, bestL As Long, bestN As Long, filled As Long
+    Dim r As Long, c As Long, cnt As Long, bestL As Long, bestN As Long, filled As Long
     Dim s As String, v As Variant
     Dim lens As Object, useCol As Object, key As Variant
 
