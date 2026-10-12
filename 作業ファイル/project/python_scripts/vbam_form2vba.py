@@ -602,3 +602,48 @@ def cmd_form_to_vba(args):
                 all_ok = False
 
     return all_ok
+
+
+def cmd_form_inspect(args):
+    """UserFormのレイアウト逆解析・プロパティ取得: form-inspect [excel_file] <フォーム名> [--json] [--lint]"""
+    target_file, rest = parse_target_and_rest(args.posargs)
+    if not rest:
+        print("使い方: form-inspect [excel_file] <フォーム名> [--json] [--lint]")
+        return False
+    form_name = rest[0]
+    xl, wb = get_workbook(target_file)
+
+    import form_inspect
+    comp = form_inspect.find_component(wb, form_name)
+    if not comp:
+        print(f"エラー: フォーム '{form_name}' が見つかりません。")
+        return False
+
+    info = form_inspect.get_form_info(comp)
+    controls = form_inspect.collect_controls(comp)
+    is_json = getattr(args, 'json', False)
+    do_lint = getattr(args, 'lint', False)
+
+    if is_json:
+        data = {
+            "form": form_name,
+            "info": info,
+            "controls": controls,
+        }
+        if do_lint:
+            data["lint"] = form_inspect.lint_form(form_name, info, controls)
+        import json
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+        return True
+
+    print(f"===== UserForm レイアウト解析: {form_name} =====")
+    form_inspect.print_form_info(info)
+    print(f"コントロール数: {len(controls)}")
+    print("-" * 60)
+    for c in controls:
+        print(f"  [{c.get('type')}] {c.get('name')}: Left={c.get('left')} Top={c.get('top')} W={c.get('width')} H={c.get('height')}" +
+              (f" Caption='{c.get('caption')}'" if c.get('caption') else ""))
+    if do_lint:
+        form_inspect.print_lint(form_name, info, controls)
+    return True
+

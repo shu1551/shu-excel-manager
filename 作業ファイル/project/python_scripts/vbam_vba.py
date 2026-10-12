@@ -597,6 +597,45 @@ def _diag_long_procs(procs, limit=150):
     return [(p["name"], p["end"] - p["start"] + 1) for p in procs if p["end"] - p["start"] + 1 > limit]
 
 
+def _diag_implicit_variant(lines):
+    """VBM022: 暗黙の Variant 型宣言 (Dim x, y As Long や Dim a) → [(行番号, 変数名, 行テキスト)]。"""
+    out = []
+    for idx, raw in enumerate(lines):
+        clean = _clean_vba_line(raw)
+        # プロシージャ宣言（Sub/Function/Property）、Type、Declare、Const、Enum、Event は除外
+        if re.match(r'^\s*(?:Private|Public|Friend)?\s*(?:Static\s+)?(?:Sub|Function|Property|Type|Declare|Const|Enum|Event)\b', clean, re.IGNORECASE):
+            continue
+        m = re.match(r'^\s*(?:Dim|Private|Public|Static)\s+(.+)$', clean, re.IGNORECASE)
+        if not m:
+            continue
+        decl_part = m.group(1).strip()
+        parts = []
+        depth = 0
+        cur = []
+        for ch in decl_part:
+            if ch == '(':
+                depth += 1
+            elif ch == ')':
+                depth = max(0, depth - 1)
+            elif ch == ',' and depth == 0:
+                parts.append(''.join(cur).strip())
+                cur = []
+                continue
+            cur.append(ch)
+        if cur:
+            parts.append(''.join(cur).strip())
+
+        for p in parts:
+            p_strip = p.strip()
+            if not p_strip or p_strip.lower().startswith('withevents '):
+                continue
+            if not re.search(r'\s+As\s+', p_strip, re.IGNORECASE):
+                var_name = re.sub(r'\(.*\)', '', p_strip).strip()
+                if not re.search(r'[%&$#!@]$', var_name):
+                    out.append((idx + 1, var_name, raw.strip()))
+    return out
+
+
 def _proc_of_index(procs, idx):
     """0 始まりの行番号 idx を含むプロシージャ名（無ければ None）。"""
     for p in procs:
@@ -881,6 +920,11 @@ def cmd_check(args):
             mod_info["warnings"].append(
                 f"プロシージャ '{pname}' は古い自動実行です  → ブックを VBA から開いたとき（Workbooks.Open）は動きません。"
                 "ThisWorkbook の Workbook_Open／Workbook_BeforeClose に移すと、開き方によらず動きます")
+        for lineno, var_name, text in _diag_implicit_variant(lines):
+            pname = _proc_of_index(procs, lineno - 1)
+            p_prefix = f"プロシージャ '{pname}' の " if pname else ""
+            mod_info["warnings"].append(
+                f"{p_prefix}暗黙の Variant 型宣言 '{var_name}' (行 {lineno}): {text}  → As 型名 を明示してください")
 
         inv_modules.append({'name': comp_name, 'type': int(comp.Type),
                             'procs': [{'name': p["name"]} for p in procs], 'code': '\r\n'.join(lines)})
@@ -989,6 +1033,102 @@ def cmd_check(args):
     else:
         print("  [RESULT] すべてのチェックを通過しました。良好な状態です。")
         return True
+
+
+def cmd_lint(args):
+    """VBA静的解析 (Rubberduck互換ルール): 単一モジュールまたはブック全体の品質・潜在バグ診断"""
+    target_file, rest = parse_target_and_rest(args.posargs)
+    mod_target = rest[0] if rest else None
+    xl, wb = get_workbook(target_file, readonly=True)
+
+    comps = [c for c in wb.VBProject.VBComponents]
+    if mod_target:
+        comps = [c for c in comps if c.Name.lower() == mod_target.lower()]
+        if not comps:
+            print(f"エラー: モジュール '{mod_target}' が見つかりません。")
+            return False
+
+    total_warnings = 0
+    total_errors = 0
+    print(f"===== VBA 静的解析 (Lint): {wb.Name}" + (f" [{mod_target}]" if mod_target else "") + " =====")
+    for comp in comps:
+        cm = comp.CodeModule
+        count_lines = cm.CountOfLines
+        if count_lines == 0:
+            continue
+        code = cm.Lines(1, count_lines).replace('\r\n', '\n').replace('\r', '\n')
+        lines = code.split('\n')
+        procs = _split_procedures(lines)
+
+        warnings = []
+        errors = []
+
+        # 1. Option Explicit
+        has_oe = any(line.strip().lower().startswith("option explicit") for line in lines)
+        if not has_oe:
+            warnings.append("Option Explicit が記述されていません。変数宣言の強制を推奨します。")
+
+        # 2. 暗黙の Variant
+        for lineno, var_name, text in _diag_implicit_variant(lines):
+            pname = _proc_of_index(procs, lineno - 1)
+            p_prefix = f"[{pname}] " if pname else ""
+            warnings.append(f"{p_prefix}暗黙の Variant 型宣言 '{var_name}' (行 {lineno}): {text}")
+
+        # 3. 未使用変数
+        local_variables = []
+        for idx, line in enumerate(lines):
+            clean_line = re.sub(r'"[^"]*"', '""', line).split("'")[0].strip()
+            dim_match = re.match(r'^\s*Dim\s+(.+)$', clean_line, re.IGNORECASE)
+            if dim_match:
+                for p in dim_match.group(1).split(','):
+                    v_part = re.split(r'\s+As\s+', p.strip(), flags=re.IGNORECASE)[0].strip()
+                    v_name = re.sub(r'\(.*\)', '', v_part).strip()
+                    v_name = re.sub(r'[%&$#!@]$', '', v_name).strip()
+                    if v_name and re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', v_name):
+                        local_variables.append((v_name, idx))
+        if local_variables:
+            names = {v.lower() for v, _ in local_variables}
+            line_words = []
+            lines_with = dict.fromkeys(names, 0)
+            for line in lines:
+                clean_line = re.sub(r'"[^"]*"', '""', line).split("'")[0]
+                words = names.intersection(w.lower() for w in re.findall(r'\w+', clean_line))
+                line_words.append(words)
+                for w in words:
+                    lines_with[w] += 1
+            for var_name, decl_idx in local_variables:
+                usage = lines_with[var_name.lower()] - (1 if var_name.lower() in line_words[decl_idx] else 0)
+                if usage == 0:
+                    pname = _proc_of_index(procs, decl_idx)
+                    p_prefix = f"[{pname}] " if pname else ""
+                    warnings.append(f"{p_prefix}未使用変数 Dim {var_name} があります (行 {decl_idx + 1})")
+
+        # 4. On Error Resume Next
+        for lineno, text in _diag_resume_next(lines):
+            pname = _proc_of_index(procs, lineno - 1)
+            warnings.append(f"[{pname}] On Error Resume Next の握りつぶし (行 {lineno}): {text}")
+
+        # 5. 長大プロシージャ (150行超)
+        for pname, n in _diag_long_procs(procs):
+            warnings.append(f"[{pname}] プロシージャが {n} 行あります（分割推奨）")
+
+        total_warnings += len(warnings)
+        total_errors += len(errors)
+
+        if warnings or errors:
+            print(f"\n--- [{comp.Name}] (警告: {len(warnings)}, エラー: {len(errors)}) ---")
+            for e in errors:
+                print(f"  [ERROR] {e}")
+            for w in warnings:
+                print(f"  [WARN]  {w}")
+
+    print("\n" + "=" * 50)
+    if total_warnings == 0 and total_errors == 0:
+        print("[OK] 問題は見つかりませんでした（エラーなし・警告なし）。")
+        return True
+    else:
+        print(f"診断完了: 警告 {total_warnings}件 / エラー {total_errors}件")
+        return False
 
 
 # ================================================================
@@ -1142,6 +1282,9 @@ _CAPABILITIES = {
         ("構造", "structure の別名"),
         ("no-values", "値なしの切り替え（道具の設定だけ・ブックは無傷）"), ("値なし", "no-values の別名"),
         ("grep", "コード横断検索"), ("metrics", "プロシージャ計量"),
+        ("lint", "VBA静的解析（Rubberduck互換ルール）"),
+        ("form-inspect", "UserForm のレイアウト逆解析・プロパティ取得 (JSON)"),
+        ("inspect-form", "form-inspect の別名"),
         ("rules", "診断規則の一覧"), ("capabilities", "この表そのもの"),
         ("audit", "表の仕上げ検査（見出し・罫線・列の型・列幅・空の見出し。読むだけ）"),
         ("inspect-gui", "GUI 境界の走査"), ("wiring", "ボタン配線図"),
@@ -7250,10 +7393,12 @@ def cmd_run_macro(args):
             if ret.startswith("OK|"):
                 result = ret[3:] or None
             elif ret.startswith("ERR|"):
-                parts = ret.split("|", 2)
-                num = parts[1] if len(parts) > 1 else "?"
-                desc = parts[2] if len(parts) > 2 else ""
-                raise _VbaRuntimeError(num, desc)
+                raise _parse_harness_err(
+                    ret,
+                    target_mod=harness.get("module"),
+                    target_proc=harness.get("proc"),
+                    proc_start=harness.get("proc_start_line", 0),
+                )
             else:
                 result = ret
         else:
@@ -7281,14 +7426,30 @@ def cmd_run_macro(args):
                 print(_dlg_note, file=sys.stderr)
         return True
     except _VbaRuntimeError as e:
-        err_msg = f"実行時エラー {e.number}: {e.description}"
+        err_msg = str(e)
         if getattr(args, 'json', False):
             import json
-            print(json.dumps({"success": False, "macro": full_macro_path, "error": err_msg,
-                              "vba_error": {"number": e.number, "description": e.description}},
-                             ensure_ascii=False), file=sys.stdout)
+            vba_err = {
+                "number": e.number,
+                "description": e.description,
+                "source": e.source,
+                "module": e.module or None,
+                "procedure": e.procedure or None,
+                "line": e.erl if e.erl > 0 else (e.proc_start_line or None),
+                "erl": e.erl,
+                "proc_start_line": e.proc_start_line or None,
+                "location": e.location or None,
+            }
+            print(json.dumps({
+                "success": False,
+                "macro": full_macro_path,
+                "error": err_msg,
+                "vba_error": vba_err,
+            }, ensure_ascii=False), file=sys.stdout)
         else:
-            print(f"エラー: マクロが実行時エラーで止まりました: {err_msg}", file=sys.stderr)
+            print(f"エラー: マクロが実行時エラーで止まりました: 実行時エラー {e.number}: {e.description}", file=sys.stderr)
+            if e.location:
+                print(f"  発生場所: {e.location}", file=sys.stderr)
             print("（ハーネスで受けたのでダイアログは出ていません。マクロは落ちた行で終わっています）",
                   file=sys.stderr)
         return False
@@ -7323,11 +7484,56 @@ def cmd_run_macro(args):
 
 
 class _VbaRuntimeError(Exception):
-    """ハーネスが受け止めた VBA の実行時エラー（番号と説明つき）"""
-    def __init__(self, number, description):
-        super().__init__(f"実行時エラー {number}: {description}")
-        self.number = number
-        self.description = description
+    """ハーネスが受け止めた VBA の実行時エラー（番号・説明・発生場所情報つき）"""
+    def __init__(self, number, description, source="", erl=0, module="", proc="", proc_start_line=0):
+        self.number = str(number)
+        self.description = str(description)
+        self.source = str(source or "")
+        self.erl = int(erl or 0)
+        self.module = str(module or "")
+        self.procedure = str(proc or "")
+        self.proc_start_line = int(proc_start_line or 0)
+
+        loc_parts = []
+        if self.module and self.procedure:
+            loc_parts.append(f"{self.module}.{self.procedure}")
+        elif self.module:
+            loc_parts.append(self.module)
+        elif self.procedure:
+            loc_parts.append(self.procedure)
+
+        if self.erl > 0:
+            loc_parts.append(f"行 {self.erl}")
+        elif self.proc_start_line > 0:
+            loc_parts.append(f"開始行 {self.proc_start_line}")
+
+        self.location = " / ".join(loc_parts)
+        msg = f"実行時エラー {self.number}: {self.description}"
+        if self.location:
+            msg += f" (場所: {self.location})"
+        super().__init__(msg)
+
+
+def _parse_harness_err(ret, target_mod=None, target_proc=None, proc_start=0):
+    """ハーネスの 'ERR|...' 文字列を分解して _VbaRuntimeError を組み立てる。"""
+    parts = ret.split("|")
+    if len(parts) >= 5:
+        # ERR|Err.Number|Err.Source|Erl|Err.Description
+        num = parts[1]
+        src = parts[2]
+        try:
+            erl = int(parts[3])
+        except Exception:
+            erl = 0
+        desc = "|".join(parts[4:])
+        return _VbaRuntimeError(num, desc, source=src, erl=erl,
+                               module=target_mod, proc=target_proc, proc_start_line=proc_start)
+    elif len(parts) >= 3:
+        # 後方互換性: ERR|Err.Number|Err.Description
+        num = parts[1]
+        desc = "|".join(parts[2:])
+        return _VbaRuntimeError(num, desc, module=target_mod, proc=target_proc, proc_start_line=proc_start)
+    return _VbaRuntimeError("?", ret, module=target_mod, proc=target_proc, proc_start_line=proc_start)
 
 
 _RUN_HARNESS = "VbaManagerRunHarness"
@@ -7367,6 +7573,9 @@ def _prepare_run_harness(xl, full_macro_path, macro_name):
         re.IGNORECASE | re.MULTILINE
     )
     kind = None
+    target_comp_name = None
+    target_proc_start = 0
+    target_proc_body = 0
     try:
         for comp in owner.VBProject.VBComponents:
             if mod_only and comp.Name.lower() != mod_only.lower():
@@ -7380,6 +7589,12 @@ def _prepare_run_harness(xl, full_macro_path, macro_name):
                 continue
             if m:
                 kind = m.group(1).lower()
+                target_comp_name = comp.Name
+                try:
+                    target_proc_start = cm.ProcStartLine(proc, 0)
+                    target_proc_body = cm.ProcBodyLine(proc, 0)
+                except Exception:
+                    pass
                 break
     except Exception:
         return None
@@ -7396,7 +7611,7 @@ def _prepare_run_harness(xl, full_macro_path, macro_name):
         "    If Err.Number <> 0 Then VMR = \"OK|\"",
         "    Exit Function",
         "eh:",
-        "    VMR = \"ERR|\" & Err.Number & \"|\" & Err.Description",
+        "    VMR = \"ERR|\" & Err.Number & \"|\" & Err.Source & \"|\" & Erl & \"|\" & Err.Description",
         "End Function",
         "",
     ]) + "\r\n"
@@ -7423,7 +7638,9 @@ def _prepare_run_harness(xl, full_macro_path, macro_name):
         return None
     quoted = book_name.replace("'", "''")
     return {"wb": owner, "comp": comp, "entry": f"'{quoted}'!{_RUN_HARNESS}.VMR",
-            "was_saved": was_saved, "xl": xl, "book_name": book_name}
+            "was_saved": was_saved, "xl": xl, "book_name": book_name,
+            "module": target_comp_name, "proc": proc,
+            "proc_start_line": target_proc_start, "proc_body_line": target_proc_body}
 
 
 def run_book_macro(xl, owner, name):
@@ -7440,8 +7657,12 @@ def run_book_macro(xl, owner, name):
             return xl.Run(f"'{q}'!{name}")
         ret = str(xl.Run(h["entry"]) or "")
         if ret.startswith("ERR|"):
-            parts = ret.split("|", 2)
-            raise _VbaRuntimeError(parts[1] if len(parts) > 1 else "?", parts[2] if len(parts) > 2 else "")
+            raise _parse_harness_err(
+                ret,
+                target_mod=h.get("module"),
+                target_proc=h.get("proc"),
+                proc_start=h.get("proc_start_line", 0),
+            )
         return ret[3:] if ret.startswith("OK|") else ret
     finally:
         if h is not None:
@@ -8464,6 +8685,7 @@ __all__ = [
     '_load_checkup_history',
     '_narrow_proc_range',
     '_parse_module_blocks',
+    '_parse_harness_err',
     '_prepare_run_harness',
     '_project_book_name',
     '_remove_run_harness',
@@ -8484,6 +8706,7 @@ __all__ = [
     'cmd_call_graph',
     'cmd_capabilities',
     'cmd_check',
+    'cmd_lint',
     'cmd_inspect_gui',
     'cmd_metrics',
     'cmd_process',

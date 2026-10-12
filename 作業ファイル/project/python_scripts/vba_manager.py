@@ -628,6 +628,13 @@ def build_parser():
         p.add_argument("--name", dest="name_opt", default=None, help="作られるフォーム名（省略時は元と同じ）")
         p.add_argument("--sub", dest="sub_opt", default=None, help="作成マクロの名前（省略時 <フォーム名>作成）")
 
+    # form-inspect [excel_file] <フォーム名> [--json] [--lint]
+    for _nm in ("form-inspect", "inspect-form"):
+        p = sub.add_parser(_nm, help="UserFormのレイアウト逆解析・全コントロール座標・プロパティ取得（JSON対応）")
+        p.add_argument("posargs", nargs="*")
+        p.add_argument("--json", action="store_true", help="結果をJSON形式で出力")
+        p.add_argument("--lint", action="store_true", help="コントロールの重なり・はみ出し・不揃いを機械診断")
+
     # reorder-macro <macro_name> <up|down>
     p = sub.add_parser("reorder-macro")
     p.add_argument("posargs", nargs="+")
@@ -1004,6 +1011,8 @@ def build_parser():
                    help="table read の結果をTSVに書き出す（省略時 _last_values.tsv）")
     p.add_argument("--name", dest="name", default=None,
                    help="table create のテーブル名（pivot・chart・slicer と同じ形。3 つ目の引数でもよい・2026-09-24）")
+    p.add_argument("--formula", dest="formula", default=None,
+                   help="column add / formula の計算列数式（例: '=[@単価]*[@数量]'）")
 
     # name [excel_file] <add|list|delete> ...
     p = sub.add_parser("name")
@@ -1158,6 +1167,10 @@ def build_parser():
     p.add_argument("--duplicates", action="store_true",
                    help="重複する値を色分けする（同じ値が 2 回以上ある行を塗る）")
     p.add_argument("--clear", action="store_true", help="条件付き書式を全削除")
+    p.add_argument("--list", dest="list_opt", action="store_true", help="条件付き書式の一覧を表示（逆解析）")
+    p.add_argument("--audit", dest="audit_opt", action="store_true", help="重複・分裂・#REF!ゾンビを診断")
+    p.add_argument("--clean", dest="clean_opt", action="store_true", help="重複・#REF!ゾンビを一括削除・統合")
+    p.add_argument("--json", action="store_true", help="結果をJSON形式で出力")
     p.add_argument("--whole-sheet", dest="whole_sheet", action="store_true",
                    help="シート全域（シート名だけの指定）を明示的に許可する")
     p = sub.add_parser("hyperlink")    # hyperlink <cell> <url> [--text t] / --remove / --list
@@ -1291,6 +1304,11 @@ def build_parser():
                    help="VBM003（On Error が無い）の行も全部出す（既定は件数だけ・2026-09-17）")
     p.add_argument("--json", action="store_true", help="結果をJSON形式で出力")
 
+    # lint [excel_file] [module_name]
+    p = sub.add_parser("lint", help="VBA静的解析 (Rubberduck互換ルール。単一モジュールまたは全体)")
+    p.add_argument("posargs", nargs="*")
+    p.add_argument("--json", action="store_true", help="結果をJSON形式で出力")
+
     # inspect-gui [excel_file] [マクロ名] [--module M]
     p = sub.add_parser("inspect-gui",
                        help="自動操縦を止めるGUI境界（MsgBox/InputBox/FileDialog/モーダル）を撃つ前に洗い出す")
@@ -1371,6 +1389,9 @@ _COMMAND_ALIASES = {
     "run": ["run-macro"],
     "compile-all": ["compile"],
     "format": ["format-range"],
+    "cond-format-audit": ["cond-format", "audit"],
+    "cond-format-clean": ["cond-format", "clean"],
+    "cond-format-list": ["cond-format", "list"],
 }
 
 # コマンドごとの引数の言い換え（意図が一つに決まるものだけ）
@@ -1871,6 +1892,7 @@ def _raw_command_table():
     """コマンド名→実装の対応表（包み無し）"""
     return {
         "check":             cmd_check,
+        "lint":              cmd_lint,
         "check-bas":         cmd_check_bas,
         "inspect-gui":       cmd_inspect_gui,
         "capabilities":      cmd_capabilities,
@@ -1911,6 +1933,8 @@ def _raw_command_table():
         "export-all":        cmd_export_all,
         "form-to-vba":       cmd_form_to_vba,
         "フォーム書き出し":       cmd_form_to_vba,
+        "form-inspect":      cmd_form_inspect,
+        "inspect-form":      cmd_form_inspect,
         "list-backups":      cmd_list_backups,
         "stats":             cmd_stats,
         "restore":           cmd_restore,
