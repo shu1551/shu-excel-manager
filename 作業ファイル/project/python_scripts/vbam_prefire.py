@@ -555,13 +555,28 @@ def fire_with_request(xl, owner, ws, name, request):
         except Exception:
             pass
         shelf_refusal(xl, owner, clear=True)       # 前の棚の断りが残っていると、撃てた棚まで断ったと読む（2026-10-14）
+        note_shot(xl, owner, None)
         run_book_macro(xl, owner, name)
-        return shelf_refusal(xl, owner)
+        why = shelf_refusal(xl, owner)
+        if not why:
+            note_shot(xl, owner, name, request)
+        return why
     finally:
         with contextlib.suppress(Exception):
             xl.Run(f"'{q}'!コンボ道具.頼みの文を入れる", '')
         with contextlib.suppress(Exception):
             xl.StatusBar = False
+
+
+def note_shot(xl, owner, name, request=''):
+    """撃った棚の控え（コンボ道具.棚を撃つ前／撃った棚を控える・棚番 段 4・2026-10-15）。name=None は撃つ前（シートと選んだ所を覚える）。
+    控えは %APPDATA%\秀コンボ\撃った棚.tsv に残り、人が「今の手順をレシピに保存」で印を付けてレシピにする。古いアドインに口が無ければ何もしない。"""
+    q = str(owner).replace("'", "''")
+    with contextlib.suppress(Exception):
+        if name is None:
+            xl.Run(f"'{q}'!コンボ道具.棚を撃つ前")
+        else:
+            xl.Run(f"'{q}'!コンボ道具.撃った棚を控える", str(name), str(request or ''))
 
 
 def shelf_refusal(xl, owner, clear=False):

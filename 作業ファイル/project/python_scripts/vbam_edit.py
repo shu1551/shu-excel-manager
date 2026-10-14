@@ -4329,50 +4329,65 @@ def cmd_form_read(args):
         return False
     form_name = rest[0]
     xl, wb = get_workbook(None)
-    owner = None
+    # 同じ名前のフォームを持つブックを全部候補にする。アドイン（.xlam）は Workbooks に並ばないので AddIns から足す
+    # （秀コンボ.xlsm と 秀コンボ.xlam の両方に同じフォームがあり、表示しているのは xlam 側＝xlsm だけ見て「表示されていません」と
+    #  返していた・2026-10-15 レシピ保存フォーム）
+    books, owners, seen = [], [], set()
     try:
-        for i in range(1, int(xl.Workbooks.Count) + 1):
-            b = xl.Workbooks.Item(i)
+        books = [xl.Workbooks.Item(i) for i in range(1, int(xl.Workbooks.Count) + 1)]
+        for i in range(1, int(xl.AddIns.Count) + 1):
             try:
-                if any(c.Name == form_name for c in b.VBProject.VBComponents):
-                    owner = b
-                    break
+                ad = xl.AddIns.Item(i)
+                if ad.Installed:
+                    books.append(xl.Workbooks(str(ad.Name)))
             except Exception:
                 continue
     except Exception:
-        owner = None
-    if owner is None:
-        owner = wb
-    try:
-        was_saved = bool(owner.Saved)
-    except Exception:
-        was_saved = False
-    comps = owner.VBProject.VBComponents
-    comp = None
-    try:
-        for c in comps:
-            if c.Name == _FORM_READ_MODULE:
-                comps.Remove(c)
-                break
-        comp = comps.Add(1)
-        comp.Name = _FORM_READ_MODULE
-        comp.CodeModule.AddFromString(_FORM_READ_CODE)
-        q = str(owner.Name).replace("'", "''")
-        out = str(xl.Run(f"'{q}'!{_FORM_READ_MODULE}.VMFR", form_name) or '')
-    except Exception as ex:
-        print(f"エラー: フォームを読めませんでした: {ex}")
-        return False
-    finally:
-        if comp is not None:
-            try:
-                comps.Remove(comp)
-            except Exception:
-                print(f"警告: 一時モジュール '{_FORM_READ_MODULE}' が残っていたら手で削除してください", file=sys.stderr)
-        if was_saved:
-            try:
-                owner.Saved = True
-            except Exception:
-                pass
+        pass
+    for b in books:
+        try:
+            nm = str(b.Name)
+            if nm not in seen and any(c.Name == form_name for c in b.VBProject.VBComponents):
+                seen.add(nm)
+                owners.append(b)
+        except Exception:
+            continue
+    if not owners:
+        owners = [wb]
+    out = "NOFORM"
+    for owner in owners:
+        try:
+            was_saved = bool(owner.Saved)
+        except Exception:
+            was_saved = False
+        comps = owner.VBProject.VBComponents
+        comp = None
+        try:
+            for c in comps:
+                if c.Name == _FORM_READ_MODULE:
+                    comps.Remove(c)
+                    break
+            comp = comps.Add(1)
+            comp.Name = _FORM_READ_MODULE
+            comp.CodeModule.AddFromString(_FORM_READ_CODE)
+            q = str(owner.Name).replace("'", "''")
+            out = str(xl.Run(f"'{q}'!{_FORM_READ_MODULE}.VMFR", form_name) or '')
+        except Exception as ex:
+            print(f"エラー: フォームを読めませんでした: {ex}")
+            return False
+        finally:
+            if comp is not None:
+                try:
+                    comps.Remove(comp)
+                except Exception:
+                    print(f"警告: 一時モジュール '{_FORM_READ_MODULE}' が残っていたら手で削除してください", file=sys.stderr)
+            if was_saved:
+                try:
+                    owner.Saved = True
+                except Exception:
+                    pass
+        if out != "NOFORM":
+            break
     if out == "NOFORM":
         print(f"エラー: '{form_name}' は表示されていません（表示中のフォームは form-click --list ではなく close-form --list で見られます）")
         return False
