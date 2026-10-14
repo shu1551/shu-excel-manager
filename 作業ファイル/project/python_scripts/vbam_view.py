@@ -12,7 +12,6 @@ import argparse
 import time
 import datetime
 import unicodedata
-from typing import Optional
 import pythoncom
 import pywintypes
 import win32com.client
@@ -1891,12 +1890,27 @@ _SEIRI_COVERED = {'表の書き方と罫線と列幅をそろえる', '住所と
 _SEIRI_REPORT_WORDS_RE = re.compile(r'報告|一覧|洗い出|書き出|リスト|調べ|点検|チェック')
 
 
+def _shelf_priority(macro_name):
+    """棚マクロの実行優先順位（小さい順に撃つ＝DAG依存順序保証）"""
+    # 1: 式・型・空白クレンジング（データの正規化が最優先）
+    if any(k in macro_name for k in ('式を戻す', '式を揃える', '空白', 'トリム', '型', '数字にする', '日付にする', 'ハイフン')):
+        return 10
+    # 2: 行削除・重複削除（データ正規化後に構造を削る）
+    if any(k in macro_name for k in ('削除', '詰める', '重複')):
+        return 20
+    # 3: 集計・計算・合計行追加（クリーンなデータに対して集計）
+    if any(k in macro_name for k in ('合計', '集計', '平均', '計算', 'ピボット')):
+        return 30
+    # 4: デザイン美化・装飾（最後に美しく仕上げる）
+    if any(k in macro_name for k in ('美化', 'デザイン', 'インディゴ', 'エメラルド', 'チャコール', 'ボルドー', 'アンバー', 'エグゼクティブ')):
+        return 40
+    return 25
+
+
 def _seiri_request_plan(request, entries):
     """依頼の文 → 撃つ棚の並び（純 Python・2026-09-24 夜）。Excelコンボの先撃ちと同じ採点（shelf_plan／shelf_pick）。
-    表を整えるで済む物は外す（seiri が先に撃っている）。"""
+    表を整えるで済む物は外す（seiri が先に撃っている）。DAG優先順序で整列して撃つ。"""
     import vbam_prefire as vp
-    # 頼みは空白・改行・「。」で分ける（MCP の 1 行は空白で切られて届く＝「統一して 住所の…」が 1 つの頼みに見える）。
-    # 「、」では分けない（「重複している会員を探して、行を削除して」は 1 つの頼み）。当たらない頼みは AI が「残り」として直す
     parts = [p for p in re.split(r'[\s　。]+', str(request or '')) if p]
     plan = []
     for p in (parts if len(parts) >= 2 else [str(request or '').strip()]):
@@ -1905,6 +1919,7 @@ def _seiri_request_plan(request, entries):
             if n.endswith('報告する') and not _SEIRI_REPORT_WORDS_RE.search(p):
                 continue
             plan.append(n)
+    plan.sort(key=_shelf_priority)
     return plan
 
 
@@ -1919,18 +1934,51 @@ def _header_col_span(heads):
 
 
 def _trim_to_header_cols(ws, anchor):
-    """番地（表の中の 1 セル）→ その表の範囲の番地。両端の見出しが文字でない列を外す。読めなければ元の番地。"""
+    """番地（表の中の 1 セル）→ その表の範囲の番地。タイトル行・注記行・空列を除去して純粋な表矩形を返す。"""
     try:
         rg = ws.Range(anchor).CurrentRegion
         r0, c0 = int(rg.Row), int(rg.Column)
         nr, nc = int(rg.Rows.Count), int(rg.Columns.Count)
-        heads = [ws.Cells(r0, c0 + j).Value for j in range(nc)]
+        if nr < 2 or nc < 1:
+            return anchor
+
+        # 1. 上から走査: 真の見出し行を探す（タイトル行・単一セル説明をスキップ）
+        top_idx = 0
+        for i in range(min(5, nr - 1)):
+            row_vals = [ws.Cells(r0 + i, c0 + j).Value for j in range(nc)]
+            text_cells = [v for v in row_vals if isinstance(v, str) and v.strip()]
+            if len(text_cells) >= 2 or (nc == 1 and len(text_cells) >= 1):
+                top_idx = i
+                break
+
+        heads = [ws.Cells(r0 + top_idx, c0 + j).Value for j in range(nc)]
+        span = _header_col_span(heads)
+        if span is None:
+            return anchor
+
+        # 2. 下から走査: 注記行（「※」「備考」「注」等）を除外
+        bot_idx = nr - 1
+        for i in range(nr - 1, top_idx, -1):
+            row_vals = [ws.Cells(r0 + i, c0 + j).Value for j in range(nc)]
+            non_empty = [v for v in row_vals if v is not None and str(v).strip() != '']
+            if len(non_empty) == 1 and isinstance(non_empty[0], str):
+                txt = non_empty[0].strip()
+                if txt.startswith(('※', '備考', '注', '注意', '（注', '(注')):
+                    bot_idx = i - 1
+                    continue
+            break
+
+        if bot_idx <= top_idx:
+            bot_idx = nr - 1
+
+        r_start = r0 + top_idx
+        r_end = r0 + bot_idx
+        c_start = c0 + span[0]
+        c_end = c0 + span[1]
+
+        return f"{_col_letter(c_start)}{r_start}:{_col_letter(c_end)}{r_end}"
     except Exception:
         return anchor
-    span = _header_col_span(heads)
-    if span is None or nr < 2:
-        return anchor
-    return f"{_col_letter(c0 + span[0])}{r0}:{_col_letter(c0 + span[1])}{r0 + nr - 1}"
 
 
 def _seiri_fire_request(xl, wb, ws, request, before_snap):
@@ -1986,13 +2034,29 @@ def _seiri_fire_request(xl, wb, ws, request, before_snap):
                       f"（shelf-run {nm} --select 列,列 で撃つ）")
                 continue
             vp.select_columns(ws, cols)
+        err_cnt_before, _ = _count_sheet_formula_errors(ws)
+        snap = _guardrail_snapshot(ws)
+        macro_err = None
         t0 = time.time()
-        run_book_macro(xl, src, nm)
         try:
-            wb.Activate()
-            ws.Activate()
-        except Exception:
-            pass
+            run_book_macro(xl, src, nm)
+        except Exception as ex:
+            macro_err = str(ex)
+        finally:
+            try:
+                wb.Activate()
+                ws.Activate()
+            except Exception:
+                pass
+
+        err_cnt_after, err_detail = _count_sheet_formula_errors(ws) if macro_err is None else (err_cnt_before, "")
+        if macro_err or (err_cnt_after > err_cnt_before):
+            if snap and _guardrail_restore(ws, snap):
+                reason = macro_err or f"{err_detail}が発生（{err_cnt_before}件→{err_cnt_after}件）"
+                print(f"⚠ ロールバック: 依頼の棚「{nm}」で {reason} のため自動復元しました（スキップ）")
+            else:
+                print(f"依頼の棚: {nm} でエラーが発生しました: {macro_err}")
+            continue
         fired.append(nm)
         print(f"棚: {nm}（依頼の文に当たった・{time.time() - t0:.2f} 秒）")
     return fired
@@ -2049,6 +2113,100 @@ def _seiri_hints_now(ws):
     return hints
 
 
+def _has_custom_style(ws):
+    """表に標準以外のデザイン（背景色・白文字見出し・二重下線など）が既に施されているか判定する"""
+    try:
+        ur = ws.UsedRange
+        if not ur:
+            return False
+        nr, nc = int(ur.Rows.Count), int(ur.Columns.Count)
+        if nr < 2:
+            return False
+        r0, c0 = int(ur.Row), int(ur.Column)
+        for r in range(r0, min(r0 + 3, r0 + nr)):
+            rng_row = ws.Range(ws.Cells(r, c0), ws.Cells(r, c0 + nc - 1))
+            ci = rng_row.Interior.ColorIndex
+            if ci is None or (int(ci) != -4142 and int(ci) != 2):
+                fc = rng_row.Font.Color
+                if fc == 16777215 or fc == 0xFFFFFF:  # 白文字
+                    return True
+                if int(ci) != -4142:
+                    return True
+            if rng_row.Borders(9).LineStyle == -4119:  # xlDouble
+                return True
+        return False
+    except Exception:
+        return False
+
+
+def _count_sheet_formula_errors(ws):
+    """シート内の数式エラー（#REF!, #VALUE!, #DIV/0!, 循環参照 等）の総数と内訳を返す"""
+    cnt = 0
+    details = []
+    try:
+        ur = ws.UsedRange
+        if not ur:
+            return 0, ""
+        # 1. 数式エラーセル
+        try:
+            err_cells = ur.SpecialCells(-4123, 16)  # xlCellTypeFormulas, xlErrors
+            c_cnt = int(err_cells.Cells.CountLarge)
+            if c_cnt > 0:
+                cnt += c_cnt
+                err_types = set()
+                for c in err_cells:
+                    t = str(c.Text or '').strip()
+                    if t:
+                        err_types.add(t)
+                    if len(err_types) >= 3:
+                        break
+                details.append(f"数式エラー{c_cnt}件（{', '.join(err_types)}）")
+        except Exception:
+            pass
+        # 2. 循環参照
+        try:
+            if ws.CircularReference is not None:
+                cr_addr = str(ws.CircularReference.Address).replace('$', '')
+                cnt += 10
+                details.append(f"循環参照（{cr_addr}）")
+        except Exception:
+            pass
+    except Exception:
+        pass
+    return cnt, "・".join(details)
+
+
+def _guardrail_snapshot(ws):
+    """シートの現在の状態（番地・数式・値）をメモリに保存する（シート複製せず安全・高速）"""
+    try:
+        ur = ws.UsedRange
+        if not ur:
+            return None
+        return {
+            'addr': str(ur.Address).replace('$', ''),
+            'formulas': ur.Formula,
+            'values': ur.Value,
+        }
+    except Exception:
+        return None
+
+
+def _guardrail_restore(ws, snap):
+    """snap の状態に ws を完全復元する（行の削除や式のズレも元の番地・式に巻き戻す）"""
+    if not snap:
+        return False
+    try:
+        # 使用範囲をクリアしてから元の番地に復元
+        ws.UsedRange.Clear()
+        rng = ws.Range(snap['addr'])
+        if snap['formulas'] is not None:
+            rng.Formula = snap['formulas']
+        ws.Activate()
+        return True
+    except Exception:
+        return False
+
+
 def _seiri_hint_key(name, sel):
     """同じ手を二度撃たないための鍵。行を消すと選ぶ範囲の行番号がずれるので、列の文字だけで見る。"""
     return name, re.sub(r'\d', '', sel or '')
@@ -2098,21 +2256,41 @@ def _seiri_autofix(xl, wb, ws, max_steps=10):
                     (ws.Range(anchor) if anchor else xl.ActiveCell).Select()
             except Exception:
                 pass
+            # ガードレール: 撃つ前の数式エラー数計測 ＆ メモリスナップショット取得
+            err_cnt_before, _ = _count_sheet_formula_errors(ws)
+            snap = _guardrail_snapshot(ws)
+            macro_err = None
             t0 = time.time()
             try:
                 run_book_macro(xl, src, name)
             except _VbaRuntimeError as ex:
-                print(f"棚: {name} が実行時エラーで止まりました: {ex}（残りとして直す）")
-                continue
+                macro_err = f"実行時エラー: {ex}"
             except Exception as ex:
-                print(f"棚: {name} を撃てませんでした: {ex}（残りとして直す）")
-                continue
+                macro_err = f"エラー: {ex}"
             finally:
                 try:
                     wb.Activate()
                     ws.Activate()
                 except Exception:
                     pass
+
+            # 事後検証: 実行時エラー or 数式エラー純増を検知したら自動ロールバック
+            err_cnt_after, err_detail = _count_sheet_formula_errors(ws) if macro_err is None else (err_cnt_before, "")
+            rolled_back = False
+            if macro_err or (err_cnt_after > err_cnt_before):
+                if snap and _guardrail_restore(ws, snap):
+                    rolled_back = True
+                    reason = macro_err or f"{err_detail}が発生（{err_cnt_before}件→{err_cnt_after}件）"
+                    print(f"⚠ ロールバック: 棚「{name}」で {reason} のため自動復元しました（安全のためスキップ）")
+                else:
+                    if macro_err:
+                        print(f"棚: {name} が{macro_err}（残りとして直す）")
+                    else:
+                        print(f"⚠ 警告: 棚「{name}」により数式エラーが増加しました（{err_cnt_before}件→{err_cnt_after}件）")
+
+            if rolled_back or macro_err:
+                continue
+
             fired.append((name, sel, why))
             print(f"棚: {name}" + (f"（選択 {sel}）" if sel else "") + f" ← {why}（気づきから・{time.time() - t0:.2f} 秒）")
     finally:
@@ -2226,6 +2404,17 @@ def cmd_seiri(args):
     if on_pivot:
         names = []
         print("ピボットのシートなので、表を整える手（書き方・罫線・列幅）は当てません")
+
+    # 既存デザイン（白文字見出し・背景色・二重下線等）がある場合は標準スタイル上書きを温存スキップ
+    has_custom = False
+    try:
+        has_custom = _has_custom_style(ws)
+    except Exception:
+        pass
+    if has_custom and not getattr(args, 'force_style', False):
+        if _SEIRI_TIDY in names:
+            names.remove(_SEIRI_TIDY)
+            print("既存の表デザインを検知したため、標準スタイル（罫線・色）の上書きをスキップしてデータ整理を行います")
     tried = None                    # 気づきから撃った手の鍵（撃っていなければ None＝残りの手をそのまま並べる）
     has_changes = False
     if owner:
@@ -2263,7 +2452,7 @@ def cmd_seiri(args):
                 fired += [n for n, _s, _w in auto_fired]
         except Exception as e:
             print(f"気づきの棚を撃てませんでした: {e}（残りとして直す）")
-        if fired and not on_pivot:
+        if fired and not on_pivot and not has_custom:
             try:
                 _seiri_tidy(wb, ws, before_snap)
             except Exception as e:
