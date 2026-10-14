@@ -693,12 +693,16 @@ def shelf_pick(request, entries=()):
 _LOOK_ONLY_RE = re.compile(r'(一覧にする|調べる|点検する|監査する|探す|検算する|報告する|確かめる|の一覧)$')
 
 
-def shelf_plan(request, entries=()):
+def shelf_plan(request, entries=(), pick=None):
     """依頼文 → 撃つ順の棚の並び（純 Python・VBA の コンボ道具.先撃ちの並び と同じ・2026-09-24）。
 
     2 つ以上の空白・改行・「。」で節に分け、全部の節が棚に当たれば並びを返す（同じマクロは 1 回・表の書き方と罫線と列幅をそろえる は先頭）。
     節が 1 つ・当たらない節がある・撃つのが 1 本だけなら []＝今までどおり shelf_pick が 1 本を選ぶ。「、」では分けない。
+    pick（vba_picker の返す関数）を渡すと、節ごとの判定を VBA の正本でする（2026-10-14 段 1）。
     """
+    if pick is None:
+        def pick(x):
+            return shelf_pick(x, entries)
     s = str(request or '').replace('\r\n', '\n').replace('\r', '\n').replace('。', '\n').replace('　', ' ')
     while '  ' in s:
         s = s.replace('  ', '\n')
@@ -707,7 +711,7 @@ def shelf_plan(request, entries=()):
         return []
     out, tidy = [], False
     for x in parts:
-        n = shelf_pick(x, entries)
+        n = pick(x)
         if not n:
             return []
         if n == '住所と郵便番号の形をそろえる':       # 並びの中では 表の書き方と罫線と列幅をそろえる に任せる（罫線・列幅まで仕上げる・2026-09-24）
@@ -719,6 +723,109 @@ def shelf_plan(request, entries=()):
     if tidy:
         out.insert(0, '表の書き方と罫線と列幅をそろえる')
     return out if len(out) >= 2 else []
+
+
+# ---- 判定の正本は VBA（2026-10-14 段 1・作業ファイル\project\work_order_20261014_shelf_system.md） ----
+# 先撃ちの判定は VBA（コンボ道具.先撃ち候補）と、この Python の写し（shelf_pick）の 2 か所にあり、10/12 に条件付き書式の決まりが
+# 片方にだけ入って食い違った。Excel につながっているときは VBA を呼ぶ。写しは Excel なしで回す pytest のために残し、
+# 食い違いは register-addin（焼く前）と make_public（配る前）で問題集を両方に撃って止める。
+
+def _vba_book_ref(owner):
+    return "'" + str(owner).replace("'", "''") + "'!"
+
+
+def vba_picker(xl, owner, entries=()):
+    """棚の持ち主のブックに コンボ道具 があれば、VBA の先撃ち候補を呼ぶ関数を返す。無ければ None（写しの shelf_pick で判定する）。
+    呼べなかった 1 回（Excel が忙しい等）は、その頼みだけ写し（entries で shelf_pick）に落とす。"""
+    try:
+        xl.Workbooks(owner).VBProject.VBComponents('コンボ道具')
+    except Exception:
+        return None
+    ref = _vba_book_ref(owner)
+
+    def pick(req):
+        try:
+            return str(xl.Run(ref + 'コンボ道具.先撃ち候補', str(req or '')) or '')
+        except Exception:
+            return shelf_pick(req, entries)
+    return pick
+
+
+def vba_peek(xl, owner, req):
+    """VBA の 先撃ちの下見: どの棚がなぜ当たるか（1 行目「撃つ: …」・上位 3 本・除外・弾いた理由）。呼べなければ ''。"""
+    try:
+        return str(xl.Run(_vba_book_ref(owner) + 'コンボ道具.先撃ちの下見', str(req or '')) or '')
+    except Exception:
+        return ''
+
+
+def exam_dir():
+    import os
+    return os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'fixtures', 'shelf_exam'))
+
+
+def exam_questions(dirpath=None):
+    """問題集 entry_phrases*.tsv（期待するマクロ名<TAB>依頼文。期待が空＝AI に回すのが正解）→ [(期待, 依頼文)]。同じ依頼文は 1 回。
+    問題集は手元だけの作業場（公開の写しには入れない）＝無ければ []。"""
+    import glob
+    import io
+    import os
+    d = dirpath or exam_dir()
+    out, seen = [], set()
+    for f in sorted(glob.glob(os.path.join(d, 'entry_phrases*.tsv'))):
+        for ln in io.open(f, encoding='utf-8', errors='replace'):
+            p = ln.rstrip('\r\n').split('\t')
+            if len(p) < 2:
+                continue
+            q = p[1].strip()
+            if not q or '\n' in q or q in seen:
+                continue
+            seen.add(q)
+            out.append((p[0].strip(), q))
+    return out
+
+
+def vba_answers(xl, owner, questions):
+    """VBA の 先撃ち候補の一括 で問題を全部判定する（COM の往復 1 回）。呼べなければ None。"""
+    try:
+        got = str(xl.Run(_vba_book_ref(owner) + 'コンボ道具.先撃ち候補の一括', '\n'.join(questions)) or '')
+    except Exception:
+        return None
+    ans = got.split('\n')
+    if len(ans) != len(questions):
+        return None
+    return ans
+
+
+def parity_diffs(questions, answers, entries):
+    """VBA の答えと写し（shelf_pick）の答えが違う問題 → [(依頼文, VBA, 写し)]（純 Python）。"""
+    return [(q, a, shelf_pick(q, entries)) for q, a in zip(questions, answers) if a != shelf_pick(q, entries)]
+
+
+def vba_snapshot_path(dirpath=None):
+    import os
+    return os.path.join(dirpath or exam_dir(), 'vba_answers.tsv')
+
+
+def write_vba_snapshot(questions, answers, dirpath=None):
+    """register-addin が通したときの VBA の答え（依頼文<TAB>棚の名前）を残す＝make_public が配る棚で写しと突き合わせる控え。"""
+    import io
+    with io.open(vba_snapshot_path(dirpath), 'w', encoding='utf-8', newline='\n') as f:
+        for q, a in zip(questions, answers):
+            f.write(f"{q}\t{a}\n")
+
+
+def read_vba_snapshot(dirpath=None):
+    import io
+    import os
+    p = vba_snapshot_path(dirpath)
+    if not os.path.isfile(p):
+        return None
+    rows = []
+    for ln in io.open(p, encoding='utf-8'):
+        q, _, a = ln.rstrip('\n').partition('\t')
+        rows.append((q, a))
+    return rows
 
 
 def _ask_best_word(ask, req):
