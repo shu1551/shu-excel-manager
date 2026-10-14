@@ -2051,11 +2051,11 @@ def _seiri_fire_request(xl, wb, ws, request, before_snap):
 
         err_cnt_after, err_detail = _count_sheet_formula_errors(ws) if macro_err is None else (err_cnt_before, "")
         if macro_err or (err_cnt_after > err_cnt_before):
+            reason = macro_err or f"{err_detail}が発生（{err_cnt_before}件→{err_cnt_after}件）"
             if snap and _guardrail_restore(ws, snap):
-                reason = macro_err or f"{err_detail}が発生（{err_cnt_before}件→{err_cnt_after}件）"
-                print(f"⚠ ロールバック: 依頼の棚「{nm}」で {reason} のため自動復元しました（スキップ）")
+                print(f"⚠ 依頼の棚「{nm}」で {reason} のため、値と式を撃つ前に戻しました（残りとして直す）")
             else:
-                print(f"依頼の棚: {nm} でエラーが発生しました: {macro_err}")
+                print(f"⚠ 依頼の棚「{nm}」で {reason}。行や列が動いたので自動では戻していません（戻すなら agent --undo）")
             continue
         fired.append(nm)
         print(f"棚: {nm}（依頼の文に当たった・{time.time() - t0:.2f} 秒）")
@@ -2113,26 +2113,21 @@ def _seiri_hints_now(ws):
     return hints
 
 
-def _has_custom_style(ws):
-    """表に標準以外のデザイン（背景色・白文字見出し・二重下線など）が既に施されているか判定する"""
+def _has_dark_header(ws):
+    """表の上の 3 行に、濃い塗りに白い文字の見出し（デザインの棚で美化した表）があるか。
+    表を整えるマクロは人の付けた様式を触らない（2026-10-08）ので、ここで止めるのは最後の tidy（見出しの書式の複写・罫線）だけ。
+    2026-10-14: 塗りがあるだけで「表を整える」ごと飛ばしていた＝tidy が付けた薄い青の見出しでも 2 回目から整えなくなっていた"""
     try:
         ur = ws.UsedRange
-        if not ur:
-            return False
         nr, nc = int(ur.Rows.Count), int(ur.Columns.Count)
         if nr < 2:
             return False
         r0, c0 = int(ur.Row), int(ur.Column)
         for r in range(r0, min(r0 + 3, r0 + nr)):
             rng_row = ws.Range(ws.Cells(r, c0), ws.Cells(r, c0 + nc - 1))
-            ci = rng_row.Interior.ColorIndex
-            if ci is None or (int(ci) != -4142 and int(ci) != 2):
-                fc = rng_row.Font.Color
-                if fc == 16777215 or fc == 0xFFFFFF:  # 白文字
-                    return True
-                if int(ci) != -4142:
-                    return True
-            if rng_row.Borders(9).LineStyle == -4119:  # xlDouble
+            if rng_row.Interior.ColorIndex == -4142:      # 塗りなし
+                continue
+            if rng_row.Font.Color == 0xFFFFFF:             # 行の全部が白い文字（混ざっていれば None）
                 return True
         return False
     except Exception:
@@ -2154,11 +2149,11 @@ def _count_sheet_formula_errors(ws):
             if c_cnt > 0:
                 cnt += c_cnt
                 err_types = set()
-                for c in err_cells:
+                for k, c in enumerate(err_cells):      # 同じ種類ばかりだと全部を回るので 200 個で止める
                     t = str(c.Text or '').strip()
                     if t:
                         err_types.add(t)
-                    if len(err_types) >= 3:
+                    if len(err_types) >= 3 or k >= 200:
                         break
                 details.append(f"数式エラー{c_cnt}件（{', '.join(err_types)}）")
         except Exception:
@@ -2185,22 +2180,28 @@ def _guardrail_snapshot(ws):
         return {
             'addr': str(ur.Address).replace('$', ''),
             'formulas': ur.Formula,
-            'values': ur.Value,
         }
     except Exception:
         return None
 
 
 def _guardrail_restore(ws, snap):
-    """snap の状態に ws を完全復元する（行の削除や式のズレも元の番地・式に巻き戻す）"""
-    if not snap:
+    """snap の式と値に ws を戻す。マクロが変えたセルだけを書き戻す（True＝戻した）。
+    2026-10-14: 使用範囲を Clear してから式だけ書き戻していた＝塗り・罫線・表示形式・結合がシートごと消えていた。
+    行や列が増えた・減った（番地がずれた）ときは書き戻すと別の行に当たるので戻さない（False＝agent --undo で戻す）"""
+    if not snap or snap.get('formulas') is None:
         return False
     try:
-        # 使用範囲をクリアしてから元の番地に復元
-        ws.UsedRange.Clear()
+        if str(ws.UsedRange.Address).replace('$', '') != snap['addr']:
+            return False
         rng = ws.Range(snap['addr'])
-        if snap['formulas'] is not None:
-            rng.Formula = snap['formulas']
+        old, cur = snap['formulas'], rng.Formula
+        if not isinstance(old, tuple):                      # 1 セルのときは表でなく値が返る
+            old, cur = ((old,),), ((cur,),)
+        for i, row in enumerate(old):
+            for j, f in enumerate(row):
+                if cur[i][j] != f:
+                    rng.Cells(i + 1, j + 1).Formula = f
         ws.Activate()
         return True
     except Exception:
@@ -2278,15 +2279,12 @@ def _seiri_autofix(xl, wb, ws, max_steps=10):
             err_cnt_after, err_detail = _count_sheet_formula_errors(ws) if macro_err is None else (err_cnt_before, "")
             rolled_back = False
             if macro_err or (err_cnt_after > err_cnt_before):
+                reason = macro_err or f"{err_detail}が発生（{err_cnt_before}件→{err_cnt_after}件）"
                 if snap and _guardrail_restore(ws, snap):
                     rolled_back = True
-                    reason = macro_err or f"{err_detail}が発生（{err_cnt_before}件→{err_cnt_after}件）"
-                    print(f"⚠ ロールバック: 棚「{name}」で {reason} のため自動復元しました（安全のためスキップ）")
+                    print(f"⚠ 棚「{name}」で {reason} のため、値と式を撃つ前に戻しました（残りとして直す）")
                 else:
-                    if macro_err:
-                        print(f"棚: {name} が{macro_err}（残りとして直す）")
-                    else:
-                        print(f"⚠ 警告: 棚「{name}」により数式エラーが増加しました（{err_cnt_before}件→{err_cnt_after}件）")
+                    print(f"⚠ 棚「{name}」で {reason}。行や列が動いたので自動では戻していません（戻すなら agent --undo）")
 
             if rolled_back or macro_err:
                 continue
@@ -2405,17 +2403,7 @@ def cmd_seiri(args):
         names = []
         print("ピボットのシートなので、表を整える手（書き方・罫線・列幅）は当てません")
 
-    # 既存デザイン（白文字見出し・背景色・二重下線等）がある場合は標準スタイル上書きを温存スキップ
-    has_custom = False
-    try:
-        has_custom = _has_custom_style(ws)
-    except Exception:
-        pass
-    if has_custom and not getattr(args, 'force_style', False):
-        if _SEIRI_TIDY in names:
-            names.remove(_SEIRI_TIDY)
-            print("既存の表デザインを検知したため、標準スタイル（罫線・色）の上書きをスキップしてデータ整理を行います")
-    tried = None                    # 気づきから撃った手の鍵（撃っていなければ None＝残りの手をそのまま並べる）
+    tried = None                   # 気づきから撃った手の鍵（撃っていなければ None＝残りの手をそのまま並べる）
     has_changes = False
     if owner:
         # マクロが直した所を出す＋控えを取る（2026-09-23 の通しの実測: 文字の日付・全角の数字・半角カナ等 6 か所を
@@ -2452,7 +2440,11 @@ def cmd_seiri(args):
                 fired += [n for n, _s, _w in auto_fired]
         except Exception as e:
             print(f"気づきの棚を撃てませんでした: {e}（残りとして直す）")
-        if fired and not on_pivot and not has_custom:
+        # デザインの棚で美化した表（いま撃った・前に撃った）には tidy を当てない＝見出しの色と罫線を塗り戻さない
+        designed = any(_shelf_priority(n) == 40 for n in fired) or _has_dark_header(ws)
+        if fired and not on_pivot and designed:
+            print("仕上げ（tidy）: デザインの棚で美化した表なので当てません（見出しの色と罫線をそのままにする）")
+        elif fired and not on_pivot:
             try:
                 _seiri_tidy(wb, ws, before_snap)
             except Exception as e:
