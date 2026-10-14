@@ -4742,6 +4742,19 @@ def test_design_and_summary_shelf_do_not_misfire_20261014():
     assert vp.shelf_pick('サマリーシートを作って', entries) == '表からモダンサマリーシートを作る'
 
 
+def test_conditional_format_requests_go_to_ai_unless_survey_20261014():
+    """条件付き書式を付ける頼みは AI へ、調べる・一覧の頼みだけ棚へ（VBA の 先撃ち候補 と同じ決まり・2026-10-14）。
+    10/12 の Gemini の直しは VBA だけ「条件付き書式」の語で一律に外し、仕掛けを調べる頼みまで AI に回していた。
+    Python 側には決まりが無く、seiri の「条件付き書式で赤くして」が一覧の棚に当たっていた。"""
+    import vbam_prefire as vp
+    entries = _shelf_entries_from_exported_bas()
+    if entries is None:
+        pytest.skip('棚の書き出しが無い')
+    assert vp.shelf_pick('在庫が発注点を下回る行を条件付き書式で赤くして', entries) == ''
+    assert vp.shelf_pick('このシートの仕掛け（入力規則・条件付き書式・結合セル）を調べて', entries) == '入力規則などの仕掛けを一覧にする'
+    assert vp.shelf_pick('この表を見やすく整えるには何を直せばいいか教えて', entries) == ''
+
+
 def test_guardrail_restore_keeps_formats_20261014():
     """棚が式のエラーを増やしたときの戻しは、変わったセルの式だけを書き戻す（使用範囲を Clear して塗り・罫線を消していた）。
     行や列がずれていたら戻さない（agent --undo に任せる）。"""
