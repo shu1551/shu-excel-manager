@@ -1995,6 +1995,27 @@ def _seiri_fire_request(xl, wb, ws, request, before_snap):
     if not src:
         print("依頼の文に当たる棚: 棚（秀コンボ）が開いていないので撃っていません")
         return []
+    # レシピの名前で頼まれたら、そのレシピを 1 回で撃つ（棚番 段 4・2026-10-15。控えは seiri の控え 1 つ＝戻すとレシピの前に戻る）
+    q = str(src).replace("'", "''")
+    recipe = ''
+    try:
+        recipe = str(xl.Run(f"'{q}'!コンボ道具.頼みのレシピ", str(request or '')) or '')
+    except Exception:
+        recipe = ''                                  # 古いアドイン（レシピの口が無い）
+    if recipe:
+        t0 = time.time()
+        try:
+            ws.Activate()
+            out = str(xl.Run(f"'{q}'!コンボ道具.レシピを撃つ", recipe, False) or '')
+        except Exception as ex:
+            out = f"レシピ「{recipe}」を撃てませんでした: {ex}"
+        try:
+            wb.Activate()
+            ws.Activate()
+        except Exception:
+            pass
+        print(f"{out}（{time.time() - t0:.2f} 秒）")
+        return [f"レシピ：{recipe}"]
     entries = vp.shelf_entries_from_text("\n".join(lines))
     plan = _seiri_request_plan(request, entries, vp.vba_picker(xl, src, entries))
     if not plan:
@@ -2047,6 +2068,7 @@ def _seiri_fire_request(xl, wb, ws, request, before_snap):
         macro_err = None
         t0 = time.time()
         vp.shelf_refusal(xl, src, clear=True)
+        vp.note_shot(xl, src, None)
         try:
             run_book_macro(xl, src, nm)
         except Exception as ex:
@@ -2074,6 +2096,7 @@ def _seiri_fire_request(xl, wb, ws, request, before_snap):
             stopped = nm
             continue
         fired.append(nm)
+        vp.note_shot(xl, src, nm, request)           # 撃った棚の控え（レシピの保存の窓に並ぶ・棚番 段 4）
         print(f"棚: {nm}（依頼の文に当たった・{time.time() - t0:.2f} 秒）")
     return fired
 
@@ -3203,8 +3226,13 @@ def cmd_shelf_run(args):
     t0 = time.time()
     ok = True
     from vbam_vba import run_book_macro, _VbaRuntimeError
+    import vbam_prefire as _vp
+    _vp.shelf_refusal(xl, owner, clear=True)
+    _vp.note_shot(xl, owner, None)                  # 撃った棚の控え（レシピの保存の窓に並ぶ・棚番 段 4・2026-10-15）
     try:
         run_book_macro(xl, owner, name)
+        if not _vp.shelf_refusal(xl, owner):
+            _vp.note_shot(xl, owner, name)
     except _VbaRuntimeError as ex:
         ok = False
         print(f"エラー: マクロが実行時エラーで止まりました: {ex}（窓は出ていません。落ちた行までの変更は下の差分に出ます）")
