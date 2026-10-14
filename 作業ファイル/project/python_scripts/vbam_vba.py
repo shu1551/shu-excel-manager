@@ -7132,10 +7132,11 @@ def _addin_buttons_restore(xl, buttons, addin_file):
 
 
 def _shelf_parity_gate(xl, wb):
-    """焼く前の関所（2026-10-14 段 1）: 問題集を VBA の先撃ち（正本）と Python の写し（shelf_pick）の両方に撃ち、
+    """焼く前の関所（2026-10-14 段 1・段 2）: 問題集を VBA の先撃ち（正本）と Python の写し（shelf_pick）の両方に撃ち、
     食い違いが 1 件でもあれば焼かない（10/12 に条件付き書式の決まりが片方にだけ入り、誰も気づかなかった）。
+    段 2 から、一般の語の検査（1 語で当たる組など）と問題集の横取りでも止める。
     通ったら VBA の答えを fixtures\\shelf_exam\\vba_answers.tsv に残す＝make_public が配る棚で写しと突き合わせる控え。
-    棚（コンボ道具・表の整理）の無いブック、問題集の無い環境（公開の写し）では何もしない。True＝焼いてよい"""
+    棚（コンボ道具・表の整理）の無いブックでは何もしない。True＝焼いてよい"""
     import vbam_prefire as vp
     from vbam_core import shelf_text
     try:
@@ -7143,26 +7144,17 @@ def _shelf_parity_gate(xl, wb):
     except Exception:
         return True
     text = shelf_text(wb.VBProject)
-    qa = vp.exam_questions()
-    if not text or not qa:
+    if not text:
         return True
-    t0 = time.time()
-    qs = [q for _e, q in qa]
-    ans = vp.vba_answers(xl, str(wb.Name), qs)
-    if ans is None:
-        print("⚠ 先撃ちの照合: VBA の 先撃ち候補の一括 を呼べませんでした（照合せずに焼きます）")
-        return True
-    diffs = vp.parity_diffs(qs, ans, vp.shelf_entries_from_text(text))
-    miss = sum(1 for (e, _q), a in zip(qa, ans) if e != a)
-    if diffs:
-        print(f"エラー: 先撃ちの判定が VBA（正本）と Python の写しで {len(diffs)} 問食い違っています（{len(qs)} 問中）。焼きません")
-        for q, a, p in diffs[:12]:
-            print(f"  「{q}」 VBA={a or '(AIへ)'}  Python={p or '(AIへ)'}")
-        print("  直すのは写し（vbam_prefire.shelf_pick）か VBA（コンボ道具.先撃ち判定）。分かって焼くなら --no-check")
+    # 段 2（2026-10-14）: 語の検査・問題集の横取り・外れた依頼の当たり先の変化も同じ関所で（vbam_prefire.shelf_check）
+    ok, lines = vp.shelf_check(xl, str(wb.Name), text, write_snapshot=True)
+    if not ok:
+        print("エラー: 棚の当たり方の検査で止まりました。焼きません")
+        print("\n".join("  " + ln for ln in lines))
+        print("  直すのは棚の頭（依頼の語・依頼の組・階級）か写し（vbam_prefire.shelf_pick）。分かって焼くなら --no-check")
         return False
-    vp.write_vba_snapshot(qs, ans)
-    print(f"先撃ちの照合: {len(qs)} 問で VBA と Python の写しは一致（{time.time() - t0:.1f} 秒）"
-          + (f"・問題集の期待と違う答え {miss} 問（shelf --ask で確かめる）" if miss else "・問題集の期待どおり"))
+    print("棚の当たり方の検査: 通りました")
+    print("\n".join("  " + ln for ln in lines))
     return True
 
 

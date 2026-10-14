@@ -693,6 +693,8 @@ def build_parser():
                    help="名前・扱う・説明・依頼の語のどれかにこの文字を含むものだけ")
     p.add_argument("--ask", dest="ask", default=None,
                    help="依頼文から撃つマクロを選ぶ（Excelコンボの先撃ちと同じ採点。当たらなければ「棚に無い」）")
+    p.add_argument("--check", dest="check", action="store_true",
+                   help="棚の当たり方の検査（一般の語・VBA と写しの照合・問題集の横取り・外れた依頼の変化）。棚を足した・語を変えたら撃つ")
     p = sub.add_parser("shelf-run",
                        help="棚のマクロを選んで撃つ：対象ブック/シートを前に出し(--sheet)、--select で選んでから"
                             "撃つ。控えを取り、差分（番地:前→後・上限30件＋件数・足された行/列/シート）を返す"

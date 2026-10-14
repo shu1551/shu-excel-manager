@@ -115,16 +115,97 @@ def shelf_entries_from_text(text):
         m = _REG_SUB_RE.match(ln)
         if m:
             name = m.group(1)
-            out.append({'name': name, 'ask': None, 'combo': None})
+            out.append({'name': name, 'ask': None, 'combo': None, 'tier': ''})
             continue
         if not out:
             continue
         a = _REG_ASK_RE.match(ln)
         g = _REG_COMBO_RE.match(ln)
+        t = _REG_TIER_RE.match(ln)
         if a:
             out[-1]['ask'] = a.group(1)
         elif g:
             out[-1]['combo'] = g.group(1)
+        elif t:
+            out[-1]['tier'] = t.group(1)
+    return out
+
+
+# ---- 棚の当たり方の検査（2026-10-14 段 2・work_order_20261014_shelf_system.md） ----
+# 10/14 の誤爆は、どれも棚を 1 本足したときの語が日常の言い方を横取りしたもの（見出しを青にして→インディゴ・この列を太字にして→
+# グラフの種類を変える・この行を消して→ピボットの手直し）。問題集に無い言い方はすり抜けるので、語そのものを形で検査する（ゴンちゃん案）。
+_REG_TIER_RE = re.compile(r"^\s*'\s*階級\s*[:：]\s*(\S+)")
+SHELF_TIERS = ('基本', '集計', '作り替え')
+# 一般の語＝どの棚の仕事にも出てくる日常の言い方。どの棚も、これ 1 つだけで点を取れない。
+# 組の全部をこれだけで満たせるのは「基本」の階級の棚の決まり文句（表＋整え・重複＋消）だけ
+GENERAL_WORDS = frozenset((
+    '表', '表の', 'シート', 'セル', '行', '列', 'データ', 'この', 'これ', 'それ', 'ここ', 'カード', '番号', 'グラフ', '図',
+    '色', '青', '赤', '緑', '黄', '黒', '白', 'グレー', '灰色', '茶色', 'ネイビー', '紺',
+    '整え', '整理', 'きれい', '綺麗', '見やすく', 'そろえ', '揃え', '統一', '直', '直し', '直して', '修正', '修復',
+    '変え', '替え', '消', '消し', '消して', '削除', '足し', '足して', '追加', '作', '作って', '作る', '作成', '出して', '出す',
+    'にして', 'して', 'に直', '順', '並べ', '見せ', '見', 'お願い',
+))
+_LINT_PARTICLES = ('にして', 'して', 'を', 'に', 'で', 'の', 'は', 'が', 'と', 'も', 'へ', 'な', 'く')
+
+
+def _combo_groups(combo):
+    """依頼の組 → (+ の各組の言い換えの並び, 除外の語)。"""
+    pos, neg = [], []
+    for g in str(combo or '').split('+'):
+        g = g.strip()
+        if not g:
+            continue
+        alts = [w.strip() for w in g.lstrip('-').split(',') if w.strip()]
+        (neg if g.startswith('-') else pos).append(alts)
+    return pos, neg
+
+
+def _only_general(word):
+    """語が一般の語と助詞だけでできているか（「青で美化」は 美化 が残る＝固有、「見出しを青に」も 見出し が残る）。"""
+    rest = str(word)
+    for g in sorted(GENERAL_WORDS | set(_LINT_PARTICLES), key=len, reverse=True):
+        rest = rest.replace(g, '')
+    return not rest.strip()
+
+
+def shelf_lint(text):
+    """棚の本文 → 当たり方の問題 [(重さ, 棚の名前, 中身)]（純 Python）。重さ＝'止める'（register-addin で焼かない）か '注意'。
+    - 依頼の語が一般の語 1 つ（「表」「グラフ」）            → 止める
+    - 依頼の組を一般の語 1 つで満たせる（グラフ＋グラフ）     → 止める
+    - 依頼の組の全部の組を一般の語で満たせる（この＋にして）  → 止める。ただし ' 階級: 基本 の棚は通す（表＋整え など）
+    - ' 階級: 作り替え の棚が依頼の組を持つ・依頼の語が一般の語だけ → 止める
+    - 階級の綴りが違う・同じ依頼の語が 2 本以上の棚にある    → 注意"""
+    out, seen = [], {}
+    for e in shelf_entries_from_text(text):
+        name, tier = e['name'], e.get('tier') or ''
+        if tier and tier not in SHELF_TIERS:
+            out.append(('注意', name, f"階級「{tier}」は {'・'.join(SHELF_TIERS)} のどれでもない"))
+        asks = [w.strip() for w in str(e.get('ask') or '').split('|') if w.strip()]
+        for w in asks:
+            seen.setdefault(w, []).append(name)
+            if w in GENERAL_WORDS:
+                out.append(('止める', name, f"依頼の語「{w}」が一般の語 1 つだけ（日常の頼みを横取りする）"))
+            elif tier == '作り替え' and _only_general(w):
+                out.append(('止める', name, f"作り替えの棚の依頼の語「{w}」が一般の語だけ（固有の言い方にする）"))
+        if not e.get('combo'):
+            continue
+        if tier == '作り替え':
+            out.append(('止める', name, "作り替えの棚は依頼の組を持てない（依頼の語の固有の言い方だけで当てる）"))
+            continue
+        pos, _neg = _combo_groups(e['combo'])
+        if not pos:
+            continue
+        cands = sorted({w for alts in pos for w in alts}, key=len)
+        one = next((w for w in cands if w in GENERAL_WORDS and all(any(a in w for a in alts) for alts in pos)), None)
+        if one:
+            out.append(('止める', name, f"依頼の組が「{one}」1 語で満たされる（日常の頼みを横取りする）"))
+            continue
+        if tier != '基本' and all(any(a in GENERAL_WORDS for a in alts) for alts in pos):
+            ex = '＋'.join(next(a for a in alts if a in GENERAL_WORDS) for alts in pos)
+            out.append(('止める', name, f"依頼の組を一般の語だけで満たせる（例: {ex}）。決まり文句なら ' 階級: 基本"))
+    for w, names in seen.items():
+        if len(set(names)) >= 2:
+            out.append(('注意', '・'.join(sorted(set(names))), f"依頼の語「{w}」が {len(set(names))} 本の棚にある"))
     return out
 
 
@@ -807,12 +888,102 @@ def vba_snapshot_path(dirpath=None):
     return os.path.join(dirpath or exam_dir(), 'vba_answers.tsv')
 
 
-def write_vba_snapshot(questions, answers, dirpath=None):
+def write_vba_snapshot(questions, answers, dirpath=None, path=None):
     """register-addin が通したときの VBA の答え（依頼文<TAB>棚の名前）を残す＝make_public が配る棚で写しと突き合わせる控え。"""
     import io
-    with io.open(vba_snapshot_path(dirpath), 'w', encoding='utf-8', newline='\n') as f:
+    with io.open(path or vba_snapshot_path(dirpath), 'w', encoding='utf-8', newline='\n') as f:
         for q, a in zip(questions, answers):
             f.write(f"{q}\t{a}\n")
+
+
+def missed_requests(path=None):
+    """Excelコンボが棚に当てられなかった頼み（%APPDATA%\\秀コンボ\\外れた依頼.csv・CP932）→ 頼みの文の並び（同じ文は 1 回）。"""
+    import csv
+    import io
+    import os
+    p = path or os.path.join(os.environ.get('APPDATA', ''), '秀コンボ', '外れた依頼.csv')
+    if not os.path.isfile(p):
+        return []
+    out, seen = [], set()
+    for row in csv.reader(io.open(p, encoding='cp932', errors='replace', newline='')):
+        if len(row) < 3 or row[0] == '日時':
+            continue
+        q = ' '.join(row[2].split())
+        if q and q not in seen:
+            seen.add(q)
+            out.append(q)
+    return out
+
+
+def shelf_check(xl, owner, text, write_snapshot=False):
+    """棚の当たり方の検査を 1 回で（2026-10-14 段 2）。(焼いてよいか, 報告の行) を返す。
+    1. 一般の語の検査（shelf_lint）の「止める」
+    2. 問題集（entry_phrases*.tsv＝ありがちな頼み集を含む）を VBA（正本）に撃ち、写し（shelf_pick）と食い違えば止める
+    3. 問題集の期待と違う答え＝横取り（または当たらなくなった頼み）があれば止める
+    4. 外れた依頼（Excelコンボが AI に回した頼み）の当たり先が前の検査から変わった物を並べる（止めない。新しく棚に当たるのが正しいかは人が見る）
+    通ったら VBA の答えを控える（write_snapshot）＝make_public が配る棚で写しと突き合わせる・次の検査の 4 の比べ元"""
+    import time as _t
+    t0 = _t.time()
+    lines, ok = [], True
+    stops = [x for x in shelf_lint(text) if x[0] == '止める']
+    notes = [x for x in shelf_lint(text) if x[0] == '注意']
+    if stops:
+        ok = False
+        lines.append(f"語の検査: 止める {len(stops)} 件")
+        lines += [f"  {n}: {m}" for _lv, n, m in stops[:20]]
+    else:
+        lines.append("語の検査: 止める物なし" + (f"（注意 {len(notes)} 件・shelf --check で見る）" if notes else ""))
+    qa = exam_questions()
+    ans = None
+    if qa:
+        qs = [q for _e, q in qa]
+        ans = vba_answers(xl, owner, qs)
+        if ans is None:
+            lines.append("問題集: VBA の 先撃ち候補の一括 を呼べませんでした（照合していません）")
+        else:
+            diffs = parity_diffs(qs, ans, shelf_entries_from_text(text))
+            if diffs:
+                ok = False
+                lines.append(f"VBA と Python の写しの食い違い: {len(diffs)} 問（{len(qs)} 問中）")
+                lines += [f"  「{q}」 VBA={a or '(AIへ)'}  写し={p or '(AIへ)'}" for q, a, p in diffs[:12]]
+            miss = [(q, e, a) for (e, q), a in zip(qa, ans) if e != a]
+            if miss:
+                ok = False
+                lines.append(f"問題集の横取り・当たらなくなった頼み: {len(miss)} 問（{len(qs)} 問中）")
+                for q, e, a in miss[:12]:
+                    why = vba_peek(xl, owner, q).split('\n')[1:2]
+                    lines.append(f"  「{q}」 期待={e or '(AIへ)'}  今={a or '(AIへ)'}" + (f"  ← {why[0].strip()}" if why and why[0].strip() else ''))
+            if not diffs and not miss:
+                lines.append(f"問題集: {len(qs)} 問で VBA と写しが一致・全部が期待どおり")
+    misses = missed_requests()
+    miss_ans = vba_answers(xl, owner, misses) if misses else None
+    snap_miss = vba_snapshot_path().replace('vba_answers.tsv', 'vba_answers_miss.tsv')
+    if miss_ans is not None:
+        prev = dict(read_vba_snapshot_file(snap_miss) or [])
+        changed = [(q, prev.get(q, ''), a) for q, a in zip(misses, miss_ans) if prev and prev.get(q, '') != a]
+        hit = sum(1 for a in miss_ans if a)
+        lines.append(f"外れた依頼: {len(misses)} 種のうち、今は棚に当たる {hit} 種" +
+                     (f"・前の検査から当たり先が変わった {len(changed)} 種（正しいか見る）" if changed else ""))
+        lines += [f"  「{q[:60]}」 前={p or '(AIへ)'} → 今={a or '(AIへ)'}" for q, p, a in changed[:12]]
+    if ok and write_snapshot:
+        if qa and ans is not None:
+            write_vba_snapshot([q for _e, q in qa], ans)
+        if miss_ans is not None:
+            write_vba_snapshot(misses, miss_ans, path=snap_miss)
+    lines.append(f"（{_t.time() - t0:.1f} 秒）")
+    return ok, lines
+
+
+def read_vba_snapshot_file(path):
+    import io
+    import os
+    if not os.path.isfile(path):
+        return None
+    rows = []
+    for ln in io.open(path, encoding='utf-8'):
+        q, _, a = ln.rstrip('\n').partition('\t')
+        rows.append((q, a))
+    return rows
 
 
 def read_vba_snapshot(dirpath=None):

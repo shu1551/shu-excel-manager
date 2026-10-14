@@ -4781,6 +4781,30 @@ def test_shelf_parity_parts_20261014(tmp_path):
     assert seen == ['重複行を消して', '合計行を足して']
 
 
+def test_shelf_lint_general_words_20261014():
+    """段 2 の語の検査（vbam_prefire.shelf_lint）: 10/14 の誤爆の型を、問題集に無い言い方でも語の形で止める。"""
+    import vbam_prefire as vp
+
+    def sub(name, *heads):
+        return f"Sub {name}()\r\n" + "".join(f"    ' {h}\r\n" for h in heads) + "End Sub\r\n"
+    text = (sub('棒グラフ', '依頼の組: 棒,グラフ+グラフ+-滝')                      # グラフ 1 語で両方の組が満たされる
+            + sub('種類を変える', '依頼の組: グラフ,これ,この+変え,にして')         # この＋にして（一般の語だけ）
+            + sub('表を整える', '依頼の組: 表,表の+整え,修正', '階級: 基本')      # 基本の決まり文句は通す
+            + sub('インディゴ', '依頼の語: 青にして|インディゴにして', '階級: 作り替え')
+            + sub('サマリー', '依頼の語: サマリーシート', '依頼の組: サマリー,シート', '階級: 作り替え')
+            + sub('一語', '依頼の語: グラフ|棒グラフ')
+            + sub('按分', '依頼の組: 按分,人数比+-当番')                          # 1 組でも固有の語なら通す
+            + sub('重複', '依頼の語: 重複行') + sub('重複その2', '依頼の語: 重複行') + sub('間違い', '階級: 大改装'))
+    got = {(lv, n, m.split('（')[0]) for lv, n, m in vp.shelf_lint(text)}
+    stops = {n for lv, n, _m in got if lv == '止める'}
+    assert stops == {'棒グラフ', '種類を変える', 'インディゴ', 'サマリー', '一語'}
+    assert ('止める', '一語', '依頼の語「グラフ」が一般の語 1 つだけ') in got
+    assert ('止める', 'インディゴ', '作り替えの棚の依頼の語「青にして」が一般の語だけ') in got
+    assert any(lv == '注意' and '重複行' in m for lv, _n, m in vp.shelf_lint(text))
+    assert any(lv == '注意' and n == '間違い' for lv, n, _m in vp.shelf_lint(text))
+    assert vp.shelf_entries_from_text(sub('x', '階級: 基本'))[0]['tier'] == '基本'
+
+
 def test_guardrail_restore_keeps_formats_20261014():
     """棚が式のエラーを増やしたときの戻しは、変わったセルの式だけを書き戻す（使用範囲を Clear して塗り・罫線を消していた）。
     行や列がずれていたら戻さない（agent --undo に任せる）。"""
