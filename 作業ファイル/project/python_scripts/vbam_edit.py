@@ -988,7 +988,29 @@ def cmd_format_range(args):
     if getattr(args, 'font', None):
         rng.Font.Name = args.font; applied.append(f"font={args.font}")
     if getattr(args, 'size', None):
-        rng.Font.Size = float(args.size); applied.append(f"size={args.size}")
+        size_str = str(args.size).strip()
+        if size_str.startswith(('+', '-')):
+            delta = float(size_str)
+            if rng.Font.Size is not None:
+                new_sz = max(1.0, float(rng.Font.Size) + delta)
+                rng.Font.Size = new_sz
+                applied.append(f"size={new_sz:g} ({size_str})")
+            else:
+                prev_su = xl.ScreenUpdating
+                xl.ScreenUpdating = False
+                try:
+                    for c in rng.Cells:
+                        try:
+                            cur = c.Font.Size
+                            if cur is not None:
+                                c.Font.Size = max(1.0, float(cur) + delta)
+                        except Exception:
+                            pass
+                finally:
+                    xl.ScreenUpdating = prev_su
+                applied.append(f"size{size_str}")
+        else:
+            rng.Font.Size = float(args.size); applied.append(f"size={args.size}")
     if getattr(args, 'bold', False):
         rng.Font.Bold = True; applied.append("bold")
     if getattr(args, 'unbold', False):
@@ -1068,12 +1090,25 @@ def cmd_format_range(args):
             rng.Borders.Weight = _XL_BORDER_WEIGHT.get(args.border, 2)
             applied.append(f"border={args.border}")
     if getattr(args, 'col_width', None) is not None:
-        rng.ColumnWidth = float(args.col_width); applied.append(f"col-width={args.col_width}")
+        cw_str = str(args.col_width).strip()
+        if cw_str.startswith(('+', '-')):
+            delta = float(cw_str)
+            if rng.ColumnWidth is not None:
+                new_cw = max(1.0, float(rng.ColumnWidth) + delta)
+                rng.ColumnWidth = new_cw
+                applied.append(f"col-width={new_cw:g} ({cw_str})")
+            else:
+                for col in rng.Columns:
+                    try:
+                        cur = col.ColumnWidth
+                        if cur is not None:
+                            col.ColumnWidth = max(1.0, float(cur) + delta)
+                    except Exception:
+                        pass
+                applied.append(f"col-width{cw_str}")
+        else:
+            rng.ColumnWidth = float(args.col_width); applied.append(f"col-width={args.col_width}")
     if getattr(args, 'row_height', None) is not None:
-        # 隠れている行に行高を入れると、その行が**見えるようになる**（隠す＝高さ 0 なので）。
-        # 人が手で隠した行を、見た目を整えただけで表に出してしまう＝頼んでいない変化
-        # （2026-09-08 の実射・手順書「見た目を直す」が「隠れていた行が変わった（4・5 行目）」で落ちた）。
-        # 隠れていた行を覚えて、高さを入れた後に隠し直す。
         was_hidden = []
         try:
             r1 = int(rng.Row)
@@ -1082,14 +1117,34 @@ def cmd_format_range(args):
                     was_hidden.append(i)
         except Exception:
             was_hidden = []
-        rng.RowHeight = float(args.row_height)
+
+        rh_str = str(args.row_height).strip()
+        if rh_str.startswith(('+', '-')):
+            delta = float(rh_str)
+            if rng.RowHeight is not None:
+                new_rh = max(1.0, float(rng.RowHeight) + delta)
+                rng.RowHeight = new_rh
+                applied.append(f"row-height={new_rh:g} ({rh_str})")
+            else:
+                for row in rng.Rows:
+                    try:
+                        cur = row.RowHeight
+                        if cur is not None:
+                            row.RowHeight = max(1.0, float(cur) + delta)
+                    except Exception:
+                        pass
+                applied.append(f"row-height{rh_str}")
+        else:
+            rng.RowHeight = float(args.row_height)
+            applied.append(f"row-height={args.row_height}")
+
         for i in was_hidden:
             try:
                 ws.Rows(i).Hidden = True
             except Exception:
                 continue
-        applied.append(f"row-height={args.row_height}"
-                       + (f"（隠れていた {len(was_hidden)} 行は隠したまま）" if was_hidden else ""))
+        if was_hidden:
+            applied.append(f"（隠れていた {len(was_hidden)} 行は隠したまま）")
     if getattr(args, 'merge', False):
         # 複数の値を含む範囲の Merge は Excel が確認ダイアログを出し、
         # CLI が無言で応答待ちブロックする。値の個数を先に数えて、
