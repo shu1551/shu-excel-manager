@@ -554,16 +554,26 @@ def fire_with_request(xl, owner, ws, name, request):
             ws.Range(anchor or 'A1').Select()
         except Exception:
             pass
+        shelf_refusal(xl, owner, clear=True)       # 前の棚の断りが残っていると、撃てた棚まで断ったと読む（2026-10-14）
         run_book_macro(xl, owner, name)
-        try:
-            return str(xl.Run(f"'{q}'!コンボ道具.棚の断りを返す") or '')
-        except Exception:
-            return ''
+        return shelf_refusal(xl, owner)
     finally:
         with contextlib.suppress(Exception):
             xl.Run(f"'{q}'!コンボ道具.頼みの文を入れる", '')
         with contextlib.suppress(Exception):
             xl.StatusBar = False
+
+
+def shelf_refusal(xl, owner, clear=False):
+    """棚の断りの口（コンボ道具.棚の断りを入れる／返す・2026-10-09）を読む（clear=True なら空にする）。棚が撃たなかった理由。無ければ ''。"""
+    q = str(owner).replace("'", "''")
+    try:
+        if clear:
+            xl.Run(f"'{q}'!コンボ道具.棚の断りを入れる", '')
+            return ''
+        return str(xl.Run(f"'{q}'!コンボ道具.棚の断りを返す") or '')
+    except Exception:
+        return ''
 
 
 def select_columns(ws, cols):
@@ -825,10 +835,14 @@ def vba_picker(xl, owner, entries=()):
     ref = _vba_book_ref(owner)
 
     def pick(req):
-        try:
-            return str(xl.Run(ref + 'コンボ道具.先撃ち候補', str(req or '')) or '')
-        except Exception:
-            return shelf_pick(req, entries)
+        # シートを見る版（2026-10-14 段 3）: ピボット・グラフを手直しする棚は、前のシートにそれが無ければ当てない。
+        # 古い秀コンボ（_シートで が無い）なら素の 先撃ち候補
+        for fn in ('コンボ道具.先撃ち候補_シートで', 'コンボ道具.先撃ち候補'):
+            try:
+                return str(xl.Run(ref + fn, str(req or '')) or '')
+            except Exception:
+                continue
+        return shelf_pick(req, entries)
     return pick
 
 

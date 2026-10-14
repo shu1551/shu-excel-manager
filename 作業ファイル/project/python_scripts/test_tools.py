@@ -4805,6 +4805,44 @@ def test_shelf_lint_general_words_20261014():
     assert vp.shelf_entries_from_text(sub('x', '階級: 基本'))[0]['tier'] == '基本'
 
 
+def test_vba_picker_uses_sheet_aware_judge_20261014():
+    """段 3: 撃つ所の判定は VBA の 先撃ち候補_シートで（ピボット・グラフの手直しは、それが無いシートでは当てない）。
+    古い秀コンボ（_シートで が無い）なら素の 先撃ち候補、どちらも呼べなければ写し。断りの口は撃つ前に空にする。"""
+    import vbam_prefire as vp
+
+    class Book:
+        class VBProject:
+            @staticmethod
+            def VBComponents(name):
+                return object()
+
+    class XL:
+        def __init__(self, have):
+            self.have, self.calls = have, []
+
+        def Workbooks(self, name):
+            return Book()
+
+        def Run(self, macro, *args):
+            self.calls.append(macro.split('!')[1])
+            fn = macro.split('!')[1]
+            if fn not in self.have:
+                raise RuntimeError('no macro')
+            return self.have[fn](*args)
+
+    xl = XL({'コンボ道具.先撃ち候補_シートで': lambda q: '', 'コンボ道具.先撃ち候補': lambda q: '頼みの文でピボットを手直しする'})
+    assert vp.vba_picker(xl, '秀コンボ.xlam')('金額の大きい順に並べて') == ''
+    assert xl.calls == ['コンボ道具.先撃ち候補_シートで']
+    old = XL({'コンボ道具.先撃ち候補': lambda q: '表の書き方と罫線と列幅をそろえる'})
+    assert vp.vba_picker(old, '秀コンボ.xlam')('表を整えて') == '表の書き方と罫線と列幅をそろえる'
+    entries = vp.shelf_entries_from_text("Sub 表の下に合計行を足す()\r\n    ' 依頼の語: 合計行\r\nEnd Sub\r\n")
+    none = XL({})
+    assert vp.vba_picker(none, '秀コンボ.xlam', entries)('合計行を足して') == '表の下に合計行を足す'
+    box = XL({'コンボ道具.棚の断りを入れる': lambda s: None, 'コンボ道具.棚の断りを返す': lambda: '見出しが無い'})
+    assert vp.shelf_refusal(box, '秀コンボ.xlam', clear=True) == '' and box.calls == ['コンボ道具.棚の断りを入れる']
+    assert vp.shelf_refusal(box, '秀コンボ.xlam') == '見出しが無い'
+
+
 def test_guardrail_restore_keeps_formats_20261014():
     """棚が式のエラーを増やしたときの戻しは、変わったセルの式だけを書き戻す（使用範囲を Clear して塗り・罫線を消していた）。
     行や列がずれていたら戻さない（agent --undo に任せる）。"""
