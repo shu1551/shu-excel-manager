@@ -2592,7 +2592,7 @@ def cmd_seiri(args):
 _SHELF_HEADER_RE = re.compile(r"\s*(?:Public\s+)?Sub\s+([^\s(]+)\s*\(\s*\)")
 _SHELF_END_RE = re.compile(r"^End\s+Sub\b")
 _SHELF_WINDOW_RE = re.compile(r'\b(MsgBox|InputBox)\b')
-_SHELF_KEYS = ("依頼の語:", "依頼の組:", "扱う:", "見出し:", "選ぶ列:", "形:")
+_SHELF_KEYS = ("依頼の語:", "依頼の組:", "扱う:", "見出し:", "選ぶ列:", "形:", "階級:", "依頼の語限定", "20")
 _SHELF_DATE_NOTE_RE = re.compile(r"（[^（）]*20\d\d-\d\d-\d\d[^（）]*）")
 _SHELF_ASK_RE = re.compile(r"^依頼の語\s*[:：]\s*(.+)$")
 _SHELF_FP_MAX_CELLS = 50000     # 別シートの書き換わりを見る指紋を取るセル数の上限（超えたら番地だけ比べる）
@@ -2698,6 +2698,8 @@ def cmd_shelf(args):
         print(f"棚（モジュール「{_SEIRI_MODULE}」）が開いているブック・アドインに見つかりません")
         return False
     rows = _parse_shelf_catalog(lines)
+    if getattr(args, 'check', False):
+        return _shelf_check(xl, wb, owner, lines)
     ask = (getattr(args, 'ask', None) or '').strip()
     if ask:
         return _shelf_ask(owner, lines, rows, ask, xl)
@@ -2710,6 +2712,29 @@ def cmd_shelf(args):
         print(f"  {r['name']}\t選ぶ列={r['sel']}\t{win}\t{r['kind']}\t{r['desc']}")
     print("（撃つ: shelf-run <名前> [--select 範囲] [--sheet 名]）")
     return True
+
+
+def _shelf_check(xl, wb, owner, lines):
+    """`shelf --check`: 棚の当たり方の検査（2026-10-14 段 2・vbam_prefire.shelf_check）。register-addin が焼く前に回すのと同じ。
+    前に出ているブックに棚があればそれ（直している秀コンボ.xlsm）、無ければ棚の持ち主（アドイン）を見る。控えは書かない。"""
+    import vbam_prefire as vp
+    from vbam_core import shelf_text
+    src, text = owner, "\n".join(lines)
+    try:
+        wb.VBProject.VBComponents('コンボ道具')
+        t = shelf_text(wb.VBProject)
+        if t:
+            src, text = str(wb.Name), t
+    except Exception:
+        pass
+    ok, out = vp.shelf_check(xl, src, text, write_snapshot=False)
+    print(f"棚の当たり方の検査: {src}  → {'通る' if ok else '止まる（register-addin は焼かない）'}")
+    for ln in out:
+        print("  " + ln)
+    notes = [x for x in vp.shelf_lint(text) if x[0] == '注意']
+    for _lv, n, m in notes[:10]:
+        print(f"  注意: {n}: {m}")
+    return ok
 
 
 def _shelf_ask(owner, lines, rows, ask, xl=None):
