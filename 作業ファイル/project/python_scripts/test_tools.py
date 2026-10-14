@@ -4708,6 +4708,98 @@ def test_seiri_request_plan_splits_requests_20260924():
     assert vw._seiri_request_plan("", entries) == []
 
 
+def _shelf_entries_from_exported_bas():
+    """配っている棚の書き出し（手元は publish\\addin\\macros、公開リポは 作業ファイル\\project\\macros）→ 棚の並び。無ければ None"""
+    import vbam_prefire as vp
+    here = os.path.dirname(os.path.abspath(__file__))
+    for d in (os.path.join(here, '..', 'publish', 'addin', 'macros'), os.path.join(here, '..', 'macros')):
+        if os.path.exists(os.path.join(d, '表の整理_作る.bas')):
+            text = ''
+            for f in sorted(os.listdir(d)):
+                if f.startswith('表の整理') and f.endswith('.bas'):
+                    with open(os.path.join(d, f), encoding='cp932', newline='') as fh:
+                        text += fh.read()
+            return vp.shelf_entries_from_text(text)
+    return None
+
+
+def test_design_and_summary_shelf_do_not_misfire_20261014():
+    """一部の色替え・ふつうの頼みに、表全体を作り替える棚（デザイン 6 本・KPI カード・サマリー）が当たらない（2026-10-14）。
+    「見出しを青にして」がクラシックインディゴに、「このシートを整えて」がモダンサマリーに、「会員カードの番号をそろえて」が
+    KPI カードに当たっていた（依頼の語の「青にして」・依頼の組の 1 語「シート」「カード」）。"""
+    import vbam_prefire as vp
+    entries = _shelf_entries_from_exported_bas()
+    if entries is None:
+        pytest.skip('棚の書き出しが無い')
+    big = {'表をクラシックインディゴに美化する', '表をノーブルボルドーに美化する', '表をモダンエメラルドに美化する',
+           '表をシックチャコールに美化する', '表をウォームアンバーに美化する', '表をエグゼクティブデザインに美化する',
+           '表の上にKPIサマリーカードを作る', '表からモダンサマリーシートを作る'}
+    for req in ('見出しを青にして', '文字を赤にして', 'マイナスの所を緑にして', '空欄をグレーにして', '合計の行を茶色にして',
+                '見出しをネイビーにして', 'このシートを整えて', '会員カードの番号をそろえて', '集計シートを作って'):
+        assert vp.shelf_pick(req, entries) not in big, req
+    assert vp.shelf_pick('表を青系デザインで美化して', entries) == '表をクラシックインディゴに美化する'
+    assert vp.shelf_pick('KPIカードを作って', entries) == '表の上にKPIサマリーカードを作る'
+    assert vp.shelf_pick('サマリーシートを作って', entries) == '表からモダンサマリーシートを作る'
+
+
+def test_guardrail_restore_keeps_formats_20261014():
+    """棚が式のエラーを増やしたときの戻しは、変わったセルの式だけを書き戻す（使用範囲を Clear して塗り・罫線を消していた）。
+    行や列がずれていたら戻さない（agent --undo に任せる）。"""
+    import vbam_view as vw
+
+    class Cell:
+        def __init__(self, sheet, r, c):
+            self.sheet, self.r, self.c = sheet, r, c
+
+        @property
+        def Formula(self):
+            return self.sheet.grid[self.r - 1][self.c - 1]
+
+        @Formula.setter
+        def Formula(self, v):
+            self.sheet.written.append((self.r, self.c, v))
+            self.sheet.grid[self.r - 1][self.c - 1] = v
+
+    class Rng:
+        def __init__(self, sheet):
+            self.sheet = sheet
+
+        @property
+        def Address(self):
+            return self.sheet.addr
+
+        @property
+        def Formula(self):
+            return tuple(tuple(r) for r in self.sheet.grid)
+
+        def Cells(self, r, c):
+            return Cell(self.sheet, r, c)
+
+        def Clear(self):
+            raise AssertionError('Clear を呼んだ（塗り・罫線が消える）')
+
+    class Sheet:
+        def __init__(self, grid, addr='$A$1:$B$2'):
+            self.grid, self.addr, self.written = [list(r) for r in grid], addr, []
+
+        @property
+        def UsedRange(self):
+            return Rng(self)
+
+        def Range(self, a):
+            return Rng(self)
+
+        def Activate(self):
+            pass
+
+    ws = Sheet([['項目', '金額'], ['A', '=1/0']])
+    snap = {'addr': 'A1:B2', 'formulas': (('項目', '金額'), ('A', '=1'))}
+    assert vw._guardrail_restore(ws, snap) is True
+    assert ws.written == [(2, 2, '=1')]                      # 変わった 1 セルだけ
+    moved = Sheet([['項目', '金額'], ['A', '=1/0']], addr='$A$1:$B$3')
+    assert vw._guardrail_restore(moved, snap) is False and moved.written == []
+
+
 def test_header_col_span_drops_non_text_ends_20260924():
     """tidy の当て先から、見出しが文字でない両端の列（隣り合った件数の式・メモ）を外す（2026-09-24 夜）。"""
     import vbam_view as vw

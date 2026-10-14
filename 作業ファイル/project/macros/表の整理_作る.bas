@@ -11544,7 +11544,7 @@ End Function
 
 
 Sub 表をエグゼクティブデザインに美化する()
-    ' 依頼の語: エグゼクティブデザイン|エグゼクティブネイビー|役員報告デザイン|エグゼクティブにして|役員報告向けに美化|濃紺デザイン
+    ' 依頼の語: エグゼクティブデザイン|エグゼクティブネイビー|役員報告デザイン|エグゼクティブにして|エグゼクティブで美化|エグゼクティブのデザイン|エグゼクティブ風|役員報告向けに美化|役員報告にして|役員報告のデザイン|濃紺デザイン|濃紺で美化|濃紺のデザイン|ネイビーデザイン|ネイビーで美化|ネイビーのデザイン|ネイビー風
     ' 依頼の語限定（誤爆防止のため組なし）
     ' 扱う: デザイン 書式 美化 エグゼクティブ ネイビー 罫線 配色
     ' 見出し: なし
@@ -11564,7 +11564,7 @@ Sub 表をエグゼクティブデザインに美化する()
 End Sub
 
 Sub 表をモダンエメラルドに美化する()
-    ' 依頼の語: モダンエメラルド|エメラルドデザイン|グリーンデザイン|エメラルドにして|エメラルド美化|緑系デザイン
+    ' 依頼の語: モダンエメラルド|モダンエメラルドにして|エメラルドデザイン|エメラルドで美化|エメラルド美化|エメラルドのデザイン|グリーンデザイン|グリーンで美化|グリーンのデザイン|グリーン系デザイン|グリーン風|深緑デザイン|深緑で美化|深緑のデザイン|緑系デザイン|緑色デザイン|緑色で美化|緑で美化|緑のデザイン
     ' 依頼の語限定（誤爆防止のため組なし）
     ' 扱う: デザイン 書式 美化 エメラルド グリーン 罫線 配色
     ' 見出し: なし
@@ -12001,25 +12001,28 @@ Sub デザイン美化を実行する( _
         Next c
     Next bIdx
 
-    ' 6. 表の上のタイトル行の美しい調和
+    ' 6. 表の上のタイトル（いちばん上の文字の行だけ。下の注記・メモは触らない）
+    ' 2026-10-14: 表の上の行を全部 13pt 太字の中央寄せにしていた＝1 セルの長いタイトルの左が欠け、注記やメモまでタイトルになっていた。
+    ' 寄せは変えない。「例：」「テスト」の語で外していたのはお題の表の名残なので外した
     If hdrRow > rStart Then
+        Dim 題の行 As Long: 題の行 = 0
         For r = rStart To hdrRow - 1
+            If Application.CountA(ws.Range(ws.Cells(r, cStart), ws.Cells(r, cLast))) > 0 Then 題の行 = r: Exit For
+        Next r
+        If 題の行 > 0 Then
             For c = cStart To cLast
-                Dim titleVal As Variant: titleVal = ws.Cells(r, c).Value
+                Dim titleVal As Variant: titleVal = ws.Cells(題の行, c).Value
                 If VarType(titleVal) = vbString And Trim(titleVal) <> "" Then
-                    If InStr(CStr(titleVal), "例：") = 0 And InStr(CStr(titleVal), "テスト") = 0 Then
-                        With ws.Cells(r, c).Font
-                            .Name = fontName
-                            .Size = 13
-                            .Bold = True
-                            .Color = ヘッダー背景
-                        End With
-                        ws.rows(r).RowHeight = 26
-                        ws.Cells(r, c).HorizontalAlignment = xlCenter
-                    End If
+                    With ws.Cells(題の行, c).Font
+                        .Name = fontName
+                        .Size = 13
+                        .Bold = True
+                        .Color = ヘッダー背景
+                    End With
+                    ws.rows(題の行).RowHeight = 26
                 End If
             Next c
-        Next r
+        End If
     End If
 
     ActiveWindow.DisplayGridlines = True
@@ -12035,14 +12038,15 @@ CatchError:
 End Sub
 
 Sub 表の上にKPIサマリーカードを作る()
-    ' 依頼の語: KPIカード|サマリーカード|KPI|指標カード|上部にサマリー|カード形式|要約カード|ダッシュボードカード|KPIを作成|サマリーカードを作成
-    ' 依頼の組: KPI,カード,サマリー,指標,ダッシュボード
+    ' 依頼の語: KPIカード|サマリーカード|KPI|指標カード|上部にサマリー|要約カード|ダッシュボードカード|KPIを作成|サマリーカードを作成
     ' 扱う: KPI サマリー カード ダッシュボード 集計 指標
     ' 見出し: なし
     ' 選ぶ列: -
     ' 形: 表の上部
-    ' 表の上部に主要指標（総件数・合計金額・平均値など）を大きく見せるKPIサマリーカードを横並びで作成する。背景淡色カード枠、上段にラベル、下段に大きな太字数値を配置。
+    ' 表の見出しのすぐ上に行を差し込み、主要指標（合計・平均）を大きく見せるKPIサマリーカードを横並びで作成する。上のタイトルや注記は上書きしない。
 
+    ' 2026-10-14: 依頼の組「KPI,カード,サマリー,指標,ダッシュボード」は 1 語で当たり「会員カードの番号をそろえて」でも撃っていた＝組を外した。
+    ' 見出しが 7 行目より下の表では 2 から 5 行目のタイトルや注記の上にカードを重ねて結合していた＝見出しの上に行を差し込む形にした
     Dim ws As Worksheet
     Set ws = ActiveSheet
 
@@ -12114,16 +12118,6 @@ Sub 表の上にKPIサマリーカードを作る()
     dataEndRow = IIf(hasTotalRow, rLast - 1, rLast)
     If dataEndRow <= hdrRow Then GoTo FinallyExit
 
-    ' 上部に6行分の空きスペースがあるか確認。無ければ行を挿入
-    Dim neededRows As Long: neededRows = 6
-    If hdrRow <= neededRows Then
-        Dim insertCount As Long: insertCount = (neededRows + 2) - hdrRow
-        ws.rows("1:" & insertCount).Insert Shift:=xlDown
-        hdrRow = hdrRow + insertCount
-        dataEndRow = dataEndRow + insertCount
-        rLast = rLast + insertCount
-    End If
-
     ' KPI候補列を抽出（数値列を最大3つ選定）
     Dim numCols() As Long: ReDim numCols(1 To cLast - cStart + 1)
     Dim numTitles() As String: ReDim numTitles(1 To cLast - cStart + 1)
@@ -12150,7 +12144,13 @@ Sub 表の上にKPIサマリーカードを作る()
 
     If kpiCount = 0 Then GoTo FinallyExit
 
-    ' KPIサマリーカードを配置（2行目?5行目）
+    ' 見出しのすぐ上に 6 行を差し込み、そこにカードを置く（上のタイトル・注記は上書きしない）
+    Dim カード行 As Long: カード行 = hdrRow
+    ws.rows(カード行 & ":" & (カード行 + 5)).Insert Shift:=xlDown
+    ws.rows(カード行 & ":" & (カード行 + 5)).ClearFormats
+    hdrRow = hdrRow + 6
+    dataEndRow = dataEndRow + 6
+
     Dim curCol As Long: curCol = cStart
     Dim k As Long
     For k = 1 To kpiCount
@@ -12163,7 +12163,7 @@ Sub 表の上にKPIサマリーカードを作る()
 
         ' カード全体範囲
         Dim cardRange As Range
-        Set cardRange = ws.Range(ws.Cells(2, cLeft), ws.Cells(5, cRight))
+        Set cardRange = ws.Range(ws.Cells(カード行, cLeft), ws.Cells(カード行 + 3, cRight))
 
         With cardRange
             .Interior.Color = RGB(248, 249, 251)
@@ -12174,7 +12174,7 @@ Sub 表の上にKPIサマリーカードを作る()
 
         ' カード上段（ラベル）
         Dim lblRange As Range
-        Set lblRange = ws.Range(ws.Cells(2, cLeft), ws.Cells(3, cRight))
+        Set lblRange = ws.Range(ws.Cells(カード行, cLeft), ws.Cells(カード行 + 1, cRight))
         lblRange.Merge
         With lblRange
             .Value = IIf(numTypes(k) = "AVG", "平均 ", "合計 ") & kTitle
@@ -12188,7 +12188,7 @@ Sub 表の上にKPIサマリーカードを作る()
 
         ' カード下段（指標値・数式）
         Dim valRange As Range
-        Set valRange = ws.Range(ws.Cells(4, cLeft), ws.Cells(5, cRight))
+        Set valRange = ws.Range(ws.Cells(カード行 + 2, cLeft), ws.Cells(カード行 + 3, cRight))
         valRange.Merge
 
         Dim colLetter As String
@@ -12201,7 +12201,8 @@ Sub 表の上にKPIサマリーカードを作る()
             valRange.NumberFormatLocal = "0.0%"
         Else
             valRange.Formula = "=SUM(" & formulaRange & ")"
-            If InStr(kTitle, "件数") > 0 Or InStr(kTitle, "数") > 0 Then
+            ' 「数量」「人数」まで件にしない（件数の列だけ）
+            If InStr(kTitle, "件数") > 0 Then
                 valRange.NumberFormatLocal = "#,##0 ""件"""
             ElseIf InStr(kTitle, "円") > 0 Or InStr(kTitle, "売上") > 0 Or InStr(kTitle, "金額") > 0 Then
                 valRange.NumberFormatLocal = """\""#,##0"
@@ -12222,8 +12223,8 @@ Sub 表の上にKPIサマリーカードを作る()
         curCol = cRight + 2
     Next k
 
-    ws.rows("2:3").RowHeight = 14
-    ws.rows("4:5").RowHeight = 18
+    ws.rows(カード行 & ":" & (カード行 + 1)).RowHeight = 14
+    ws.rows((カード行 + 2) & ":" & (カード行 + 3)).RowHeight = 18
 
 FinallyExit:
     Application.ScreenUpdating = savedScreenUpdating
@@ -12238,52 +12239,75 @@ End Sub
 
 Sub 表からモダンサマリーシートを作る()
     ' 依頼の語: モダンサマリー|サマリーシート|エグゼクティブサマリー|ダッシュボードシート|役員報告シート|サマリーを作る|サマリーシート作成
-    ' 依頼の組: サマリー,ダッシュボード,シート,役員報告,モダン
-    ' 扱う: サマリー ダッシュボード シート グラフ KPI 集計
+    ' 扱う: サマリー ダッシュボード グラフ KPI 集計
     ' 見出し: なし
     ' 選ぶ列: -
-    ' 形: 新規シート
-    ' 元の明細表を基に、上部にKPIサマリーカード、中央にエグゼクティブ美化表、右側に洗練されたグラフをレイアウトした役員報告用ダッシュボードを一発生成する。
+    ' 形: 別のシート
+    ' 表のシートを写して「サマリー」シートを作り、写しの上にKPIサマリーカード・エグゼクティブ美化・グラフを置く。元の表は触らない。
 
+    ' 2026-10-14: 依頼の組「サマリー,ダッシュボード,シート,役員報告,モダン」は「シート」1 語で当たり「このシートを整えて」で撃っていた＝組を外した。
+    ' 名前は「シートを作る」なのに元の表をそのまま美化・行の差し込み・グラフで作り替えていた＝写しの上で組む形にした
     Dim srcWs As Worksheet
     Set srcWs = ActiveSheet
 
     Dim savedScreenUpdating As Boolean
     Dim savedCalculation As XlCalculation
     Dim savedEnableEvents As Boolean
+    Dim savedAlerts As Boolean
     savedScreenUpdating = Application.ScreenUpdating
     savedCalculation = Application.Calculation
     savedEnableEvents = Application.EnableEvents
+    savedAlerts = Application.DisplayAlerts
 
     On Error GoTo CatchError
     Application.ScreenUpdating = False
     Application.Calculation = xlCalculationManual
     Application.EnableEvents = False
+    Application.DisplayAlerts = False
 
     Dim ur As Range
     Set ur = srcWs.UsedRange
     If ur Is Nothing Then GoTo FinallyExit
     If ur.rows.Count < 2 Then GoTo FinallyExit
 
+    ' 元の表は触らない＝シートを写して、写しの上で組む
+    srcWs.Copy after:=srcWs
+    Dim 写し As Worksheet
+    Set 写し = ActiveSheet
+    Dim 番 As Long: 番 = 1
+    On Error Resume Next
+    Do
+        Err.Clear
+        写し.Name = IIf(番 = 1, "サマリー", "サマリー" & 番)
+        If Err.Number = 0 Then Exit Do
+        番 = 番 + 1
+    Loop While 番 < 100
+    On Error GoTo CatchError
+
     ' 1. 表をエグゼクティブデザインに美化
+    写し.Activate
     Call 表をエグゼクティブデザインに美化する
 
-    ' 2. 上部にKPIサマリーカードを配置
-    Call 表の上にKPIサマリーカードを作る
-
-    ' 3. グラフを自動作成（複合グラフまたは棒グラフ）
+    ' 2. グラフ（複合グラフが作れなければ棒グラフ）。呼んだ先はエラーを中で片づけるので、グラフが増えたかで見る
+    ' （カードより先に作る。カードの後だとカードの数字を表と取り違えてグラフにしていた・2026-10-14）
+    写し.Activate
+    Dim 図の数 As Long: 図の数 = 写し.ChartObjects.Count
     On Error Resume Next
     Call 表の整理_作る.棒と率の折れ線の複合グラフを作る
-    If Err.Number <> 0 Then
-        Err.Clear
-        Call 表の整理_作る.項目と金額の棒グラフを作る
-    End If
+    写し.Activate
+    If 写し.ChartObjects.Count = 図の数 Then Call 表の整理_作る.項目と金額の棒グラフを作る
+    写し.Activate
     On Error GoTo CatchError
+
+    ' 3. 上部にKPIサマリーカードを配置（行を差し込むので、グラフの元の範囲も一緒にずれる）
+    写し.Activate
+    Call 表の上にKPIサマリーカードを作る
 
 FinallyExit:
     Application.ScreenUpdating = savedScreenUpdating
     Application.Calculation = savedCalculation
     Application.EnableEvents = savedEnableEvents
+    Application.DisplayAlerts = savedAlerts
     Exit Sub
 
 CatchError:
@@ -12291,7 +12315,7 @@ CatchError:
 End Sub
 
 Sub 表をシックチャコールに美化する()
-    ' 依頼の語: シックチャコール|チャコールデザイン|モノトーンデザイン|チャコールにして|チャコール美化|グレー系デザイン
+    ' 依頼の語: シックチャコール|シックチャコールにして|チャコールデザイン|チャコールで美化|チャコール美化|チャコールのデザイン|モノトーンデザイン|モノトーンで美化|モノトーンのデザイン|グレーデザイン|グレー系デザイン|グレーで美化|グレーのデザイン|灰色デザイン|灰色で美化|ダークグレーデザイン|ダークグレーで美化|ダークグレーのデザイン
     ' 依頼の語限定（誤爆防止のため組なし）
     ' 扱う: デザイン 書式 美化 チャコール グレー モノトーン 罫線 配色
     ' 見出し: なし
@@ -12312,7 +12336,7 @@ End Sub
 
 
 Sub 表をノーブルボルドーに美化する()
-    ' 依頼の語: ノーブルボルドー|ボルドーデザイン|ワインレッドデザイン|ボルドーにして|ワインにして|ボルドー美化|ワイン美化|赤系デザイン
+    ' 依頼の語: ノーブルボルドー|ノーブルボルドーにして|ボルドーデザイン|ボルドーで美化|ボルドー美化|ボルドーのデザイン|ワインレッドデザイン|ワインレッドで美化|ワインレッドのデザイン|ワインレッド風|ワインで美化|ワイン美化|ワインのデザイン|赤系デザイン|赤色デザイン|赤色で美化|赤で美化|赤のデザイン
     ' 依頼の語限定（誤爆防止のため組なし）
     ' 扱う: デザイン 書式 美化 ボルドー ワイン 赤 罫線 配色
     ' 見出し: なし
@@ -12333,7 +12357,7 @@ End Sub
 
 
 Sub 表をウォームアンバーに美化する()
-    ' 依頼の語: ウォームアンバー|アンバーデザイン|ブラウンデザイン|琥珀デザイン|アンバーにして|アンバー美化|暖色系デザイン
+    ' 依頼の語: ウォームアンバー|ウォームアンバーにして|アンバーデザイン|アンバーで美化|アンバー美化|アンバーのデザイン|琥珀デザイン|琥珀で美化|琥珀のデザイン|ブラウンデザイン|ブラウンで美化|ブラウンのデザイン|茶色デザイン|茶色で美化|茶色のデザイン|茶系デザイン|暖色系デザイン|暖色デザイン|暖色で美化|暖色のデザイン
     ' 依頼の語限定（誤爆防止のため組なし）
     ' 扱う: デザイン 書式 美化 アンバー 琥珀 ブラウン 暖色 罫線 配色
     ' 見出し: なし
@@ -12354,8 +12378,8 @@ End Sub
 
 
 Sub 表をクラシックインディゴに美化する()
-    ' 依頼の語: クラシックインディゴ|インディゴデザイン|藍色デザイン|インディゴにして|インディゴ美化|青系デザイン
-    ' 依頼の組: インディゴ,藍,青,デザイン,美化
+    ' 依頼の語: クラシックインディゴ|クラシックインディゴにして|インディゴデザイン|インディゴで美化|インディゴ美化|インディゴのデザイン|藍色デザイン|藍色で美化|藍色のデザイン|藍色系デザイン|藍で美化|青系デザイン|青色デザイン|青色で美化|青で美化|青のデザイン
+    ' 依頼の語限定（誤爆防止のため組なし）
     ' 扱う: デザイン 書式 美化 インディゴ 藍 青 伝統色 罫線 配色
     ' 見出し: なし
     ' 選ぶ列: -
