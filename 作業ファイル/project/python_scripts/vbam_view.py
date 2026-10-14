@@ -2003,7 +2003,12 @@ def _seiri_fire_request(xl, wb, ws, request, before_snap):
     sel_of = {r['name']: r['sel'] for r in _parse_shelf_catalog(lines)}
     by_request = vp.request_column_macros("\n".join(lines))
     cells, fired = None, []
-    for nm in plan:
+    stopped = None
+    for k, nm in enumerate(plan):
+        # 前の棚が止めた（断った・列が決まらない・エラー）なら、残りは撃たない＝半端な表に次の棚を重ねない（2026-10-14 段 3）
+        if stopped:
+            print(f"棚: {'・'.join(plan[k:])} は撃っていません（前の棚「{stopped}」が止めたため）")
+            break
         if nm in by_request:
             # 列は頼みの文から決める棚（ピボット等・2026-10-09）: 列を選ばずに頼みの文を渡して撃つ。
             # 決まらなければマクロが撃たずに候補の見出しを返す（勝手な列で作らない）
@@ -2016,6 +2021,7 @@ def _seiri_fire_request(xl, wb, ws, request, before_snap):
                 pass
             if why:
                 print(f"棚: {nm} は撃っていません: {why}")
+                stopped = nm
                 continue
             fired.append(nm)
             print(f"棚: {nm}（依頼の文に当たった・列は頼みの文から・{time.time() - t0:.2f} 秒）")
@@ -2033,12 +2039,14 @@ def _seiri_fire_request(xl, wb, ws, request, before_snap):
             if not cols:
                 print(f"棚: {nm} は列を選ぶ仕事（選ぶ列={need}）で、依頼の語と見出しから列が決まらないので撃っていません"
                       f"（shelf-run {nm} --select 列,列 で撃つ）")
+                stopped = nm
                 continue
             vp.select_columns(ws, cols)
         err_cnt_before, _ = _count_sheet_formula_errors(ws)
         snap = _guardrail_snapshot(ws)
         macro_err = None
         t0 = time.time()
+        vp.shelf_refusal(xl, src, clear=True)
         try:
             run_book_macro(xl, src, nm)
         except Exception as ex:
@@ -2049,6 +2057,12 @@ def _seiri_fire_request(xl, wb, ws, request, before_snap):
                 ws.Activate()
             except Exception:
                 pass
+        refused = '' if macro_err else vp.shelf_refusal(xl, src)
+        if refused:
+            # 棚が自分で断った（撃てなかった理由を断りの口に置いた）＝止めた
+            print(f"棚: {nm} は撃っていません: {refused}")
+            stopped = nm
+            continue
 
         err_cnt_after, err_detail = _count_sheet_formula_errors(ws) if macro_err is None else (err_cnt_before, "")
         if macro_err or (err_cnt_after > err_cnt_before):
@@ -2057,6 +2071,7 @@ def _seiri_fire_request(xl, wb, ws, request, before_snap):
                 print(f"⚠ 依頼の棚「{nm}」で {reason} のため、値と式を撃つ前に戻しました（残りとして直す）")
             else:
                 print(f"⚠ 依頼の棚「{nm}」で {reason}。行や列が動いたので自動では戻していません（戻すなら agent --undo）")
+            stopped = nm
             continue
         fired.append(nm)
         print(f"棚: {nm}（依頼の文に当たった・{time.time() - t0:.2f} 秒）")
