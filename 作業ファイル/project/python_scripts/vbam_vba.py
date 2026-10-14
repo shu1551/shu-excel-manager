@@ -7131,6 +7131,41 @@ def _addin_buttons_restore(xl, buttons, addin_file):
     return n
 
 
+def _shelf_parity_gate(xl, wb):
+    """焼く前の関所（2026-10-14 段 1）: 問題集を VBA の先撃ち（正本）と Python の写し（shelf_pick）の両方に撃ち、
+    食い違いが 1 件でもあれば焼かない（10/12 に条件付き書式の決まりが片方にだけ入り、誰も気づかなかった）。
+    通ったら VBA の答えを fixtures\\shelf_exam\\vba_answers.tsv に残す＝make_public が配る棚で写しと突き合わせる控え。
+    棚（コンボ道具・表の整理）の無いブック、問題集の無い環境（公開の写し）では何もしない。True＝焼いてよい"""
+    import vbam_prefire as vp
+    from vbam_core import shelf_text
+    try:
+        wb.VBProject.VBComponents('コンボ道具')
+    except Exception:
+        return True
+    text = shelf_text(wb.VBProject)
+    qa = vp.exam_questions()
+    if not text or not qa:
+        return True
+    t0 = time.time()
+    qs = [q for _e, q in qa]
+    ans = vp.vba_answers(xl, str(wb.Name), qs)
+    if ans is None:
+        print("⚠ 先撃ちの照合: VBA の 先撃ち候補の一括 を呼べませんでした（照合せずに焼きます）")
+        return True
+    diffs = vp.parity_diffs(qs, ans, vp.shelf_entries_from_text(text))
+    miss = sum(1 for (e, _q), a in zip(qa, ans) if e != a)
+    if diffs:
+        print(f"エラー: 先撃ちの判定が VBA（正本）と Python の写しで {len(diffs)} 問食い違っています（{len(qs)} 問中）。焼きません")
+        for q, a, p in diffs[:12]:
+            print(f"  「{q}」 VBA={a or '(AIへ)'}  Python={p or '(AIへ)'}")
+        print("  直すのは写し（vbam_prefire.shelf_pick）か VBA（コンボ道具.先撃ち判定）。分かって焼くなら --no-check")
+        return False
+    vp.write_vba_snapshot(qs, ans)
+    print(f"先撃ちの照合: {len(qs)} 問で VBA と Python の写しは一致（{time.time() - t0:.1f} 秒）"
+          + (f"・問題集の期待と違う答え {miss} 問（shelf --ask で確かめる）" if miss else "・問題集の期待どおり"))
+    return True
+
+
 def cmd_register_addin(args):
     """`register-addin [ブック]`: 開いているブックを .xlam に焼き直してアドインに登録し直す（2026-09-23）。
 
@@ -7174,6 +7209,8 @@ def cmd_register_addin(args):
         # 表示中のフォームがあると Designer を取れず、マクロが MsgBox を出して止まる。人に頼まず自分で閉じる
         print(f"表示中のフォームを閉じます（{len(shown)} 件）")
         cmd_close_form(argparse.Namespace(posargs=[], list_flag=False))
+    if not getattr(args, 'no_check', False) and not _shelf_parity_gate(xl, wb):
+        return False
     addin_file = f"{stem}.xlam"
     addin_path = os.path.join(os.environ.get('AppData', ''), 'Microsoft', 'AddIns', addin_file)
     before = os.path.getmtime(addin_path) if os.path.isfile(addin_path) else 0

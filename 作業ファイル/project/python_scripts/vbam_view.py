@@ -1907,14 +1907,15 @@ def _shelf_priority(macro_name):
     return 25
 
 
-def _seiri_request_plan(request, entries):
+def _seiri_request_plan(request, entries, pick=None):
     """依頼の文 → 撃つ棚の並び（純 Python・2026-09-24 夜）。Excelコンボの先撃ちと同じ採点（shelf_plan／shelf_pick）。
-    表を整えるで済む物は外す（seiri が先に撃っている）。DAG優先順序で整列して撃つ。"""
+    表を整えるで済む物は外す（seiri が先に撃っている）。DAG優先順序で整列して撃つ。
+    pick（vbam_prefire.vba_picker）を渡すと判定は VBA の正本（2026-10-14 段 1）。無ければ写しの shelf_pick。"""
     import vbam_prefire as vp
     parts = [p for p in re.split(r'[\s　。]+', str(request or '')) if p]
     plan = []
     for p in (parts if len(parts) >= 2 else [str(request or '').strip()]):
-        n = vp.shelf_pick(p, entries)
+        n = pick(p) if pick else vp.shelf_pick(p, entries)
         if n and n not in _SEIRI_COVERED and n not in plan:
             if n.endswith('報告する') and not _SEIRI_REPORT_WORDS_RE.search(p):
                 continue
@@ -1995,7 +1996,7 @@ def _seiri_fire_request(xl, wb, ws, request, before_snap):
         print("依頼の文に当たる棚: 棚（秀コンボ）が開いていないので撃っていません")
         return []
     entries = vp.shelf_entries_from_text("\n".join(lines))
-    plan = _seiri_request_plan(request, entries)
+    plan = _seiri_request_plan(request, entries, vp.vba_picker(xl, src, entries))
     if not plan:
         print(f"依頼の文に当たる棚: なし（表を整えるで済むか、棚に無い仕事＝下の「残り」として直す）")
         return []
@@ -2699,7 +2700,7 @@ def cmd_shelf(args):
     rows = _parse_shelf_catalog(lines)
     ask = (getattr(args, 'ask', None) or '').strip()
     if ask:
-        return _shelf_ask(owner, lines, rows, ask)
+        return _shelf_ask(owner, lines, rows, ask, xl)
     grep = (getattr(args, 'grep', None) or '').strip()
     if grep:
         rows = [r for r in rows if any(grep in r[k] for k in ('name', 'kind', 'desc', 'ask'))]
@@ -2711,18 +2712,19 @@ def cmd_shelf(args):
     return True
 
 
-def _shelf_ask(owner, lines, rows, ask):
+def _shelf_ask(owner, lines, rows, ask, xl=None):
     """`shelf --ask 依頼文`: 依頼文から撃つマクロを 1 本選ぶ（2026-09-23）。
 
-    採点は Excelコンボの先撃ち（VBA の コンボ道具.先撃ち候補）を移した vbam_prefire.shelf_pick
-    （888 問で VBA と食い違い 0）。それまで shelf_pick は試験からしか呼ばれておらず、Claude が棚を選ぶ手に
-    つながっていなかった。当たらないのは「棚に無い」か「質問・コードの依頼」＝手で直すか AI の役目。
+    判定は VBA の正本（コンボ道具.先撃ち候補）を呼ぶ（2026-10-14 段 1）。棚の持ち主に コンボ道具 が無いときだけ
+    写しの vbam_prefire.shelf_pick。当たらないのは「棚に無い」か「質問・コードの依頼」＝手で直すか AI の役目。
+    頼みが 1 つのときは「なぜ」（VBA の 先撃ちの下見＝上位 3 本の点と当たった語・除外・弾いた理由）も出す。
     """
     import vbam_prefire as vp
     entries = vp.shelf_entries_from_text("\n".join(lines))
-    print(f"棚: {owner}!{_SEIRI_MODULE}   依頼「{ask}」")
+    pick = vp.vba_picker(xl, owner, entries) if xl is not None else None
+    print(f"棚: {owner}!{_SEIRI_MODULE}   依頼「{ask}」" + ("" if pick else "   （判定: Python の写し）"))
     # 頼みが 2 つ以上で全部が棚に当たれば、撃つ順に全部を出す（2026-09-24・Excelコンボの 先撃ちの並び と同じ）
-    plan = vp.shelf_plan(ask, entries)
+    plan = vp.shelf_plan(ask, entries, pick)
     if plan:
         print(f"当たり: {len(plan)} 本（この順に撃つ）")
         for k, nm in enumerate(plan, 1):
@@ -2731,13 +2733,19 @@ def _shelf_ask(owner, lines, rows, ask):
             win = "　窓あり" if r and r['window'] else ""
             print(f"  {k}. shelf-run {nm}{sel}{win}")
         return True
-    pick = vp.shelf_pick(ask, entries)
-    r = next((x for x in rows if x['name'] == pick), None) if pick else None
+    got = pick(ask) if pick else vp.shelf_pick(ask, entries)
+    why = vp.vba_peek(xl, owner, ask) if pick else ''
+    why = "\n".join("  " + ln for ln in why.split("\n")[1:] if ln.strip())
+    r = next((x for x in rows if x['name'] == got), None) if got else None
     if not r:
         print("当たり: なし（棚に当たるマクロが無い。質問・コードの依頼も当てない）。語で探すなら shelf --grep 語")
+        if why:
+            print("なぜ（点の付いた棚・弾いた理由）:\n" + why)
         return True
     win = '窓あり' if r['window'] else '-'
     print(f"当たり: {r['name']}\t選ぶ列={r['sel']}\t{win}\t{r['kind']}\t{r['desc']}")
+    if why:
+        print("なぜ（上位 3 本の点と当たった語・除外）:\n" + why)
     how = f"shelf-run {r['name']}"
     if r['sel'] != '-':
         how += " --select 列1,列2…（選ぶ列=" + r['sel'] + "。列は 1 列ずつカンマで分ける）"

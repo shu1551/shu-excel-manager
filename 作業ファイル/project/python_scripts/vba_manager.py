@@ -684,6 +684,8 @@ def build_parser():
     p.add_argument("posargs", nargs="*")
     p.add_argument("-y", "--yes", action="store_true", dest="yes",
                    help="空のブックが開いていても撃つ")
+    p.add_argument("--no-check", action="store_true", dest="no_check",
+                   help="焼く前の先撃ちの照合（問題集を VBA と Python の写しに撃って食い違いを止める）を飛ばす")
     p = sub.add_parser("shelf",
                        help="棚（表の整理）の目録を1手で返す。--grep 語で絞る（2026-09-23）")
     p.add_argument("posargs", nargs="*")

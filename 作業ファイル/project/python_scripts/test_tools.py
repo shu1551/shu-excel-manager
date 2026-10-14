@@ -4755,6 +4755,32 @@ def test_conditional_format_requests_go_to_ai_unless_survey_20261014():
     assert vp.shelf_pick('この表を見やすく整えるには何を直せばいいか教えて', entries) == ''
 
 
+def test_shelf_parity_parts_20261014(tmp_path):
+    """段 1（判定の正本は VBA）の部品: 問題集の読み込み・VBA と写しの食い違い・VBA の答えの控え・shelf_plan に判定を渡す口。"""
+    import vbam_prefire as vp
+    (tmp_path / 'entry_phrases.tsv').write_text(
+        "全列が同じ重複行を削除する\t重複行を消して\n\tこんにちは\n全列が同じ重複行を削除する\t重複行を消して\n壊れた行\n", encoding='utf-8')
+    (tmp_path / 'entry_phrases_new.tsv').write_text("表の下に合計行を足す\t合計行を足して\n", encoding='utf-8')
+    qa = vp.exam_questions(str(tmp_path))
+    assert qa == [('全列が同じ重複行を削除する', '重複行を消して'), ('', 'こんにちは'), ('表の下に合計行を足す', '合計行を足して')]
+    entries = vp.shelf_entries_from_text(
+        "Sub 全列が同じ重複行を削除する()\r\n    ' 依頼の語: 重複行\r\nEnd Sub\r\n"
+        "Sub 表の下に合計行を足す()\r\n    ' 依頼の語: 合計行\r\nEnd Sub\r\n")
+    qs = [q for _e, q in qa]
+    assert vp.parity_diffs(qs, ['全列が同じ重複行を削除する', '', '表の下に合計行を足す'], entries) == []
+    assert vp.parity_diffs(qs, ['全列が同じ重複行を削除する', '', ''], entries) == [('合計行を足して', '', '表の下に合計行を足す')]
+    vp.write_vba_snapshot(qs, ['全列が同じ重複行を削除する', '', '表の下に合計行を足す'], str(tmp_path))
+    assert vp.read_vba_snapshot(str(tmp_path))[1] == ('こんにちは', '')
+    # 判定を渡すと節ごとにそれを使う（VBA の正本を呼ぶ形）
+    seen = []
+
+    def pick(x):
+        seen.append(x)
+        return {'重複行を消して': '全列が同じ重複行を削除する', '合計行を足して': '表の下に合計行を足す'}.get(x, '')
+    assert vp.shelf_plan('重複行を消して  合計行を足して', entries, pick) == ['全列が同じ重複行を削除する', '表の下に合計行を足す']
+    assert seen == ['重複行を消して', '合計行を足して']
+
+
 def test_guardrail_restore_keeps_formats_20261014():
     """棚が式のエラーを増やしたときの戻しは、変わったセルの式だけを書き戻す（使用範囲を Clear して塗り・罫線を消していた）。
     行や列がずれていたら戻さない（agent --undo に任せる）。"""
