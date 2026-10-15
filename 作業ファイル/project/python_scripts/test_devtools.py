@@ -739,6 +739,28 @@ def test_unstick_classify_manual_dialog():
     assert btn is None
 
 
+def test_unstick_classify_recovery_dialog():
+    """「ドキュメントの回復」ダイアログでファイルを残す側が選ばれ、削除のみなら押さないこと。"""
+    title = "ドキュメントの回復"
+    body = "回復したファイルを後で表示しますか?"
+    # 前者を選ぶケース
+    buttons_keep = [
+        (3001, "はい、後で表示できるようにします (推奨)", 1),
+        (3002, "いいえ、ファイルを削除します", 2)
+    ]
+    act, btn = vc.classify_unstick_dialog(title, body, buttons_keep)
+    assert act == "recovery_keep"
+    assert btn == (3001, "はい、後で表示できるようにします (推奨)", 1)
+
+    # ボタンが「削除」だけのケース → 押さない（manual）
+    buttons_delete_only = [
+        (3002, "いいえ、ファイルを削除します", 2)
+    ]
+    act2, btn2 = vc.classify_unstick_dialog(title, body, buttons_delete_only)
+    assert act2 == "manual"
+    assert btn2 is None
+
+
 def test_unstick_command_wired():
     """unstick コマンドがテーブルに配線されていること。"""
     table = vm._command_table()
