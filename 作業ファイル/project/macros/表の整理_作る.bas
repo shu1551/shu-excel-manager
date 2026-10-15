@@ -15,9 +15,9 @@ Sub 帳票を右に1行1件の一覧にする()
     Dim ur As Range
     Set ur = ws.UsedRange
     Dim urTop As Long, urLeft As Long, urRight As Long, urBottom As Long
-    urTop = ur.Row
+    urTop = ur.row
     urLeft = ur.Column
-    urBottom = ur.Row + ur.rows.Count - 1
+    urBottom = ur.row + ur.rows.Count - 1
     urRight = ur.Column + ur.Columns.Count - 1
 
     Dim r As Long, c As Long
@@ -34,7 +34,7 @@ Sub 帳票を右に1行1件の一覧にする()
         numCnt = 0
         For c = urLeft To urRight
             Dim cv As String
-            cv = Trim(CStr(ws.Cells(r2, c).Value))
+            cv = Trim(CStr(ws.Cells(r2, c).value))
             If セルの字(cv) <> "" Then
                 ne = ne + 1
                 If IsNumeric(cv) Or IsDate(cv) Then numCnt = numCnt + 1
@@ -72,19 +72,19 @@ Sub 帳票を右に1行1件の一覧にする()
             frmRight = c
         ElseIf frmRight >= urLeft Then
             Exit For
-        ElseIf 見た字 And セルの字(ws.Cells(hdrRow, c).Value) = "" Then
+        ElseIf 見た字 And セルの字(ws.Cells(hdrRow, c).value) = "" Then
             ' 見出しが途切れた先（前に作った一覧・右のメモ）は帳票に数えない（一覧には仕上げの罫線があり、撃ち直すと
             ' 前の一覧を帳票の続きと読んで、一覧が右へ増えた・2026-09-24 総点検）
             Exit For
         End If
-        If セルの字(ws.Cells(hdrRow, c).Value) <> "" Then 見た字 = True
+        If セルの字(ws.Cells(hdrRow, c).value) <> "" Then 見た字 = True
     Next c
     If frmRight < urLeft Then
         ' 結合も枠線も無い帳票: 見出し行の値が続く所までを帳票とする
         Dim gapCnt As Long
         gapCnt = 0
         For c = urLeft To urRight
-            If Trim(セルの字(ws.Cells(hdrRow, c).Value)) <> "" Then
+            If Trim(セルの字(ws.Cells(hdrRow, c).value)) <> "" Then
                 If gapCnt >= 1 And frmRight >= urLeft Then Exit For
                 gapCnt = 0
                 frmRight = c
@@ -106,10 +106,10 @@ Sub 帳票を右に1行1件の一覧にする()
         subNumCnt = 0: 子埋め = 0
         For c = urLeft To frmRight
             Dim hvM As String
-            hvM = Trim(CStr(ws.Cells(hdrRow, c).Value))
+            hvM = Trim(CStr(ws.Cells(hdrRow, c).value))
             If セルの字(hvM) <> "" Then mainNE = mainNE + 1
             Dim hvS As String
-            hvS = Trim(CStr(ws.Cells(hdrRow + 1, c).Value))
+            hvS = Trim(CStr(ws.Cells(hdrRow + 1, c).value))
             If セルの字(hvS) <> "" Then
                 subNE = subNE + 1
                 If セルの字(hvM) = "" Then 子埋め = 子埋め + 1      ' 上の段が空の列を下の段が埋めている＝二段見出しの印
@@ -137,14 +137,14 @@ Sub 帳票を右に1行1件の一覧にする()
     lastHdrVal = ""
     For c = urLeft To frmRight
         Dim hv3 As String
-        hv3 = Trim(CStr(ws.Cells(hdrRow, c).Value))
+        hv3 = Trim(CStr(ws.Cells(hdrRow, c).value))
         If セルの字(hv3) <> "" Then lastHdrVal = hv3
         colHeaders(c) = lastHdrVal
     Next c
     If sub1Row > 0 Then
         For c = urLeft To frmRight
             Dim sv4 As String
-            sv4 = Trim(CStr(ws.Cells(sub1Row, c).Value))
+            sv4 = Trim(CStr(ws.Cells(sub1Row, c).value))
             ' 上の段と下の段をつないだ名前にする（下の段で上書きすると「貸出 日付」「返却 日付」が
             ' どちらも「日付」になり、同じ名前は 1 列にまとめられて担当の列ごと落ちた。2026-09-23）
             If セルの字(sv4) <> "" Then
@@ -182,12 +182,12 @@ Sub 帳票を右に1行1件の一覧にする()
     Set hdrKwDict = CreateObject("Scripting.Dictionary")
     For c = urLeft To frmRight
         Dim cv2 As String
-        cv2 = Trim(CStr(ws.Cells(hdrRow, c).Value))
+        cv2 = Trim(CStr(ws.Cells(hdrRow, c).value))
         If セルの字(cv2) <> "" And Not hdrKwDict.exists(cv2) Then hdrKwDict.Add cv2, 1
     Next c
     If sub1Row > 0 Then
         For c = urLeft To frmRight
-            cv2 = Trim(CStr(ws.Cells(sub1Row, c).Value))
+            cv2 = Trim(CStr(ws.Cells(sub1Row, c).value))
             If セルの字(cv2) <> "" And Not hdrKwDict.exists(cv2) Then hdrKwDict.Add cv2, 1
         Next c
     End If
@@ -203,7 +203,7 @@ Sub 帳票を右に1行1件の一覧にする()
         tval = ""
         For c = urLeft To urRight
             Dim tv As String
-            tv = Trim(CStr(ws.Cells(ttr, c).Value))
+            tv = Trim(CStr(ws.Cells(ttr, c).value))
             If セルの字(tv) <> "" Then tNE = tNE + 1: tval = tv
         Next c
         If tNE = 1 And セルの字(tval) <> "" And Not titleDict.exists(tval) Then titleDict.Add tval, 1
@@ -231,7 +231,7 @@ Sub 帳票を右に1行1件の一覧にする()
         Dim rowEmpty As Boolean
         rowEmpty = True
         For c = urLeft To frmRight
-            If Trim(セルの字(ws.Cells(r, c).Value)) <> "" Then rowEmpty = False: Exit For
+            If Trim(セルの字(ws.Cells(r, c).value)) <> "" Then rowEmpty = False: Exit For
         Next c
         If rowEmpty Then prevEmpty = True: GoTo NextRow
         ' 合計・平均の行を過ぎて、空行の後に来た行は表の下のメモ＝ここで終わる（2026-09-24 棚の試験 F6・F7 でメモを一覧に入れた）
@@ -244,7 +244,7 @@ Sub 帳票を右に1行1件の一覧にする()
         ReDim rowVals(frmRight - urLeft)
         For c = urLeft To frmRight
             Dim cv3 As String
-            cv3 = Trim(CStr(ws.Cells(r, c).Value))
+            cv3 = Trim(CStr(ws.Cells(r, c).value))
             rowVals(c - urLeft) = cv3
             If セルの字(cv3) <> "" Then rowNE = rowNE + 1
         Next c
@@ -310,7 +310,7 @@ Sub 帳票を右に1行1件の一覧にする()
                 hN2 = colHeaders(c)
                 If セルの字(hN2) <> "" Then
                     If Not recVals(curIdx).exists(hN2) Then
-                        recVals(curIdx).Add hN2, ws.Cells(r, c).Value
+                        recVals(curIdx).Add hN2, ws.Cells(r, c).value
                     End If
                 End If
             Next c
@@ -328,7 +328,7 @@ Sub 帳票を右に1行1件の一覧にする()
                         foundVal = False
                         Do While nsc <= frmRight
                             Dim nvvS As String
-                            nvvS = Trim(CStr(ws.Cells(r, nsc).Value))
+                            nvvS = Trim(CStr(ws.Cells(r, nsc).value))
                             If セルの字(nvvS) <> "" Then
                                 foundVal = True
                                 Exit Do
@@ -345,7 +345,7 @@ Sub 帳票を右に1行1件の一覧にする()
                                 listColCnt = listColCnt + 1
                             End If
                             If Not recVals(curIdx).exists(lname) Then
-                                recVals(curIdx).Add lname, ws.Cells(r, nsc).Value
+                                recVals(curIdx).Add lname, ws.Cells(r, nsc).value
                             End If
                             sc = nsc + 1
                         Else
@@ -369,13 +369,13 @@ NextRow:
         印 = 印 & "|" & listColNames(ii)
     Next ii
     oldRightCol = 右の出し先(ws, hdrRow, frmRight + 2, listColCnt, Mid$(印, 2))
-    If セルの字(ws.Cells(hdrRow, oldRightCol).Value) = listColNames(0) Then 前の出力を消す ws, hdrRow, oldRightCol, listColCnt
+    If セルの字(ws.Cells(hdrRow, oldRightCol).value) = listColNames(0) Then 前の出力を消す ws, hdrRow, oldRightCol, listColCnt
 
     ' 元の帳票の左端列を特定
     Dim frmLeft As Long
     frmLeft = urLeft
     For c = urLeft To frmRight
-        If セルの字(ws.Cells(hdrRow, c).Value) <> "" Then
+        If セルの字(ws.Cells(hdrRow, c).value) <> "" Then
             frmLeft = c
             Exit For
         End If
@@ -397,7 +397,7 @@ NextRow:
     Dim i As Long
     For i = 0 To listColCnt - 1
         ws.Cells(hdrRow, listStartCol + i).NumberFormat = "@"
-        ws.Cells(hdrRow, listStartCol + i).Value = listColNames(i)
+        ws.Cells(hdrRow, listStartCol + i).value = listColNames(i)
     Next i
 
     ' データ書き出し
@@ -414,22 +414,22 @@ NextRow:
             Set tgt = ws.Cells(outRow, listStartCol + c)
             If isEmpty(wv) Or CStr(wv) = "" Then
                 tgt.NumberFormat = "General"
-                tgt.Value = ""
+                tgt.value = ""
             ElseIf VarType(wv) = vbDate Then
                 tgt.NumberFormat = "General"
-                tgt.Value = wv
+                tgt.value = wv
             ElseIf VarType(wv) = vbDouble Or VarType(wv) = vbLong Or VarType(wv) = vbInteger Or VarType(wv) = vbSingle Or VarType(wv) = vbCurrency Then
                 tgt.NumberFormat = "General"
-                tgt.Value = wv
+                tgt.value = wv
             Else
                 Dim svw As String
                 svw = CStr(wv)
                 If IsNumeric(svw) And Left(svw, 1) <> "0" Then
                     tgt.NumberFormat = "General"
-                    tgt.Value = CDbl(svw)
+                    tgt.value = CDbl(svw)
                 Else
                     tgt.NumberFormat = "@"
-                    tgt.Value = svw
+                    tgt.value = svw
                 End If
             End If
         Next c
@@ -489,7 +489,7 @@ Sub 選んだ3列で月次集計表を作る()
     Else
         Set ur = ws.UsedRange
         Dim urR1x As Long, urC1x As Long, urRowsx As Long, urColsx As Long
-        urR1x = ur.Row: urC1x = ur.Column
+        urR1x = ur.row: urC1x = ur.Column
         urRowsx = ur.rows.Count: urColsx = ur.Columns.Count
 
         Dim hRowX As Long: hRowX = 0
@@ -498,7 +498,7 @@ Sub 選んだ3列で月次集計表を作る()
             Dim nonEmpty As Long: nonEmpty = 0
             Dim ccx As Long
             For ccx = urC1x To urC1x + urColsx - 1
-                If セルの字(ws.Cells(rrx, ccx).Value) <> "" Then nonEmpty = nonEmpty + 1
+                If セルの字(ws.Cells(rrx, ccx).value) <> "" Then nonEmpty = nonEmpty + 1
             Next ccx
             If nonEmpty >= 3 Then
                 Dim nxtx As Variant
@@ -516,7 +516,7 @@ Sub 選んだ3列で月次集計表を作る()
         Dim ccx2 As Long
         For ccx2 = urC1x To urC1x + urColsx - 1
             Dim testV As Variant
-            testV = ws.Cells(hRowX + 1, ccx2).Value
+            testV = ws.Cells(hRowX + 1, ccx2).value
             If IsDate(testV) Then
                 If colDate = 0 Then colDate = ccx2
             End If
@@ -524,7 +524,7 @@ Sub 選んだ3列で月次集計表を作る()
         If colDate = 0 Then
             For ccx2 = urC1x To urC1x + urColsx - 1
                 Dim tv2 As Variant
-                tv2 = ws.Cells(hRowX + 1, ccx2).Value
+                tv2 = ws.Cells(hRowX + 1, ccx2).value
                 Dim sv2 As String: sv2 = Trim(CStr(tv2))
                 If セルの字(sv2) <> "" Then
                     If InStr(sv2, "/") > 0 Or InStr(sv2, "年") > 0 Or InStr(sv2, "-") > 0 Then
@@ -542,7 +542,7 @@ Sub 選んだ3列で月次集計表を作る()
         If colDate = 0 Then Exit Sub
         For ccx2 = urC1x To urC1x + urColsx - 1
             If ccx2 = colDate Then GoTo SkipAmt
-            Dim tv3 As Variant: tv3 = ws.Cells(hRowX + 1, ccx2).Value
+            Dim tv3 As Variant: tv3 = ws.Cells(hRowX + 1, ccx2).value
             Dim sv3 As String: sv3 = Trim(StrConv(CStr(tv3), vbNarrow))
             sv3 = Replace(sv3, ",", ""): sv3 = Replace(sv3, " ", "")
             If IsNumeric(sv3) And セルの字(sv3) <> "" Then
@@ -553,7 +553,7 @@ SkipAmt:
         If colAmt = 0 Then Exit Sub
         For ccx2 = urC1x To urC1x + urColsx - 1
             If ccx2 = colDate Or ccx2 = colAmt Then GoTo SkipItem
-            Dim tv4 As Variant: tv4 = ws.Cells(hRowX + 1, ccx2).Value
+            Dim tv4 As Variant: tv4 = ws.Cells(hRowX + 1, ccx2).value
             If セルの字(tv4) <> "" Then
                 Dim sv4 As String: sv4 = Trim(CStr(tv4))
                 If Not IsNumeric(sv4) And Not IsDate(sv4) Then
@@ -567,7 +567,7 @@ SkipItem:
 
     Set ur = ws.UsedRange
     Dim urR1 As Long, urC1 As Long, urRows As Long, urCols As Long
-    urR1 = ur.Row: urC1 = ur.Column
+    urR1 = ur.row: urC1 = ur.Column
     urRows = ur.rows.Count: urCols = ur.Columns.Count
 
     ' 見出し行を探す
@@ -577,12 +577,12 @@ SkipItem:
     Dim rr As Long
     For rr = urR1 To urR1 + urRows - 1
         Dim vItem As Variant, vDate As Variant
-        vItem = ws.Cells(rr, colItem).Value
-        vDate = ws.Cells(rr, colDate).Value
+        vItem = ws.Cells(rr, colItem).value
+        vDate = ws.Cells(rr, colDate).value
         If セルの字(vItem) <> "" And セルの字(vDate) <> "" Then
             If Not IsNumeric(vItem) Then
                 Dim nxtVal As Variant
-                nxtVal = ws.Cells(rr + 1, colDate).Value
+                nxtVal = ws.Cells(rr + 1, colDate).value
                 Dim nxtOk As Boolean: nxtOk = False
                 If IsDate(nxtVal) Then
                     nxtOk = True
@@ -596,7 +596,7 @@ SkipItem:
                         On Error GoTo 0
                     End If
                     If Not nxtOk Then
-                        Dim nxtItem As Variant: nxtItem = ws.Cells(rr + 1, colItem).Value
+                        Dim nxtItem As Variant: nxtItem = ws.Cells(rr + 1, colItem).value
                         If Trim(CStr(nxtItem)) <> "" And Not IsNumeric(nxtItem) Then nxtOk = True
                     End If
                     ' colDate が数値列（伝票番号）の場合：次行に数値があれば見出し行とみなす
@@ -613,7 +613,7 @@ SkipItem:
     Next rr
     If hrow = 0 Then
         For rr = urR1 To urR1 + urRows - 1
-            Dim vd2 As Variant: vd2 = ws.Cells(rr, colDate).Value
+            Dim vd2 As Variant: vd2 = ws.Cells(rr, colDate).value
             If IsDate(vd2) Then
                 hrow = rr - 1
                 If hrow < urR1 Then hrow = urR1
@@ -628,7 +628,7 @@ SkipItem:
     detailRightEdge = 0
     Dim cc As Long
     For cc = urC1 To urC1 + urCols - 1
-        If セルの字(ws.Cells(hrow, cc).Value) <> "" Then
+        If セルの字(ws.Cells(hrow, cc).value) <> "" Then
             detailRightEdge = cc
         Else
             If detailRightEdge > 0 Then Exit For
@@ -647,16 +647,16 @@ SkipItem:
     lastRow = hrow
     For r = hrow + 1 To urR1 + urRows - 1
         Dim chkK As String
-        chkK = Trim(CStr(ws.Cells(r, colItem).Value))
+        chkK = Trim(CStr(ws.Cells(r, colItem).value))
         s = chkK: GoSub 正規化
         If 集計の語か(s) Then GoTo ChkNext
         If セルの字(chkK) = "" Then GoTo ChkNext
         ' 日付列または金額列に何か値があれば明細行
         Dim hasData As Boolean: hasData = False
-        Dim dvChk As Variant: dvChk = ws.Cells(r, colDate).Value
+        Dim dvChk As Variant: dvChk = ws.Cells(r, colDate).value
         If セルの字(dvChk) <> "" Then hasData = True
         If Not hasData Then
-            Dim avChk As Variant: avChk = ws.Cells(r, colAmt).Value
+            Dim avChk As Variant: avChk = ws.Cells(r, colAmt).value
             Dim avS As String: avS = Trim(StrConv(CStr(avChk), vbNarrow))
             avS = Replace(avS, ",", ""): avS = Replace(avS, " ", "")
             If IsNumeric(avS) And セルの字(avS) <> "" Then hasData = True
@@ -668,14 +668,14 @@ ChkNext:
     ' 出す場所は表の右（前に作った月次集計表があればそこへ書き直す・右に人のメモや別の表があれば避ける。2026-09-24 総点検:
     ' 表の右から使用範囲の右端までを全部消していて、右に置いた人のメモが消えた）
     startOutCol = 右の出し先(ws, hrow, detailRightEdge + 2, 14, "*|4月|5月|6月")
-    If セルの字(ws.Cells(hrow, startOutCol + 1).Value) = "4月" Then 前の出力を消す ws, hrow, startOutCol, 14
+    If セルの字(ws.Cells(hrow, startOutCol + 1).value) = "4月" Then 前の出力を消す ws, hrow, startOutCol, 14
 
     ReDim itemOrder(0)
     itemCount = 0
 
     For r = hrow + 1 To lastRow
         Dim rawItem As String
-        rawItem = Trim(CStr(ws.Cells(r, colItem).Value))
+        rawItem = Trim(CStr(ws.Cells(r, colItem).value))
         Dim itemKey As String
         s = rawItem: GoSub 正規化
         itemKey = s
@@ -684,7 +684,7 @@ ChkNext:
 
         ' 日付→月
         Dim dv As Variant
-        dv = ws.Cells(r, colDate).Value
+        dv = ws.Cells(r, colDate).value
         moVal = 0
         If IsDate(dv) Then
             moVal = Month(CDate(dv))
@@ -740,7 +740,7 @@ ChkNext:
         If moVal = 0 Then GoTo NextRow
 
         ' 金額
-        s = CStr(ws.Cells(r, colAmt).Value): GoSub 金額正規化
+        s = CStr(ws.Cells(r, colAmt).value): GoSub 金額正規化
         Dim amtVal As Double      ' Long だと 21 億を超える金額が 0 になり、月の和も止まった（2026-09-24 総点検）
         amtVal = 0
         If セルの字(s) <> "" Then
@@ -776,7 +776,7 @@ NextRow:
     Set dictLabel = CreateObject("Scripting.Dictionary")
     For r = hrow + 1 To lastRow
         Dim rawI2 As String
-        rawI2 = Trim(CStr(ws.Cells(r, colItem).Value))
+        rawI2 = Trim(CStr(ws.Cells(r, colItem).value))
         s = rawI2: GoSub 正規化
         Dim ik2 As String: ik2 = s
         If セルの字(ik2) = "" Then GoTo LabelNext
@@ -788,18 +788,18 @@ LabelNext:
     Next r
 
     Dim hItemLabel As String
-    hItemLabel = CStr(ws.Cells(hrow, colItem).Value)
+    hItemLabel = CStr(ws.Cells(hrow, colItem).value)
     If Trim(hItemLabel) = "" Then hItemLabel = "項目"
 
     Dim oCol As Long
     oCol = startOutCol
 
-    ws.Cells(hrow, oCol).Value = hItemLabel
+    ws.Cells(hrow, oCol).value = hItemLabel
     Dim mi2 As Integer
     For mi2 = 1 To 12
-        ws.Cells(hrow, oCol + mi2).Value = moOrder(mi2) & "月"
+        ws.Cells(hrow, oCol + mi2).value = moOrder(mi2) & "月"
     Next mi2
-    ws.Cells(hrow, oCol + 13).Value = "合計"
+    ws.Cells(hrow, oCol + 13).value = "合計"
 
     Dim outRow As Long
     outRow = hrow + 1
@@ -811,11 +811,11 @@ LabelNext:
         Else
             dispName = ik
         End If
-        ws.Cells(outRow, oCol).Value = dispName
+        ws.Cells(outRow, oCol).value = dispName
         Dim arr2 As Variant
         arr2 = dict(ik)
         For mi2 = 1 To 12
-            ws.Cells(outRow, oCol + mi2).Value = arr2(mi2 - 1)
+            ws.Cells(outRow, oCol + mi2).value = arr2(mi2 - 1)
         Next mi2
         Dim c1a As String, c2a As String
         c1a = ws.Cells(outRow, oCol + 1).Address(False, False)
@@ -824,7 +824,7 @@ LabelNext:
         outRow = outRow + 1
     Next i
 
-    ws.Cells(outRow, oCol).Value = "合計"
+    ws.Cells(outRow, oCol).value = "合計"
     For mi2 = 1 To 12
         Dim r1a As String, r2a As String
         r1a = ws.Cells(hrow + 1, oCol + mi2).Address(False, False)
@@ -890,7 +890,7 @@ Sub 棒と率の折れ線の複合グラフを作る()
     Dim ur As Object
     Set ur = ws.UsedRange
     Dim rStart As Long, cStart As Long, lastR As Long, lastC As Long
-    rStart = ur.Row: cStart = ur.Column
+    rStart = ur.row: cStart = ur.Column
     lastR = 表の本文の最終行(ws)      ' 表の下のメモを項目にしない（2026-09-24 総点検）
     lastC = cStart + ur.Columns.Count - 1
 
@@ -900,7 +900,7 @@ Sub 棒と率の折れ線の複合グラフを作る()
     For r = rStart To lastR
         Dim txtCount As Long: txtCount = 0
         For cc = cStart To lastC
-            Dim cv As Variant: cv = ws.Cells(r, cc).Value
+            Dim cv As Variant: cv = ws.Cells(r, cc).value
             If VarType(cv) = vbString And Trim(cv) <> "" Then txtCount = txtCount + 1
         Next cc
         If txtCount >= 2 Then hdrRow = r: Exit For
@@ -910,7 +910,7 @@ Sub 棒と率の折れ線の複合グラフを作る()
     If hdrRow > rStart Then
         Dim tr As Long
         For tr = rStart To hdrRow - 1
-            Dim tcell As String: tcell = Trim(CStr(ws.Cells(tr, cStart).Value))
+            Dim tcell As String: tcell = Trim(CStr(ws.Cells(tr, cStart).value))
             If セルの字(tcell) <> "" Then titleStr = tcell: Exit For
         Next tr
     End If
@@ -923,7 +923,7 @@ Sub 棒と率の折れ線の複合グラフを作る()
     Dim colHdr() As String: ReDim colHdr(cStart To lastC)
 
     For cc = cStart To lastC
-        colHdr(cc) = CStr(ws.Cells(hdrRow, cc).Value)
+        colHdr(cc) = CStr(ws.Cells(hdrRow, cc).value)
     Next cc
 
     Dim skipCols() As Boolean: ReDim skipCols(cStart To lastC)
@@ -942,13 +942,13 @@ Sub 棒と率の折れ線の複合グラフを作る()
         If skipCols(c) Then GoTo nextLabelCol
         Dim isTextCol As Boolean: isTextCol = True
         For rr = hdrRow + 1 To lastR
-            Dim tv As Variant: tv = ws.Cells(rr, c).Value
+            Dim tv As Variant: tv = ws.Cells(rr, c).value
             If セルの字(tv) <> "" And IsNumeric(tv) Then isTextCol = False: Exit For
         Next rr
         If isTextCol Then
             Dim hasText As Boolean: hasText = False
             For rr = hdrRow + 1 To lastR
-                If Trim(セルの字(ws.Cells(rr, c).Value)) <> "" Then hasText = True: Exit For
+                If Trim(セルの字(ws.Cells(rr, c).value)) <> "" Then hasText = True: Exit For
             Next rr
             If hasText Then colLabel = c: Exit For
         End If
@@ -970,7 +970,7 @@ nextLabelCol:
             Dim hasVal As Boolean: hasVal = False
             Dim allFrac As Boolean: allFrac = True
             For rr = hdrRow + 1 To lastR
-                Dim dv As Variant: dv = ws.Cells(rr, c).Value
+                Dim dv As Variant: dv = ws.Cells(rr, c).value
                 If IsNumeric(dv) And CStr(dv) <> "" Then
                     hasVal = True
                     If CDbl(dv) > 1 Or CDbl(dv) < 0 Then allFrac = False
@@ -985,7 +985,7 @@ nextLabelCol:
         Else
             Dim isNum As Boolean: isNum = False
             For rr = hdrRow + 1 To lastR
-                Dim nv As Variant: nv = ws.Cells(rr, c).Value
+                Dim nv As Variant: nv = ws.Cells(rr, c).value
                 If IsNumeric(nv) And CStr(nv) <> "" Then isNum = True: Exit For
             Next rr
             If isNum Then
@@ -1001,7 +1001,7 @@ NextCol:
     Dim dataRows() As Long: ReDim dataRows(1 To lastR - hdrRow)
     Dim dataCount As Long: dataCount = 0
     For r = hdrRow + 1 To lastR
-        Dim lv As Variant: lv = ws.Cells(r, colLabel).Value
+        Dim lv As Variant: lv = ws.Cells(r, colLabel).value
         If Trim(CStr(lv)) = "" Then GoTo skipRow
         Dim lstr As String: lstr = Trim(CStr(lv))
         If InStr(",合計,計,小計,総計,総合計,", "," & lstr & ",") > 0 Then GoTo skipRow
@@ -1009,7 +1009,7 @@ NextCol:
         Dim hasN As Boolean: hasN = False
         For c = cStart To lastC
             If c = colLabel Then GoTo nextChk
-            If IsNumeric(ws.Cells(r, c).Value) And セルの字(ws.Cells(r, c).Value) <> "" Then hasN = True: Exit For
+            If IsNumeric(ws.Cells(r, c).value) And セルの字(ws.Cells(r, c).value) <> "" Then hasN = True: Exit For
 nextChk:
         Next c
         If Not hasN Then GoTo skipRow
@@ -1022,7 +1022,7 @@ skipRow:
     Dim catVal() As String: ReDim catVal(1 To dataCount)
     Dim i As Long
     For i = 1 To dataCount
-        catVal(i) = CStr(ws.Cells(dataRows(i), colLabel).Value)
+        catVal(i) = CStr(ws.Cells(dataRows(i), colLabel).value)
     Next i
 
     If セルの字(titleStr) = "" Then titleStr = colHdr(colLabel) & "別の状況"
@@ -1047,7 +1047,7 @@ skipRow:
         Dim vals() As Double: ReDim vals(1 To dataCount)
         For i = 1 To dataCount
             ' 数に読めない値（△3000・文字・エラー）で止まらない＝その点は 0（2026-09-22）
-            dv = ws.Cells(dataRows(i), colNum(n)).Value
+            dv = ws.Cells(dataRows(i), colNum(n)).value
             If IsError(dv) Then
                 vals(i) = 0
             ElseIf IsNumeric(dv) And CStr(dv) <> "" Then
@@ -1069,7 +1069,7 @@ skipRow:
         serP.Name = colHdr(colPct(p))
         Dim pvals() As Double: ReDim pvals(1 To dataCount)
         For i = 1 To dataCount
-            dv = ws.Cells(dataRows(i), colPct(p)).Value
+            dv = ws.Cells(dataRows(i), colPct(p)).value
             If IsError(dv) Then
                 pvals(i) = 0
             ElseIf IsNumeric(dv) And CStr(dv) <> "" Then
@@ -1131,7 +1131,7 @@ Sub ピボットの元範囲を広げて更新する()
     Dim bestCount As Long
     bestCount = 0
 
-    Dim urR1 As Long: urR1 = ur.Row
+    Dim urR1 As Long: urR1 = ur.row
     Dim urC1 As Long: urC1 = ur.Column
     Dim urRN As Long: urRN = ur.rows.Count
     Dim urCN As Long: urCN = ur.Columns.Count
@@ -1139,7 +1139,7 @@ Sub ピボットの元範囲を広げて更新する()
     For r = urR1 To urR1 + urRN - 1
         Dim cnt As Long: cnt = 0
         For c = urC1 To urC1 + urCN - 1
-            If Trim(セルの字(meiSht.Cells(r, c).Value)) <> "" Then cnt = cnt + 1
+            If Trim(セルの字(meiSht.Cells(r, c).value)) <> "" Then cnt = cnt + 1
         Next c
         If cnt > bestCount Then
             bestCount = cnt
@@ -1155,9 +1155,9 @@ Sub ピボットの元範囲を広げて更新する()
         Dim txtCnt As Long: txtCnt = 0
         Dim numCnt As Long: numCnt = 0
         For c = urC1 To urC1 + urCN - 1
-            Dim cv As String: cv = Trim(CStr(meiSht.Cells(r, c).Value))
+            Dim cv As String: cv = Trim(CStr(meiSht.Cells(r, c).value))
             If セルの字(cv) <> "" Then
-                If IsNumeric(cv) Or IsDate(meiSht.Cells(r, c).Value) Then
+                If IsNumeric(cv) Or IsDate(meiSht.Cells(r, c).value) Then
                     numCnt = numCnt + 1
                 Else
                     txtCnt = txtCnt + 1
@@ -1187,7 +1187,7 @@ Sub ピボットの元範囲を広げて更新する()
         Dim rowEmpty As Boolean: rowEmpty = True
         Dim rowStr As String: rowStr = ""
         For c = firstCol To lastCol
-            Dim cellV As String: cellV = Trim(CStr(meiSht.Cells(r, c).Value))
+            Dim cellV As String: cellV = Trim(CStr(meiSht.Cells(r, c).value))
             If セルの字(cellV) <> "" Then
                 rowEmpty = False
                 rowStr = rowStr & cellV
@@ -1198,7 +1198,7 @@ Sub ピボットの元範囲を広げて更新する()
         ' 合計行チェック: いずれかのセルに合計・計・小計・総計を含む
         Dim isSumRow As Boolean: isSumRow = False
         For c = firstCol To lastCol
-            Dim sv As String: sv = Trim(CStr(meiSht.Cells(r, c).Value))
+            Dim sv As String: sv = Trim(CStr(meiSht.Cells(r, c).value))
             If InStr(sv, "合計") > 0 Or InStr(sv, "小計") > 0 Or InStr(sv, "総計") > 0 Then
                 ' 数値列以外のセルに合計語があれば合計行
                 If Not IsNumeric(sv) Then
@@ -1336,15 +1336,15 @@ Sub 対応表で区分に振り直して集計する()
         Set mapUR = s.UsedRange
         If mapUR Is Nothing Then GoTo NextSheet
         mapURLastCol = mapUR.Column + mapUR.Columns.Count - 1
-        mapURLastRow = mapUR.Row + mapUR.rows.Count - 1
+        mapURLastRow = mapUR.row + mapUR.rows.Count - 1
         If mapUR.Columns.Count < 2 Then GoTo NextSheet
         tMC = 0: tMD = 0: tHR = 0
-        For tryR = mapUR.Row To Application.Min(mapUR.Row + 5, mapURLastRow)
+        For tryR = mapUR.row To Application.Min(mapUR.row + 5, mapURLastRow)
             tMC = 0: tMD = 0
             For tryC = mapUR.Column To mapURLastCol
                 hasDash = 0
                 For chkR2 = tryR + 1 To Application.Min(tryR + 5, mapURLastRow)
-                    cv = CStr(s.Cells(chkR2, tryC).Value)
+                    cv = CStr(s.Cells(chkR2, tryC).value)
                     ss = cv: GoSub NormalizeCode2: cv = ss
                     If InStr(cv, "-") > 0 Then hasDash = hasDash + 1
                 Next chkR2
@@ -1353,7 +1353,7 @@ Sub 対応表で区分に振り直して集計する()
                 ElseIf tMC > 0 And tMD = 0 And tryC > tMC Then
                     hasText = 0
                     For chkR2 = tryR + 1 To Application.Min(tryR + 5, mapURLastRow)
-                        If Trim(セルの字(s.Cells(chkR2, tryC).Value)) <> "" Then hasText = hasText + 1
+                        If Trim(セルの字(s.Cells(chkR2, tryC).value)) <> "" Then hasText = hasText + 1
                     Next chkR2
                     If hasText >= 1 Then tMD = tryC
                 End If
@@ -1363,7 +1363,7 @@ Sub 対応表で区分に振り直して集計する()
                 For tryC = mapURLastCol To mapUR.Column Step -1
                     hasDash = 0
                     For chkR2 = tryR + 1 To Application.Min(tryR + 5, mapURLastRow)
-                        cv = CStr(s.Cells(chkR2, tryC).Value)
+                        cv = CStr(s.Cells(chkR2, tryC).value)
                         ss = cv: GoSub NormalizeCode2: cv = ss
                         If InStr(cv, "-") > 0 Then hasDash = hasDash + 1
                     Next chkR2
@@ -1376,12 +1376,12 @@ Sub 対応表で区分に振り直して集計する()
                         If tryC = tMC2 Then GoTo SkipThisCol
                         hasText = 0
                         For chkR2 = tryR + 1 To Application.Min(tryR + 5, mapURLastRow)
-                            If Trim(セルの字(s.Cells(chkR2, tryC).Value)) <> "" Then hasText = hasText + 1
+                            If Trim(セルの字(s.Cells(chkR2, tryC).value)) <> "" Then hasText = hasText + 1
                         Next chkR2
                         If hasText >= 1 Then
                             allNum = True
                             For chkR2 = tryR + 1 To Application.Min(tryR + 5, mapURLastRow)
-                                cv = Trim(CStr(s.Cells(chkR2, tryC).Value))
+                                cv = Trim(CStr(s.Cells(chkR2, tryC).value))
                                 If セルの字(cv) <> "" And Not IsNumeric(cv) Then allNum = False
                             Next chkR2
                             If Not allNum Then
@@ -1401,14 +1401,14 @@ SkipThisCol:
             End If
         Next tryR
         If tMC > 0 And tMD > 0 Then
-            sc = mapURLastRow - mapUR.Row
+            sc = mapURLastRow - mapUR.row
             If sc > bestScore Then
                 bestScore = sc
                 Set wsMap = s
                 mapCodeCol = tMC
                 mapDivCol = tMD
                 mapHdrRow = tHR
-                mapURLastRow = mapUR.Row + mapUR.rows.Count - 1
+                mapURLastRow = mapUR.row + mapUR.rows.Count - 1
             End If
         End If
 NextSheet:
@@ -1419,12 +1419,12 @@ NextSheet:
     Set dict = CreateObject("Scripting.Dictionary")
     ReDim divOrder(0)
     divCount = 0
-    mapLastRow = wsMap.UsedRange.Row + wsMap.UsedRange.rows.Count - 1
+    mapLastRow = wsMap.UsedRange.row + wsMap.UsedRange.rows.Count - 1
 
     For i = mapHdrRow + 1 To mapLastRow
-        rawCode = CStr(wsMap.Cells(i, mapCodeCol).Value)
+        rawCode = CStr(wsMap.Cells(i, mapCodeCol).value)
         ss = rawCode: GoSub NormalizeCode2: kCode = ss
-        divRaw = CStr(wsMap.Cells(i, mapDivCol).Value)
+        divRaw = CStr(wsMap.Cells(i, mapDivCol).value)
         ss = divRaw: GoSub NormalizePlain: kDiv = ss
         If セルの字(kCode) <> "" And セルの字(kDiv) <> "" Then
             If Not dict.exists(kCode) Then dict(kCode) = kDiv
@@ -1445,14 +1445,14 @@ NextSheet:
     ' --- 明細シートの見出し行を探す ---
     Set ur = ws.UsedRange
     urLastCol = ur.Column + ur.Columns.Count - 1
-    urLastRow = ur.Row + ur.rows.Count - 1
+    urLastRow = ur.row + ur.rows.Count - 1
     hdrRow = 0
     codeCol = 0: amtCol = 0
 
-    For ri = ur.Row To Application.Min(ur.Row + 10, urLastRow)
+    For ri = ur.row To Application.Min(ur.row + 10, urLastRow)
         nonEmpty = 0
         For cc = ur.Column To urLastCol
-            If Trim(セルの字(ws.Cells(ri, cc).Value)) <> "" Then nonEmpty = nonEmpty + 1
+            If Trim(セルの字(ws.Cells(ri, cc).value)) <> "" Then nonEmpty = nonEmpty + 1
         Next cc
         If nonEmpty < 2 Then GoTo NextHdrRow
 
@@ -1461,7 +1461,7 @@ NextSheet:
             If tmpCode = 0 Then
                 dashCnt = 0
                 For rCheck = ri + 1 To Application.Min(ri + 8, urLastRow)
-                    ss = CStr(ws.Cells(rCheck, cc).Value): GoSub NormalizeCode2
+                    ss = CStr(ws.Cells(rCheck, cc).value): GoSub NormalizeCode2
                     If InStr(ss, "-") > 0 Then dashCnt = dashCnt + 1
                 Next rCheck
                 If dashCnt >= 2 Then tmpCode = cc
@@ -1471,7 +1471,7 @@ NextSheet:
             For cc = tmpCode + 1 To urLastCol
                 numCnt = 0: totalCnt = 0
                 For rCheck = ri + 1 To Application.Min(ri + 8, urLastRow)
-                    cv2 = CStr(ws.Cells(rCheck, cc).Value)
+                    cv2 = CStr(ws.Cells(rCheck, cc).value)
                     If セルの字(cv2) <> "" Then
                         totalCnt = totalCnt + 1
                         If IsNumeric(cv2) Then numCnt = numCnt + 1
@@ -1493,27 +1493,27 @@ NextHdrRow:
     Next ri
     If hdrRow = 0 Then Exit Sub
 
-    divHdrStr = CStr(wsMap.Cells(mapHdrRow, mapDivCol).Value)
+    divHdrStr = CStr(wsMap.Cells(mapHdrRow, mapDivCol).value)
     If Trim(divHdrStr) = "" Then divHdrStr = "区分"
-    amtHdrStr = CStr(ws.Cells(hdrRow, amtCol).Value)
+    amtHdrStr = CStr(ws.Cells(hdrRow, amtCol).value)
     If Trim(amtHdrStr) = "" Then amtHdrStr = "金額"
 
     dataStart = hdrRow + 1
-    topRow = ur.Row
+    topRow = ur.row
 
     ' lastRow: コード列に "-" を含む最後の行（合計行除く）
     lastRow = 0
     For checkR = urLastRow To dataStart Step -1
         isAggRow = False
         For r2 = ur.Column To amtCol
-            cellTxt = Trim(CStr(ws.Cells(checkR, r2).Value))
+            cellTxt = Trim(CStr(ws.Cells(checkR, r2).value))
             ss = cellTxt: GoSub NormalizePlain
             If 集計の語か(ss) Then
                 isAggRow = True: Exit For
             End If
         Next r2
         If isAggRow Then GoTo NextCheckR
-        ss = CStr(ws.Cells(checkR, codeCol).Value): GoSub NormalizeCode2: vCode = ss
+        ss = CStr(ws.Cells(checkR, codeCol).value): GoSub NormalizeCode2: vCode = ss
         If InStr(vCode, "-") > 0 Then
             lastRow = checkR
             Exit For
@@ -1528,7 +1528,7 @@ NextCheckR:
     divCol = 0
 
     For dc = amtCol + 1 To urLastCol
-        hv = CStr(ws.Cells(hdrRow, dc).Value)
+        hv = CStr(ws.Cells(hdrRow, dc).value)
         ss = hv: GoSub NormalizePlain
         If ss = divHdrNorm And セルの字(ss) <> "" Then
             divCol = dc
@@ -1541,7 +1541,7 @@ NextCheckR:
         For dc = amtCol + 1 To amtCol + 20
             colHasData = False
             For dr = hdrRow To lastRow
-                If Trim(セルの字(ws.Cells(dr, dc).Value)) <> "" Then
+                If Trim(セルの字(ws.Cells(dr, dc).value)) <> "" Then
                     colHasData = True: Exit For
                 End If
             Next dr
@@ -1552,18 +1552,18 @@ NextCheckR:
     End If
     If divCol = 0 Then divCol = amtCol + 1
 
-    ws.Cells(hdrRow, divCol).Value = divHdrStr
+    ws.Cells(hdrRow, divCol).value = divHdrStr
 
     ' （見出しより上の区分の列を消すのはやめた＝表題のセルを消していた・2026-09-24 総点検）
 
     ' --- 各行に区分を書く ---
     For i = dataStart To lastRow
-        rawCode = CStr(ws.Cells(i, codeCol).Value)
+        rawCode = CStr(ws.Cells(i, codeCol).value)
         ss = rawCode: GoSub NormalizeCode2: code = ss
 
         isAggRow = False
         For r2 = ur.Column To amtCol
-            cellTxt = Trim(CStr(ws.Cells(i, r2).Value))
+            cellTxt = Trim(CStr(ws.Cells(i, r2).value))
             ss = cellTxt: GoSub NormalizePlain
             If 集計の語か(ss) Then
                 isAggRow = True: Exit For
@@ -1571,27 +1571,27 @@ NextCheckR:
         Next r2
 
         If セルの字(code) = "" Or isAggRow Then
-            ws.Cells(i, divCol).Value = ""
+            ws.Cells(i, divCol).value = ""
         ElseIf InStr(code, "-") > 0 Then
             If dict.exists(code) Then
-                ws.Cells(i, divCol).Value = dict(code)
+                ws.Cells(i, divCol).value = dict(code)
             Else
-                ws.Cells(i, divCol).Value = "対応なし"
+                ws.Cells(i, divCol).value = "対応なし"
             End If
         Else
-            ws.Cells(i, divCol).Value = ""
+            ws.Cells(i, divCol).value = ""
         End If
     Next i
 
     ' 明細より下の区分の列は、前に書いた区分の字だけ消す（合計・メモの字は残す・2026-09-24 総点検）
     For clearRow = lastRow + 1 To urLastRow
-        ss = Trim(セルの字(ws.Cells(clearRow, divCol).Value))
+        ss = Trim(セルの字(ws.Cells(clearRow, divCol).value))
         If ss <> "" Then
             found = (ss = "対応なし")
             For j = 0 To divCount - 1
                 If divOrder(j) = ss Then found = True
             Next j
-            If found Then ws.Cells(clearRow, divCol).Value = ""
+            If found Then ws.Cells(clearRow, divCol).value = ""
         End If
     Next clearRow
 
@@ -1599,19 +1599,19 @@ NextCheckR:
     ' （2026-09-24 総点検: 集計表より右の列を、値があれば全部消していて、表の右に置いた人のメモが消えた）
     fcol = 右の出し先(ws, hdrRow, divCol + 2, 2, divHdrStr & "|" & amtHdrStr, divCol + 2)
     gCol = fcol + 1
-    If セルの字(ws.Cells(hdrRow, fcol).Value) = divHdrStr And セルの字(ws.Cells(hdrRow, gCol).Value) = amtHdrStr Then 前の出力を消す ws, hdrRow, fcol, 2
+    If セルの字(ws.Cells(hdrRow, fcol).value) = divHdrStr And セルの字(ws.Cells(hdrRow, gCol).value) = amtHdrStr Then 前の出力を消す ws, hdrRow, fcol, 2
 
-    ws.Cells(hdrRow, fcol).Value = divHdrStr
-    ws.Cells(hdrRow, gCol).Value = amtHdrStr
+    ws.Cells(hdrRow, fcol).value = divHdrStr
+    ws.Cells(hdrRow, gCol).value = amtHdrStr
 
     ' --- 集計 ---
     Set sumDict = CreateObject("Scripting.Dictionary")
     unmatched = 0
 
     For i = dataStart To lastRow
-        divVal = Trim(CStr(ws.Cells(i, divCol).Value))
+        divVal = Trim(CStr(ws.Cells(i, divCol).value))
         If セルの字(divVal) = "" Then GoTo NextDataRow
-        rawAmt = CStr(ws.Cells(i, amtCol).Value): GoSub NormalizeAmount
+        rawAmt = CStr(ws.Cells(i, amtCol).value): GoSub NormalizeAmount
         If divVal = "対応なし" Then
             unmatched = unmatched + amtResult
         Else
@@ -1628,24 +1628,24 @@ NextDataRow:
 
     For j = 0 To divCount - 1
         outRow = hdrRow + 1 + j
-        ws.Cells(outRow, fcol).Value = divOrder(j)
+        ws.Cells(outRow, fcol).value = divOrder(j)
         If sumDict.exists(divOrder(j)) Then
             divSum = sumDict(divOrder(j))
         Else
             divSum = 0
         End If
-        ws.Cells(outRow, gCol).Value = divSum
+        ws.Cells(outRow, gCol).value = divSum
         grandTotal = grandTotal + divSum
     Next j
 
     uRow = hdrRow + 1 + divCount
-    ws.Cells(uRow, fcol).Value = "対応なし"
-    ws.Cells(uRow, gCol).Value = unmatched
+    ws.Cells(uRow, fcol).value = "対応なし"
+    ws.Cells(uRow, gCol).value = unmatched
     grandTotal = grandTotal + unmatched
 
     tRow = uRow + 1
-    ws.Cells(tRow, fcol).Value = "合計"
-    ws.Cells(tRow, gCol).Value = grandTotal
+    ws.Cells(tRow, fcol).value = "合計"
+    ws.Cells(tRow, gCol).value = grandTotal
 
     Exit Sub
 
@@ -1729,7 +1729,7 @@ Sub 別シートと突合し差異を書く()
     Dim ur As Range
     Set ur = ws.UsedRange
     Dim uR1 As Long, uC1 As Long, ur2 As Long, uC2 As Long
-    uR1 = ur.Row: uC1 = ur.Column
+    uR1 = ur.row: uC1 = ur.Column
     ur2 = uR1 + ur.rows.Count - 1: uC2 = uC1 + ur.Columns.Count - 1
 
     Dim hrow As Long: hrow = 0
@@ -1741,7 +1741,7 @@ Sub 別シートと突合し差異を書く()
         Dim numCnt2 As Long: numCnt2 = 0
         Dim ci2 As Long
         For ci2 = uC1 To uC2
-            Dim cv As Variant: cv = ws.Cells(tryR, ci2).Value
+            Dim cv As Variant: cv = ws.Cells(tryR, ci2).value
             If IsNumeric(cv) And CStr(cv) <> "" Then numCnt2 = numCnt2 + 1
         Next ci2
         If numCnt2 >= 2 Then
@@ -1754,7 +1754,7 @@ Sub 別シートと突合し差異を書く()
         For tryR = uR1 To Application.Min(uR1 + 5, ur2)
             Dim sc2 As Long: sc2 = 0
             For ci2 = uC1 To uC2
-                If セルの字(ws.Cells(tryR, ci2).Value) <> "" Then sc2 = sc2 + 1
+                If セルの字(ws.Cells(tryR, ci2).value) <> "" Then sc2 = sc2 + 1
             Next ci2
             If sc2 >= 2 Then hrow = tryR: dataStartR = tryR + 1: Exit For
         Next tryR
@@ -1773,7 +1773,7 @@ Sub 別シートと突合し差異を書く()
     Dim exPartnerAmt As Long, exMatchCol As Long
     exPartnerAmt = 0: exMatchCol = 0
     For ci = uC1 To uC2
-        s = CStr(ws.Cells(hrow, ci).Value): GoSub NormHdr
+        s = CStr(ws.Cells(hrow, ci).value): GoSub NormHdr
         If s = "相手の金額" And exPartnerAmt = 0 Then exPartnerAmt = ci
         If s = "突合" And exMatchCol = 0 And ci > uC1 Then exMatchCol = ci
     Next ci
@@ -1790,11 +1790,11 @@ Sub 別シートと突合し差異を書く()
         For ri = dR1 To dR2
             rowIsTotal = False
             For totChk = uC1 To uC2
-                s = Trim(CStr(ws.Cells(ri, totChk).Value))
+                s = Trim(CStr(ws.Cells(ri, totChk).value))
                 If 集計の語か(s) Then rowIsTotal = True
             Next totChk
             If rowIsTotal Then GoTo SkipKeyRow
-            s = CStr(ws.Cells(ri, ci).Value): GoSub NormKeySub
+            s = CStr(ws.Cells(ri, ci).value): GoSub NormKeySub
             If セルの字(s) <> "" Then uniqD(s) = 1
 SkipKeyRow:
         Next ri
@@ -1812,7 +1812,7 @@ SkipKeyCol2:
         For ci = uC1 To uC2
             If ci = exPartnerAmt Or ci = exMatchCol Or ci = colKey Then GoTo SkipCountCol
             Dim ix As Long: ix = ci - uC1 + 1
-            s = CStr(ws.Cells(ri, ci).Value): GoSub NormAmtSub
+            s = CStr(ws.Cells(ri, ci).value): GoSub NormAmtSub
             If IsNumeric(s) And セルの字(s) <> "" Then cntNum(ix) = cntNum(ix) + 1
 SkipCountCol:
         Next ci
@@ -1830,10 +1830,10 @@ SkipAmtCol:
     Dim dicMyKeys As Object
     Set dicMyKeys = CreateObject("Scripting.Dictionary")
     For ri = dR1 To dR2
-        s = CStr(ws.Cells(ri, colKey).Value): GoSub NormKeySub
+        s = CStr(ws.Cells(ri, colKey).value): GoSub NormKeySub
         Dim nkTmp As String: nkTmp = s
         If セルの字(nkTmp) = "" Then GoTo SkipMyKey
-        Dim kDispTmp As String: kDispTmp = Trim(CStr(ws.Cells(ri, colKey).Value))
+        Dim kDispTmp As String: kDispTmp = Trim(CStr(ws.Cells(ri, colKey).value))
         If 集計の語か(kDispTmp) Then GoTo SkipMyKey
         dicMyKeys(nkTmp) = 1
 SkipMyKey:
@@ -1850,7 +1850,7 @@ SkipMyKey:
         If shUr Is Nothing Then GoTo NextSheet
 
         Dim shR1 As Long, shC1 As Long, shR2 As Long, shC2 As Long
-        shR1 = shUr.Row: shC1 = shUr.Column
+        shR1 = shUr.row: shC1 = shUr.Column
         shR2 = shR1 + shUr.rows.Count - 1: shC2 = shC1 + shUr.Columns.Count - 1
 
         ' 相手シートの見出し行: 本文(数値2つ以上)の直前行
@@ -1859,7 +1859,7 @@ SkipMyKey:
         For tryR = shR1 To Application.Min(shR1 + 15, shR2)
             Dim shnc As Long: shnc = 0
             For ci = shC1 To shC2
-                Dim shv As Variant: shv = sh.Cells(tryR, ci).Value
+                Dim shv As Variant: shv = sh.Cells(tryR, ci).value
                 If IsNumeric(shv) And CStr(shv) <> "" Then shnc = shnc + 1
             Next ci
             If shnc >= 2 Then
@@ -1872,7 +1872,7 @@ SkipMyKey:
             For tryR = shR1 To Application.Min(shR1 + 8, shR2)
                 Dim shsc As Long: shsc = 0
                 For ci = shC1 To shC2
-                    If セルの字(sh.Cells(tryR, ci).Value) <> "" Then shsc = shsc + 1
+                    If セルの字(sh.Cells(tryR, ci).value) <> "" Then shsc = shsc + 1
                 Next ci
                 If shsc >= 2 Then shHRow = tryR: shDataR = tryR + 1: Exit For
             Next tryR
@@ -1884,12 +1884,12 @@ SkipMyKey:
         Dim bestShScore As Long: bestShScore = 0
         Dim shci As Long
         For shci = shC1 To shC2
-            Dim shHdrChk As String: shHdrChk = CStr(sh.Cells(shHRow, shci).Value)
+            Dim shHdrChk As String: shHdrChk = CStr(sh.Cells(shHRow, shci).value)
             s = shHdrChk: GoSub NormHdr
             If s = "相手の金額" Or s = "突合" Or s = "件数" Then GoTo NextShCI
             Dim hit As Long: hit = 0
             For ri = shDR1x To shR2
-                s = CStr(sh.Cells(ri, shci).Value): GoSub NormKeySub
+                s = CStr(sh.Cells(ri, shci).value): GoSub NormKeySub
                 If セルの字(s) <> "" And dicMyKeys.exists(s) Then hit = hit + 1
             Next ri
             If hit > bestShScore Then bestShScore = hit
@@ -1908,7 +1908,7 @@ NextSheet:
     Dim pur As Range
     Set pur = wsP.UsedRange
     Dim pR1 As Long, pC1 As Long, pR2 As Long, pC2 As Long
-    pR1 = pur.Row: pC1 = pur.Column
+    pR1 = pur.row: pC1 = pur.Column
     pR2 = pR1 + pur.rows.Count - 1: pC2 = pC1 + pur.Columns.Count - 1
 
     ' 相手シートの見出し行: 本文(数値2つ以上)の直前行
@@ -1916,7 +1916,7 @@ NextSheet:
     For tryR = pR1 To Application.Min(pR1 + 15, pR2)
         Dim pnc2 As Long: pnc2 = 0
         For ci = pC1 To pC2
-            Dim pv2 As Variant: pv2 = wsP.Cells(tryR, ci).Value
+            Dim pv2 As Variant: pv2 = wsP.Cells(tryR, ci).value
             If IsNumeric(pv2) And CStr(pv2) <> "" Then pnc2 = pnc2 + 1
         Next ci
         If pnc2 >= 2 Then
@@ -1928,7 +1928,7 @@ NextSheet:
         For tryR = pR1 To Application.Min(pR1 + 8, pR2)
             Dim psc As Long: psc = 0
             For ci = pC1 To pC2
-                If セルの字(wsP.Cells(tryR, ci).Value) <> "" Then psc = psc + 1
+                If セルの字(wsP.Cells(tryR, ci).value) <> "" Then psc = psc + 1
             Next ci
             If psc >= 2 Then pHRow = tryR: Exit For
         Next tryR
@@ -1941,12 +1941,12 @@ NextSheet:
     pColKey = 0: pBestHit = 0
     Dim shci2 As Long
     For shci2 = pC1 To pC2
-        Dim phdrS As String: phdrS = CStr(wsP.Cells(pHRow, shci2).Value)
+        Dim phdrS As String: phdrS = CStr(wsP.Cells(pHRow, shci2).value)
         s = phdrS: GoSub NormHdr
         If s = "相手の金額" Or s = "突合" Or s = "件数" Then GoTo SkipPKey
         Dim phit As Long: phit = 0
         For ri = pDR1 To pR2
-            s = CStr(wsP.Cells(ri, shci2).Value): GoSub NormKeySub
+            s = CStr(wsP.Cells(ri, shci2).value): GoSub NormKeySub
             If セルの字(s) <> "" And dicMyKeys.exists(s) Then phit = phit + 1
         Next ri
         If phit > pBestHit Then pBestHit = phit: pColKey = shci2
@@ -1959,15 +1959,15 @@ SkipPKey:
     pColAmt = 0: pMaxNum = -1
     For shci2 = pC1 To pC2
         If shci2 = pColKey Then GoTo SkipPAmt
-        Dim pHdrS2 As String: pHdrS2 = CStr(wsP.Cells(pHRow, shci2).Value)
+        Dim pHdrS2 As String: pHdrS2 = CStr(wsP.Cells(pHRow, shci2).value)
         s = pHdrS2: GoSub NormHdr
         If s = "相手の金額" Or s = "突合" Or s = "件数" Then GoTo SkipPAmt
         Dim pnnc As Long: pnnc = 0
         Dim pstrc As Long: pstrc = 0
         For ri = pDR1 To pR2
-            s = CStr(wsP.Cells(ri, pColKey).Value): GoSub NormKeySub
+            s = CStr(wsP.Cells(ri, pColKey).value): GoSub NormKeySub
             If セルの字(s) = "" Then GoTo SkipPAmtRow
-            Dim pCellVal As String: pCellVal = CStr(wsP.Cells(ri, shci2).Value)
+            Dim pCellVal As String: pCellVal = CStr(wsP.Cells(ri, shci2).value)
             If セルの字(pCellVal) = "" Then GoTo SkipPAmtRow
             s = pCellVal: GoSub NormAmtSub
             If IsNumeric(s) And セルの字(s) <> "" Then
@@ -1987,13 +1987,13 @@ SkipPAmt:
     Dim dicP As Object
     Set dicP = CreateObject("Scripting.Dictionary")
     For ri = pDR1 To pR2
-        s = CStr(wsP.Cells(ri, pColKey).Value): GoSub NormKeySub
+        s = CStr(wsP.Cells(ri, pColKey).value): GoSub NormKeySub
         Dim pkey As String: pkey = s
         If セルの字(pkey) = "" Then GoTo NextPRow
         ' 合計行除外
-        Dim pkDisp As String: pkDisp = Trim(CStr(wsP.Cells(ri, pColKey).Value))
+        Dim pkDisp As String: pkDisp = Trim(CStr(wsP.Cells(ri, pColKey).value))
         If 集計の語か(pkDisp) Then GoTo NextPRow
-        Dim pamtRaw As String: pamtRaw = CStr(wsP.Cells(ri, pColAmt).Value)
+        Dim pamtRaw As String: pamtRaw = CStr(wsP.Cells(ri, pColAmt).value)
         s = pamtRaw: GoSub NormAmtSub
         If IsNumeric(s) And セルの字(s) <> "" Then
             If Not dicP.exists(pkey) Then dicP(pkey) = CDbl(s)
@@ -2009,14 +2009,14 @@ NextPRow:
     Dim colPartnerAmt As Long, colMatch As Long
     colPartnerAmt = 0: colMatch = 0
     For ci = uC1 To scanEnd
-        s = CStr(ws.Cells(hrow, ci).Value): GoSub NormHdr
+        s = CStr(ws.Cells(hrow, ci).value): GoSub NormHdr
         If s = "相手の金額" And colPartnerAmt = 0 Then colPartnerAmt = ci
         If s = "突合" And ci > colAmt And colMatch = 0 Then colMatch = ci
     Next ci
 
     If colPartnerAmt = 0 Then
         colPartnerAmt = scanEnd + 1
-        ws.Cells(hrow, colPartnerAmt).Value = "相手の金額"
+        ws.Cells(hrow, colPartnerAmt).value = "相手の金額"
         ' 左どなりの見出しの見た目をまねる（まねないと、下の「突合」もこれをまねて素の見出しが 2 つ並んだ・2026-09-24 F10）
         With ws.Cells(hrow, colPartnerAmt)
             .Font.Bold = ws.Cells(hrow, colPartnerAmt - 1).Font.Bold
@@ -2028,7 +2028,7 @@ NextPRow:
     If colMatch = 0 Then
         If colPartnerAmt > scanEnd Then scanEnd = colPartnerAmt
         colMatch = scanEnd + 1
-        ws.Cells(hrow, colMatch).Value = "突合"
+        ws.Cells(hrow, colMatch).value = "突合"
         scanEnd = colMatch
     End If
 
@@ -2040,37 +2040,37 @@ NextPRow:
     Set dicMyUsed = CreateObject("Scripting.Dictionary")
 
     For ri = dR1 To dR2
-        Dim keyRaw As String: keyRaw = CStr(ws.Cells(ri, colKey).Value)
+        Dim keyRaw As String: keyRaw = CStr(ws.Cells(ri, colKey).value)
         s = keyRaw: GoSub NormKeySub
         Dim myKey As String: myKey = s
         If セルの字(myKey) = "" Then GoTo SkipDataRow
-        Dim keyDisp2 As String: keyDisp2 = Trim(CStr(ws.Cells(ri, colKey).Value))
+        Dim keyDisp2 As String: keyDisp2 = Trim(CStr(ws.Cells(ri, colKey).value))
         If 集計の語か(keyDisp2) Then GoTo SkipDataRow
 
         dicMyUsed(myKey) = 1
 
-        Dim myAmtRaw As String: myAmtRaw = CStr(ws.Cells(ri, colAmt).Value)
+        Dim myAmtRaw As String: myAmtRaw = CStr(ws.Cells(ri, colAmt).value)
         s = myAmtRaw: GoSub NormAmtSub
         Dim myAmt As String: myAmt = s
 
         If dicP.exists(myKey) Then
             Dim pAmtDbl As Double: pAmtDbl = CDbl(dicP(myKey))
-            ws.Cells(ri, colPartnerAmt).Value = pAmtDbl
+            ws.Cells(ri, colPartnerAmt).value = pAmtDbl
             If IsNumeric(myAmt) And セルの字(myAmt) <> "" Then
                 If CDbl(myAmt) = pAmtDbl Then
-                    ws.Cells(ri, colMatch).Value = "一致"
+                    ws.Cells(ri, colMatch).value = "一致"
                     cntMatch = cntMatch + 1
                 Else
-                    ws.Cells(ri, colMatch).Value = "金額違い"
+                    ws.Cells(ri, colMatch).value = "金額違い"
                     cntDiff = cntDiff + 1
                 End If
             Else
-                ws.Cells(ri, colMatch).Value = "金額違い"
+                ws.Cells(ri, colMatch).value = "金額違い"
                 cntDiff = cntDiff + 1
             End If
         Else
-            ws.Cells(ri, colPartnerAmt).Value = ""
-            ws.Cells(ri, colMatch).Value = "相手に無し"
+            ws.Cells(ri, colPartnerAmt).value = ""
+            ws.Cells(ri, colMatch).value = "相手に無し"
             cntNoP = cntNoP + 1
         End If
 SkipDataRow:
@@ -2091,13 +2091,13 @@ SkipDataRow:
     If scanEnd2 < colMatch Then scanEnd2 = colMatch
 
     For ci = colMatch + 1 To scanEnd2 + 2
-        s = CStr(ws.Cells(hrow, ci).Value): GoSub NormHdr
+        s = CStr(ws.Cells(hrow, ci).value): GoSub NormHdr
         If s = "突合" Then
             colSumLbl = ci
             Dim nci As Long: nci = ci + 1
-            s = CStr(ws.Cells(hrow, nci).Value): GoSub NormHdr
+            s = CStr(ws.Cells(hrow, nci).value): GoSub NormHdr
             colSumCnt = nci
-            If s <> "件数" Then ws.Cells(hrow, colSumCnt).Value = "件数"
+            If s <> "件数" Then ws.Cells(hrow, colSumCnt).value = "件数"
             Exit For
         End If
     Next ci
@@ -2105,24 +2105,24 @@ SkipDataRow:
     If colSumLbl = 0 Then
         colSumLbl = colMatch + 2
         colSumCnt = colSumLbl + 1
-        ws.Cells(hrow, colSumLbl).Value = "突合"
-        ws.Cells(hrow, colSumCnt).Value = "件数"
+        ws.Cells(hrow, colSumLbl).value = "突合"
+        ws.Cells(hrow, colSumCnt).value = "件数"
     End If
 
-    ws.Cells(hrow + 1, colSumLbl).Value = "一致"
-    ws.Cells(hrow + 1, colSumCnt).Value = cntMatch
-    ws.Cells(hrow + 2, colSumLbl).Value = "金額違い"
-    ws.Cells(hrow + 2, colSumCnt).Value = cntDiff
-    ws.Cells(hrow + 3, colSumLbl).Value = "相手に無し"
-    ws.Cells(hrow + 3, colSumCnt).Value = cntNoP
-    ws.Cells(hrow + 4, colSumLbl).Value = "こちらに無し"
-    ws.Cells(hrow + 4, colSumCnt).Value = cntNoMe
+    ws.Cells(hrow + 1, colSumLbl).value = "一致"
+    ws.Cells(hrow + 1, colSumCnt).value = cntMatch
+    ws.Cells(hrow + 2, colSumLbl).value = "金額違い"
+    ws.Cells(hrow + 2, colSumCnt).value = cntDiff
+    ws.Cells(hrow + 3, colSumLbl).value = "相手に無し"
+    ws.Cells(hrow + 3, colSumCnt).value = cntNoP
+    ws.Cells(hrow + 4, colSumLbl).value = "こちらに無し"
+    ws.Cells(hrow + 4, colSumCnt).value = cntNoMe
 
     Dim clr As Long
     For clr = hrow + 5 To hrow + 10
-        If セルの字(ws.Cells(clr, colSumLbl).Value) <> "" Or セルの字(ws.Cells(clr, colSumCnt).Value) <> "" Then
-            ws.Cells(clr, colSumLbl).Value = ""
-            ws.Cells(clr, colSumCnt).Value = ""
+        If セルの字(ws.Cells(clr, colSumLbl).value) <> "" Or セルの字(ws.Cells(clr, colSumCnt).value) <> "" Then
+            ws.Cells(clr, colSumLbl).value = ""
+            ws.Cells(clr, colSumCnt).value = ""
         End If
     Next clr
     ' 見た目は棚の共通の下請けに任せる（突合の件数表と判定の列の見出しに太字・塗りが無かった・2026-09-24 棚の試験）
@@ -2253,10 +2253,10 @@ Sub 他のシートの表を1枚に集約する()
 
     hdrRow = 0
     Set ur = destWs.UsedRange
-    For r = ur.Row To ur.Row + ur.rows.Count - 1
+    For r = ur.row To ur.row + ur.rows.Count - 1
         nonEmpty = 0
         For c = ur.Column To ur.Column + ur.Columns.Count - 1
-            If Trim(セルの字(destWs.Cells(r, c).Value)) <> "" Then nonEmpty = nonEmpty + 1
+            If Trim(セルの字(destWs.Cells(r, c).value)) <> "" Then nonEmpty = nonEmpty + 1
         Next c
         If nonEmpty >= 2 Then
             hdrRow = r
@@ -2299,7 +2299,7 @@ Sub 他のシートの表を1枚に集約する()
 
     Dim dataCheckRow As Long
     dataCheckRow = hdrRow + 1
-    If dataCheckRow <= ur.Row + ur.rows.Count - 1 Then
+    If dataCheckRow <= ur.row + ur.rows.Count - 1 Then
         For i = 1 To destHdrCount
             If Not colIsRate(i) Then
                 fmt = destWs.Cells(dataCheckRow, colFirst + i - 1).NumberFormat
@@ -2341,11 +2341,11 @@ Sub 他のシートの表を1枚に集約する()
             Dim chkHdrRow As Long
             chkHdrRow = 0
             Dim chkR As Long
-            For chkR = cur.Row To cur.Row + cur.rows.Count - 1
+            For chkR = cur.row To cur.row + cur.rows.Count - 1
                 Dim chkNE As Long
                 chkNE = 0
                 For c = cur.Column To cur.Column + cur.Columns.Count - 1
-                    If Trim(セルの字(checkWs.Cells(chkR, c).Value)) <> "" Then chkNE = chkNE + 1
+                    If Trim(セルの字(checkWs.Cells(chkR, c).value)) <> "" Then chkNE = chkNE + 1
                 Next c
                 If chkNE >= 2 Then
                     chkHdrRow = chkR
@@ -2355,7 +2355,7 @@ Sub 他のシートの表を1枚に集約する()
             If chkHdrRow = 0 Then GoTo NextCheckSheet
             Dim chkDataRow As Long
             chkDataRow = chkHdrRow + 1
-            If chkDataRow > cur.Row + cur.rows.Count - 1 Then GoTo NextCheckSheet
+            If chkDataRow > cur.row + cur.rows.Count - 1 Then GoTo NextCheckSheet
             ' 各列の書式を確認
             For i = 1 To destHdrCount
                 If Not colIsRate(i) Then
@@ -2363,7 +2363,7 @@ Sub 他のシートの表を1枚に集約する()
                     s = destHdrs(i): GoSub 正規化: key = s
                     For ci = cur.Column To cur.Column + cur.Columns.Count - 1
                         Dim tmpS As String
-                        tmpS = CStr(checkWs.Cells(chkHdrRow, ci).Value): GoSub 正規化_tmpS
+                        tmpS = CStr(checkWs.Cells(chkHdrRow, ci).value): GoSub 正規化_tmpS
                         If tmpS = key Then
                             fmt = checkWs.Cells(chkDataRow, ci).NumberFormat
                             If InStr(fmt, "%") > 0 Then
@@ -2411,10 +2411,10 @@ NextCheckSheet:
     ' 前に集めた行を消してから集め直す。見出しの下に、前の集約（1 列目がシート名か合計）でない行があれば、人の明細なので
     ' 消さずに止まる（集める先のつもりのない明細のシートで撃つと、その明細を全部消していた・2026-09-24 総点検）
     Dim lastR As Long, 人の行 As Long, 頭 As String, 在る As Object
-    lastR = destWs.UsedRange.Row + destWs.UsedRange.rows.Count - 1
+    lastR = destWs.UsedRange.row + destWs.UsedRange.rows.Count - 1
     For r = hdrRow + 1 To lastR
         If Application.WorksheetFunction.CountA(destWs.rows(r)) > 0 Then
-            頭 = Trim$(セルの字(destWs.Cells(r, colFirst).Value))
+            頭 = Trim$(セルの字(destWs.Cells(r, colFirst).value))
             Set 在る = Nothing
             If Len(頭) > 0 Then
                 On Error Resume Next
@@ -2466,14 +2466,14 @@ NextCheckSheet:
         srcColFirst = srcUr.Column
         srcColLast = srcUr.Column + srcUr.Columns.Count - 1
 
-        For tryRow = srcUr.Row To srcUr.Row + srcUr.rows.Count - 1
+        For tryRow = srcUr.row To srcUr.row + srcUr.rows.Count - 1
             ReDim srcColMap(1 To matchCount)
             allFound = True
             For i = 1 To matchCount
                 srcColMap(i) = 0
             Next i
             For ci = srcColFirst To srcColLast
-                cv = ws.Cells(tryRow, ci).Value
+                cv = ws.Cells(tryRow, ci).value
                 s = CStr(cv): GoSub 正規化: key = s
                 For i = 1 To matchCount
                     If srcColMap(i) = 0 And key = matchHdrs(i) Then
@@ -2499,7 +2499,7 @@ NextCheckSheet:
         srcLastRow = 表の本文の最終行(ws)     ' 各シートの表の下のメモを集めない（2026-09-24 総点検）
 
         For ri = srcHdrRow + 1 To srcLastRow
-            cv = ws.Cells(ri, srcColMap(1)).Value
+            cv = ws.Cells(ri, srcColMap(1)).value
             If IsError(cv) Then GoTo NextSrcRow
             s = CStr(cv): GoSub 正規化: key = s
             If セルの字(key) = "" Then GoTo NextSrcRow
@@ -2508,20 +2508,20 @@ NextCheckSheet:
             If Len(keyN) >= 2 And Right(keyN, 1) = "計" Then GoTo NextSrcRow
             If Left$(keyN, 1) = "※" Then GoTo NextSrcRow
 
-            destWs.Cells(destRow, colFirst).Value = ws.Name
+            destWs.Cells(destRow, colFirst).value = ws.Name
 
             For i = 1 To matchCount
-                cv = ws.Cells(ri, srcColMap(i)).Value
+                cv = ws.Cells(ri, srcColMap(i)).value
                 If IsError(cv) Then
                     If i = 1 Then
-                        destWs.Cells(destRow, colFirst + matchColsInDest(i) - 1).Value = ""
+                        destWs.Cells(destRow, colFirst + matchColsInDest(i) - 1).value = ""
                     Else
-                        destWs.Cells(destRow, colFirst + matchColsInDest(i) - 1).Value = 0
+                        destWs.Cells(destRow, colFirst + matchColsInDest(i) - 1).value = 0
                     End If
                 Else
                     If i > 1 Then
                         If IsNumeric(cv) Then
-                            destWs.Cells(destRow, colFirst + matchColsInDest(i) - 1).Value = CDbl(cv)
+                            destWs.Cells(destRow, colFirst + matchColsInDest(i) - 1).value = CDbl(cv)
                         Else
                             rawStr = CStr(cv)
                             rawStr = Replace(rawStr, ",", "")
@@ -2531,15 +2531,15 @@ NextCheckSheet:
                             rawStr = Replace(rawStr, Chr(12288), "")
                             rawStr = Trim(StrConv(rawStr, vbNarrow))
                             If セルの字(rawStr) = "" Then
-                                destWs.Cells(destRow, colFirst + matchColsInDest(i) - 1).Value = 0
+                                destWs.Cells(destRow, colFirst + matchColsInDest(i) - 1).value = 0
                             ElseIf IsNumeric(rawStr) Then
-                                destWs.Cells(destRow, colFirst + matchColsInDest(i) - 1).Value = CDbl(rawStr)
+                                destWs.Cells(destRow, colFirst + matchColsInDest(i) - 1).value = CDbl(rawStr)
                             Else
-                                destWs.Cells(destRow, colFirst + matchColsInDest(i) - 1).Value = cv
+                                destWs.Cells(destRow, colFirst + matchColsInDest(i) - 1).value = cv
                             End If
                         End If
                     Else
-                        destWs.Cells(destRow, colFirst + matchColsInDest(i) - 1).Value = cv
+                        destWs.Cells(destRow, colFirst + matchColsInDest(i) - 1).value = cv
                     End If
                 End If
             Next i
@@ -2565,7 +2565,7 @@ NextSheet:
     If destRow > hdrRow + 1 Then
         firstDataRow = hdrRow + 1
         lastDataRow = destRow - 1
-        destWs.Cells(destRow, colFirst).Value = "合計"
+        destWs.Cells(destRow, colFirst).value = "合計"
         For i = 2 To matchCount
             dc = matchColsInDest(i)
             cAddr = destWs.Cells(firstDataRow, colFirst + dc - 1).Address(False, False)
@@ -2620,13 +2620,13 @@ Sub 金額を基準の比率で按分し右に作る()
         purRows = pur.rows.Count: purCols = pur.Columns.Count
         If purCols < 2 Or purRows < 2 Then GoTo nextSh
         Dim purR2 As Long, purC2 As Long
-        purR2 = pur.Row: purC2 = pur.Column
+        purR2 = pur.row: purC2 = pur.Column
         Dim hasStr As Boolean, hasNum As Boolean
         hasStr = False: hasNum = False
         For ri = purR2 + 1 To purR2 + purRows - 1
             Dim v1 As String, v2 As String
-            v1 = Trim(CStr(sh.Cells(ri, purC2).Value))
-            v2 = Trim(CStr(sh.Cells(ri, purC2 + 1).Value))
+            v1 = Trim(CStr(sh.Cells(ri, purC2).value))
+            v2 = Trim(CStr(sh.Cells(ri, purC2 + 1).value))
             If セルの字(v1) <> "" Then hasStr = True
             If IsNumeric(v2) And セルの字(v2) <> "" Then hasNum = True
         Next ri
@@ -2645,7 +2645,7 @@ nextSh:
     Dim pur3 As Object
     Set pur3 = wsP.UsedRange
     Dim pR As Long, pc As Long, pRows As Long, pCols As Long
-    pR = pur3.Row: pc = pur3.Column
+    pR = pur3.row: pc = pur3.Column
     pRows = pur3.rows.Count: pCols = pur3.Columns.Count
 
     Dim pHRow As Long, pNameCol As Long, pNumCol As Long
@@ -2656,7 +2656,7 @@ nextSh:
         Dim numCnt As Long: numCnt = 0
         For ri = pR + 1 To pR + pRows - 1
             Dim sv As String
-            sv = Trim(CStr(wsP.Cells(ri, ci).Value))
+            sv = Trim(CStr(wsP.Cells(ri, ci).value))
             s = sv: GoSub 正規化num
             If セルの字(s) <> "" And IsNumeric(s) Then numCnt = numCnt + 1
         Next ri
@@ -2673,7 +2673,7 @@ nextSh:
         Dim strCnt As Long: strCnt = 0
         For ri = pR + 1 To pR + pRows - 1
             Dim sv2 As String
-            sv2 = Trim(CStr(wsP.Cells(ri, ci).Value))
+            sv2 = Trim(CStr(wsP.Cells(ri, ci).value))
             If セルの字(sv2) <> "" And Not IsNumeric(sv2) Then strCnt = strCnt + 1
         Next ri
         If strCnt > bestStrCnt Then
@@ -2690,12 +2690,12 @@ nextSh:
     Dim totalPeople As Double: totalPeople = 0
     For ri = pHRow + 1 To pR + pRows - 1
         Dim pn As String
-        pn = Trim(CStr(wsP.Cells(ri, pNameCol).Value))
+        pn = Trim(CStr(wsP.Cells(ri, pNameCol).value))
         If セルの字(pn) = "" Then GoTo nextPR
         s = pn: GoSub 正規化hdr
         If 集計の語か(s) Then GoTo nextPR
         If Left(s, 1) = "※" Then GoTo nextPR
-        sv = Trim(CStr(wsP.Cells(ri, pNumCol).Value))
+        sv = Trim(CStr(wsP.Cells(ri, pNumCol).value))
         s = sv: GoSub 正規化num
         If セルの字(s) = "" Or Not IsNumeric(s) Then GoTo nextPR
         Dim pv As Double: pv = 0
@@ -2719,7 +2719,7 @@ nextPR:
     Dim ur As Object
     Set ur = ws.UsedRange
     Dim urR As Long, urC As Long, urRows As Long, urCols As Long
-    urR = ur.Row: urC = ur.Column
+    urR = ur.row: urC = ur.Column
     urRows = ur.rows.Count: urCols = ur.Columns.Count
 
     Dim hrow As Long, feeCol As Long, amtCol As Long
@@ -2731,7 +2731,7 @@ nextPR:
         rStrCol = 0: rNumCol = 0
         For ci = urC To urC + urCols - 1
             Dim cv As String
-            cv = Trim(CStr(ws.Cells(tryRow + 1, ci).Value))
+            cv = Trim(CStr(ws.Cells(tryRow + 1, ci).value))
             If セルの字(cv) = "" Then GoTo nextCI
             s = cv: GoSub 正規化num
             If IsNumeric(s) And セルの字(s) <> "" Then
@@ -2758,7 +2758,7 @@ nextCI:
     Dim checkC As Long
     For checkC = amtCol + 1 To urC + urCols - 1
         Dim hdrV As String
-        hdrV = Trim(CStr(ws.Cells(hrow, checkC).Value))
+        hdrV = Trim(CStr(ws.Cells(hrow, checkC).value))
         If セルの字(hdrV) = "" Then
             Exit For
         End If
@@ -2768,7 +2768,7 @@ nextCI:
         Dim checkR As Long
         For checkR = hrow + 1 To urR + urRows - 1
             Dim chkV As String
-            chkV = Trim(CStr(ws.Cells(checkR, checkC).Value))
+            chkV = Trim(CStr(ws.Cells(checkR, checkC).value))
             If セルの字(chkV) <> "" Then
                 s = chkV: GoSub 正規化num
                 If Not IsNumeric(s) Or セルの字(s) = "" Then
@@ -2787,7 +2787,7 @@ nextCI:
     Dim dataCount As Long: dataCount = 0
     For ri = hrow + 1 To urR + urRows - 1
         Dim fv As String
-        fv = Trim(CStr(ws.Cells(ri, feeCol).Value))
+        fv = Trim(CStr(ws.Cells(ri, feeCol).value))
         If セルの字(fv) = "" Then GoTo nextScan
         s = fv: GoSub 正規化hdr
         If 集計の語か(s) Then GoTo nextScan
@@ -2801,31 +2801,31 @@ nextScan:
     ' ── 出力開始列（前に作った按分表があればそこへ書き直す・右に人のメモや別の表があれば避ける。2026-09-24 総点検:
     '    表の右に何か見出しがあれば前の按分表と見て消していて、右に置いた人のメモが消えた）
     Dim outStartCol As Long
-    outStartCol = 右の出し先(ws, hrow, mainRightCol + 2, depCount + 2, セルの字(ws.Cells(hrow, feeCol).Value) & "|" & depNames(1))
-    If セルの字(ws.Cells(hrow, outStartCol + 1).Value) = depNames(1) Then 前の出力を消す ws, hrow, outStartCol, depCount + 2
+    outStartCol = 右の出し先(ws, hrow, mainRightCol + 2, depCount + 2, セルの字(ws.Cells(hrow, feeCol).value) & "|" & depNames(1))
+    If セルの字(ws.Cells(hrow, outStartCol + 1).value) = depNames(1) Then 前の出力を消す ws, hrow, outStartCol, depCount + 2
 
     ' ── 見出し行を書く
-    ws.Cells(hrow, outStartCol).Value = ws.Cells(hrow, feeCol).Value
+    ws.Cells(hrow, outStartCol).value = ws.Cells(hrow, feeCol).value
     For i = 1 To depCount
-        ws.Cells(hrow, outStartCol + i).Value = depNames(i)
+        ws.Cells(hrow, outStartCol + i).value = depNames(i)
     Next i
-    ws.Cells(hrow, outStartCol + depCount + 1).Value = "合計"
+    ws.Cells(hrow, outStartCol + depCount + 1).value = "合計"
 
     ' ── データ行を書く
     Dim rowOut As Long: rowOut = hrow + 1
     Dim di As Long
     For di = 1 To dataCount
         Dim dr As Long: dr = dataRows(di)
-        fv = Trim(CStr(ws.Cells(dr, feeCol).Value))
+        fv = Trim(CStr(ws.Cells(dr, feeCol).value))
         Dim amtStr As String
-        amtStr = Trim(CStr(ws.Cells(dr, amtCol).Value))
+        amtStr = Trim(CStr(ws.Cells(dr, amtCol).value))
         s = amtStr: GoSub 正規化num
         Dim amt As Double: amt = 0
         If セルの字(s) <> "" And IsNumeric(s) Then
             On Error Resume Next: amt = CDbl(s): On Error GoTo 0
         End If
 
-        ws.Cells(rowOut, outStartCol).Value = fv
+        ws.Cells(rowOut, outStartCol).value = fv
 
         Dim allocated() As Double      ' Long だと 21 億を超える金額で止まった（2026-09-24 総点検）
         ReDim allocated(1 To depCount)
@@ -2847,7 +2847,7 @@ nextScan:
         allocated(maxIdx) = allocated(maxIdx) + remainder
 
         For i = 1 To depCount
-            ws.Cells(rowOut, outStartCol + i).Value = allocated(i)
+            ws.Cells(rowOut, outStartCol + i).value = allocated(i)
         Next i
 
         Dim c1 As String, c2 As String
@@ -2859,7 +2859,7 @@ nextScan:
     Next di
 
     ' ── 合計行
-    ws.Cells(rowOut, outStartCol).Value = "合計"
+    ws.Cells(rowOut, outStartCol).value = "合計"
     Dim ra1 As String, ra2 As String
     For i = 1 To depCount + 1
         Dim colAddr As Long: colAddr = outStartCol + i
@@ -2929,7 +2929,7 @@ Sub 別シートとの増減比較表を右に作る()
     Dim ur As Range
     Set ur = ws.UsedRange
     Dim urR As Long, urC As Long, urRows As Long, urCols As Long
-    urR = ur.Row: urC = ur.Column
+    urR = ur.row: urC = ur.Column
     urRows = ur.rows.Count: urCols = ur.Columns.Count
 
     Dim hdrRow As Long, nameCol As Long, amtCol As Long
@@ -2945,7 +2945,7 @@ Sub 別シートとの増減比較表を右に作る()
         firstTxtCol = 0
         For c = urC To urC + urCols - 1
             Dim cv As String
-            cv = CStr(ws.Cells(rr, c).Value)
+            cv = CStr(ws.Cells(rr, c).value)
             If セルの字(cv) <> "" Then
                 s = cv: GoSub 正規化数値チェック
                 If IsNumeric(s) Then
@@ -2966,7 +2966,7 @@ Sub 別シートとの増減比較表を右に作る()
                 hasNum = False: hasTxt = False
                 For c = urC To urC + urCols - 1
                     Dim nv As String
-                    nv = CStr(ws.Cells(rr2, c).Value)
+                    nv = CStr(ws.Cells(rr2, c).value)
                     If セルの字(nv) <> "" Then
                         s = nv: GoSub 正規化数値チェック
                         If IsNumeric(s) Then
@@ -3001,13 +3001,13 @@ Sub 別シートとの増減比較表を右に作る()
     firstNumR = 0
     For fixR = hdrRow To urR + urRows - 1
         For fcH = urC To urC + urCols - 1
-            vtH = VarType(ws.Cells(fixR, fcH).Value)
+            vtH = VarType(ws.Cells(fixR, fcH).value)
             If vtH = vbDouble Or vtH = vbSingle Or vtH = vbInteger Or vtH = vbLong Or vtH = vbCurrency Or vtH = vbDate Then
                 firstNumR = fixR
                 Exit For
             ElseIf vtH = vbString Then
                 ' 金額が「425,000円」「８９３，０００」のような文字でも、その行は明細＝見出しではない
-                nlIn = CStr(ws.Cells(fixR, fcH).Value): GoSub 数の文字か
+                nlIn = CStr(ws.Cells(fixR, fcH).value): GoSub 数の文字か
                 If numLike Then
                     firstNumR = fixR
                     Exit For
@@ -3019,12 +3019,12 @@ Sub 別シートとの増減比較表を右に作る()
     If firstNumR > hdrRow + 1 Then
         cCnt = 0
         For fcH = urC To urC + urCols - 1
-            If セルの字(ws.Cells(firstNumR - 1, fcH).Value) <> "" Then cCnt = cCnt + 1
+            If セルの字(ws.Cells(firstNumR - 1, fcH).value) <> "" Then cCnt = cCnt + 1
         Next fcH
         If cCnt >= 2 Then
             hdrRow = firstNumR - 1
             For fcH = urC To urC + urCols - 1
-                If セルの字(ws.Cells(hdrRow, fcH).Value) <> "" Then
+                If セルの字(ws.Cells(hdrRow, fcH).value) <> "" Then
                     nameCol = fcH
                     Exit For
                 End If
@@ -3034,7 +3034,7 @@ Sub 別シートとの増減比較表を右に作る()
 
     For c = nameCol + 1 To urC + urCols - 1
         Dim nv2 As String
-        nv2 = CStr(ws.Cells(hdrRow + 1, c).Value): s = nv2: GoSub 正規化数値チェック
+        nv2 = CStr(ws.Cells(hdrRow + 1, c).value): s = nv2: GoSub 正規化数値チェック
         If IsNumeric(s) Then
             amtCol = c
             Exit For
@@ -3045,7 +3045,7 @@ Sub 別シートとの増減比較表を右に作る()
     Dim kwA As Variant, cA As Long, hA As String
     For Each kwA In Array("金額", "決算", "予算", "支出", "収入", "額", "円")
         For cA = nameCol + 1 To urC + urCols - 1
-            hA = CStr(ws.Cells(hdrRow, cA).Value)
+            hA = CStr(ws.Cells(hdrRow, cA).value)
             If InStr(hA, CStr(kwA)) > 0 Then amtCol = cA: GoTo 金額列決まり
         Next cA
     Next kwA
@@ -3061,7 +3061,7 @@ Sub 別シートとの増減比較表を右に作る()
         Dim ur2 As Range
         Set ur2 = sh.UsedRange
         Dim ur2R As Long, ur2C As Long, ur2Rows As Long, ur2Cols As Long
-        ur2R = ur2.Row: ur2C = ur2.Column
+        ur2R = ur2.row: ur2C = ur2.Column
         ur2Rows = ur2.rows.Count: ur2Cols = ur2.Columns.Count
 
         Dim pvHdr2 As Long
@@ -3072,7 +3072,7 @@ Sub 別シートとの増減比較表を右に作る()
             tc2 = 0: nc2 = 0: fc2 = 0
             For c = ur2C To ur2C + ur2Cols - 1
                 Dim cv2 As String
-                cv2 = CStr(sh.Cells(rrS, c).Value)
+                cv2 = CStr(sh.Cells(rrS, c).value)
                 If セルの字(cv2) <> "" Then
                     s = cv2: GoSub 正規化数値チェック
                     If IsNumeric(s) Then
@@ -3092,7 +3092,7 @@ Sub 別シートとの増減比較表を右に作る()
                     hN2 = False: hT2 = False
                     For c = ur2C To ur2C + ur2Cols - 1
                         Dim nv3 As String
-                        nv3 = CStr(sh.Cells(rrS2, c).Value)
+                        nv3 = CStr(sh.Cells(rrS2, c).value)
                         If セルの字(nv3) <> "" Then
                             s = nv3: GoSub 正規化数値チェック
                             If IsNumeric(s) Then hN2 = True Else hT2 = True
@@ -3135,7 +3135,7 @@ NextSheet:
 
     ' --- 相手シートの構造 ---
     Set ur2 = wsPrev.UsedRange
-    ur2R = ur2.Row: ur2C = ur2.Column
+    ur2R = ur2.row: ur2C = ur2.Column
     ur2Rows = ur2.rows.Count: ur2Cols = ur2.Columns.Count
 
     Dim pvHdrRow As Long, pvNameCol As Long, pvAmtCol As Long
@@ -3146,7 +3146,7 @@ NextSheet:
         tc3 = 0: nc3 = 0: fc3 = 0
         For c = ur2C To ur2C + ur2Cols - 1
             Dim cv3 As String
-            cv3 = CStr(wsPrev.Cells(rr, c).Value)
+            cv3 = CStr(wsPrev.Cells(rr, c).value)
             If セルの字(cv3) <> "" Then
                 s = cv3: GoSub 正規化数値チェック
                 If IsNumeric(s) Then
@@ -3166,7 +3166,7 @@ NextSheet:
                 hN3 = False: hT3 = False
                 For c = ur2C To ur2C + ur2Cols - 1
                     Dim nv4 As String
-                    nv4 = CStr(wsPrev.Cells(rr3, c).Value)
+                    nv4 = CStr(wsPrev.Cells(rr3, c).value)
                     If セルの字(nv4) <> "" Then
                         s = nv4: GoSub 正規化数値チェック
                         If IsNumeric(s) Then hN3 = True Else hT3 = True
@@ -3192,7 +3192,7 @@ NextSheet:
 
     For c = pvNameCol + 1 To ur2C + ur2Cols - 1
         Dim nv5 As String
-        nv5 = CStr(wsPrev.Cells(pvHdrRow + 1, c).Value): s = nv5: GoSub 正規化数値チェック
+        nv5 = CStr(wsPrev.Cells(pvHdrRow + 1, c).value): s = nv5: GoSub 正規化数値チェック
         If IsNumeric(s) Then
             pvAmtCol = c
             Exit For
@@ -3201,7 +3201,7 @@ NextSheet:
     If pvAmtCol = 0 Then pvAmtCol = pvNameCol + 1
     ' 相手のシートも、こちらの金額の列と同じ見出しの列を使う
     For cA = ur2C To ur2C + ur2Cols - 1
-        If Trim$(セルの字(wsPrev.Cells(pvHdrRow, cA).Value)) = Trim$(セルの字(ws.Cells(hdrRow, amtCol).Value)) And Trim$(セルの字(ws.Cells(hdrRow, amtCol).Value)) <> "" Then pvAmtCol = cA: Exit For
+        If Trim$(セルの字(wsPrev.Cells(pvHdrRow, cA).value)) = Trim$(セルの字(ws.Cells(hdrRow, amtCol).value)) And Trim$(セルの字(ws.Cells(hdrRow, amtCol).value)) <> "" Then pvAmtCol = cA: Exit For
     Next cA
 
     ' --- アクティブシートのデータ読み込み ---
@@ -3216,7 +3216,7 @@ NextSheet:
     blankCount = 0
     Do While r <= urR + urRows - 1
         Dim rawName As String
-        rawName = CStr(ws.Cells(r, nameCol).Value)
+        rawName = CStr(ws.Cells(r, nameCol).value)
         nkIn = rawName: GoSub normKey
         Dim cellN As String
         cellN = nkOut
@@ -3230,7 +3230,7 @@ NextSheet:
             If Not isTotalRow Then
                 blankCount = 0
                 If Not dictCurr.exists(cellN) Then
-                    s = CStr(ws.Cells(r, amtCol).Value): GoSub 正規化数値チェック
+                    s = CStr(ws.Cells(r, amtCol).value): GoSub 正規化数値チェック
                     If IsNumeric(s) Then dictCurr(cellN) = CDbl(s) Else dictCurr(cellN) = 0
                     currCount = currCount + 1
                     ReDim Preserve currRawKeys(1 To currCount)
@@ -3254,7 +3254,7 @@ NextSheet:
     blankCount2 = 0
     Do While r <= ur2R + ur2Rows - 1
         Dim rawName2 As String
-        rawName2 = CStr(wsPrev.Cells(r, pvNameCol).Value)
+        rawName2 = CStr(wsPrev.Cells(r, pvNameCol).value)
         nkIn = rawName2: GoSub normKey
         Dim pvCellN As String
         pvCellN = nkOut
@@ -3267,7 +3267,7 @@ NextSheet:
             If Not isTotalRow2 Then
                 blankCount2 = 0
                 If Not dictPrev.exists(pvCellN) Then
-                    s = CStr(wsPrev.Cells(r, pvAmtCol).Value): GoSub 正規化数値チェック
+                    s = CStr(wsPrev.Cells(r, pvAmtCol).value): GoSub 正規化数値チェック
                     If IsNumeric(s) Then dictPrev(pvCellN) = CDbl(s) Else dictPrev(pvCellN) = 0
                     prevKeyCount = prevKeyCount + 1
                     ReDim Preserve prevNormKeys(1 To prevKeyCount)
@@ -3301,7 +3301,7 @@ NextSheet:
     ' 比較表は元の表の右端の外に書く（金額の列の隣に書いて、元の表の品名・数量・金額を上書きした。2026-09-22）
     ' 右端＝見出しの行が途切れるところ（前に作った比較表は 1 列空けた先にあるので、撃ち直しても同じ場所に書き直す）
     tableRightCol = nameCol
-    Do While tableRightCol < urC + urCols - 1 And セルの字(ws.Cells(hdrRow, tableRightCol + 1).Value) <> ""
+    Do While tableRightCol < urC + urCols - 1 And セルの字(ws.Cells(hdrRow, tableRightCol + 1).value) <> ""
         tableRightCol = tableRightCol + 1
     Loop
     If amtCol > tableRightCol Then tableRightCol = amtCol
@@ -3321,7 +3321,7 @@ NextSheet:
     anyExist = False
     Dim cClr As Long
     For cClr = outCol To clearEndCol
-        If セルの字(ws.Cells(hdrRow, cClr).Value) <> "" Then anyExist = True
+        If セルの字(ws.Cells(hdrRow, cClr).value) <> "" Then anyExist = True
     Next cClr
     If anyExist Then
         Dim clearEndRow As Long
@@ -3331,7 +3331,7 @@ NextSheet:
             Dim anyVal As Boolean
             anyVal = False
             For cClr = outCol To clearEndCol
-                If セルの字(ws.Cells(rClr, cClr).Value) <> "" Then
+                If セルの字(ws.Cells(rClr, cClr).value) <> "" Then
                     anyVal = True
                     Exit For
                 End If
@@ -3347,14 +3347,14 @@ NextSheet:
 
     ' --- 見出し行を書く ---
     Dim colHdrName As String
-    colHdrName = CStr(ws.Cells(hdrRow, nameCol).Value)
-    If Trim$(colHdrName) = "" Then colHdrName = CStr(wsPrev.Cells(pvHdrRow, pvNameCol).Value)
+    colHdrName = CStr(ws.Cells(hdrRow, nameCol).value)
+    If Trim$(colHdrName) = "" Then colHdrName = CStr(wsPrev.Cells(pvHdrRow, pvNameCol).value)
 
-    ws.Cells(hdrRow, outCol).Value = colHdrName
-    ws.Cells(hdrRow, outCol + 1).Value = ws.Name
-    ws.Cells(hdrRow, outCol + 2).Value = wsPrev.Name
-    ws.Cells(hdrRow, outCol + 3).Value = "増減額"
-    ws.Cells(hdrRow, outCol + 4).Value = "増減率"
+    ws.Cells(hdrRow, outCol).value = colHdrName
+    ws.Cells(hdrRow, outCol + 1).value = ws.Name
+    ws.Cells(hdrRow, outCol + 2).value = wsPrev.Name
+    ws.Cells(hdrRow, outCol + 3).value = "増減額"
+    ws.Cells(hdrRow, outCol + 4).value = "増減率"
 
     ' --- データ行を書く ---
     Dim dataStartRow As Long
@@ -3375,20 +3375,20 @@ NextSheet:
         If dictPrev.exists(kName) Then vP = dictPrev(kName) Else vP = 0
         Dim diff As Double
         diff = vC - vP
-        ws.Cells(rOut, outCol).Value = currRawKeys(i)
-        ws.Cells(rOut, outCol + 1).Value = vC
-        ws.Cells(rOut, outCol + 2).Value = vP
-        ws.Cells(rOut, outCol + 3).Value = diff
+        ws.Cells(rOut, outCol).value = currRawKeys(i)
+        ws.Cells(rOut, outCol + 1).value = vC
+        ws.Cells(rOut, outCol + 2).value = vP
+        ws.Cells(rOut, outCol + 3).value = diff
         If vP = 0 Then
             If vC = 0 Then
-                ws.Cells(rOut, outCol + 4).Value = 0
+                ws.Cells(rOut, outCol + 4).value = 0
             Else
-                ws.Cells(rOut, outCol + 4).Value = "皆増"
+                ws.Cells(rOut, outCol + 4).value = "皆増"
             End If
         ElseIf vC = 0 Then
-            ws.Cells(rOut, outCol + 4).Value = "皆減"
+            ws.Cells(rOut, outCol + 4).value = "皆減"
         Else
-            ws.Cells(rOut, outCol + 4).Value = diff / vP
+            ws.Cells(rOut, outCol + 4).value = diff / vP
         End If
     Next i
 
@@ -3400,11 +3400,11 @@ NextSheet:
         vC = 0
         vP = dictPrev(kNameP)
         diff = vC - vP
-        ws.Cells(rOut, outCol).Value = prevOnlyRaw(i)
-        ws.Cells(rOut, outCol + 1).Value = 0
-        ws.Cells(rOut, outCol + 2).Value = vP
-        ws.Cells(rOut, outCol + 3).Value = diff
-        ws.Cells(rOut, outCol + 4).Value = "皆減"
+        ws.Cells(rOut, outCol).value = prevOnlyRaw(i)
+        ws.Cells(rOut, outCol + 1).value = 0
+        ws.Cells(rOut, outCol + 2).value = vP
+        ws.Cells(rOut, outCol + 3).value = diff
+        ws.Cells(rOut, outCol + 4).value = "皆減"
     Next i
 
     ' --- 合計行 ---
@@ -3412,25 +3412,25 @@ NextSheet:
     totalRow = dataStartRow + rowIdx
     Dim R1 As Long, r2 As Long
     R1 = dataStartRow: r2 = dataStartRow + rowIdx - 1
-    ws.Cells(totalRow, outCol).Value = "合計"
-    ws.Cells(totalRow, outCol + 1).Value = "=SUM(" & ws.Cells(R1, outCol + 1).Address & ":" & ws.Cells(r2, outCol + 1).Address & ")"
-    ws.Cells(totalRow, outCol + 2).Value = "=SUM(" & ws.Cells(R1, outCol + 2).Address & ":" & ws.Cells(r2, outCol + 2).Address & ")"
-    ws.Cells(totalRow, outCol + 3).Value = "=SUM(" & ws.Cells(R1, outCol + 3).Address & ":" & ws.Cells(r2, outCol + 3).Address & ")"
+    ws.Cells(totalRow, outCol).value = "合計"
+    ws.Cells(totalRow, outCol + 1).value = "=SUM(" & ws.Cells(R1, outCol + 1).Address & ":" & ws.Cells(r2, outCol + 1).Address & ")"
+    ws.Cells(totalRow, outCol + 2).value = "=SUM(" & ws.Cells(R1, outCol + 2).Address & ":" & ws.Cells(r2, outCol + 2).Address & ")"
+    ws.Cells(totalRow, outCol + 3).value = "=SUM(" & ws.Cells(R1, outCol + 3).Address & ":" & ws.Cells(r2, outCol + 3).Address & ")"
 
     Dim sumPrev As Double
     Dim sumDiff As Double
-    sumPrev = ws.Cells(totalRow, outCol + 2).Value
-    sumDiff = ws.Cells(totalRow, outCol + 3).Value
+    sumPrev = ws.Cells(totalRow, outCol + 2).value
+    sumDiff = ws.Cells(totalRow, outCol + 3).value
     If sumPrev = 0 Then
         If sumDiff > 0 Then
-            ws.Cells(totalRow, outCol + 4).Value = "皆増"
+            ws.Cells(totalRow, outCol + 4).value = "皆増"
         ElseIf sumDiff < 0 Then
-            ws.Cells(totalRow, outCol + 4).Value = "皆減"
+            ws.Cells(totalRow, outCol + 4).value = "皆減"
         Else
-            ws.Cells(totalRow, outCol + 4).Value = 0
+            ws.Cells(totalRow, outCol + 4).value = 0
         End If
     Else
-        ws.Cells(totalRow, outCol + 4).Value = sumDiff / sumPrev
+        ws.Cells(totalRow, outCol + 4).value = sumDiff / sumPrev
     End If
     ' 見た目は棚の共通の下請けに任せる（2026-09-23）
     Set m仕上げ範囲 = ws.Range(ws.Cells(hdrRow, outCol), ws.Cells(totalRow, outCol + 4))
@@ -3541,21 +3541,21 @@ Sub 項目と金額の円グラフを作る()
     hdrRow = 0
 
     Dim firstDataRow As Long
-    firstDataRow = ur.Row
+    firstDataRow = ur.row
     Dim foundHdr As Boolean
     foundHdr = False
-    For rr = ur.Row To ur.Row + ur.rows.Count - 1
+    For rr = ur.row To ur.row + ur.rows.Count - 1
         Dim hasNum As Boolean
         hasNum = False
         For cc = ur.Column To ur.Column + ur.Columns.Count - 1
-            If IsNumeric(ws.Cells(rr, cc).Value) And セルの字(ws.Cells(rr, cc).Value) <> "" Then
+            If IsNumeric(ws.Cells(rr, cc).value) And セルの字(ws.Cells(rr, cc).value) <> "" Then
                 hasNum = True
                 Exit For
             End If
         Next cc
         If hasNum Then
             hdrRow = rr - 1
-            If hdrRow < ur.Row Then hdrRow = ur.Row
+            If hdrRow < ur.row Then hdrRow = ur.row
             firstDataRow = rr
             foundHdr = True
             Exit For
@@ -3567,9 +3567,9 @@ Sub 項目と金額の円グラフを作る()
     Dim titleText As String
     titleText = ""
     Dim tr As Long
-    For tr = ur.Row To hdrRow - 1
+    For tr = ur.row To hdrRow - 1
         Dim tval As String
-        tval = Trim(CStr(ws.Cells(tr, ur.Column).Value))
+        tval = Trim(CStr(ws.Cells(tr, ur.Column).value))
         If セルの字(tval) <> "" Then
             titleText = tval
         End If
@@ -3578,8 +3578,8 @@ Sub 項目と金額の円グラフを作る()
     Dim colLabel As Long
     colLabel = 0
     For cc = ur.Column To ur.Column + ur.Columns.Count - 1
-        If Not IsNumeric(ws.Cells(firstDataRow, cc).Value) Or セルの字(ws.Cells(firstDataRow, cc).Value) = "" Then
-            If セルの字(ws.Cells(firstDataRow, cc).Value) <> "" Then
+        If Not IsNumeric(ws.Cells(firstDataRow, cc).value) Or セルの字(ws.Cells(firstDataRow, cc).value) = "" Then
+            If セルの字(ws.Cells(firstDataRow, cc).value) <> "" Then
                 colLabel = cc
                 Exit For
             End If
@@ -3595,7 +3595,7 @@ Sub 項目と金額の円グラフを作る()
         If InStr(fmt, "%") > 0 Then GoTo NextCol
         fmt = ws.Cells(firstDataRow, cc).NumberFormat
         If InStr(fmt, "%") > 0 Then GoTo NextCol
-        If IsNumeric(ws.Cells(firstDataRow, cc).Value) And セルの字(ws.Cells(firstDataRow, cc).Value) <> "" Then
+        If IsNumeric(ws.Cells(firstDataRow, cc).value) And セルの字(ws.Cells(firstDataRow, cc).value) <> "" Then
             colVal = cc
             Exit For
         End If
@@ -3604,22 +3604,22 @@ NextCol:
     If colVal = 0 Then Exit Sub
 
     Dim seriesName As String
-    seriesName = CStr(ws.Cells(hdrRow, colVal).Value)
+    seriesName = CStr(ws.Cells(hdrRow, colVal).value)
     If セルの字(seriesName) = "" Then seriesName = "値"
 
     Dim lastRow As Long
     lastRow = firstDataRow
     For rr = firstDataRow To 表の本文の最終行(ws)      ' 表の下のメモを項目にしない（2026-09-24 総点検）
-        If セルの字(ws.Cells(rr, colLabel).Value) = "" And セルの字(ws.Cells(rr, colVal).Value) = "" Then
+        If セルの字(ws.Cells(rr, colLabel).value) = "" And セルの字(ws.Cells(rr, colVal).value) = "" Then
             ' 空行でも続きがあるか確認
             Dim hasMore As Boolean
             hasMore = False
             Dim rr2 As Long
-            For rr2 = rr + 1 To ur.Row + ur.rows.Count - 1
+            For rr2 = rr + 1 To ur.row + ur.rows.Count - 1
                 Dim lbl2 As String
-                lbl2 = Trim(CStr(ws.Cells(rr2, colLabel).Value))
+                lbl2 = Trim(CStr(ws.Cells(rr2, colLabel).value))
                 Dim v2 As String
-                v2 = Trim(CStr(ws.Cells(rr2, colVal).Value))
+                v2 = Trim(CStr(ws.Cells(rr2, colVal).value))
                 If セルの字(lbl2) <> "" Or セルの字(v2) <> "" Then
                     hasMore = True
                     Exit For
@@ -3642,13 +3642,13 @@ NextCol:
     Dim v As Double
     Dim s As String
     For rr = firstDataRow To lastRow
-        lbl = Trim(CStr(ws.Cells(rr, colLabel).Value))
+        lbl = Trim(CStr(ws.Cells(rr, colLabel).value))
         If セルの字(lbl) = "" Then GoTo skipRow
         s = lbl
         GoSub 正規化
         If 集計の語か(s) Then GoTo skipRow
-        If Not IsNumeric(ws.Cells(rr, colVal).Value) Then GoTo skipRow
-        v = CDbl(ws.Cells(rr, colVal).Value)
+        If Not IsNumeric(ws.Cells(rr, colVal).value) Then GoTo skipRow
+        v = CDbl(ws.Cells(rr, colVal).value)
         If v = 0 Then GoTo skipRow
         cnt = cnt + 1
         labels(cnt) = lbl
@@ -3773,7 +3773,7 @@ Sub 選んだ3列でピボットを作る()
     End If
     Set ur = ws.UsedRange
     fcol = ur.Column
-    frow = ur.Row
+    frow = ur.row
     lastC = fcol + ur.Columns.Count - 1
 
     hrow = 0
@@ -3781,7 +3781,7 @@ Sub 選んだ3列でピボットを作る()
         numCount = 0
         strCount = 0
         For cc = fcol To lastC
-            v = ws.Cells(rr, cc).Value
+            v = ws.Cells(rr, cc).value
             If IsNumeric(v) And Trim(CStr(v)) <> "" Then
                 numCount = numCount + 1
             ElseIf Trim(CStr(v)) <> "" Then
@@ -3812,7 +3812,7 @@ Sub 選んだ3列でピボットを作る()
         月列 = 頼みの月の列(ws, hrow, fcol, lastC, maxRow, ピボットの語ならし(頼), 月位置)
     End If
     If colRow = 0 Then
-        If TypeName(Selection) = "Range" Then
+        If typeName(Selection) = "Range" Then
             If Selection.Areas.Count >= 3 Then
                 colRow = Selection.Areas(1).Column
                 colCol = Selection.Areas(2).Column
@@ -3827,16 +3827,16 @@ Sub 選んだ3列でピボットを作る()
         Exit Sub
     End If
 
-    fldRow = Trim(CStr(ws.Cells(hrow, colRow).Value))
-    If colCol > 0 Then fldCol = Trim(CStr(ws.Cells(hrow, colCol).Value))
+    fldRow = Trim(CStr(ws.Cells(hrow, colRow).value))
+    If colCol > 0 Then fldCol = Trim(CStr(ws.Cells(hrow, colCol).value))
     If 集計 = xlCount And (colVal = colRow Or colVal = colCol) Then
         ' 件数は行・列に使っていない列を数える（同じフィールドを値にも置くと行から消えた）。空欄の無い列を左から
         For cc = fcol To lastC
-            If cc <> colRow And cc <> colCol And Len(Trim$(セルの字(ws.Cells(hrow, cc).Value))) > 0 _
-               And Len(Trim$(セルの字(ws.Cells(hrow + 1, cc).Value))) > 0 Then colVal = cc: Exit For
+            If cc <> colRow And cc <> colCol And Len(Trim$(セルの字(ws.Cells(hrow, cc).value))) > 0 _
+               And Len(Trim$(セルの字(ws.Cells(hrow + 1, cc).value))) > 0 Then colVal = cc: Exit For
         Next cc
     End If
-    fldVal = Trim(CStr(ws.Cells(hrow, colVal).Value))
+    fldVal = Trim(CStr(ws.Cells(hrow, colVal).value))
     If 集計 = 0 Then 集計 = xlSum
     If 集計 = xlCount And InStr(fldVal, "件数") > 0 And colVal <> colRow Then 集計 = xlSum   ' 「件数」という数の列を足す頼み
     値の名 = Choose(Abs(集計 = xlCount) + 1, fldVal, "件数")
@@ -3846,10 +3846,10 @@ Sub 選んだ3列でピボットを作る()
 
     lastRow = hrow
     For rr = hrow + 1 To maxRow
-        s = Trim(CStr(ws.Cells(rr, colRow).Value))
+        s = Trim(CStr(ws.Cells(rr, colRow).value))
         isTotRow = False
         For cc = fcol To lastC
-            cv = Trim(CStr(ws.Cells(rr, cc).Value))
+            cv = Trim(CStr(ws.Cells(rr, cc).value))
             If 集計の語か(cv) Then
                 isTotRow = True
                 Exit For
@@ -3910,7 +3910,7 @@ Sub 選んだ3列でピボットを作る()
             年をまたぐ = (Year(.Max(ws.Range(ws.Cells(hrow + 1, 月列), ws.Cells(lastRow, 月列)))) <> _
                           Year(.Min(ws.Range(ws.Cells(hrow + 1, 月列), ws.Cells(lastRow, 月列)))))
         End With
-        pt.PivotFields(Trim(CStr(ws.Cells(hrow, 月列).Value))).dataRange.Cells(1).Group Start:=True, End:=True, _
+        pt.PivotFields(Trim(CStr(ws.Cells(hrow, 月列).value))).dataRange.Cells(1).Group Start:=True, End:=True, _
             Periods:=Array(False, False, False, False, True, False, 年をまたぐ)
         If Err.Number <> 0 Then Application.StatusBar = "日付を月でまとめられませんでした（日付が文字で入っている行があります）。"
         For Each 年の欄 In pt.PivotFields
@@ -3942,7 +3942,7 @@ Sub 表をテーブルにして集計行を出す()
     Set ur = ws.UsedRange
 
     Dim urR As Long, urC As Long, urRows As Long, urCols As Long
-    urR = ur.Row: urC = ur.Column
+    urR = ur.row: urC = ur.Column
     urRows = ur.rows.Count: urCols = ur.Columns.Count
 
     ' --- 見出し行を探す（文字列セルが2つ以上ある最初の行）
@@ -3953,7 +3953,7 @@ Sub 表をテーブルにして集計行を出す()
         nonNumCount = 0
         For c = urC To urC + urCols - 1
             Dim cv As String
-            cv = Trim(CStr(ws.Cells(r, c).Value))
+            cv = Trim(CStr(ws.Cells(r, c).value))
             If セルの字(cv) <> "" Then
                 If Not IsNumeric(cv) And Not IsDate(cv) Then nonNumCount = nonNumCount + 1
             End If
@@ -3973,14 +3973,14 @@ Sub 表をテーブルにして集計行を出す()
     Dim hdrLastCol As Long
     hdrLastCol = firstCol
     For c = firstCol To lastCol
-        If Trim(セルの字(ws.Cells(hdrRow, c).Value)) <> "" Then hdrLastCol = c
+        If Trim(セルの字(ws.Cells(hdrRow, c).value)) <> "" Then hdrLastCol = c
     Next c
 
     ' 見出しの値を配列に保持（見出し行の繰り返し検出用）
     Dim hdrVals() As String
     ReDim hdrVals(firstCol To hdrLastCol)
     For c = firstCol To hdrLastCol
-        hdrVals(c) = Trim(CStr(ws.Cells(hdrRow, c).Value))
+        hdrVals(c) = Trim(CStr(ws.Cells(hdrRow, c).value))
     Next c
 
     ' --- データ最終行を探す
@@ -4000,7 +4000,7 @@ Sub 表をテーブルにして集計行を出す()
         isNote = False
         For c = firstCol To hdrLastCol
             Dim cs As String
-            cs = Trim(CStr(ws.Cells(r, c).Value))
+            cs = Trim(CStr(ws.Cells(r, c).value))
             If セルの字(cs) <> "" Then
                 If Left(cs, 1) = "※" Then isNote = True
                 Exit For
@@ -4018,7 +4018,7 @@ Sub 表をテーブルにして集計行を出す()
         hasAny = False
         For c = firstCol To hdrLastCol
             Dim rv As String
-            rv = Trim(CStr(ws.Cells(r, c).Value))
+            rv = Trim(CStr(ws.Cells(r, c).value))
             If セルの字(rv) <> "" Then hasAny = True
             If rv <> hdrVals(c) Then isHdrRepeat = False
         Next c
@@ -4031,7 +4031,7 @@ Sub 表をテーブルにして集計行を出す()
         Dim firstCellStr As String
         firstCellStr = ""
         For c = firstCol To hdrLastCol
-            firstCellStr = Trim(CStr(ws.Cells(r, c).Value))
+            firstCellStr = Trim(CStr(ws.Cells(r, c).value))
             If セルの字(firstCellStr) <> "" Then Exit For
         Next c
         If 集計の語か(firstCellStr) Then
@@ -4051,7 +4051,7 @@ Sub 表をテーブルにして集計行を出す()
         Dim rowHasData As Boolean
         rowHasData = False
         For c = firstCol To hdrLastCol
-            If Trim(セルの字(ws.Cells(r, c).Value)) <> "" Then
+            If Trim(セルの字(ws.Cells(r, c).value)) <> "" Then
                 rowHasData = True
                 Exit For
             End If
@@ -4157,13 +4157,13 @@ Sub 表をテーブルにして集計行を出す()
                     Set firstCell = Nothing
                     Dim rc3 As Range
                     For Each rc3 In lc.DataBodyRange.Cells
-                        If Trim(セルの字(rc3.Value)) <> "" Then
+                        If Trim(セルの字(rc3.value)) <> "" Then
                             Set firstCell = rc3
                             Exit For
                         End If
                     Next rc3
                     If Not firstCell Is Nothing Then
-                        If IsNumeric(firstCell.Value) Then
+                        If IsNumeric(firstCell.value) Then
                             Dim fmt2 As String
                             fmt2 = firstCell.NumberFormat
                             If InStr(fmt2, "y") > 0 Or InStr(fmt2, "m") > 0 Or InStr(fmt2, "d") > 0 Then
@@ -4210,7 +4210,7 @@ Sub 項目と金額の棒グラフを作る()
     Dim nameCol As Long, valCol As Long
 
     Dim urR As Long, urC As Long, urRows As Long, urCols As Long
-    urR = ur.Row: urC = ur.Column
+    urR = ur.row: urC = ur.Column
     urRows = ur.rows.Count: urCols = ur.Columns.Count
 
     Dim r As Long
@@ -4218,7 +4218,7 @@ Sub 項目と金額の棒グラフを作る()
     For r = urR To urR + urRows - 1
         Dim hasNum As Boolean: hasNum = False
         For cc = urC To urC + urCols - 1
-            If IsNumeric(ws.Cells(r, cc).Value) And Trim$(セルの字(ws.Cells(r, cc).Value)) <> "" Then
+            If IsNumeric(ws.Cells(r, cc).value) And Trim$(セルの字(ws.Cells(r, cc).value)) <> "" Then
                 hasNum = True: Exit For
             End If
         Next cc
@@ -4233,13 +4233,13 @@ Sub 項目と金額の棒グラフを作る()
     nameCol = 0: valCol = 0
     Dim testR As Long: testR = dataFirstRow
     For cc = urC To urC + urCols - 1
-        Dim cv As String: cv = Trim$(CStr(ws.Cells(testR, cc).Value))
-        If セルの字(cv) <> "" And Not IsNumeric(ws.Cells(testR, cc).Value) Then
+        Dim cv As String: cv = Trim$(CStr(ws.Cells(testR, cc).value))
+        If セルの字(cv) <> "" And Not IsNumeric(ws.Cells(testR, cc).value) Then
             If nameCol = 0 Then nameCol = cc
         End If
     Next cc
     For cc = urC + urCols - 1 To urC Step -1
-        If IsNumeric(ws.Cells(testR, cc).Value) And Trim$(セルの字(ws.Cells(testR, cc).Value)) <> "" Then
+        If IsNumeric(ws.Cells(testR, cc).value) And Trim$(セルの字(ws.Cells(testR, cc).value)) <> "" Then
             valCol = cc: Exit For
         End If
     Next cc
@@ -4248,7 +4248,7 @@ Sub 項目と金額の棒グラフを作る()
     ' 系列名：見出し行のvalColセルの値をそのまま使う（改行含む）
     Dim seriesName As String: seriesName = ""
     If headerRow >= urR Then
-        seriesName = CStr(ws.Cells(headerRow, valCol).Value)
+        seriesName = CStr(ws.Cells(headerRow, valCol).value)
     End If
 
     ' データ行収集：空白行をスキップし、合計行は除外
@@ -4257,13 +4257,13 @@ Sub 項目と金額の棒グラフを作る()
     Dim n As Long: n = 0
     ReDim allNames(1 To urRows): ReDim allAmounts(1 To urRows)
     For r = dataFirstRow To 表の本文の最終行(ws)      ' 表の下のメモを項目にしない（2026-09-24 総点検）
-        Dim nv As String: nv = Trim$(CStr(ws.Cells(r, nameCol).Value))
+        Dim nv As String: nv = Trim$(CStr(ws.Cells(r, nameCol).value))
         If 集計の語か(nv) Or 集計の行か(ws, r, urC, urC + urCols - 1) Then
         ElseIf セルの字(nv) = "" Then
-        ElseIf IsNumeric(ws.Cells(r, valCol).Value) And Trim$(セルの字(ws.Cells(r, valCol).Value)) <> "" Then
+        ElseIf IsNumeric(ws.Cells(r, valCol).value) And Trim$(セルの字(ws.Cells(r, valCol).value)) <> "" Then
             n = n + 1
             allNames(n) = nv
-            allAmounts(n) = CDbl(ws.Cells(r, valCol).Value)
+            allAmounts(n) = CDbl(ws.Cells(r, valCol).value)
         End If
     Next r
     If n = 0 Then Exit Sub
@@ -4293,7 +4293,7 @@ Sub 項目と金額の棒グラフを作る()
     If headerRow > urR Then
         Dim tr As Long
         For tr = urR To headerRow - 1
-            Dim tv As String: tv = Trim$(CStr(ws.Cells(tr, urC).Value))
+            Dim tv As String: tv = Trim$(CStr(ws.Cells(tr, urC).value))
             If セルの字(tv) <> "" And InStr(tv, "単位") = 0 And Left$(tv, 1) <> "（" And Left$(tv, 1) <> "(" Then
                 titleText = tv: Exit For
             End If
@@ -4387,7 +4387,7 @@ Sub 選んだ3列で月別ピボットを作る()
 
     If Len(先撃ちの頼みの文()) > 0 Then
         Dim 選んだ数 As Long
-        If TypeName(Selection) = "Range" Then 選んだ数 = Selection.Areas.Count
+        If typeName(Selection) = "Range" Then 選んだ数 = Selection.Areas.Count
         If 選んだ数 < 3 Then
             選んだ3列でピボットを作る
             Exit Sub
@@ -4422,19 +4422,19 @@ Sub 選んだ3列で月別ピボットを作る()
     colVal = Selection.Areas(3).Column
 
     Set ur = ws.UsedRange
-    urRow = ur.Row
+    urRow = ur.row
     urCol = ur.Column
     hrow = 0
 
     For rr = urRow To urRow + ur.rows.Count - 1
         filled = 0
         For cc = urCol To urCol + ur.Columns.Count - 1
-            If Trim(セルの字(ws.Cells(rr, cc).Value)) <> "" Then filled = filled + 1
+            If Trim(セルの字(ws.Cells(rr, cc).value)) <> "" Then filled = filled + 1
         Next cc
         If filled >= 3 Then
             txtCnt = 0
             For cc = urCol To urCol + ur.Columns.Count - 1
-                cv = ws.Cells(rr, cc).Value
+                cv = ws.Cells(rr, cc).value
                 If Trim(CStr(cv)) <> "" Then
                     If Not IsNumeric(cv) And Not IsDate(cv) Then txtCnt = txtCnt + 1
                 End If
@@ -4451,9 +4451,9 @@ Sub 選んだ3列で月別ピボットを作る()
         Exit Sub
     End If
 
-    fldOuter = CStr(ws.Cells(hrow, colOuter).Value)
-    fldInner = CStr(ws.Cells(hrow, colInner).Value)
-    fldVal = CStr(ws.Cells(hrow, colVal).Value)
+    fldOuter = CStr(ws.Cells(hrow, colOuter).value)
+    fldInner = CStr(ws.Cells(hrow, colInner).value)
+    fldVal = CStr(ws.Cells(hrow, colVal).value)
     If Trim(fldOuter) = "" Or Trim(fldInner) = "" Or Trim(fldVal) = "" Then Exit Sub
 
     lastRow = hrow
@@ -4462,7 +4462,7 @@ Sub 選んだ3列で月別ピボットを作る()
         anyVal = False
         isTot = False
         For cc = urCol To urCol + ur.Columns.Count - 1
-            tv = Trim(CStr(ws.Cells(rr, cc).Value))
+            tv = Trim(CStr(ws.Cells(rr, cc).value))
             If セルの字(tv) <> "" Then
                 anyVal = True
                 ' 下の合計の行は明細ではない＝元の範囲の終わりに数えない
@@ -4482,11 +4482,11 @@ Sub 選んだ3列で月別ピボットを作る()
     For cc = urCol To urCol + ur.Columns.Count - 1
         If cc <> colOuter And cc <> colInner And cc <> colVal Then
             For rr = hrow + 1 To lastRow
-                dv = ws.Cells(rr, cc).Value
+                dv = ws.Cells(rr, cc).value
                 If Trim(CStr(dv)) <> "" Then
                     If IsDate(dv) Then
                         colDate = cc
-                        fldDate = CStr(ws.Cells(hrow, cc).Value)
+                        fldDate = CStr(ws.Cells(hrow, cc).value)
                     End If
                     Exit For
                 End If
@@ -4707,7 +4707,7 @@ Sub 横持ちの表をクエリで縦持ちにする()
                 Dim dr As Long
                 For dr = 1 To lc.DataBodyRange.rows.Count
                     Dim cv As Variant
-                    cv = lc.DataBodyRange.Cells(dr, 1).Value
+                    cv = lc.DataBodyRange.Cells(dr, 1).value
                     If セルの字(cv) <> "" And Not isEmpty(cv) Then
                         hasAnyVal = True
                         If Not IsNumeric(cv) Then
@@ -4840,7 +4840,7 @@ Sub マスタを引く計算列を足す()
                 Set dicM = CreateObject("Scripting.Dictionary")
                 Dim mR As Long
                 For mR = 1 To mLO.DataBodyRange.rows.Count
-                    s = CStr(mLO.DataBodyRange.Cells(mR, mc).Value): GoSub normKey
+                    s = CStr(mLO.DataBodyRange.Cells(mR, mc).value): GoSub normKey
                     If セルの字(s) <> "" Then dicM(s) = 1
                 Next mR
                 If dicM.Count = 0 Then GoTo NextMc
@@ -4849,7 +4849,7 @@ Sub マスタを引く計算列を足す()
                 For mainC = 1 To mainColCount
                     Dim score As Long: score = 0
                     For ri = 1 To lo.DataBodyRange.rows.Count
-                        s = CStr(lo.DataBodyRange.Cells(ri, mainC).Value): GoSub normKey
+                        s = CStr(lo.DataBodyRange.Cells(ri, mainC).value): GoSub normKey
                         If セルの字(s) <> "" And dicM.exists(s) Then score = score + 1
                     Next ri
 
@@ -4981,18 +4981,18 @@ Sub 選んだ3列でダッシュボードを作る()
         Exit Sub
     End If
 
-    urFirst = ur.Row
-    urLast = ur.Row + ur.rows.Count - 1
+    urFirst = ur.row
+    urLast = ur.row + ur.rows.Count - 1
     colFirst = ur.Column
     colLast = ur.Column + ur.Columns.Count - 1
 
     ' 見出し行を探す：値列が非数値で行フィールド列が空でない最初の行
     hdrRow = 0
     For r = urFirst To urLast
-        v1 = Trim(CStr(srcWs.Cells(r, colRow).Value))
-        v2 = Trim(CStr(srcWs.Cells(r, colVal).Value))
+        v1 = Trim(CStr(srcWs.Cells(r, colRow).value))
+        v2 = Trim(CStr(srcWs.Cells(r, colVal).value))
         If セルの字(v1) <> "" And セルの字(v2) <> "" Then
-            If Not IsNumeric(srcWs.Cells(r, colVal).Value) Or isEmpty(srcWs.Cells(r, colVal).Value) Then
+            If Not IsNumeric(srcWs.Cells(r, colVal).value) Or isEmpty(srcWs.Cells(r, colVal).value) Then
                 hdrRow = r
                 Exit For
             End If
@@ -5001,7 +5001,7 @@ Sub 選んだ3列でダッシュボードを作る()
 
     If hdrRow = 0 Then
         For r = urFirst To urLast
-            If Trim(セルの字(srcWs.Cells(r, colRow).Value)) <> "" Then
+            If Trim(セルの字(srcWs.Cells(r, colRow).value)) <> "" Then
                 hdrRow = r
                 Exit For
             End If
@@ -5013,9 +5013,9 @@ Sub 選んだ3列でダッシュボードを作る()
         Exit Sub
     End If
 
-    rowHdr = Trim(CStr(srcWs.Cells(hdrRow, colRow).Value))
-    valHdr = Trim(CStr(srcWs.Cells(hdrRow, colVal).Value))
-    slicerHdr = Trim(CStr(srcWs.Cells(hdrRow, colSlicer).Value))
+    rowHdr = Trim(CStr(srcWs.Cells(hdrRow, colRow).value))
+    valHdr = Trim(CStr(srcWs.Cells(hdrRow, colVal).value))
+    slicerHdr = Trim(CStr(srcWs.Cells(hdrRow, colSlicer).value))
 
     ' 最終明細行：合計行の手前まで（空白行を超えて走査しない。ただし空白でも最終行まで含める）
     ' 最初の集計の行で打ち切ると、課ごとの小計がある表で最初の課しか入らなかった（2026-09-24 棚の試験 F9）。
@@ -5025,7 +5025,7 @@ Sub 選んだ3列でダッシュボードを作る()
     For r = hdrRow + 1 To 表の本文の最終行(srcWs)   ' 表の下のメモの行は越えない
         anyV = False: isT = False
         For cc = colFirst To colLast
-            cv = Trim(セルの字(srcWs.Cells(r, cc).Value))
+            cv = Trim(セルの字(srcWs.Cells(r, cc).value))
             If cv <> "" Then
                 anyV = True
                 If 集計の語か(cv) Then isT = True
@@ -5184,7 +5184,7 @@ Sub 別テーブルの列をクエリで結合する()
     srcHdrCount = srcLO.HeaderRowRange.Columns.Count
     ReDim srcCols(1 To srcHdrCount)
     For i = 1 To srcHdrCount
-        srcCols(i) = CStr(srcLO.HeaderRowRange.Cells(1, i).Value)
+        srcCols(i) = CStr(srcLO.HeaderRowRange.Cells(1, i).value)
     Next i
 
     Set mLO = Nothing
@@ -5201,7 +5201,7 @@ Sub 別テーブルの列をクエリで結合する()
             mstHdrCount = lo.HeaderRowRange.Columns.Count
             ReDim commonCols(1 To mstHdrCount)
             For j = 1 To mstHdrCount
-                mh = CStr(lo.HeaderRowRange.Cells(1, j).Value)
+                mh = CStr(lo.HeaderRowRange.Cells(1, j).value)
                 For k = 1 To srcHdrCount
                     If mh = srcCols(k) Then
                         commonCount = commonCount + 1
@@ -5213,7 +5213,7 @@ Sub 別テーブルの列をクエリで結合する()
             If commonCount >= 1 And mstHdrCount - commonCount >= 1 Then
                 Dim eCol As String: eCol = ""
                 For j = 1 To mstHdrCount
-                    mh = CStr(lo.HeaderRowRange.Cells(1, j).Value)
+                    mh = CStr(lo.HeaderRowRange.Cells(1, j).value)
                     found = False
                     For k = 1 To srcHdrCount
                         If mh = srcCols(k) Then found = True: Exit For
@@ -5250,7 +5250,7 @@ NextLO:
             Dim kc2 As String: kc2 = ""
             Dim ec2 As String: ec2 = ""
             For j = 1 To mstHC2
-                mh = CStr(mUR2.Cells(1, j).Value)
+                mh = CStr(mUR2.Cells(1, j).value)
                 found = False
                 For k = 1 To srcHdrCount
                     If mh = srcCols(k) Then found = True: kc2 = mh: cc2 = cc2 + 1: Exit For
@@ -5293,13 +5293,13 @@ FoundMaster:
         If srcCols(i) = keyColSrc Then
             Set cell = Nothing
             For rr = 1 To srcRows
-                If Trim(セルの字(srcLO.DataBodyRange.Cells(rr, i).Value)) <> "" Then
+                If Trim(セルの字(srcLO.DataBodyRange.Cells(rr, i).value)) <> "" Then
                     Set cell = srcLO.DataBodyRange.Cells(rr, i)
                     Exit For
                 End If
             Next rr
             If Not cell Is Nothing Then
-                If IsNumeric(cell.Value) And Not IsDate(cell.Value) Then
+                If IsNumeric(cell.value) And Not IsDate(cell.value) Then
                     keyTypeStr = "type number"
                 End If
             End If
@@ -5316,7 +5316,7 @@ FoundMaster:
         ' （1 行目が空の文字の列を数の列と間違えない＝空のセルの IsNumeric は True）
         Set cell = Nothing
         For rr = 1 To srcRows
-            If Trim(セルの字(srcLO.DataBodyRange.Cells(rr, i).Value)) <> "" Then
+            If Trim(セルの字(srcLO.DataBodyRange.Cells(rr, i).value)) <> "" Then
                 Set cell = srcLO.DataBodyRange.Cells(rr, i)
                 Exit For
             End If
@@ -5328,7 +5328,7 @@ FoundMaster:
         ElseIf cell Is Nothing Then
             typeStr = "type text"
         Else
-            If IsDate(cell.Value) And Not IsNumeric(cell.Value) Then
+            If IsDate(cell.value) And Not IsNumeric(cell.value) Then
                 isDateCol = True
             ElseIf cell.NumberFormat Like "*yyyy*" Or cell.NumberFormat Like "*yy/mm*" Or _
                    cell.NumberFormat Like "*m/d*" Or cell.NumberFormat Like "*m""月""*" Then
@@ -5338,7 +5338,7 @@ FoundMaster:
                 typeStr = "type any"
                 dateColCount = dateColCount + 1
                 dateColNames(dateColCount) = srcCols(i)
-            ElseIf IsNumeric(cell.Value) Then
+            ElseIf IsNumeric(cell.value) Then
                 typeStr = "type number"
             Else
                 typeStr = "type text"
@@ -5353,17 +5353,17 @@ FoundMaster:
     extraTypeStr = "type text"
     If Not mLO.DataBodyRange Is Nothing Then
         For j = 1 To mLO.HeaderRowRange.Columns.Count
-            If セルの字(mLO.HeaderRowRange.Cells(1, j).Value) = extraCol Then
+            If セルの字(mLO.HeaderRowRange.Cells(1, j).value) = extraCol Then
                 Dim eCell As Range
                 Set eCell = Nothing
                 For rr = 1 To mLO.DataBodyRange.rows.Count
-                    If Trim(セルの字(mLO.DataBodyRange.Cells(rr, j).Value)) <> "" Then
+                    If Trim(セルの字(mLO.DataBodyRange.Cells(rr, j).value)) <> "" Then
                         Set eCell = mLO.DataBodyRange.Cells(rr, j)
                         Exit For
                     End If
                 Next rr
                 If Not eCell Is Nothing Then
-                    If IsNumeric(eCell.Value) And Not IsDate(eCell.Value) Then
+                    If IsNumeric(eCell.value) And Not IsDate(eCell.value) Then
                         extraTypeStr = "type number"
                     End If
                 End If
@@ -5473,7 +5473,7 @@ FoundMaster:
         If found Then
             dCol = hdr.Index
             For dRow = 1 To destLO.DataBodyRange.rows.Count
-                dVal = destLO.DataBodyRange.Cells(dRow, dCol).Value
+                dVal = destLO.DataBodyRange.Cells(dRow, dCol).value
                 If VarType(dVal) = vbString Then
                     Dim dStr As String
                     dStr = CStr(dVal)
@@ -5481,7 +5481,7 @@ FoundMaster:
                     Dim dParsed As Date
                     dParsed = CDate(Left$(dStr, 10))
                     If Err.Number = 0 Then
-                        destLO.DataBodyRange.Cells(dRow, dCol).Value = dParsed
+                        destLO.DataBodyRange.Cells(dRow, dCol).value = dParsed
                     End If
                     Err.Clear
                     On Error GoTo 0
@@ -5519,7 +5519,7 @@ FoundMaster:
                         Next idc
                         If srcLO.DataBodyRange Is Nothing Then GoTo SkipNumCheck
                         Set cell = srcLO.DataBodyRange.Cells(1, k)
-                        isNumCol = IsNumeric(cell.Value) And Not IsDate(cell.Value)
+                        isNumCol = IsNumeric(cell.value) And Not IsDate(cell.value)
 SkipNumCheck:
                         Exit For
                     End If
@@ -5527,8 +5527,8 @@ SkipNumCheck:
                 If Not isNumCol Then
                     dCol = hdr.Index
                     For dRow = 1 To destLO.DataBodyRange.rows.Count
-                        If IsNull(destLO.DataBodyRange.Cells(dRow, dCol).Value) Or _
-                           isEmpty(destLO.DataBodyRange.Cells(dRow, dCol).Value) Then
+                        If IsNull(destLO.DataBodyRange.Cells(dRow, dCol).value) Or _
+                           isEmpty(destLO.DataBodyRange.Cells(dRow, dCol).value) Then
                             ' 元の対応行の値を確認して空文字なら空文字のまま
                         End If
                     Next dRow
@@ -5582,23 +5582,23 @@ Sub 選んだ2列で構成比ピボットを作る()
     Set ur = ws.UsedRange
     hrow = 0
     Dim ri As Long
-    For ri = ur.Row To ur.Row + ur.rows.Count - 1
-        If Trim(セルの字(ws.Cells(ri, itemCol).Value)) <> "" And _
-           Trim(CStr(ws.Cells(ri, valCol).Value)) <> "" Then
+    For ri = ur.row To ur.row + ur.rows.Count - 1
+        If Trim(セルの字(ws.Cells(ri, itemCol).value)) <> "" And _
+           Trim(CStr(ws.Cells(ri, valCol).value)) <> "" Then
             hrow = ri
             Exit For
         End If
     Next ri
     If hrow = 0 Then Exit Sub
 
-    itemHeader = CStr(ws.Cells(hrow, itemCol).Value)
-    valHeader = CStr(ws.Cells(hrow, valCol).Value)
+    itemHeader = CStr(ws.Cells(hrow, itemCol).value)
+    valHeader = CStr(ws.Cells(hrow, valCol).value)
 
     ' 最後の明細行（合計・計・小計・総計の行は除く。項目列に値がある最後の行）
     lastRow = hrow
     For r = hrow + 1 To 表の本文の最終行(ws)   ' 表の下のメモの行は越えない（2026-09-24）
         Dim cv As String
-        cv = Trim(CStr(ws.Cells(r, itemCol).Value))
+        cv = Trim(CStr(ws.Cells(r, itemCol).value))
         If セルの字(cv) <> "" Then
             ' 合計行除外
             If Not 集計の語か(cv) Then
@@ -5691,8 +5691,8 @@ Sub 積み上げ縦棒グラフを作る()
 
     Set ws = ActiveSheet
     Set ur = ws.UsedRange
-    startRow = ur.Row: startCol = ur.Column
-    endRow = ur.Row + ur.rows.Count - 1
+    startRow = ur.row: startCol = ur.Column
+    endRow = ur.row + ur.rows.Count - 1
     endCol = ur.Column + ur.Columns.Count - 1
 
     ' 見出し行を探す：数値が並ぶ本文のすぐ上の行
@@ -5705,7 +5705,7 @@ Sub 積み上げ縦棒グラフを作る()
         Dim numCount As Long
         numCount = 0
         For c = startCol To endCol
-            If IsNumeric(ws.Cells(r, c).Value) And Trim(セルの字(ws.Cells(r, c).Value)) <> "" Then
+            If IsNumeric(ws.Cells(r, c).value) And Trim(セルの字(ws.Cells(r, c).value)) <> "" Then
                 numCount = numCount + 1
             End If
         Next c
@@ -5729,7 +5729,7 @@ Sub 積み上げ縦棒グラフを作る()
             mergedText = ""
             For c = startCol To endCol
                 Dim cv As String
-                cv = Trim(CStr(ws.Cells(tr, c).Value))
+                cv = Trim(CStr(ws.Cells(tr, c).value))
                 If セルの字(cv) <> "" Then
                     If セルの字(mergedText) = "" Then
                         mergedText = cv
@@ -5769,7 +5769,7 @@ Sub 積み上げ縦棒グラフを作る()
         hasTextData = False
         nTxt = 0: nAll = 0
         For r = dataStartRow To endRow
-            cvv = ws.Cells(r, c).Value
+            cvv = ws.Cells(r, c).value
             If Not IsError(cvv) Then
                 s = Trim(CStr(cvv))
                 If セルの字(s) <> "" Then
@@ -5788,7 +5788,7 @@ Sub 積み上げ縦棒グラフを作る()
 
     ' 見出し行のitemCol値
     Dim itemHdrVal As String
-    itemHdrVal = Trim(CStr(ws.Cells(hdrRow, itemCol).Value))
+    itemHdrVal = Trim(CStr(ws.Cells(hdrRow, itemCol).value))
 
     ' 数値列を収集（合計・総計列除く）
     Dim numCols() As Long
@@ -5799,14 +5799,14 @@ Sub 積み上げ縦棒グラフを作る()
     ReDim numColNames(0)
 
     For c = itemCol + 1 To endCol
-        s = Trim(CStr(ws.Cells(hdrRow, c).Value))
+        s = Trim(CStr(ws.Cells(hdrRow, c).value))
         GoSub isSumLabel
         If isSumCol Then GoTo NextCol
 
         Dim colHasNum As Boolean
         colHasNum = False
         For r = dataStartRow To endRow
-            If IsNumeric(ws.Cells(r, c).Value) And Trim(セルの字(ws.Cells(r, c).Value)) <> "" Then
+            If IsNumeric(ws.Cells(r, c).value) And Trim(セルの字(ws.Cells(r, c).value)) <> "" Then
                 colHasNum = True
                 Exit For
             End If
@@ -5831,7 +5831,7 @@ NextCol:
     ReDim dataNames(0)
 
     For r = dataStartRow To endRow
-        s = Trim(CStr(ws.Cells(r, itemCol).Value))
+        s = Trim(CStr(ws.Cells(r, itemCol).value))
         If セルの字(s) = "" Then GoTo NextRow
         GoSub isSumRowCheck
         If isSumRow Then GoTo NextRow
@@ -5891,7 +5891,7 @@ NextRow:
         ReDim valArr(1 To dataRowCount)
         For i = 0 To dataRowCount - 1
             ' 数に読めない値（△3000・文字・エラー）で止まらない＝その点は 0（2026-09-22）
-            cvv = ws.Cells(dataRows(i), numCols(j)).Value
+            cvv = ws.Cells(dataRows(i), numCols(j)).value
             If IsError(cvv) Then
                 valArr(i + 1) = 0
             ElseIf IsNumeric(cvv) And CStr(cvv) <> "" Then
@@ -5929,7 +5929,7 @@ isSumLabel:
     Return
 
 isSumRowCheck:
-    s = Trim(CStr(ws.Cells(r, itemCol).Value))
+    s = Trim(CStr(ws.Cells(r, itemCol).value))
     isSumRow = (InStr(s, "合計") > 0 Or InStr(s, "総計") > 0 Or s = "計") Or 集計の行か(ws, r, startCol, endCol)   ' 「企画課 小計」「平均」も（2026-09-24）
     Return
 
@@ -6032,24 +6032,24 @@ Sub 選んだ3列でクエリ月別集計を作る()
     Set ur = ws.UsedRange
     Dim hdrRow As Long
     Dim r As Long
-    hdrRow = ur.Row
+    hdrRow = ur.row
     Dim urLastRow As Long
-    urLastRow = ur.Row + ur.rows.Count - 1
+    urLastRow = ur.row + ur.rows.Count - 1
     Dim c As Long
-    For r = ur.Row To urLastRow
+    For r = ur.row To urLastRow
         Dim numCount As Long
         numCount = 0
         For c = ur.Column To ur.Column + ur.Columns.Count - 1
-            If Not isEmpty(ws.Cells(r, c).Value) Then
-                If IsDate(ws.Cells(r, c).Value) Then
+            If Not isEmpty(ws.Cells(r, c).value) Then
+                If IsDate(ws.Cells(r, c).value) Then
                     numCount = numCount + 1
-                ElseIf IsNumeric(ws.Cells(r, c).Value) Then
+                ElseIf IsNumeric(ws.Cells(r, c).value) Then
                     numCount = numCount + 1
                 End If
             End If
         Next c
         If numCount >= 2 Then
-            If r > ur.Row Then hdrRow = r - 1 Else hdrRow = r
+            If r > ur.row Then hdrRow = r - 1 Else hdrRow = r
             Exit For
         End If
     Next r
@@ -6075,7 +6075,7 @@ Sub 選んだ3列でクエリ月別集計を作る()
         Dim fullRange As Range, why As String
         Set fullRange = 明細の表の範囲(ws, why)
         If fullRange Is Nothing Then Application.StatusBar = why: Exit Sub
-        hdrRow = fullRange.Row
+        hdrRow = fullRange.row
         On Error Resume Next
         Set lo = ws.ListObjects.Add(xlSrcRange, fullRange, , xlYes)
         On Error GoTo 0
@@ -6091,9 +6091,9 @@ Sub 選んだ3列でクエリ月別集計を作る()
     If セルの字(srcTblName) = "" Then Exit Sub
 
     Dim colRowName As String, colDateName As String, colValName As String
-    colRowName = CStr(ws.Cells(hdrRow, colRow).Value)
-    colDateName = CStr(ws.Cells(hdrRow, colDate).Value)
-    colValName = CStr(ws.Cells(hdrRow, colVal).Value)
+    colRowName = CStr(ws.Cells(hdrRow, colRow).value)
+    colDateName = CStr(ws.Cells(hdrRow, colDate).value)
+    colValName = CStr(ws.Cells(hdrRow, colVal).value)
 
     Dim qryName As String
     Dim sheetName As String
@@ -6225,7 +6225,7 @@ Sub 推移の折れ線グラフを作る()
 
     Dim r As Long, c As Long
     Dim urR As Long, urC As Long, urR2 As Long, urC2 As Long
-    urR = ur.Row: urC = ur.Column
+    urR = ur.row: urC = ur.Column
     urR2 = urR + ur.rows.Count - 1
     urC2 = urC + ur.Columns.Count - 1
 
@@ -6234,7 +6234,7 @@ Sub 推移の折れ線グラフを作る()
     For r = urR To 表の本文の最終行(ws)
         Dim cnt As Long: cnt = 0
         For c = urC To urC2
-            If IsNumeric(ws.Cells(r, c).Value) And セルの字(ws.Cells(r, c).Value) <> "" Then cnt = cnt + 1
+            If IsNumeric(ws.Cells(r, c).value) And セルの字(ws.Cells(r, c).value) <> "" Then cnt = cnt + 1
         Next c
         If cnt > bestCount Then bestCount = cnt: bestRow = r
     Next r
@@ -6247,8 +6247,8 @@ Sub 推移の折れ線グラフを作る()
     For c = urC To urC2
         Dim strCnt As Long: strCnt = 0
         For r = hrow + 1 To 表の本文の最終行(ws)
-            Dim v As String: v = CStr(ws.Cells(r, c).Value)
-            If セルの字(v) <> "" And Not IsNumeric(ws.Cells(r, c).Value) Then strCnt = strCnt + 1
+            Dim v As String: v = CStr(ws.Cells(r, c).value)
+            If セルの字(v) <> "" And Not IsNumeric(ws.Cells(r, c).value) Then strCnt = strCnt + 1
         Next r
         If strCnt > 0 Then nameCol = c: Exit For
     Next c
@@ -6258,7 +6258,7 @@ Sub 推移の折れ線グラフを作る()
 
     Dim lastDataRow As Long: lastDataRow = 表の本文の最終行(ws)
     Do While lastDataRow >= firstDataRow
-        Dim cv As String: cv = Trim(CStr(ws.Cells(lastDataRow, nameCol).Value))
+        Dim cv As String: cv = Trim(CStr(ws.Cells(lastDataRow, nameCol).value))
         If 集計の語か(cv) Then
             lastDataRow = lastDataRow - 1
         Else
@@ -6271,7 +6271,7 @@ Sub 推移の折れ線グラフを作る()
     Dim dataRowCount As Long: dataRowCount = 0
     ReDim dataRows(lastDataRow - firstDataRow)
     For r = firstDataRow To lastDataRow
-        Dim rowKey As String: rowKey = Trim(CStr(ws.Cells(r, nameCol).Value))
+        Dim rowKey As String: rowKey = Trim(CStr(ws.Cells(r, nameCol).value))
         If セルの字(rowKey) <> "" Then
             dataRows(dataRowCount) = r
             dataRowCount = dataRowCount + 1
@@ -6283,11 +6283,11 @@ Sub 推移の折れ線グラフを作る()
     Dim numColCount As Long: numColCount = 0
     ReDim numCols(urC2 - urC)
     For c = nameCol + 1 To urC2
-        Dim hv As String: hv = Trim(CStr(ws.Cells(hrow, c).Value))
+        Dim hv As String: hv = Trim(CStr(ws.Cells(hrow, c).value))
         If hv = "合計" Or hv = "合 計" Or hv = "計" Or hv = "小計" Or hv = "総計" Then GoTo NextCol
         Dim isNum As Boolean: isNum = False
         For r = firstDataRow To lastDataRow
-            If IsNumeric(ws.Cells(r, c).Value) And セルの字(ws.Cells(r, c).Value) <> "" Then isNum = True: Exit For
+            If IsNumeric(ws.Cells(r, c).value) And セルの字(ws.Cells(r, c).value) <> "" Then isNum = True: Exit For
         Next r
         If Not isNum Then GoTo NextCol
         numCols(numColCount) = c
@@ -6307,13 +6307,13 @@ NextCol:
     Dim tr As Long, tc As Long
     For tr = urR To hrow - 1
         For tc = urC To urC2
-            Dim tval As String: tval = Trim(CStr(ws.Cells(tr, tc).Value))
+            Dim tval As String: tval = Trim(CStr(ws.Cells(tr, tc).value))
             If セルの字(tval) <> "" Then titleText = tval: Exit For
         Next tc
         If セルの字(titleText) <> "" Then Exit For
     Next tr
     If セルの字(titleText) = "" Then
-        Dim hdrVal As String: hdrVal = Trim(CStr(ws.Cells(hrow, nameCol).Value))
+        Dim hdrVal As String: hdrVal = Trim(CStr(ws.Cells(hrow, nameCol).value))
         If セルの字(hdrVal) <> "" Then
             titleText = hdrVal & "ごとの推移"
         Else
@@ -6351,11 +6351,11 @@ NextCol:
     ReDim totals(dataRowCount - 1)
     Dim i As Long
     For i = 0 To dataRowCount - 1
-        names(i) = CStr(ws.Cells(dataRows(i), nameCol).Value)
+        names(i) = CStr(ws.Cells(dataRows(i), nameCol).value)
         rowNums(i) = dataRows(i)
         Dim sm As Double: sm = 0
         For j = 0 To numColCount - 1
-            Dim vv As Variant: vv = ws.Cells(dataRows(i), numCols(j)).Value
+            Dim vv As Variant: vv = ws.Cells(dataRows(i), numCols(j)).value
             If IsNumeric(vv) And セルの字(vv) <> "" Then sm = sm + CDbl(vv)
         Next j
         totals(i) = sm
@@ -6450,10 +6450,10 @@ Sub 同じ見出しの表をクエリで集計する()
 
     ' 見出し行を特定
     Dim hdrRow As Long
-    hdrRow = loBase.HeaderRowRange.Row
+    hdrRow = loBase.HeaderRowRange.row
     Dim hdrTxtName As String, hdrNumName As String
-    hdrTxtName = CStr(wsBase.Cells(hdrRow, colTxt).Value)
-    hdrNumName = CStr(wsBase.Cells(hdrRow, colNum).Value)
+    hdrTxtName = CStr(wsBase.Cells(hdrRow, colTxt).value)
+    hdrNumName = CStr(wsBase.Cells(hdrRow, colNum).value)
 
     ' ベーステーブルの全見出しを収集
     Dim baseHeaders() As String
@@ -6462,7 +6462,7 @@ Sub 同じ見出しの表をクエリで集計する()
     ReDim baseHeaders(1 To baseHdrCount)
     Dim hc As Integer
     For hc = 1 To baseHdrCount
-        baseHeaders(hc) = CStr(loBase.HeaderRowRange.Cells(1, hc).Value)
+        baseHeaders(hc) = CStr(loBase.HeaderRowRange.Cells(1, hc).value)
     Next hc
 
     ' クエリ名・シート名・テーブル名
@@ -6511,7 +6511,7 @@ Sub 同じ見出しの表をクエリで集計する()
             Dim hi As Integer
             For hi = 1 To baseHdrCount
                 Dim hv As String
-                hv = CStr(lo.HeaderRowRange.Cells(1, hi).Value)
+                hv = CStr(lo.HeaderRowRange.Cells(1, hi).value)
                 Dim found As Boolean
                 found = False
                 Dim bhi As Integer
@@ -6617,7 +6617,7 @@ Sub 選んだ2列の項目別合計表を作る()
     colVal = Selection.Areas(2).Column
 
     Set ur = ws.UsedRange
-    urFirstRow = ur.Row
+    urFirstRow = ur.row
     urLastRow = 表の本文の最終行(ws)
     urRight = ur.Column + ur.Columns.Count - 1
 
@@ -6627,11 +6627,11 @@ Sub 選んだ2列の項目別合計表を作る()
     Dim testRow As Long
     Dim selCol1HasVal As Boolean, selCol2HasVal As Boolean
     For testRow = urFirstRow To urLastRow
-        selCol1HasVal = Not isEmpty(ws.Cells(testRow, colKey).Value) And ws.Cells(testRow, colKey).Value <> ""
-        selCol2HasVal = Not isEmpty(ws.Cells(testRow, colVal).Value) And ws.Cells(testRow, colVal).Value <> ""
+        selCol1HasVal = Not isEmpty(ws.Cells(testRow, colKey).value) And ws.Cells(testRow, colKey).value <> ""
+        selCol2HasVal = Not isEmpty(ws.Cells(testRow, colVal).value) And ws.Cells(testRow, colVal).value <> ""
         If selCol1HasVal And selCol2HasVal Then
             ' 両方に値がある。colValが数値なら本文開始候補
-            If IsNumeric(ws.Cells(testRow, colVal).Value) And Not IsDate(ws.Cells(testRow, colVal).Value) Then
+            If IsNumeric(ws.Cells(testRow, colVal).value) And Not IsDate(ws.Cells(testRow, colVal).value) Then
                 firstDataRow = testRow
                 Exit For
             End If
@@ -6650,7 +6650,7 @@ Sub 選んだ2列の項目別合計表を作る()
     Do While lastRow >= firstDataRow
         checkStr = ""
         For cc = ur.Column To urRight
-            cellVal = ws.Cells(lastRow, cc).Value
+            cellVal = ws.Cells(lastRow, cc).value
             If Not isEmpty(cellVal) And セルの字(cellVal) <> "" Then
                 checkStr = CStr(cellVal)
                 Exit For
@@ -6664,8 +6664,8 @@ Sub 選んだ2列の項目別合計表を作る()
     Loop
 
     Dim hdrKeyName As String, hdrValName As String
-    hdrKeyName = CStr(ws.Cells(hdrRow, colKey).Value)
-    hdrValName = CStr(ws.Cells(hdrRow, colVal).Value)
+    hdrKeyName = CStr(ws.Cells(hdrRow, colKey).value)
+    hdrValName = CStr(ws.Cells(hdrRow, colVal).value)
 
     ' 既存の合計表を探す（見出し行の同じ列名ペアを探す）
     Dim existCol As Long
@@ -6673,8 +6673,8 @@ Sub 選んだ2列の項目別合計表を作る()
     Dim checkCol As Long
     For checkCol = ur.Column To urRight - 1
         If checkCol <> colKey Then
-            If セルの字(ws.Cells(hdrRow, checkCol).Value) = hdrKeyName And _
-               CStr(ws.Cells(hdrRow, checkCol + 1).Value) = hdrValName Then
+            If セルの字(ws.Cells(hdrRow, checkCol).value) = hdrKeyName And _
+               CStr(ws.Cells(hdrRow, checkCol + 1).value) = hdrValName Then
                 existCol = checkCol
                 Exit For
             End If
@@ -6686,7 +6686,7 @@ Sub 選んだ2列の項目別合計表を作る()
         Dim clearR As Long
         For clearR = hdrRow To urLastRow + 30
             If clearR > hdrRow + 1 Then
-                If isEmpty(ws.Cells(clearR, outCol).Value) And isEmpty(ws.Cells(clearR, outCol + 1).Value) Then
+                If isEmpty(ws.Cells(clearR, outCol).value) And isEmpty(ws.Cells(clearR, outCol + 1).value) Then
                     Exit For
                 End If
             End If
@@ -6701,7 +6701,7 @@ Sub 選んだ2列の項目別合計表を作る()
     keyCount = 0
     ReDim keys(0)
     For r = firstDataRow To lastRow
-        cellVal = ws.Cells(r, colKey).Value
+        cellVal = ws.Cells(r, colKey).value
         ' 小計・合計の行（「総務課 小計」）は項目に数えない（項目に並べて合計が 2 倍になった・2026-09-24 総点検）
         If 集計の行か(ws, r, ur.Column, urRight) Then cellVal = Empty
         If Not isEmpty(cellVal) And セルの字(cellVal) <> "" Then
@@ -6715,8 +6715,8 @@ Sub 選んだ2列の項目別合計表を作る()
         End If
     Next r
 
-    ws.Cells(hdrRow, outCol).Value = hdrKeyName
-    ws.Cells(hdrRow, outCol + 1).Value = hdrValName
+    ws.Cells(hdrRow, outCol).value = hdrKeyName
+    ws.Cells(hdrRow, outCol + 1).value = hdrValName
 
     ' 列アドレスを取得（絶対参照）
     Dim colLetterKey As String, colLetterVal As String
@@ -6732,14 +6732,14 @@ Sub 選んだ2列の項目別合計表を作る()
     Dim outRow As Long
     outRow = hdrRow + 1
     For i = 0 To keyCount - 1
-        ws.Cells(outRow, outCol).Value = keys(i)
+        ws.Cells(outRow, outCol).value = keys(i)
         Dim criteriaAddr As String
         criteriaAddr = ws.Cells(outRow, outCol).Address(True, True)
         ws.Cells(outRow, outCol + 1).Formula = "=SUMIF(" & keyColAddr & "," & criteriaAddr & "," & valColAddr & ")"
         outRow = outRow + 1
     Next i
 
-    ws.Cells(outRow, outCol).Value = "合計"
+    ws.Cells(outRow, outCol).value = "合計"
     If outRow > hdrRow Then
         Dim sumStart As String, sumEnd As String
         sumStart = ws.Cells(hdrRow + 1, outCol + 1).Address(True, True)
@@ -6777,7 +6777,7 @@ Sub 選んだ列の項目別件数表を右に作る()
 
     Set ws = ActiveSheet
     selCol = Selection.Cells(1, 1).Column
-    hdrRow = Selection.Cells(1, 1).Row
+    hdrRow = Selection.Cells(1, 1).row
     ' 二段見出しの上の段を選んでいたら下の段へ。見出しの字は結合の左上で読む（2026-09-24 棚の試験 F10 で結合のセルに当たって止まった）
     hdrRow = 見出しの下の段(ws, hdrRow, ws.UsedRange.Column, ws.UsedRange.Column + ws.UsedRange.Columns.Count - 1)
 
@@ -6820,7 +6820,7 @@ Sub 選んだ列の項目別件数表を右に作る()
         Dim rowLabel As String
         rowLabel = ""
         For c = mFirstCol To mLastCol
-            rv = Trim(CStr(ws.Cells(rr, c).Value))
+            rv = Trim(CStr(ws.Cells(rr, c).value))
             If セルの字(rv) <> "" Then
                 rowLabel = rv
                 Exit For
@@ -6847,10 +6847,10 @@ Sub 選んだ列の項目別件数表を右に作る()
     ' 出す場所（前に作った件数表があればそこへ書き直す・右に人のメモや別の表があれば避ける。2026-09-24 総点検:
     ' 表の 1 列右を空けた先の 2 列を、中身を確かめずに消していて、そこに置いた人のメモが消えた）
     outCol = 右の出し先(ws, hdrRow, baseOutCol, 2, selHdr & "|件数")
-    If セルの字(ws.Cells(hdrRow, outCol).Value) = selHdr And セルの字(ws.Cells(hdrRow, outCol + 1).Value) = "件数" Then 前の出力を消す ws, hdrRow, outCol, 2
+    If セルの字(ws.Cells(hdrRow, outCol).value) = selHdr And セルの字(ws.Cells(hdrRow, outCol + 1).value) = "件数" Then 前の出力を消す ws, hdrRow, outCol, 2
 
-    ws.Cells(hdrRow, outCol).Value = selHdr
-    ws.Cells(hdrRow, outCol + 1).Value = "件数"
+    ws.Cells(hdrRow, outCol).value = selHdr
+    ws.Cells(hdrRow, outCol + 1).value = "件数"
 
     ' 項目を初出順に収集（合計行を除いた本文のみ）
     Set dict = CreateObject("Scripting.Dictionary")
@@ -6863,7 +6863,7 @@ Sub 選んだ列の項目別件数表を右に作る()
         isTotal = False
         rowLabel = ""
         For c = mFirstCol To mLastCol
-            rv = Trim(CStr(ws.Cells(rr, c).Value))
+            rv = Trim(CStr(ws.Cells(rr, c).value))
             If セルの字(rv) <> "" Then
                 rowLabel = rv
                 Exit For
@@ -6874,12 +6874,12 @@ Sub 選んだ列の項目別件数表を右に作る()
         End If
         If isTotal Then GoTo NextRow
 
-        s = CStr(ws.Cells(rr, selCol).Value): GoSub 正規化
+        s = CStr(ws.Cells(rr, selCol).value): GoSub 正規化
         If セルの字(s) = "" Then GoTo NextRow
         If Not dict.exists(s) Then
             dict.Add s, rr
             ReDim Preserve rawKeys(keyCount)
-            rawKeys(keyCount) = CStr(ws.Cells(rr, selCol).Value)
+            rawKeys(keyCount) = CStr(ws.Cells(rr, selCol).value)
             keyCount = keyCount + 1
         End If
 NextRow:
@@ -6903,13 +6903,13 @@ NextRow:
     Dim outRow As Long
     For i = 0 To keyCount - 1
         outRow = hdrRow + 1 + i
-        ws.Cells(outRow, outCol).Value = rawKeys(i)
+        ws.Cells(outRow, outCol).value = rawKeys(i)
         ws.Cells(outRow, outCol + 1).Formula = "=COUNTIF(" & absRange & "," & outColLet & outRow & ")"
     Next i
 
     Dim sumRow As Long
     sumRow = hdrRow + 1 + keyCount
-    ws.Cells(sumRow, outCol).Value = "合計"
+    ws.Cells(sumRow, outCol).value = "合計"
     Dim sumFirst As Long, sumLast As Long
     sumFirst = hdrRow + 1
     sumLast = sumRow - 1
@@ -6959,7 +6959,7 @@ Sub 選んだ列の右に累計列を足す()
     Dim ur As Range
     Set ur = ws.UsedRange
     Dim urTop As Long, urLeft As Long, urBottom As Long, urRight As Long
-    urTop = ur.Row
+    urTop = ur.row
     urLeft = ur.Column
     urBottom = 表の本文の最終行(ws)
     urRight = ur.Column + ur.Columns.Count - 1
@@ -6971,7 +6971,7 @@ Sub 選んだ列の右に累計列を足す()
     For r = urTop To urBottom
         cnt = 0
         For c = urLeft To urRight
-            If セルの字(ws.Cells(r, c).Value) <> "" Then cnt = cnt + 1
+            If セルの字(ws.Cells(r, c).value) <> "" Then cnt = cnt + 1
         Next c
         If cnt >= 2 Then
             Dim hasNum As Boolean
@@ -6981,12 +6981,12 @@ Sub 選んだ列の右に累計列を足す()
                 Dim lineEmpty As Boolean
                 lineEmpty = True
                 For c = urLeft To urRight
-                    If セルの字(ws.Cells(rr, c).Value) <> "" Then lineEmpty = False: Exit For
+                    If セルの字(ws.Cells(rr, c).value) <> "" Then lineEmpty = False: Exit For
                 Next c
                 If Not lineEmpty Then
                     For c = urLeft To urRight
                         Dim nv As Variant
-                        nv = ws.Cells(rr, c).Value
+                        nv = ws.Cells(rr, c).value
                         If IsNumeric(nv) And セルの字(nv) <> "" Then hasNum = True
                     Next c
                     Exit For
@@ -7011,14 +7011,14 @@ Sub 選んだ列の右に累計列を足す()
         isSumR = False
         For c = urLeft To urRight
             Dim v As String
-            v = CStr(ws.Cells(r, c).Value)
+            v = CStr(ws.Cells(r, c).value)
             If 集計の語か(v) Then isSumR = True: Exit For
         Next c
         If Not isSumR Then
             Dim rowEmpty As Boolean
             rowEmpty = True
             For c = urLeft To urRight
-                If セルの字(ws.Cells(r, c).Value) <> "" Then rowEmpty = False: Exit For
+                If セルの字(ws.Cells(r, c).value) <> "" Then rowEmpty = False: Exit For
             Next c
             If Not rowEmpty Then
                 lastDataRow = r
@@ -7035,7 +7035,7 @@ Sub 選んだ列の右に累計列を足す()
     Dim alreadyExists As Boolean
     alreadyExists = False
     If insCol <= urRight Then
-        If セルの字(ws.Cells(hdrRow, insCol).Value) = "累計" Then
+        If セルの字(ws.Cells(hdrRow, insCol).value) = "累計" Then
             alreadyExists = True
         End If
     End If
@@ -7046,7 +7046,7 @@ Sub 選んだ列の右に累計列を足す()
     Dim fmtStr As String
     For r = dataStart To lastDataRow
         Dim fv As Variant
-        fv = ws.Cells(r, selCol).Value
+        fv = ws.Cells(r, selCol).value
         If IsNumeric(fv) And セルの字(fv) <> "" Then
             fmtStr = ws.Cells(r, selCol).NumberFormat
             If セルの字(fmtStr) <> "" And fmtStr <> "General" And fmtStr <> "標準" Then srcFmt = fmtStr
@@ -7059,7 +7059,7 @@ Sub 選んだ列の右に累計列を足す()
         urRight = urRight + 1
     End If
 
-    ws.Cells(hdrRow, insCol).Value = "累計"
+    ws.Cells(hdrRow, insCol).value = "累計"
 
     ' 列名を取得
     Dim colLetter As String
@@ -7086,7 +7086,7 @@ Sub 選んだ列の右に累計列を足す()
         fe = True
         For c = urLeft To urRight
             If c = insCol Then GoTo SkipFE
-            If セルの字(ws.Cells(r, c).Value) <> "" Then fe = False: Exit For
+            If セルの字(ws.Cells(r, c).value) <> "" Then fe = False: Exit For
 SkipFE:
         Next c
         If fe Then GoTo NextFirst
@@ -7095,7 +7095,7 @@ SkipFE:
         For c = urLeft To urRight
             If c = insCol Then GoTo SkipFS
             Dim vs As String
-            vs = CStr(ws.Cells(r, c).Value)
+            vs = CStr(ws.Cells(r, c).value)
             If 集計の語か(vs) Then isSumF = True: Exit For
 SkipFS:
         Next c
@@ -7114,7 +7114,7 @@ NextFirst:
         re = True
         For c = urLeft To urRight
             If c = insCol Then GoTo SkipC1
-            If セルの字(ws.Cells(r, c).Value) <> "" Then re = False: Exit For
+            If セルの字(ws.Cells(r, c).value) <> "" Then re = False: Exit For
 SkipC1:
         Next c
         If re Then GoTo NextRow
@@ -7125,7 +7125,7 @@ SkipC1:
         For c = urLeft To urRight
             If c = insCol Then GoTo SkipC2
             Dim vv As String
-            vv = CStr(ws.Cells(r, c).Value)
+            vv = CStr(ws.Cells(r, c).value)
             If 集計の語か(vv) Then isSumRow = True: Exit For
 SkipC2:
         Next c
@@ -7142,7 +7142,7 @@ NextRow:
     Next r
     ' 足した列の見た目は共通の下請けに任せる。見出しは元の表の見出しをまねる（2026-09-23）
     Dim 仕上げ末 As Long
-    仕上げ末 = ws.Cells(ws.rows.Count, insCol).End(xlUp).Row     ' 変数が 0 の道があり 1004 で止まった（2026-09-23）
+    仕上げ末 = ws.Cells(ws.rows.Count, insCol).End(xlUp).row     ' 変数が 0 の道があり 1004 で止まった（2026-09-23）
     If 仕上げ末 > hdrRow Then
         Set m仕上げ手本 = ws.Cells(hdrRow, selCol)
         Set m仕上げ範囲 = ws.Range(ws.Cells(hdrRow, insCol), ws.Cells(仕上げ末, insCol))
@@ -7167,14 +7167,14 @@ Sub 選んだ列の右に構成比列を足す()
     Set ur = ws.UsedRange
 
     Dim urFirstRow As Long, urFirstCol As Long, urLastRow As Long, urLastCol As Long
-    urFirstRow = ur.Row
+    urFirstRow = ur.row
     urFirstCol = ur.Column
     urLastRow = 表の本文の最終行(ws)
     urLastCol = ur.Column + ur.Columns.Count - 1
 
     Dim selCol As Long
     Dim hdrRow As Long
-    hdrRow = Selection.Cells(1, 1).Row
+    hdrRow = Selection.Cells(1, 1).row
     ' 選んだ列のうち数の列を使う（課名と金額を選んだとき・文字の列を選んだときに #VALUE! を作らない）。
     ' 数の列を選んでいなければ、表の右端の数の列を使う。数の列が無ければ何もしない（2026-09-22）
     Dim ar As Range, nNum As Long, nAll As Long, rr As Long, cc As Long
@@ -7209,7 +7209,7 @@ Sub 選んだ列の右に構成比列を足す()
     Dim v As Variant
 
     If insCol <= urLastCol Then
-        If Trim$(セルの字(ws.Cells(hdrRow, insCol).Value)) = "構成比" Then alreadyExists = True
+        If Trim$(セルの字(ws.Cells(hdrRow, insCol).value)) = "構成比" Then alreadyExists = True
     End If
 
     If Not alreadyExists Then
@@ -7217,7 +7217,7 @@ Sub 選んだ列の右に構成比列を足す()
         urLastCol = urLastCol + 1
     End If
 
-    ws.Cells(hdrRow, insCol).Value = "構成比"
+    ws.Cells(hdrRow, insCol).value = "構成比"
 
     Dim sumKeywords As Variant
     sumKeywords = Array("合計", "計", "小計", "総計")
@@ -7234,7 +7234,7 @@ Sub 選んだ列の右に構成比列を足す()
         rowEmpty = True
         For c = urFirstCol To urLastCol
             If c = insCol Then GoTo skipE0
-            If Not isEmpty(ws.Cells(r, c)) And セルの字(ws.Cells(r, c).Value) <> "" Then rowEmpty = False: Exit For
+            If Not isEmpty(ws.Cells(r, c)) And セルの字(ws.Cells(r, c).value) <> "" Then rowEmpty = False: Exit For
 skipE0:
         Next c
         If rowEmpty Then GoTo nextR0
@@ -7243,7 +7243,7 @@ skipE0:
         For Each ki In sumKeywords
             For c = urFirstCol To urLastCol
                 If c = insCol Then GoTo skipS0
-                s = CStr(ws.Cells(r, c).Value): GoSub 正規化
+                s = CStr(ws.Cells(r, c).value): GoSub 正規化
                 If セルの字(s) <> "" And InStr(s, CStr(ki)) > 0 Then isSumRow = True
 skipS0:
             Next c
@@ -7268,7 +7268,7 @@ nextR0:
         rowEmpty = True
         For c = urFirstCol To urLastCol
             If c = insCol Then GoTo skipE2
-            If Not isEmpty(ws.Cells(r, c)) And セルの字(ws.Cells(r, c).Value) <> "" Then rowEmpty = False: Exit For
+            If Not isEmpty(ws.Cells(r, c)) And セルの字(ws.Cells(r, c).value) <> "" Then rowEmpty = False: Exit For
 skipE2:
         Next c
 
@@ -7276,7 +7276,7 @@ skipE2:
         For Each ki In sumKeywords
             For c = urFirstCol To urLastCol
                 If c = insCol Then GoTo skipS2
-                s = CStr(ws.Cells(r, c).Value): GoSub 正規化
+                s = CStr(ws.Cells(r, c).value): GoSub 正規化
                 If セルの字(s) <> "" And InStr(s, CStr(ki)) > 0 Then isSumRow = True
 skipS2:
             Next c
@@ -7286,7 +7286,7 @@ skipS2:
         If rowEmpty Or isSumRow Then
             ws.Cells(r, insCol).ClearContents
         Else
-            If IsNumeric(ws.Cells(r, selCol).Value) And VarType(ws.Cells(r, selCol).Value) <> vbString Then
+            If IsNumeric(ws.Cells(r, selCol).value) And VarType(ws.Cells(r, selCol).value) <> vbString Then
                 ws.Cells(r, insCol).Formula = "=" & selColLetter & r & "/SUM(" & sumRange & ")"
             Else
                 ws.Cells(r, insCol).Formula = "=IF(ISNUMBER(" & selColLetter & r & ")," & selColLetter & r & "/SUM(" & sumRange & "),"""")"
@@ -7297,7 +7297,7 @@ skipS2:
 
     ' 足した列の見た目は共通の下請けに任せる。見出しは元の表の見出しをまねる（2026-09-23）
     Dim 仕上げ末 As Long
-    仕上げ末 = ws.Cells(ws.rows.Count, insCol).End(xlUp).Row
+    仕上げ末 = ws.Cells(ws.rows.Count, insCol).End(xlUp).row
     If 仕上げ末 > hdrRow Then
         Set m仕上げ手本 = ws.Cells(hdrRow, selCol)
         Set m仕上げ範囲 = ws.Range(ws.Cells(hdrRow, insCol), ws.Cells(仕上げ末, insCol))
@@ -7317,10 +7317,10 @@ exitSub:
     ' cc 列の見出しの下が数の値かを数える（nNum/nAll）
     nNum = 0: nAll = 0
     For rr = hdrRow + 1 To urLastRow
-        If Not isEmpty(ws.Cells(rr, cc).Value) Then
-            If Not ws.Cells(rr, cc).HasFormula Or ws.Cells(rr, cc).Row <> urLastRow Then
+        If Not isEmpty(ws.Cells(rr, cc).value) Then
+            If Not ws.Cells(rr, cc).HasFormula Or ws.Cells(rr, cc).row <> urLastRow Then
                 nAll = nAll + 1
-                If VarType(ws.Cells(rr, cc).Value) = vbDouble Or VarType(ws.Cells(rr, cc).Value) = vbCurrency Then nNum = nNum + 1
+                If VarType(ws.Cells(rr, cc).value) = vbDouble Or VarType(ws.Cells(rr, cc).value) = vbCurrency Then nNum = nNum + 1
             End If
         End If
     Next rr
@@ -7370,17 +7370,17 @@ Sub 選んだ2列の増減額と増減率を足す()
         Exit Sub
     End If
 
-    hdrRow = sel1.Cells(1, 1).Row
+    hdrRow = sel1.Cells(1, 1).row
 
     ' 2 列とも数の列でなければ何もしない（課名と金額を選んで #VALUE! を並べた。2026-09-22）
     Dim chkC As Variant, rr As Long, nNum As Long, nAll As Long, urLast As Long
-    urLast = ws.UsedRange.Row + ws.UsedRange.rows.Count - 1
+    urLast = ws.UsedRange.row + ws.UsedRange.rows.Count - 1
     For Each chkC In Array(sel1.Column, sel2.Column)
         nNum = 0: nAll = 0
         For rr = hdrRow + 1 To urLast
-            If Not isEmpty(ws.Cells(rr, chkC).Value) And Not IsError(ws.Cells(rr, chkC).Value) Then
+            If Not isEmpty(ws.Cells(rr, chkC).value) And Not IsError(ws.Cells(rr, chkC).value) Then
                 nAll = nAll + 1
-                If VarType(ws.Cells(rr, chkC).Value) = vbDouble Or VarType(ws.Cells(rr, chkC).Value) = vbCurrency Then nNum = nNum + 1
+                If VarType(ws.Cells(rr, chkC).value) = vbDouble Or VarType(ws.Cells(rr, chkC).value) = vbCurrency Then nNum = nNum + 1
             End If
         Next rr
         If nAll = 0 Or nNum < nAll * 0.6 Then Exit Sub
@@ -7391,7 +7391,7 @@ Sub 選んだ2列の増減額と増減率を足す()
 
     ' 本文の最終行（見出し行の次から UsedRange の末尾まで）
     Dim urLastRow As Long
-    urLastRow = ws.UsedRange.Row + ws.UsedRange.rows.Count - 1
+    urLastRow = ws.UsedRange.row + ws.UsedRange.rows.Count - 1
     lastRow = 表の本文の最終行(ws)      ' 表の下のメモの行に式を書かない（2026-09-24 総点検）
 
     ' 既に「増減額」「増減率」の列があるか探す
@@ -7399,7 +7399,7 @@ Sub 選んだ2列の増減額と増減率を足す()
     Dim searchCol As Long
     For searchCol = 1 To lastCol
         Dim hv As String
-        hv = CStr(ws.Cells(hdrRow, searchCol).Value)
+        hv = CStr(ws.Cells(hdrRow, searchCol).value)
         If hv = "増減額" Then colD = searchCol
         If hv = "増減率" Then colE = searchCol
     Next searchCol
@@ -7407,7 +7407,7 @@ Sub 選んだ2列の増減額と増減率を足す()
     ' なければ右に追加
     If colD = 0 Then
         colD = lastCol + 1
-        ws.Cells(hdrRow, colD).Value = "増減額"
+        ws.Cells(hdrRow, colD).value = "増減額"
     End If
     If colE = 0 Then
         ' colE は colD の右
@@ -7418,10 +7418,10 @@ Sub 選んだ2列の増減額と増減率を足す()
             colE = colD + 1
             ' ただし colE に別の見出しがあれば lastCol+1 へ
             Dim hvE As String
-            hvE = CStr(ws.Cells(hdrRow, colE).Value)
+            hvE = CStr(ws.Cells(hdrRow, colE).value)
             If セルの字(hvE) <> "" And hvE <> "増減率" Then colE = lastCol + 1
         End If
-        ws.Cells(hdrRow, colE).Value = "増減率"
+        ws.Cells(hdrRow, colE).value = "増減率"
     End If
 
     ' 合計行キーワード
@@ -7434,7 +7434,7 @@ Sub 選んだ2列の増減額と増減率を足す()
         Dim rowEmpty As Boolean
         rowEmpty = True
         For c = ws.UsedRange.Column To lastCol
-            If セルの字(ws.Cells(r, c).Value) <> "" Then
+            If セルの字(ws.Cells(r, c).value) <> "" Then
                 rowEmpty = False
                 Exit For
             End If
@@ -7443,7 +7443,7 @@ Sub 選んだ2列の増減額と増減率を足す()
 
         ' 合計行チェック：最初の列の値が合計系語なら skip
         Dim firstVal As String
-        firstVal = CStr(ws.Cells(r, ws.UsedRange.Column).Value)
+        firstVal = CStr(ws.Cells(r, ws.UsedRange.Column).value)
         Dim isSumRow As Boolean
         isSumRow = False
         Dim si As Integer
@@ -7454,7 +7454,7 @@ Sub 選んだ2列の増減額と増減率を足す()
         If Not isSumRow Then
             For c = ws.UsedRange.Column To lastCol
                 Dim cv As String
-                cv = CStr(ws.Cells(r, c).Value)
+                cv = CStr(ws.Cells(r, c).value)
                 For si = 0 To 3
                     If cv = sumWords(si) Then isSumRow = True
                 Next si
@@ -7508,7 +7508,7 @@ Sub 日付から年度と月と四半期を足す()
     Set ws = ActiveSheet
     Set ur = ws.UsedRange
 
-    hdrRow = Selection.Cells(1, 1).Row
+    hdrRow = Selection.Cells(1, 1).row
 
     lastCol = ur.Column + ur.Columns.Count - 1
     lastRow = 表の本文の最終行(ws)      ' 表の下のメモの行に式を書かない（2026-09-24 総点検）
@@ -7537,7 +7537,7 @@ Sub 日付から年度と月と四半期を足す()
 
     colNendo = 0: colMonth = 0: colQuarter = 0
     For c = 1 To lastCol
-        s = Trim(CStr(ws.Cells(hdrRow, c).Value))
+        s = Trim(CStr(ws.Cells(hdrRow, c).value))
         If s = "年度" Then colNendo = c
         If s = "月" Then colMonth = c
         If s = "四半期" Then colQuarter = c
@@ -7545,15 +7545,15 @@ Sub 日付から年度と月と四半期を足す()
 
     If colNendo = 0 Then
         colNendo = lastCol + 1
-        ws.Cells(hdrRow, colNendo).Value = "年度"
+        ws.Cells(hdrRow, colNendo).value = "年度"
     End If
     If colMonth = 0 Then
         colMonth = colNendo + 1
-        ws.Cells(hdrRow, colMonth).Value = "月"
+        ws.Cells(hdrRow, colMonth).value = "月"
     End If
     If colQuarter = 0 Then
         colQuarter = colMonth + 1
-        ws.Cells(hdrRow, colQuarter).Value = "四半期"
+        ws.Cells(hdrRow, colQuarter).value = "四半期"
     End If
 
     ws.Cells(hdrRow, colNendo).NumberFormatLocal = "G/標準"
@@ -7568,7 +7568,7 @@ Sub 日付から年度と月と四半期を足す()
     For r = hdrRow + 1 To lastRow
         rowEmpty = True
         For cc = ur.Column To lastCol
-            If セルの字(ws.Cells(r, cc).Value) <> "" Then
+            If セルの字(ws.Cells(r, cc).value) <> "" Then
                 rowEmpty = False
                 Exit For
             End If
@@ -7577,7 +7577,7 @@ Sub 日付から年度と月と四半期を足す()
 
         isTotal = False
         For cc = ur.Column To lastCol
-            v = ws.Cells(r, cc).Value
+            v = ws.Cells(r, cc).value
             If VarType(v) = vbString Then
                 s = Trim(CStr(v))
                 If 集計の語か(s) Then
@@ -7604,7 +7604,7 @@ NextRow:
     Next r
     ' 足した 3 列の見た目は共通の下請けに任せる。見出しは元の表の見出しをまねる（2026-09-23）
     Dim 仕上げ末 As Long
-    仕上げ末 = ws.Cells(ws.rows.Count, colNendo).End(xlUp).Row
+    仕上げ末 = ws.Cells(ws.rows.Count, colNendo).End(xlUp).row
     If 仕上げ末 > hdrRow Then
         Set m仕上げ手本 = ws.Cells(hdrRow, selCol)
         Set m仕上げ範囲 = ws.Range(ws.Cells(hdrRow, colNendo), ws.Cells(仕上げ末, colQuarter))
@@ -7616,7 +7616,7 @@ NextRow:
     ' c 列の見出しの下が日付（日付の値・日付として読める文字）かを数える（nD/nA）
     nD = 0: nA = 0
     For rr = hdrRow + 1 To lastRow
-        v = ws.Cells(rr, c).Value
+        v = ws.Cells(rr, c).value
         If Not isEmpty(v) And Not IsError(v) Then
             nA = nA + 1
             If VarType(v) = vbDate Then
@@ -7658,7 +7658,7 @@ Sub 選んだ列の上位5件を右に抜き出す()
     Set ws = ActiveSheet
     Set ur = ws.UsedRange
 
-    hdrRow = Selection.Cells(1, 1).Row
+    hdrRow = Selection.Cells(1, 1).row
     ' 選んだ列のうち数の列を使う。数の列を選んでいなければ表の右端の数の列。無ければ何もしない
     ' （番号・課名の列で LARGE を組んで #NUM! を並べた。2026-09-22）
     Dim ar As Object, rr As Long, nNum As Long, nAll As Long
@@ -7682,15 +7682,15 @@ Sub 選んだ列の上位5件を右に抜き出す()
     If selCol = 0 Then Exit Sub
 
     lastRow = hdrRow
-    For i = hdrRow + 1 To ur.Row + ur.rows.Count - 1
-        s = Trim(CStr(ws.Cells(i, selCol).Value))
+    For i = hdrRow + 1 To ur.row + ur.rows.Count - 1
+        s = Trim(CStr(ws.Cells(i, selCol).value))
         If セルの字(s) <> "" Then
             Dim isSum As Boolean
             isSum = False
             Dim checkC As Long
             For checkC = ur.Column To ur.Column + ur.Columns.Count - 1
                 Dim sv As String
-                sv = Trim(CStr(ws.Cells(i, checkC).Value))
+                sv = Trim(CStr(ws.Cells(i, checkC).value))
                 If 集計の語か(sv) Then
                     isSum = True
                     Exit For
@@ -7707,7 +7707,7 @@ Sub 選んだ列の上位5件を右に抜き出す()
         For i = hdrRow + 1 To hdrRow + 3
             If i > lastRow Then Exit For
             Dim v As Variant
-            v = ws.Cells(i, c).Value
+            v = ws.Cells(i, c).value
             If セルの字(v) <> "" Then
                 hasVal = True
                 If IsNumeric(v) And Not IsDate(v) Then isText = False
@@ -7724,7 +7724,7 @@ Sub 選んだ列の上位5件を右に抜き出す()
     Dim bodyCount As Long
     bodyCount = 0
     For i = hdrRow + 1 To lastRow
-        If セルの字(ws.Cells(i, selCol).Value) <> "" Then bodyCount = bodyCount + 1
+        If セルの字(ws.Cells(i, selCol).value) <> "" Then bodyCount = bodyCount + 1
     Next i
     topCount = bodyCount
     If topCount > 5 Then topCount = 5
@@ -7733,16 +7733,16 @@ Sub 選んだ列の上位5件を右に抜き出す()
     urEnd = ur.Column + ur.Columns.Count - 1
 
     Dim selHdr As String
-    selHdr = CStr(ws.Cells(hdrRow, selCol).Value)
+    selHdr = CStr(ws.Cells(hdrRow, selCol).value)
     Dim itemHdr As String
-    itemHdr = CStr(ws.Cells(hdrRow, itemCol).Value)
+    itemHdr = CStr(ws.Cells(hdrRow, itemCol).value)
 
     Dim candidateCol As Long
     candidateCol = -1
     For c = urEnd To ur.Column Step -1
-        If Trim(セルの字(ws.Cells(hdrRow, c).Value)) = selHdr Then
+        If Trim(セルの字(ws.Cells(hdrRow, c).value)) = selHdr Then
             If c > ur.Column Then
-                If Trim(セルの字(ws.Cells(hdrRow, c - 1).Value)) = itemHdr Then
+                If Trim(セルの字(ws.Cells(hdrRow, c - 1).value)) = itemHdr Then
                     If c <> selCol Then
                         candidateCol = c - 1
                         Exit For
@@ -7773,8 +7773,8 @@ Sub 選んだ列の上位5件を右に抜き出す()
     outItemCol = outStartCol
     outNumCol = outStartCol + 1
 
-    ws.Cells(hdrRow, outItemCol).Value = itemHdr
-    ws.Cells(hdrRow, outNumCol).Value = selHdr
+    ws.Cells(hdrRow, outItemCol).value = itemHdr
+    ws.Cells(hdrRow, outNumCol).value = selHdr
 
     For k = 1 To topCount
         Dim outR As Long
@@ -7791,7 +7791,7 @@ Sub 選んだ列の上位5件を右に抜き出す()
 
     Dim clearR As Long
     For clearR = hdrRow + topCount + 1 To hdrRow + 10
-        If セルの字(ws.Cells(clearR, outItemCol).Value) = "" And セルの字(ws.Cells(clearR, outNumCol).Value) = "" Then Exit For
+        If セルの字(ws.Cells(clearR, outItemCol).value) = "" And セルの字(ws.Cells(clearR, outNumCol).value) = "" Then Exit For
         ws.Cells(clearR, outItemCol).ClearContents
         ws.Cells(clearR, outNumCol).ClearContents
     Next clearR
@@ -7820,10 +7820,10 @@ colLetter:
 数の列か:
     ' c 列の見出しの下が数の値かを数える（nNum/nAll）
     nNum = 0: nAll = 0
-    For rr = hdrRow + 1 To ur.Row + ur.rows.Count - 1
-        If Not isEmpty(ws.Cells(rr, c).Value) And Not IsError(ws.Cells(rr, c).Value) Then
+    For rr = hdrRow + 1 To ur.row + ur.rows.Count - 1
+        If Not isEmpty(ws.Cells(rr, c).value) And Not IsError(ws.Cells(rr, c).value) Then
             nAll = nAll + 1
-            If VarType(ws.Cells(rr, c).Value) = vbDouble Or VarType(ws.Cells(rr, c).Value) = vbCurrency Then nNum = nNum + 1
+            If VarType(ws.Cells(rr, c).value) = vbDouble Or VarType(ws.Cells(rr, c).value) = vbCurrency Then nNum = nNum + 1
         End If
     Next rr
     Return
@@ -7870,7 +7870,7 @@ Sub 区分の切れ目に小計行を挿入する()
     Set ws = ActiveSheet
     Set sel = Selection
 
-    hdrRow = sel.Cells(1, 1).Row
+    hdrRow = sel.Cells(1, 1).row
     grpCol = sel.Cells(1, 1).Column
     firstDataRow = hdrRow + 1
 
@@ -7889,10 +7889,10 @@ Sub 区分の切れ目に小計行を挿入する()
     ' 下の合計を見つけられず、合計の式が消した小計を指して #REF! になった（2026-09-24 棚の試験 F9）
     Dim scanFrom As Long
     scanFrom = lastUsedRow + 3
-    If scanFrom > ws.UsedRange.Row + ws.UsedRange.rows.Count - 1 Then scanFrom = ws.UsedRange.Row + ws.UsedRange.rows.Count - 1
+    If scanFrom > ws.UsedRange.row + ws.UsedRange.rows.Count - 1 Then scanFrom = ws.UsedRange.row + ws.UsedRange.rows.Count - 1
     For i = scanFrom To firstDataRow Step -1
         For cc = usedLeft To usedLeft + nCols - 1
-            s = CStr(ws.Cells(i, cc).Value): GoSub 正規化
+            s = CStr(ws.Cells(i, cc).value): GoSub 正規化
             ' 合計の行＝集計の語（小計は除く）。「計」で始まるだけの字（計画課・計量器）を合計の行と見て、その課の行を
             ' 小計どうしの和で上書きしていた（2026-09-24 総点検）
             If 集計の語か(s) And Right$(Replace(Replace(s, " ", ""), "　", ""), 2) <> "小計" Then
@@ -7917,7 +7917,7 @@ Sub 区分の切れ目に小計行を挿入する()
     Dim hadSub As Boolean, subBold As Variant, subFillIdx As Variant, subFill As Variant
     i = lastRow
     Do While i >= firstDataRow
-        s = CStr(ws.Cells(i, grpCol).Value)
+        s = CStr(ws.Cells(i, grpCol).value)
         Dim sN As String
         sN = Trim$(s)
         If Len(sN) >= 3 And Right$(sN, 2) = "小計" Then
@@ -7940,7 +7940,7 @@ Sub 区分の切れ目に小計行を挿入する()
     ReDim sumRanges(1 To nCols)
     For c = 1 To nCols
         colIdx = usedLeft + c - 1
-        hdrS = CStr(ws.Cells(hdrRow, colIdx).Value)
+        hdrS = CStr(ws.Cells(hdrRow, colIdx).value)
         skipCol = False
         Dim hdrU As String
         hdrU = UCase(hdrS)
@@ -7973,7 +7973,7 @@ Sub 区分の切れ目に小計行を挿入する()
         Next k
         If Not skipCol Then
             For j = firstDataRow To lastRow
-                cv = ws.Cells(j, colIdx).Value
+                cv = ws.Cells(j, colIdx).value
                 If CStr(cv) <> "" Then
                     fmt = ws.Cells(j, colIdx).NumberFormat
                     If InStr(fmt, "%") > 0 Then skipCol = True
@@ -7984,7 +7984,7 @@ Sub 区分の切れ目に小計行を挿入する()
         isNumCol = False
         If Not skipCol Then
             For j = firstDataRow To lastRow
-                cv = ws.Cells(j, colIdx).Value
+                cv = ws.Cells(j, colIdx).value
                 If IsNumeric(cv) And CStr(cv) <> "" Then
                     isNumCol = True
                     Exit For
@@ -7997,9 +7997,9 @@ Sub 区分の切れ目に小計行を挿入する()
     ' グループ境界を収集
     bCount = 0
     ReDim boundaries(1 To lastRow - firstDataRow + 2)
-    curGrp = CStr(ws.Cells(firstDataRow, grpCol).Value)
+    curGrp = CStr(ws.Cells(firstDataRow, grpCol).value)
     For i = firstDataRow + 1 To lastRow
-        s = CStr(ws.Cells(i, grpCol).Value)
+        s = CStr(ws.Cells(i, grpCol).value)
         If s <> curGrp Then
             bCount = bCount + 1
             boundaries(bCount) = i - 1
@@ -8017,11 +8017,11 @@ Sub 区分の切れ目に小計行を挿入する()
         Else
             bStart = boundaries(j - 1) + 1
         End If
-        grpVal = CStr(ws.Cells(bStart, grpCol).Value)
+        grpVal = CStr(ws.Cells(bStart, grpCol).value)
 
         ws.rows(insertAfter + 1).Insert Shift:=xlDown
 
-        ws.Cells(insertAfter + 1, grpCol).Value = grpVal & " 小計"
+        ws.Cells(insertAfter + 1, grpCol).value = grpVal & " 小計"
         If hadSub Then
             With ws.Range(ws.Cells(insertAfter + 1, usedLeft), ws.Cells(insertAfter + 1, usedLeft + nCols - 1))
                 If Not IsNull(subBold) Then .Font.Bold = subBold
@@ -8101,7 +8101,7 @@ Sub 選んだ列の右に順位列を足す()
 
     Dim selCol As Long
     Dim hdrRow As Long
-    hdrRow = Selection.Cells(1, 1).Row
+    hdrRow = Selection.Cells(1, 1).row
     ' 選んだ列のうち数の列を使う。数の列を選んでいなければ表の右端の数の列。無ければ何もしない（文字の列に RANK を書いて #VALUE! を並べた。2026-09-22）
     Dim urS As Range, ar As Range, cc As Long, rr As Long, nNum As Long, nAll As Long
     Set urS = ws.UsedRange
@@ -8129,7 +8129,7 @@ Sub 選んだ列の右に順位列を足す()
 
     Dim needInsert As Boolean
     needInsert = True
-    If ws.Cells(hdrRow, rankCol).Value = "順位" Then
+    If ws.Cells(hdrRow, rankCol).value = "順位" Then
         needInsert = False
     End If
 
@@ -8137,7 +8137,7 @@ Sub 選んだ列の右に順位列を足す()
         ws.Columns(rankCol).Insert Shift:=xlToRight
     End If
 
-    ws.Cells(hdrRow, rankCol).Value = "順位"
+    ws.Cells(hdrRow, rankCol).value = "順位"
 
     Dim ur As Range
     Set ur = ws.UsedRange
@@ -8166,7 +8166,7 @@ Sub 選んだ列の右に順位列を足す()
         Dim isSum As Boolean
         isSum = False
         For c2 = firstCol To lastCol
-            s = CStr(ws.Cells(r, c2).Value)
+            s = CStr(ws.Cells(r, c2).value)
             GoSub 正規化
             If 集計の語か(s) Then
                 isSum = True
@@ -8183,11 +8183,11 @@ Sub 選んだ列の右に順位列を足す()
     rangeAddr = "$" & colLetter & "$" & firstDataRow & ":$" & colLetter & "$" & endDataRow
 
     For r = firstDataRow To lastRow
-        If セルの字(ws.Cells(r, selCol).Value) = "" Then GoTo NextRow
+        If セルの字(ws.Cells(r, selCol).value) = "" Then GoTo NextRow
 
         isSum = False
         For c2 = firstCol To lastCol
-            s = CStr(ws.Cells(r, c2).Value)
+            s = CStr(ws.Cells(r, c2).value)
             GoSub 正規化
             If 集計の語か(s) Then
                 isSum = True
@@ -8199,7 +8199,7 @@ Sub 選んだ列の右に順位列を足す()
         Dim cellAddr As String
         ' 行は相対参照（テーブルの列に書くと 1 本の式が列全体に広がるので、$F$12 のように行まで固定すると全行が最後の行を指した）
         cellAddr = "$" & colLetter & r
-        If IsNumeric(ws.Cells(r, selCol).Value) And VarType(ws.Cells(r, selCol).Value) <> vbString Then
+        If IsNumeric(ws.Cells(r, selCol).value) And VarType(ws.Cells(r, selCol).value) <> vbString Then
             ws.Cells(r, rankCol).Formula = "=RANK.EQ(" & cellAddr & "," & rangeAddr & ",0)"
         Else
             ws.Cells(r, rankCol).Formula = "=IF(ISNUMBER(" & cellAddr & "),RANK.EQ(" & cellAddr & "," & rangeAddr & ",0),"""")"
@@ -8209,7 +8209,7 @@ NextRow:
     Next r
     ' 足した列の見た目は共通の下請けに任せる。見出しは元の表の見出しをまねる（2026-09-23）
     Dim 仕上げ末 As Long
-    仕上げ末 = ws.Cells(ws.rows.Count, rankCol).End(xlUp).Row
+    仕上げ末 = ws.Cells(ws.rows.Count, rankCol).End(xlUp).row
     If 仕上げ末 > hdrRow Then
         Set m仕上げ手本 = ws.Cells(hdrRow, selCol)
         Set m仕上げ範囲 = ws.Range(ws.Cells(hdrRow, rankCol), ws.Cells(仕上げ末, rankCol))
@@ -8226,9 +8226,9 @@ NextRow:
     ' cc 列の見出しの下が数の値かを数える（nNum/nAll）
     nNum = 0: nAll = 0
     For rr = hdrRow + 1 To 表の本文の最終行(ws)
-        If Not isEmpty(ws.Cells(rr, cc).Value) And Not IsError(ws.Cells(rr, cc).Value) Then
+        If Not isEmpty(ws.Cells(rr, cc).value) And Not IsError(ws.Cells(rr, cc).value) Then
             nAll = nAll + 1
-            If VarType(ws.Cells(rr, cc).Value) = vbDouble Or VarType(ws.Cells(rr, cc).Value) = vbCurrency Then nNum = nNum + 1
+            If VarType(ws.Cells(rr, cc).value) = vbDouble Or VarType(ws.Cells(rr, cc).value) = vbCurrency Then nNum = nNum + 1
         End If
     Next rr
     Return
@@ -8265,24 +8265,24 @@ Sub 選んだ2列の平均最大最小を作る()
     Set rng2 = Selection.Areas(2)
 
     ' 見出し行は Selection.Cells(1,1).Row
-    hdrRow = Selection.Cells(1, 1).Row
+    hdrRow = Selection.Cells(1, 1).row
 
     ' 1つ目=項目列、2つ目=数列（逆の順に選んだとき＝1 つ目が数・2 つ目が文字なら入れ替える）
     itemCol = rng1.Column
     numCol = rng2.Column
-    If VarType(ws.Cells(hdrRow + 1, itemCol).Value) = vbDouble And VarType(ws.Cells(hdrRow + 1, numCol).Value) = vbString Then
+    If VarType(ws.Cells(hdrRow + 1, itemCol).value) = vbDouble And VarType(ws.Cells(hdrRow + 1, numCol).value) = vbString Then
         itemCol = rng2.Column
         numCol = rng1.Column
     End If
 
     ' 見出し
-    itemHdr = CStr(ws.Cells(hdrRow, itemCol).Value)
-    numHdr = CStr(ws.Cells(hdrRow, numCol).Value)
+    itemHdr = CStr(ws.Cells(hdrRow, itemCol).value)
+    numHdr = CStr(ws.Cells(hdrRow, numCol).value)
 
     ' 本文の最終行を求める（合計行を除く）
     ' UsedRangeの最終行
     Dim urLastRow As Long
-    urLastRow = ws.UsedRange.Row + ws.UsedRange.rows.Count - 1
+    urLastRow = ws.UsedRange.row + ws.UsedRange.rows.Count - 1
 
     dataStart = hdrRow + 1
     dataEnd = 0
@@ -8290,10 +8290,10 @@ Sub 選んだ2列の平均最大最小を作る()
     ' 数列で値がある最後の行を探す（合計行除外）
     Dim s As String
     For r = urLastRow To dataStart Step -1
-        cellVal = ws.Cells(r, numCol).Value
+        cellVal = ws.Cells(r, numCol).value
         If セルの字(cellVal) <> "" Then
             ' 合計行チェック（項目列）
-            s = CStr(ws.Cells(r, itemCol).Value)
+            s = CStr(ws.Cells(r, itemCol).value)
             s = Trim$(StrConv(s, vbNarrow))
             If 集計の語か(s) Then
                 ' skip
@@ -8310,13 +8310,13 @@ Sub 選んだ2列の平均最大最小を作る()
     Dim leftCol As Long
     ' 左端＝見出しの行で最初に値のある列（表題が A1・表が C3 からのとき、右端を 0 列と取り違えて元の表に書いた。2026-09-22）
     leftCol = ws.UsedRange.Column
-    Do While leftCol < itemCol And Trim(セルの字(ws.Cells(hdrRow, leftCol).Value)) = ""
+    Do While leftCol < itemCol And Trim(セルの字(ws.Cells(hdrRow, leftCol).value)) = ""
         leftCol = leftCol + 1
     Loop
     Dim rightEndCol As Long
     rightEndCol = leftCol
     For c = leftCol To leftCol + ws.UsedRange.Columns.Count + 10
-        If セルの字(ws.Cells(hdrRow, c).Value) = "" Then
+        If セルの字(ws.Cells(hdrRow, c).value) = "" Then
             rightEndCol = c - 1
             Exit For
         End If
@@ -8326,7 +8326,7 @@ Sub 選んだ2列の平均最大最小を作る()
     outCol = 右の出し先(ws, hdrRow, rightEndCol + 2, 3, "指標")   ' 右に別の物があれば避ける（2026-09-23）
 
     ' 既に同じ表があれば消す（見出し行のoutCol="指標"かチェック）
-    If セルの字(ws.Cells(hdrRow, outCol).Value) = "指標" Then
+    If セルの字(ws.Cells(hdrRow, outCol).value) = "指標" Then
         ws.Cells(hdrRow, outCol).Resize(4, 3).ClearContents
     End If
 
@@ -8344,24 +8344,24 @@ Sub 選んだ2列の平均最大最小を作る()
               "$" & dataEnd
 
     ' 見出し行
-    ws.Cells(hdrRow, outCol).Value = "指標"
-    ws.Cells(hdrRow, outCol + 1).Value = numHdr
-    ws.Cells(hdrRow, outCol + 2).Value = itemHdr
+    ws.Cells(hdrRow, outCol).value = "指標"
+    ws.Cells(hdrRow, outCol + 1).value = numHdr
+    ws.Cells(hdrRow, outCol + 2).value = itemHdr
 
     ' 平均行
-    ws.Cells(hdrRow + 1, outCol).Value = "平均"
+    ws.Cells(hdrRow + 1, outCol).value = "平均"
     ws.Cells(hdrRow + 1, outCol + 1).Formula = "=AVERAGE(" & numRng & ")"
     ws.Cells(hdrRow + 1, outCol + 1).NumberFormat = "#,##0"
-    ws.Cells(hdrRow + 1, outCol + 2).Value = ""
+    ws.Cells(hdrRow + 1, outCol + 2).value = ""
 
     ' 最大行
-    ws.Cells(hdrRow + 2, outCol).Value = "最大"
+    ws.Cells(hdrRow + 2, outCol).value = "最大"
     ws.Cells(hdrRow + 2, outCol + 1).Formula = "=MAX(" & numRng & ")"
     ws.Cells(hdrRow + 2, outCol + 1).NumberFormat = "#,##0"
     ws.Cells(hdrRow + 2, outCol + 2).Formula = "=INDEX(" & itemRng & ",MATCH(MAX(" & numRng & ")," & numRng & ",0))"
 
     ' 最小行
-    ws.Cells(hdrRow + 3, outCol).Value = "最小"
+    ws.Cells(hdrRow + 3, outCol).value = "最小"
     ws.Cells(hdrRow + 3, outCol + 1).Formula = "=MIN(" & numRng & ")"
     ws.Cells(hdrRow + 3, outCol + 1).NumberFormat = "#,##0"
     ws.Cells(hdrRow + 3, outCol + 2).Formula = "=INDEX(" & itemRng & ",MATCH(MIN(" & numRng & ")," & numRng & ",0))"
@@ -8385,7 +8385,7 @@ Sub 選んだ列の度数分布表を右に作る()
 
     Dim selCol As Long
     Dim hdrRow As Long
-    hdrRow = Selection.Cells(1, 1).Row
+    hdrRow = Selection.Cells(1, 1).row
 
     Dim ur As Range
     Set ur = ws.UsedRange
@@ -8423,7 +8423,7 @@ Sub 選んだ列の度数分布表を右に作る()
         Dim cc2 As Long
         For cc2 = ur.Column To ur.Column + ur.Columns.Count - 1
             Dim cv2 As String
-            cv2 = Trim(CStr(ws.Cells(r, cc2).Value))
+            cv2 = Trim(CStr(ws.Cells(r, cc2).value))
             If 集計の語か(cv2) Then
                 isTotalRow = True
                 Exit For
@@ -8435,7 +8435,7 @@ Sub 選んだ列の度数分布表を右に作る()
             hasNum = False
             Dim cc3 As Long
             For cc3 = ur.Column To ur.Column + ur.Columns.Count - 1
-                If IsNumeric(ws.Cells(r, cc3).Value) And セルの字(ws.Cells(r, cc3).Value) <> "" Then
+                If IsNumeric(ws.Cells(r, cc3).value) And セルの字(ws.Cells(r, cc3).value) <> "" Then
                     hasNum = True
                     Exit For
                 End If
@@ -8444,7 +8444,7 @@ Sub 選んだ列の度数分布表を右に作る()
             Dim anyVal As Boolean
             anyVal = False
             For cc3 = ur.Column To ur.Column + ur.Columns.Count - 1
-                If Trim(セルの字(ws.Cells(r, cc3).Value)) <> "" Then
+                If Trim(セルの字(ws.Cells(r, cc3).value)) <> "" Then
                     anyVal = True
                     Exit For
                 End If
@@ -8463,16 +8463,16 @@ Sub 選んだ列の度数分布表を右に作る()
         Dim cx As Long
         For cx = ur.Column To ur.Column + ur.Columns.Count - 1
             Dim cvx As String
-            cvx = Trim(CStr(ws.Cells(r, cx).Value))
+            cvx = Trim(CStr(ws.Cells(r, cx).value))
             If 集計の語か(cvx) Then
                 isTR = True
                 Exit For
             End If
         Next cx
         If Not isTR Then
-            If IsNumeric(ws.Cells(r, selCol).Value) And セルの字(ws.Cells(r, selCol).Value) <> "" Then
+            If IsNumeric(ws.Cells(r, selCol).value) And セルの字(ws.Cells(r, selCol).value) <> "" Then
                 Dim v As Double
-                v = CDbl(ws.Cells(r, selCol).Value)
+                v = CDbl(ws.Cells(r, selCol).value)
                 If v > maxVal Then maxVal = v
             End If
         End If
@@ -8513,14 +8513,14 @@ Sub 選んだ列の度数分布表を右に作る()
     Dim leftCol As Long
     ' 左端＝見出しの行で最初に値のある列（表題が A1 にあり表が C3 から始まるとき、A 列から数えて右端を 0 列と取り違え、元の表に書いた。2026-09-22）
     leftCol = ur.Column
-    Do While leftCol < ur.Column + ur.Columns.Count - 1 And Trim(セルの字(ws.Cells(hdrRow, leftCol).Value)) = ""
+    Do While leftCol < ur.Column + ur.Columns.Count - 1 And Trim(セルの字(ws.Cells(hdrRow, leftCol).value)) = ""
         leftCol = leftCol + 1
     Loop
     Dim rightEnd As Long
     rightEnd = leftCol
     Dim c As Long
     For c = leftCol To leftCol + ur.Columns.Count + 10
-        If Trim(セルの字(ws.Cells(hdrRow, c).Value)) = "" Then
+        If Trim(セルの字(ws.Cells(hdrRow, c).value)) = "" Then
             rightEnd = c - 1
             Exit For
         End If
@@ -8532,9 +8532,9 @@ Sub 選んだ列の度数分布表を右に作る()
     ' 既存の同じ表があればクリア
     Dim cc As Long
     For cc = outCol To outCol + 50
-        If セルの字(ws.Cells(hdrRow, cc).Value) = "以上" And _
-           CStr(ws.Cells(hdrRow, cc + 1).Value) = "未満" And _
-           CStr(ws.Cells(hdrRow, cc + 2).Value) = "件数" Then
+        If セルの字(ws.Cells(hdrRow, cc).value) = "以上" And _
+           CStr(ws.Cells(hdrRow, cc + 1).value) = "未満" And _
+           CStr(ws.Cells(hdrRow, cc + 2).value) = "件数" Then
             ws.Range(ws.Cells(hdrRow, cc), ws.Cells(hdrRow + numBins + 20, cc + 2)).ClearContents
             outCol = cc
             Exit For
@@ -8542,9 +8542,9 @@ Sub 選んだ列の度数分布表を右に作る()
     Next cc
 
     ' 見出し
-    ws.Cells(hdrRow, outCol).Value = "以上"
-    ws.Cells(hdrRow, outCol + 1).Value = "未満"
-    ws.Cells(hdrRow, outCol + 2).Value = "件数"
+    ws.Cells(hdrRow, outCol).value = "以上"
+    ws.Cells(hdrRow, outCol + 1).value = "未満"
+    ws.Cells(hdrRow, outCol + 2).value = "件数"
 
     ' 本文範囲アドレス（絶対参照）
     Dim colLetter As String
@@ -8562,9 +8562,9 @@ Sub 選んだ列の度数分布表を右に作る()
         Dim outRow As Long
         outRow = hdrRow + 1 + i
 
-        ws.Cells(outRow, outCol).Value = lowerVal
+        ws.Cells(outRow, outCol).value = lowerVal
         ws.Cells(outRow, outCol).NumberFormat = "#,##0"
-        ws.Cells(outRow, outCol + 1).Value = upperVal
+        ws.Cells(outRow, outCol + 1).value = upperVal
         ws.Cells(outRow, outCol + 1).NumberFormat = "#,##0"
 
         Dim lowerAddr As String
@@ -8584,9 +8584,9 @@ Sub 選んだ列の度数分布表を右に作る()
     ' cs 列の見出しの下が数の値かを数える（合計行の式も数に数える）
     nNum = 0: nAll = 0
     For rr = hdrRow + 1 To 表の本文の最終行(ws)
-        If Not isEmpty(ws.Cells(rr, cs).Value) And Not IsError(ws.Cells(rr, cs).Value) Then
+        If Not isEmpty(ws.Cells(rr, cs).value) And Not IsError(ws.Cells(rr, cs).value) Then
             nAll = nAll + 1
-            If VarType(ws.Cells(rr, cs).Value) = vbDouble Or VarType(ws.Cells(rr, cs).Value) = vbCurrency Then nNum = nNum + 1
+            If VarType(ws.Cells(rr, cs).value) = vbDouble Or VarType(ws.Cells(rr, cs).value) = vbCurrency Then nNum = nNum + 1
         End If
     Next rr
     Return
@@ -8619,14 +8619,14 @@ Sub 生年月日から年齢と勤続年数を足す()
 
     ' 見出し行 = Selection.Cells(1,1).Row
     Dim hdrRow As Long
-    hdrRow = Selection.Cells(1, 1).Row
+    hdrRow = Selection.Cells(1, 1).row
 
     ' 2 列とも日付の列でなければ何もしない（課名・金額を生年月日として DATEDIF を書き #VALUE! を並べた。2026-09-22）
     Dim chkC As Variant, rr As Long, nD As Long, nA As Long, vv As Variant
     For Each chkC In Array(colDOB, colHire)
         nD = 0: nA = 0
-        For rr = hdrRow + 1 To ws.UsedRange.Row + ws.UsedRange.rows.Count - 1
-            vv = ws.Cells(rr, chkC).Value
+        For rr = hdrRow + 1 To ws.UsedRange.row + ws.UsedRange.rows.Count - 1
+            vv = ws.Cells(rr, chkC).value
             If Not isEmpty(vv) And Not IsError(vv) Then
                 nA = nA + 1
                 If VarType(vv) = vbDate Then
@@ -8647,13 +8647,13 @@ Sub 生年月日から年齢と勤続年数を足す()
     Set ur = ws.UsedRange
     Dim urC As Long, urR As Long
     urC = ur.Column
-    urR = ur.Row
+    urR = ur.row
 
     Dim i As Long, j As Long
     For i = urR To hdrRow - 1
         For j = urC To urC + ur.Columns.Count - 1
             Dim cv As String
-            cv = CStr(ws.Cells(i, j).Value)
+            cv = CStr(ws.Cells(i, j).value)
             If Left(cv, 3) = "基準日" Then
                 baseRef = ws.Cells(i, j + 1).Address(True, True)
                 GoTo FoundBase
@@ -8666,13 +8666,13 @@ FoundBase:
     ' 左端＝見出しの行で最初に値のある列（表題が A1・表が B3 からのとき、A 列から数えて表の 1 列目に年齢を書いていた・2026-09-24 総点検）
     Dim leftCol As Long
     leftCol = ur.Column
-    Do While leftCol < ur.Column + ur.Columns.Count - 1 And セルの字(ws.Cells(hdrRow, leftCol).Value) = ""
+    Do While leftCol < ur.Column + ur.Columns.Count - 1 And セルの字(ws.Cells(hdrRow, leftCol).value) = ""
         leftCol = leftCol + 1
     Loop
     Dim rightCol As Long
     rightCol = leftCol
     For j = leftCol To leftCol + ur.Columns.Count - 1
-        If セルの字(ws.Cells(hdrRow, j).Value) = "" Then
+        If セルの字(ws.Cells(hdrRow, j).value) = "" Then
             rightCol = j - 1
             Exit For
         End If
@@ -8685,7 +8685,7 @@ FoundBase:
     colSvc = 0
     For j = leftCol To leftCol + ur.Columns.Count - 1
         Dim hv As String
-        hv = CStr(ws.Cells(hdrRow, j).Value)
+        hv = CStr(ws.Cells(hdrRow, j).value)
         If hv = "年齢" Then colAge = j
         If hv = "勤続年数" Then colSvc = j
     Next j
@@ -8695,8 +8695,8 @@ FoundBase:
     If colSvc = 0 Then colSvc = colAge + 1
 
     ' 見出しを書く
-    ws.Cells(hdrRow, colAge).Value = "年齢"
-    ws.Cells(hdrRow, colSvc).Value = "勤続年数"
+    ws.Cells(hdrRow, colAge).value = "年齢"
+    ws.Cells(hdrRow, colSvc).value = "勤続年数"
 
     ' 本文の最終行を求める（表の下のメモの行に式を書かない・2026-09-24 総点検）
     Dim lastRow As Long
@@ -8715,24 +8715,24 @@ FoundBase:
         Dim rowEmpty As Boolean
         rowEmpty = True
         For j = leftCol To rightCol
-            If セルの字(ws.Cells(i, j).Value) <> "" Then
+            If セルの字(ws.Cells(i, j).value) <> "" Then
                 rowEmpty = False
                 Exit For
             End If
         Next j
         If rowEmpty Then
-            ws.Cells(i, colAge).Value = ""
-            ws.Cells(i, colSvc).Value = ""
+            ws.Cells(i, colAge).value = ""
+            ws.Cells(i, colSvc).value = ""
         Else
             ' 年齢
-            If セルの字(ws.Cells(i, colDOB).Value) = "" Then
-                ws.Cells(i, colAge).Value = ""
+            If セルの字(ws.Cells(i, colDOB).value) = "" Then
+                ws.Cells(i, colAge).value = ""
             Else
                 ws.Cells(i, colAge).Formula = "=IFERROR(DATEDIF(" & ws.Cells(i, colDOB).Address(False, False) & "," & basePart & ",""Y""),"""")"
             End If
             ' 勤続年数
-            If セルの字(ws.Cells(i, colHire).Value) = "" Then
-                ws.Cells(i, colSvc).Value = ""
+            If セルの字(ws.Cells(i, colHire).value) = "" Then
+                ws.Cells(i, colSvc).value = ""
             Else
                 ws.Cells(i, colSvc).Formula = "=IFERROR(DATEDIF(" & ws.Cells(i, colHire).Address(False, False) & "," & basePart & ",""Y""),"""")"
             End If
@@ -8740,7 +8740,7 @@ FoundBase:
     Next i
     ' 足した列の見た目は共通の下請けに任せる。見出しは元の表の見出しをまねる（2026-09-23）
     Dim 仕上げ末 As Long
-    仕上げ末 = ws.Cells(ws.rows.Count, colAge).End(xlUp).Row
+    仕上げ末 = ws.Cells(ws.rows.Count, colAge).End(xlUp).row
     If 仕上げ末 > hdrRow Then
         Set m仕上げ手本 = ws.Cells(hdrRow, colDOB)
         Set m仕上げ範囲 = ws.Range(ws.Cells(hdrRow, colAge), ws.Cells(仕上げ末, colSvc))
@@ -8763,7 +8763,7 @@ Sub 各行の右にスパークラインを足す()
     Dim ur As Range
     Set ur = ws.UsedRange
     Dim urTop As Long, urLeft As Long, urRight As Long, urBottom As Long
-    urTop = ur.Row
+    urTop = ur.row
     urLeft = ur.Column
     urRight = ur.Column + ur.Columns.Count - 1
     urBottom = 表の本文の最終行(ws)
@@ -8775,7 +8775,7 @@ Sub 各行の右にスパークラインを足す()
         Dim nonEmpty As Long
         nonEmpty = 0
         For c = urLeft To urRight
-            If セルの字(ws.Cells(r, c).Value) <> "" Then nonEmpty = nonEmpty + 1
+            If セルの字(ws.Cells(r, c).value) <> "" Then nonEmpty = nonEmpty + 1
         Next c
         If nonEmpty >= 2 Then
             hdrRow = r
@@ -8786,12 +8786,12 @@ Sub 各行の右にスパークラインを足す()
 
     Dim tableRight As Long
     ' 左端＝見出しの行で最初に値のある列（表題が A1・表が C3 からのとき何もしなかった。2026-09-22）
-    Do While urLeft < urRight And セルの字(ws.Cells(hdrRow, urLeft).Value) = ""
+    Do While urLeft < urRight And セルの字(ws.Cells(hdrRow, urLeft).value) = ""
         urLeft = urLeft + 1
     Loop
     tableRight = urLeft - 1
     For c = urLeft To urRight
-        If セルの字(ws.Cells(hdrRow, c).Value) = "" Then Exit For
+        If セルの字(ws.Cells(hdrRow, c).value) = "" Then Exit For
         tableRight = c
     Next c
     If tableRight < urLeft Then Exit Sub
@@ -8804,9 +8804,9 @@ Sub 各行の右にスパークラインを足す()
         Dim hasVal As Boolean
         hasVal = False
         For r = hdrRow + 1 To urBottom
-            If セルの字(ws.Cells(r, c).Value) <> "" Then
+            If セルの字(ws.Cells(r, c).value) <> "" Then
                 hasVal = True
-                If IsNumeric(ws.Cells(r, c).Value) And Not IsDate(ws.Cells(r, c).Value) Then
+                If IsNumeric(ws.Cells(r, c).value) And Not IsDate(ws.Cells(r, c).value) Then
                     allText = False
                     Exit For
                 End If
@@ -8824,14 +8824,14 @@ Sub 各行の右にスパークラインを足す()
     dataLast = 0
     For c = itemCol + 1 To tableRight
         Dim hdrVal As String
-        hdrVal = Trim(CStr(ws.Cells(hdrRow, c).Value))
+        hdrVal = Trim(CStr(ws.Cells(hdrRow, c).value))
         Dim isTotCol As Boolean
         isTotCol = (hdrVal = "合計" Or hdrVal = "計" Or hdrVal = "小計" Or hdrVal = "総計")
         Dim hasNum As Boolean
         hasNum = False
         For r = hdrRow + 1 To urBottom
             Dim cv As Variant
-            cv = ws.Cells(r, c).Value
+            cv = ws.Cells(r, c).value
             If IsNumeric(cv) And セルの字(cv) <> "" Then
                 hasNum = True
                 Exit For
@@ -8847,14 +8847,14 @@ Sub 各行の右にスパークラインを足す()
     Dim sparkCol As Long
     sparkCol = 0
     For c = urLeft To urRight
-        If Trim(セルの字(ws.Cells(hdrRow, c).Value)) = "推移" Then
+        If Trim(セルの字(ws.Cells(hdrRow, c).value)) = "推移" Then
             sparkCol = c
             Exit For
         End If
     Next c
     If sparkCol = 0 Then
         sparkCol = tableRight + 1
-        ws.Cells(hdrRow, sparkCol).Value = "推移"
+        ws.Cells(hdrRow, sparkCol).value = "推移"
     Else
         For r = hdrRow + 1 To urBottom
             On Error Resume Next
@@ -8870,7 +8870,7 @@ Sub 各行の右にスパークラインを足す()
         Dim rowEmpty As Boolean
         rowEmpty = True
         For c = urLeft To tableRight
-            If セルの字(ws.Cells(r, c).Value) <> "" Then
+            If セルの字(ws.Cells(r, c).value) <> "" Then
                 rowEmpty = False
                 Exit For
             End If
@@ -8880,7 +8880,7 @@ Sub 各行の右にスパークラインを足す()
         Dim isTotRow As Boolean
         isTotRow = False
         Dim itemVal As String
-        itemVal = Trim(CStr(ws.Cells(r, itemCol).Value))
+        itemVal = Trim(CStr(ws.Cells(r, itemCol).value))
         Dim ti As Variant
         For Each ti In totWords
             If itemVal = CStr(ti) Then
@@ -8943,11 +8943,11 @@ Sub 選んだ2列の二本棒グラフを作る()
     End If
 
     Dim hdrRow As Long
-    hdrRow = Selection.Cells(1, 1).Row
+    hdrRow = Selection.Cells(1, 1).row
 
     Dim hdr1 As String, hdr2 As String
-    hdr1 = CStr(ws.Cells(hdrRow, rng1.Column).Value)
-    hdr2 = CStr(ws.Cells(hdrRow, rng2.Column).Value)
+    hdr1 = CStr(ws.Cells(hdrRow, rng1.Column).value)
+    hdr2 = CStr(ws.Cells(hdrRow, rng2.Column).value)
 
     Dim ur As Range
     Set ur = ws.UsedRange
@@ -8959,7 +8959,7 @@ Sub 選んだ2列の二本棒グラフを作る()
     Dim c As Long
     For c = ur.Column To ur.Column + ur.Columns.Count - 1
         Dim testVal As Variant
-        testVal = ws.Cells(hdrRow + 1, c).Value
+        testVal = ws.Cells(hdrRow + 1, c).value
         If Not IsNumeric(testVal) And Not IsDate(testVal) And CStr(testVal) <> "" Then
             catCol = c
             Exit For
@@ -8975,15 +8975,15 @@ Sub 選んだ2列の二本棒グラフを作る()
     Dim r As Long
     For r = hdrRow + 1 To lastRow
         Dim v1 As Variant, v2 As Variant
-        v1 = ws.Cells(r, rng1.Column).Value
-        v2 = ws.Cells(r, rng2.Column).Value
+        v1 = ws.Cells(r, rng1.Column).value
+        v2 = ws.Cells(r, rng2.Column).value
         If セルの字(v1) = "" And セルの字(v2) = "" Then GoTo NextRow
         Dim isTotal As Boolean
         isTotal = False
         Dim cc As Long
         For cc = ur.Column To ur.Column + ur.Columns.Count - 1
             Dim cellStr As String
-            cellStr = CStr(ws.Cells(r, cc).Value)
+            cellStr = CStr(ws.Cells(r, cc).value)
             If 集計の語か(cellStr) Then
                 isTotal = True
                 Exit For
@@ -9002,12 +9002,12 @@ NextRow:
     Dim chartTitle As String
     chartTitle = ""
     Dim tr As Long
-    For tr = ur.Row To hdrRow - 1
+    For tr = ur.row To hdrRow - 1
         Dim rowText As String
         rowText = ""
         Dim tc As Long
         For tc = ur.Column To ur.Column + ur.Columns.Count - 1
-            rowText = rowText & CStr(ws.Cells(tr, tc).Value)
+            rowText = rowText & CStr(ws.Cells(tr, tc).value)
         Next tc
         rowText = Trim(rowText)
         If セルの字(rowText) <> "" And InStr(rowText, "単位") = 0 Then
@@ -9025,7 +9025,7 @@ NextRow:
     Dim leftPos As Double
     leftPos = ws.Cells(1, placeCol).Left + 10
     Dim topPos As Double
-    topPos = ws.Cells(ur.Row, 1).Top + 10
+    topPos = ws.Cells(ur.row, 1).Top + 10
 
     Dim cht As ChartObject
     Set cht = ws.ChartObjects.Add(leftPos, topPos, 400, 300)
@@ -9054,9 +9054,9 @@ NextRow:
     ReDim vals2(1 To dataCount)
     Dim i As Long
     For i = 1 To dataCount
-        cats(i) = CStr(ws.Cells(dataRows(i), catCol).Value)
-        vals1(i) = CDbl(ws.Cells(dataRows(i), rng1.Column).Value)
-        vals2(i) = CDbl(ws.Cells(dataRows(i), rng2.Column).Value)
+        cats(i) = CStr(ws.Cells(dataRows(i), catCol).value)
+        vals1(i) = CDbl(ws.Cells(dataRows(i), rng1.Column).value)
+        vals2(i) = CDbl(ws.Cells(dataRows(i), rng2.Column).value)
     Next i
 
     Dim s1 As Series
@@ -9122,7 +9122,7 @@ Sub 選んだ2列で滝グラフを作る()
     col1 = Selection.Areas(1).Column
     col2 = Selection.Areas(2).Column
     Dim hdrRow As Long
-    hdrRow = Selection.Cells(1, 1).Row
+    hdrRow = Selection.Cells(1, 1).row
 
     Dim ur As Range
     Set ur = ws.UsedRange
@@ -9130,8 +9130,8 @@ Sub 選んだ2列で滝グラフを作る()
     lastRow = 表の本文の最終行(ws)      ' 表の下のメモを項目にしない（2026-09-24 総点検）
 
     Dim hdr1 As String, hdr2 As String
-    hdr1 = CStr(ws.Cells(hdrRow, col1).Value)
-    hdr2 = CStr(ws.Cells(hdrRow, col2).Value)
+    hdr1 = CStr(ws.Cells(hdrRow, col1).value)
+    hdr2 = CStr(ws.Cells(hdrRow, col2).value)
 
     ' 項目列を探す（選んだ2列以外で文字の列を探す）
     Dim itemCol As Long
@@ -9140,7 +9140,7 @@ Sub 選んだ2列で滝グラフを作る()
     For tc = ur.Column To ur.Column + ur.Columns.Count - 1
         If tc = col1 Or tc = col2 Then GoTo NextCol
         Dim testVal As Variant
-        testVal = ws.Cells(hdrRow + 1, tc).Value
+        testVal = ws.Cells(hdrRow + 1, tc).value
         If Not IsNumeric(testVal) And Not IsDate(testVal) And Trim(CStr(testVal)) <> "" Then
             itemCol = tc
             Exit For
@@ -9150,7 +9150,7 @@ NextCol:
     ' 見つからなければUsedRangeの左端から探す
     If itemCol = 0 Then
         For tc = ur.Column To ur.Column + ur.Columns.Count - 1
-            testVal = ws.Cells(hdrRow + 1, tc).Value
+            testVal = ws.Cells(hdrRow + 1, tc).value
             If Not IsNumeric(testVal) And Not IsDate(testVal) And Trim(CStr(testVal)) <> "" Then
                 itemCol = tc
                 Exit For
@@ -9162,7 +9162,7 @@ NextCol:
     Dim titleStr As String
     titleStr = ""
     Dim tr As Long
-    For tr = ur.Row To hdrRow - 1
+    For tr = ur.row To hdrRow - 1
         Dim rowVals As Long
         rowVals = 0
         Dim rv As String
@@ -9170,7 +9170,7 @@ NextCol:
         Dim cc As Long
         For cc = ur.Column To ur.Column + ur.Columns.Count - 1
             Dim cv As String
-            cv = Trim(CStr(ws.Cells(tr, cc).Value))
+            cv = Trim(CStr(ws.Cells(tr, cc).value))
             If セルの字(cv) <> "" Then
                 rowVals = rowVals + 1
                 rv = cv
@@ -9198,8 +9198,8 @@ NextCol:
     Dim r As Long
     For r = hdrRow + 1 To lastRow
         Dim v1 As Variant, v2 As Variant
-        v1 = ws.Cells(r, col1).Value
-        v2 = ws.Cells(r, col2).Value
+        v1 = ws.Cells(r, col1).value
+        v2 = ws.Cells(r, col2).value
         If isEmpty(v1) Or isEmpty(v2) Then GoTo NextRow
         If Not IsNumeric(v1) Or Not IsNumeric(v2) Then GoTo NextRow
         If Trim(CStr(v1)) = "" Or Trim(CStr(v2)) = "" Then GoTo NextRow
@@ -9209,7 +9209,7 @@ NextCol:
         ReDim Preserve items(n)
         ReDim Preserve vals1(n)
         ReDim Preserve vals2(n)
-        items(n) = Trim(CStr(ws.Cells(r, itemCol).Value))
+        items(n) = Trim(CStr(ws.Cells(r, itemCol).value))
         vals1(n) = CDbl(v1)
         vals2(n) = CDbl(v2)
         n = n + 1
@@ -9292,11 +9292,11 @@ NextRow:
     棚のグラフを消す ws      ' 人が作ったグラフは残す（全部消していた・2026-09-24 総点検）
 
     Dim urRight As Double
-    urRight = ws.Cells(ur.Row, ur.Column + ur.Columns.Count - 1).Left + _
-              ws.Cells(ur.Row, ur.Column + ur.Columns.Count - 1).Width + 10
+    urRight = ws.Cells(ur.row, ur.Column + ur.Columns.Count - 1).Left + _
+              ws.Cells(ur.row, ur.Column + ur.Columns.Count - 1).Width + 10
 
     Dim coNew As ChartObject
-    Set coNew = ws.ChartObjects.Add(urRight, ws.Cells(ur.Row, ur.Column).Top, 480, 300)
+    Set coNew = ws.ChartObjects.Add(urRight, ws.Cells(ur.row, ur.Column).Top, 480, 300)
     coNew.Name = "棚_ウォーターフォールグラフ"
 
     Dim ch As Chart
@@ -9475,7 +9475,7 @@ Sub 一覧を1件1枚でひな形に差し込む()
         If ws.Name <> listWs.Name Then
             found = False
             For Each cel In ws.UsedRange
-                If セルの字(cel.Value) Like "*{*}*" Then
+                If セルの字(cel.value) Like "*{*}*" Then
                     found = True
                     Exit For
                 End If
@@ -9498,15 +9498,15 @@ Sub 一覧を1件1枚でひな形に差し込む()
     Set ur = listWs.UsedRange
     hdrRow = 0
     Dim firstRow As Long, firstCol As Long
-    firstRow = ur.Row
+    firstRow = ur.row
     firstCol = ur.Column
-    lastRow = ur.Row + ur.rows.Count - 1
+    lastRow = ur.row + ur.rows.Count - 1
     lastCol = ur.Column + ur.Columns.Count - 1
 
     For r = firstRow To lastRow
         nonEmpty = 0
         For c = firstCol To lastCol
-            If セルの字(listWs.Cells(r, c).Value) <> "" Then nonEmpty = nonEmpty + 1
+            If セルの字(listWs.Cells(r, c).value) <> "" Then nonEmpty = nonEmpty + 1
         Next c
         If nonEmpty >= 2 Then
             hdrRow = r
@@ -9519,7 +9519,7 @@ Sub 一覧を1件1枚でひな形に差し込む()
     Dim headers() As String
     ReDim headers(firstCol To lastCol)
     For c = firstCol To lastCol
-        headers(c) = CStr(listWs.Cells(hdrRow, c).Value)
+        headers(c) = CStr(listWs.Cells(hdrRow, c).value)
     Next c
 
     Dim sheetName As String
@@ -9532,14 +9532,14 @@ Sub 一覧を1件1枚でひな形に差し込む()
     For r = hdrRow + 1 To lastRow
         nonEmpty = 0
         For c = firstCol To lastCol
-            If セルの字(listWs.Cells(r, c).Value) <> "" Then nonEmpty = nonEmpty + 1
+            If セルの字(listWs.Cells(r, c).value) <> "" Then nonEmpty = nonEmpty + 1
         Next c
         If nonEmpty = 0 Then GoTo NextRow
 
         skipRow = 集計の行か(listWs, r, firstCol, lastCol)      ' 「総務課 小計」も（2026-09-24 総点検）
         If skipRow Then GoTo NextRow
 
-        sheetName = CStr(listWs.Cells(r, firstCol).Value)
+        sheetName = CStr(listWs.Cells(r, firstCol).value)
         If セルの字(sheetName) = "" Then GoTo NextRow
 
         ' 同じ名前のシートが前にこのマクロで作ったものなら作り直し、人のシートなら (2) を付けて別に作る
@@ -9555,7 +9555,7 @@ Sub 一覧を1件1枚でひな形に差し込む()
         Dim newCel As Range
         For Each newCel In newWs.UsedRange
             Dim cellVal As String
-            cellVal = CStr(newCel.Value)
+            cellVal = CStr(newCel.value)
             If セルの字(cellVal) = "" Then GoTo NextCell
             If Not (cellVal Like "*{*}*") Then GoTo NextCell
 
@@ -9563,7 +9563,7 @@ Sub 一覧を1件1枚でひな形に差し込む()
             exactMatch = False
             For c = firstCol To lastCol
                 If cellVal = "{" & headers(c) & "}" Then
-                    newCel.Value = listWs.Cells(r, c).Value
+                    newCel.value = listWs.Cells(r, c).value
                     exactMatch = True
                     Exit For
                 End If
@@ -9582,7 +9582,7 @@ Sub 一覧を1件1枚でひな形に差し込む()
                         changed = True
                     End If
                 Next c
-                If changed Then newCel.Value = newVal
+                If changed Then newCel.value = newVal
             End If
 NextCell:
         Next newCel
@@ -9610,16 +9610,16 @@ Sub 横で見出し毎ページの印刷設定()
     Set ur = ws.UsedRange
 
     Dim urFirstRow As Long, urFirstCol As Long, urLastRow As Long, urLastCol As Long
-    urFirstRow = ur.Row
+    urFirstRow = ur.row
     urFirstCol = ur.Column
-    urLastRow = ur.Row + ur.rows.Count - 1
+    urLastRow = ur.row + ur.rows.Count - 1
     urLastCol = ur.Column + ur.Columns.Count - 1
 
     hdrRow = 0
     For i = urFirstRow To urLastRow
         cnt = 0
         For j = urFirstCol To urLastCol
-            If セルの字(ws.Cells(i, j).Value) <> "" Then cnt = cnt + 1
+            If セルの字(ws.Cells(i, j).value) <> "" Then cnt = cnt + 1
         Next j
         If cnt >= 2 Then
             hdrRow = i
@@ -9630,7 +9630,7 @@ Sub 横で見出し毎ページの印刷設定()
 
     firstCol = 0
     For j = urFirstCol To urLastCol
-        If セルの字(ws.Cells(hdrRow, j).Value) <> "" Then
+        If セルの字(ws.Cells(hdrRow, j).value) <> "" Then
             firstCol = j
             Exit For
         End If
@@ -9642,7 +9642,7 @@ Sub 横で見出し毎ページの印刷設定()
     lastCol = firstCol
     For j = firstCol To urLastCol
         For i = hdrRow To urLastRow
-            If セルの字(ws.Cells(i, j).Value) <> "" Then
+            If セルの字(ws.Cells(i, j).value) <> "" Then
                 lastCol = j
                 Exit For
             End If
@@ -9654,7 +9654,7 @@ Sub 横で見出し毎ページの印刷設定()
     For i = urLastRow To hdrRow + 1 Step -1
         hasVal = False
         For j = firstCol To lastCol
-            If セルの字(ws.Cells(i, j).Value) <> "" Then
+            If セルの字(ws.Cells(i, j).value) <> "" Then
                 hasVal = True
                 Exit For
             End If
@@ -9686,9 +9686,9 @@ Sub 横で見出し毎ページの印刷設定()
             子 = False
             For k = firstCol To lastCol
                 ' 表の切れ目（上下とも空の列）で止める。右に作った一覧の数字を見て判定をやめていた（2026-09-23）
-                If セルの字(ws.Cells(hdrRow, k).Value) = "" And セルの字(ws.Cells(hdrRow + 1, k).Value) = "" Then Exit For
-                If セルの字(ws.Cells(hdrRow, k).Value) = "" And セルの字(ws.Cells(hdrRow + 1, k).Value) <> "" Then 子 = True
-                If セルの字(ws.Cells(hdrRow + 1, k).Value) <> "" And IsNumeric(ws.Cells(hdrRow + 1, k).Value) Then 子 = False: Exit For
+                If セルの字(ws.Cells(hdrRow, k).value) = "" And セルの字(ws.Cells(hdrRow + 1, k).value) = "" Then Exit For
+                If セルの字(ws.Cells(hdrRow, k).value) = "" And セルの字(ws.Cells(hdrRow + 1, k).value) <> "" Then 子 = True
+                If セルの字(ws.Cells(hdrRow + 1, k).value) <> "" And IsNumeric(ws.Cells(hdrRow + 1, k).value) Then 子 = False: Exit For
             Next k
             If 子 Then
                 .PrintTitleRows = ws.rows(hdrRow).Address(False, False)
@@ -9738,7 +9738,7 @@ Sub 集計の数字を様式に転記する()
     ' 見出し行を探す: 空でないセルが2つ以上並ぶ最初の行
     hdrRow = 0
     Dim urTop As Long, urLeft As Long, urRows As Long, urCols As Long
-    urTop = ur.Row
+    urTop = ur.row
     urLeft = ur.Column
     urRows = ur.rows.Count
     urCols = ur.Columns.Count
@@ -9747,7 +9747,7 @@ Sub 集計の数字を様式に転記する()
     For r = urTop To urTop + urRows - 1
         nonEmpty = 0
         For c = urLeft To urLeft + urCols - 1
-            If セルの字(wsData.Cells(r, c).Value) <> "" Then nonEmpty = nonEmpty + 1
+            If セルの字(wsData.Cells(r, c).value) <> "" Then nonEmpty = nonEmpty + 1
         Next c
         If nonEmpty >= 2 Then
             hdrRow = r
@@ -9765,8 +9765,8 @@ Sub 集計の数字を様式に転記する()
         Dim hasText As Boolean
         hasText = False
         For r = dataStart To dataEnd
-            If セルの字(wsData.Cells(r, c).Value) <> "" Then
-                If Not IsNumeric(wsData.Cells(r, c).Value) Then
+            If セルの字(wsData.Cells(r, c).value) <> "" Then
+                If Not IsNumeric(wsData.Cells(r, c).value) Then
                     hasText = True
                     Exit For
                 End If
@@ -9784,11 +9784,11 @@ Sub 集計の数字を様式に転記する()
     ReDim numCols(1 To urCols)
     For c = urLeft To urLeft + urCols - 1
         If c = itemCol Then GoTo NextCol
-        If セルの字(wsData.Cells(hdrRow, c).Value) = "" Then GoTo NextCol
+        If セルの字(wsData.Cells(hdrRow, c).value) = "" Then GoTo NextCol
         Dim hasNum As Boolean
         hasNum = False
         For r = dataStart To dataEnd
-            If IsNumeric(wsData.Cells(r, c).Value) And セルの字(wsData.Cells(r, c).Value) <> "" Then
+            If IsNumeric(wsData.Cells(r, c).value) And セルの字(wsData.Cells(r, c).value) <> "" Then
                 hasNum = True
                 Exit For
             End If
@@ -9808,7 +9808,7 @@ NextCol:
         Dim allEmpty As Boolean
         allEmpty = True
         For c = urLeft To urLeft + urCols - 1
-            If セルの字(wsData.Cells(r, c).Value) <> "" Then allEmpty = False: Exit For
+            If セルの字(wsData.Cells(r, c).value) <> "" Then allEmpty = False: Exit For
         Next c
         If allEmpty Then GoTo NextDataRow
 
@@ -9816,12 +9816,12 @@ NextCol:
         Dim isSumRow As Boolean
         isSumRow = False
         For c = urLeft To urLeft + urCols - 1
-            s = CStr(wsData.Cells(r, c).Value): GoSub 正規化
+            s = CStr(wsData.Cells(r, c).value): GoSub 正規化
             If s = "合計" Or s = "計" Or s = "総計" Then isSumRow = True: Exit For
         Next c
         If isSumRow Then GoTo NextDataRow
 
-        s = CStr(wsData.Cells(r, itemCol).Value): GoSub 正規化
+        s = CStr(wsData.Cells(r, itemCol).value): GoSub 正規化
         If セルの字(s) <> "" Then dictItems(s) = r
 NextDataRow:
     Next r
@@ -9841,9 +9841,9 @@ NextDataRow:
         Dim key As Variant
         For Each key In dictItems.keys
             Dim fr As Long, fc As Long
-            For fr = shUr.Row To shUr.Row + shUr.rows.Count - 1
+            For fr = shUr.row To shUr.row + shUr.rows.Count - 1
                 For fc = shUr.Column To shUr.Column + shUr.Columns.Count - 1
-                    s = CStr(sh.Cells(fr, fc).Value): GoSub 正規化
+                    s = CStr(sh.Cells(fr, fc).value): GoSub 正規化
                     If s = key Then matchCount = matchCount + 1: GoTo NextKey
                 Next fc
             Next fr
@@ -9867,12 +9867,12 @@ NextSheet:
     Dim numHeaders() As String
     ReDim numHeaders(1 To numCount)
     For i = 1 To numCount
-        numHeaders(i) = CStr(wsData.Cells(hdrRow, numCols(i)).Value)
+        numHeaders(i) = CStr(wsData.Cells(hdrRow, numCols(i)).value)
         s = numHeaders(i): GoSub 正規化: numHeaders(i) = s
     Next i
 
     Dim fTop As Long, fLeft As Long, fRows As Long, fCols As Long
-    fTop = shUr2.Row
+    fTop = shUr2.row
     fLeft = shUr2.Column
     fRows = shUr2.rows.Count
     fCols = shUr2.Columns.Count
@@ -9880,7 +9880,7 @@ NextSheet:
     For r = fTop To fTop + fRows - 1
         For i = 1 To numCount
             For c = fLeft To fLeft + fCols - 1
-                s = CStr(wsForm.Cells(r, c).Value): GoSub 正規化
+                s = CStr(wsForm.Cells(r, c).value): GoSub 正規化
                 If s = numHeaders(i) Then
                     fHdrRow = r
                     GoTo FoundFHdr
@@ -9897,7 +9897,7 @@ FoundFHdr:
     For i = 1 To numCount
         fNumCols(i) = 0
         For c = fLeft To fLeft + fCols - 1
-            s = CStr(wsForm.Cells(fHdrRow, c).Value): GoSub 正規化
+            s = CStr(wsForm.Cells(fHdrRow, c).value): GoSub 正規化
             If s = numHeaders(i) Then
                 fNumCols(i) = c
                 Exit For
@@ -9926,7 +9926,7 @@ FoundFHdr:
             Next i
             If isNumHdrCol Then GoTo NextFCol
 
-            s = CStr(wsForm.Cells(r, c).Value): GoSub 正規化
+            s = CStr(wsForm.Cells(r, c).value): GoSub 正規化
             If セルの字(s) = "" Then GoTo NextFCol
             If Not dictItems.exists(s) Then GoTo NextFCol
 
@@ -9939,7 +9939,7 @@ FoundFHdr:
                 If fNumCols(i) = 0 Then GoTo NextNumCol
                 ' 式が入っているセルには書かない
                 If wsForm.Cells(r, fNumCols(i)).HasFormula Then GoTo NextNumCol
-                wsForm.Cells(r, fNumCols(i)).Value = wsData.Cells(srcRow, numCols(i)).Value
+                wsForm.Cells(r, fNumCols(i)).value = wsData.Cells(srcRow, numCols(i)).value
 NextNumCol:
             Next i
             Exit For
@@ -9991,19 +9991,19 @@ Sub 選んだ列の値ごとにシートを分ける()
 
     ' 選んでいる列と見出し行
     selCol = Selection.Cells(1, 1).Column
-    hdrRow = Selection.Cells(1, 1).Row
+    hdrRow = Selection.Cells(1, 1).row
 
     ' 表の列範囲: 見出し行の左端から右へ空セルに当たる手前まで
     ' 左端は UsedRange の左端
     Dim urLeft As Long
     urLeft = ws.UsedRange.Column
     ' 左端＝見出しの行で最初に値のある列（表題が A1・表が C3 からのとき何もしなかった。2026-09-22）
-    Do While urLeft < ws.UsedRange.Column + ws.UsedRange.Columns.Count - 1 And Trim(セルの字(ws.Cells(hdrRow, urLeft).Value)) = ""
+    Do While urLeft < ws.UsedRange.Column + ws.UsedRange.Columns.Count - 1 And Trim(セルの字(ws.Cells(hdrRow, urLeft).value)) = ""
         urLeft = urLeft + 1
     Loop
     lastCol = urLeft - 1
     For c = urLeft To urLeft + ws.UsedRange.Columns.Count - 1
-        If Trim(セルの字(ws.Cells(hdrRow, c).Value)) = "" Then
+        If Trim(セルの字(ws.Cells(hdrRow, c).value)) = "" Then
             Exit For
         End If
         lastCol = c
@@ -10021,7 +10021,7 @@ Sub 選んだ列の値ごとにシートを分ける()
         ' 行全体が空か
         isBlankRow = True
         For c = urLeft To lastCol
-            If セルの字(ws.Cells(r, c).Value) <> "" Then
+            If セルの字(ws.Cells(r, c).value) <> "" Then
                 isBlankRow = False
                 Exit For
             End If
@@ -10031,7 +10031,7 @@ Sub 選んだ列の値ごとにシートを分ける()
         ' 合計行か
         isSumRow = False
         For c = urLeft To lastCol
-            cellVal = Trim(CStr(ws.Cells(r, c).Value))
+            cellVal = Trim(CStr(ws.Cells(r, c).value))
             If 集計の語か(cellVal) Then
                 isSumRow = True
                 Exit For
@@ -10039,7 +10039,7 @@ Sub 選んだ列の値ごとにシートを分ける()
         Next c
         If isSumRow Then GoTo NextRow
 
-        keyVal = CStr(ws.Cells(r, selCol).Value)
+        keyVal = CStr(ws.Cells(r, selCol).value)
         keyTrim = Trim(keyVal)
         If セルの字(keyTrim) = "" Then GoTo NextRow
         If Not dict.exists(keyTrim) Then
@@ -10066,7 +10066,7 @@ NextRow:
 
         ' 見出し行をコピー
         For c = urLeft To lastCol
-            destWs.Cells(1, c - urLeft + 1).Value = ws.Cells(hdrRow, c).Value
+            destWs.Cells(1, c - urLeft + 1).value = ws.Cells(hdrRow, c).value
             destWs.Cells(1, c - urLeft + 1).NumberFormat = ws.Cells(hdrRow, c).NumberFormat
         Next c
 
@@ -10075,7 +10075,7 @@ NextRow:
         For r = hdrRow + 1 To lastRow
             isBlankRow = True
             For c = urLeft To lastCol
-                If セルの字(ws.Cells(r, c).Value) <> "" Then
+                If セルの字(ws.Cells(r, c).value) <> "" Then
                     isBlankRow = False
                     Exit For
                 End If
@@ -10084,7 +10084,7 @@ NextRow:
 
             isSumRow = False
             For c = urLeft To lastCol
-                cellVal = Trim(CStr(ws.Cells(r, c).Value))
+                cellVal = Trim(CStr(ws.Cells(r, c).value))
                 If 集計の語か(cellVal) Then
                     isSumRow = True
                     Exit For
@@ -10092,9 +10092,9 @@ NextRow:
             Next c
             If isSumRow Then GoTo NextRow2
 
-            If Trim(セルの字(ws.Cells(r, selCol).Value)) = keyTrim Then
+            If Trim(セルの字(ws.Cells(r, selCol).value)) = keyTrim Then
                 For c = urLeft To lastCol
-                    destWs.Cells(destRow, c - urLeft + 1).Value = ws.Cells(r, c).Value
+                    destWs.Cells(destRow, c - urLeft + 1).value = ws.Cells(r, c).value
                     destWs.Cells(destRow, c - urLeft + 1).NumberFormat = ws.Cells(r, c).NumberFormat
                 Next c
                 destRow = destRow + 1
@@ -10140,7 +10140,7 @@ Sub ピボットを値だけの表に変える()
 
         Set rng = pt2.TableRange2
 
-        arr = rng.Value
+        arr = rng.value
         ' 数の表示形式（#,##0 など）と太字は残す（値だけにして 1234567 のように見えた・2026-09-24 総点検）
         Dim 形() As String, 太() As Boolean, i2 As Long, j2 As Long
         ReDim 形(1 To UBound(arr, 1), 1 To UBound(arr, 2)): ReDim 太(1 To UBound(arr, 1), 1 To UBound(arr, 2))
@@ -10154,8 +10154,8 @@ Sub ピボットを値だけの表に変える()
         rng.Clear
 
         Dim destCell As Range
-        Set destCell = ws.Cells(rng.Row, rng.Column)
-        destCell.Resize(UBound(arr, 1), UBound(arr, 2)).Value = arr
+        Set destCell = ws.Cells(rng.row, rng.Column)
+        destCell.Resize(UBound(arr, 1), UBound(arr, 2)).value = arr
         For i2 = 1 To UBound(arr, 1)
             For j2 = 1 To UBound(arr, 2)
                 destCell.Cells(i2, j2).NumberFormat = 形(i2, j2)
@@ -10217,7 +10217,7 @@ Sub 選んだ列をクエリで区切って分ける()
 
     tblName = lo.Name
     selCol = selArea.Cells(1, 1).Column - lo.Range.Column + 1
-    colName = lo.HeaderRowRange.Cells(1, selCol).Value
+    colName = lo.HeaderRowRange.Cells(1, selCol).value
 
     ' 区切り文字候補
     delimiters(0) = "・"
@@ -10237,7 +10237,7 @@ Sub 選んだ列をクエリで区切って分ける()
     For d = 0 To 5
         counts(d) = 0
         For r = 1 To dataRange.rows.Count
-            cellVal = CStr(dataRange.Cells(r, selCol).Value)
+            cellVal = CStr(dataRange.Cells(r, selCol).value)
             If InStr(cellVal, delimiters(d)) > 0 Then
                 counts(d) = counts(d) + 1
             End If
@@ -10257,7 +10257,7 @@ Sub 選んだ列をクエリで区切って分ける()
     ' 最大分割数を求める
     maxParts = 1
     For r = 1 To dataRange.rows.Count
-        cellVal = CStr(dataRange.Cells(r, selCol).Value)
+        cellVal = CStr(dataRange.Cells(r, selCol).value)
         parts = Split(cellVal, bestDelim)
         partCount = UBound(parts) + 1
         If partCount > maxParts Then maxParts = partCount
@@ -10279,7 +10279,7 @@ Sub 選んだ列をクエリで区切って分ける()
     Dim c As Long
     For c = 1 To totalCols
         Dim hdr As String
-        hdr = lo.HeaderRowRange.Cells(1, c).Value
+        hdr = lo.HeaderRowRange.Cells(1, c).value
         If c = selCol Then
             For i = 1 To maxParts
                 If セルの字(allCols) <> "" Then allCols = allCols & ", "
@@ -10517,15 +10517,15 @@ Sub 選んだ値に合う行を抜き出す()
     Set ur = ws.UsedRange
     On Error GoTo 0
     If ur Is Nothing Then Exit Sub
-    urTop = ur.Row: urLeft = ur.Column
+    urTop = ur.row: urLeft = ur.Column
     urRight = ur.Column + ur.Columns.Count - 1
-    urBottom = ur.Row + ur.rows.Count - 1
+    urBottom = ur.row + ur.rows.Count - 1
 
     For r = urTop To urBottom
         cnt = 0
         For c = urLeft To urRight
-            If Not IsError(ws.Cells(r, c).Value) Then
-                If セルの字(ws.Cells(r, c).Value) <> "" Then cnt = cnt + 1
+            If Not IsError(ws.Cells(r, c).value) Then
+                If セルの字(ws.Cells(r, c).value) <> "" Then cnt = cnt + 1
             End If
         Next c
         If cnt >= 2 Then hdrRow = r: Exit For
@@ -10537,11 +10537,11 @@ Sub 選んだ値に合う行を抜き出す()
 
     ' 選んでいるセルの値を条件にする（見出し・表の外・空なら聞く）
     条件 = ""
-    If ActiveCell.Row > hdrRow And ActiveCell.Row <= urBottom Then
-        If Not IsError(ActiveCell.Value) Then 条件 = Trim$(CStr(ActiveCell.text))
+    If ActiveCell.row > hdrRow And ActiveCell.row <= urBottom Then
+        If Not IsError(ActiveCell.value) Then 条件 = Trim$(CStr(ActiveCell.text))
     End If
     If セルの字(条件) = "" Then
-        条件 = InputBox("「" & ws.Cells(hdrRow, keyCol).Value & "」の列で、どの行を抜き出しますか。" & vbCrLf & vbCrLf & _
+        条件 = InputBox("「" & ws.Cells(hdrRow, keyCol).value & "」の列で、どの行を抜き出しますか。" & vbCrLf & vbCrLf & _
                       "例）総務課　　… その語を含む行" & vbCrLf & _
                       "　　>100000　… その数より大きい行" & vbCrLf & _
                       "　　<>0　　　… 0 でない行", "選んだ値に合う行を抜き出す")
@@ -10580,7 +10580,7 @@ Sub 選んだ値に合う行を抜き出す()
     outRow = 3
 
     For r = hdrRow + 1 To urBottom
-        v = ws.Cells(r, keyCol).Value
+        v = ws.Cells(r, keyCol).value
         合う = False
         If IsError(v) Then
             合う = False
@@ -10612,7 +10612,7 @@ Sub 選んだ値に合う行を抜き出す()
     Next r
     Application.CutCopyMode = False
 
-    sh.Cells(1, 1).Value = "「" & ws.Name & "」の " & ws.Cells(hdrRow, keyCol).Value & " が " & 見出し条件 & " の行（" & 当たり & " 件 ／ 元 " & (urBottom - hdrRow) & " 件）"
+    sh.Cells(1, 1).value = "「" & ws.Name & "」の " & ws.Cells(hdrRow, keyCol).value & " が " & 見出し条件 & " の行（" & 当たり & " 件 ／ 元 " & (urBottom - hdrRow) & " 件）"
     sh.Cells(1, 1).Font.Bold = True
     sh.Range(sh.Cells(2, 1), sh.Cells(2, urRight - urLeft + 1)).Font.Bold = True
     If 当たり > 0 Then
@@ -10622,7 +10622,7 @@ Sub 選んだ値に合う行を抜き出す()
     sh.Activate
     sh.Cells(1, 1).Select
     Application.ScreenUpdating = True
-    Application.StatusBar = "選んだ値に合う行を抜き出す: " & ws.Cells(hdrRow, keyCol).Value & " が「" & 条件 & "」の行を " & 当たり & " 件、シート「" & 名 & "」に写しました（元の表 " & (urBottom - hdrRow) & " 件はそのまま）。"
+    Application.StatusBar = "選んだ値に合う行を抜き出す: " & ws.Cells(hdrRow, keyCol).value & " が「" & 条件 & "」の行を " & 当たり & " 件、シート「" & 名 & "」に写しました（元の表 " & (urBottom - hdrRow) & " 件はそのまま）。"
 End Sub
 
 Sub シートの表をCSVで書き出す()
@@ -10645,15 +10645,15 @@ Sub シートの表をCSVで書き出す()
     Set ur = ws.UsedRange
     On Error GoTo 0
     If ur Is Nothing Then Exit Sub
-    urTop = ur.Row: urLeft = ur.Column
+    urTop = ur.row: urLeft = ur.Column
     urRight = ur.Column + ur.Columns.Count - 1
-    urBottom = ur.Row + ur.rows.Count - 1
+    urBottom = ur.row + ur.rows.Count - 1
 
     For r = urTop To urBottom
         cnt = 0
         For c = urLeft To urRight
-            If Not IsError(ws.Cells(r, c).Value) Then
-                If セルの字(ws.Cells(r, c).Value) <> "" Then cnt = cnt + 1
+            If Not IsError(ws.Cells(r, c).value) Then
+                If セルの字(ws.Cells(r, c).value) <> "" Then cnt = cnt + 1
             End If
         Next c
         If cnt >= 2 Then hdrRow = r: Exit For
@@ -10675,7 +10675,7 @@ Sub シートの表をCSVで書き出す()
             If 集計の行か(ws, r, urLeft, urRight) Then GoTo 次の行
         End If
         For c = urLeft To urRight
-            v = ws.Cells(r, c).Value
+            v = ws.Cells(r, c).value
             If IsError(v) Then
                 s = ""
             ElseIf IsDate(v) And VarType(v) = vbDate Then
@@ -10720,7 +10720,7 @@ Sub シートをPDFで保存する()
     ' 形: なし
     ' 今のシートを PDF にしてデスクトップに置く。名前は「日付 シート名.pdf」、同じ名前があれば (1)(2)… を付ける（shu003「シートをデスクトップへPDF出力」を棚へ）
     Dim p As String, fp As String, i As Long
-    If TypeName(ActiveSheet) <> "Worksheet" Then Exit Sub
+    If typeName(ActiveSheet) <> "Worksheet" Then Exit Sub
     p = CreateObject("WScript.Shell").SpecialFolders.Item("Desktop")
     fp = p & "\" & Format(Date, "YYYYMMDD") & " " & ActiveSheet.Name & ".pdf"
     Do Until セルの字(Dir(fp)) = ""
@@ -10737,14 +10737,14 @@ Sub シートを別ブックで保存する()
     ' 見出し: なし
     ' 形: なし
     ' 今のシートを新しいブックに写してデスクトップに保存し、閉じる。名前は「日付 シート名.xlsm」、同じ名前があれば (1)(2)…（shu003「シートをデスクトップへExcel出力」を棚へ）
-    Dim p As String, fp As String, i As Long, nM As String
-    If TypeName(ActiveSheet) <> "Worksheet" Then Exit Sub
-    nM = ActiveSheet.Name
+    Dim p As String, fp As String, i As Long, nm As String
+    If typeName(ActiveSheet) <> "Worksheet" Then Exit Sub
+    nm = ActiveSheet.Name
     p = CreateObject("WScript.Shell").SpecialFolders.Item("Desktop")
-    fp = p & "\" & Format(Date, "YYYYMMDD") & " " & nM & ".xlsm"
+    fp = p & "\" & Format(Date, "YYYYMMDD") & " " & nm & ".xlsm"
     Do Until セルの字(Dir(fp)) = ""
         i = i + 1
-        fp = p & "\" & Format(Date, "YYYYMMDD") & " " & nM & "(" & i & ").xlsm"
+        fp = p & "\" & Format(Date, "YYYYMMDD") & " " & nm & "(" & i & ").xlsm"
     Loop
     Application.ScreenUpdating = False
     ActiveSheet.Copy
@@ -10801,12 +10801,12 @@ Sub 左右に並んだ表を突き合わせる()
 
     Set ws = ActiveSheet
     Set ur = ws.UsedRange
-    urTop = ur.Row: urLeft = ur.Column
-    urBottom = ur.Row + ur.rows.Count - 1: urRight = ur.Column + ur.Columns.Count - 1
+    urTop = ur.row: urLeft = ur.Column
+    urBottom = ur.row + ur.rows.Count - 1: urRight = ur.Column + ur.Columns.Count - 1
     If urRight - urLeft < 3 Then Exit Sub
 
     selName = ""
-    v = ActiveCell.Value
+    v = ActiveCell.value
     If Not IsError(v) Then selName = Trim$(CStr(v))
 
     ' 見出しの行: 空の列で分かれた 2 つのかたまりに、同じ見出し（数でない文字）がある最初の行
@@ -10818,7 +10818,7 @@ Sub 左右に並んだ表を突き合わせる()
         For c = urLeft To urRight + 1
             s = ""
             If c <= urRight Then
-                v = ws.Cells(r, c).Value
+                v = ws.Cells(r, c).value
                 If Not IsError(v) Then s = Trim$(CStr(v))
             End If
             If Len(s) > 0 Then
@@ -10838,11 +10838,11 @@ Sub 左右に並んだ表を突き合わせる()
                 If be(i) > bs(i) And be(j) > bs(j) Then
                     For c = bs(i) To be(i)
                         s = ""
-                        v = ws.Cells(r, c).Value
+                        v = ws.Cells(r, c).value
                         If Not IsError(v) Then s = Trim$(CStr(v))
                         If Len(s) > 0 And Not IsNumeric(s) Then
                             For k = bs(j) To be(j)
-                                v = ws.Cells(r, k).Value
+                                v = ws.Cells(r, k).value
                                 If Not IsError(v) Then
                                     If Trim$(CStr(v)) = s Then
                                         score = 1
@@ -10875,7 +10875,7 @@ Sub 左右に並んだ表を突き合わせる()
     Dim chkCol As Long, reuseChk As Boolean
     chkCol = r2 + 1: reuseChk = False
     For c = R1 + 1 To r2
-        v = ws.Cells(hdr, c).Value
+        v = ws.Cells(hdr, c).value
         If Not IsError(v) Then
             If Trim$(CStr(v)) = CHK Then
                 chkCol = c: r2 = c - 1: reuseChk = True
@@ -10907,15 +10907,15 @@ Sub 左右に並んだ表を突き合わせる()
     If lastL <= hdr Or lastR <= hdr Then Exit Sub
 
     ' 左に引く列＝右の表の鍵と突合の列を除いた全部
-    Dim bring() As Long, nM() As String
+    Dim bring() As Long, nm() As String
     n = 0
     ReDim bring(1 To r2 - R1 + 1)
-    ReDim nM(1 To r2 - R1 + 1)
+    ReDim nm(1 To r2 - R1 + 1)
     For c = R1 To r2
         If c <> keyR Then
             n = n + 1
             bring(n) = c
-            nM(n) = Trim$(CStr(ws.Cells(hdr, c).Value))
+            nm(n) = Trim$(CStr(ws.Cells(hdr, c).value))
         End If
     Next c
     If n = 0 Then Exit Sub
@@ -10926,8 +10926,8 @@ Sub 左右に並んだ表を突き合わせる()
     If L2 - n >= keyL Then
         reuse = True
         For k = 1 To n
-            s = Trim$(CStr(ws.Cells(hdr, L2 - n + k).Value))
-            If s <> nM(k) And s <> nM(k) & NOTR Then reuse = False
+            s = Trim$(CStr(ws.Cells(hdr, L2 - n + k).value))
+            If s <> nm(k) And s <> nm(k) & NOTR Then reuse = False
         Next k
     End If
     If reuse Then
@@ -10948,7 +10948,7 @@ Sub 左右に並んだ表を突き合わせる()
     ' 左の表に同じ見出しがあれば（右の表）を付けて分ける
     For k = 1 To n
         For c = L1 To origL2
-            If Trim$(セルの字(ws.Cells(hdr, c).Value)) = nM(k) Then nM(k) = nM(k) & NOTR: Exit For
+            If Trim$(セルの字(ws.Cells(hdr, c).value)) = nm(k) Then nm(k) = nm(k) & NOTR: Exit For
         Next c
     Next k
     If Not reuseChk Then
@@ -10963,9 +10963,9 @@ Sub 左右に並んだ表を突き合わせる()
     For k = 1 To n
         oc = outStart + k - 1
         srcRng = ws.Range(ws.Cells(hdr + 1, bring(k)), ws.Cells(lastR, bring(k))).Address
-        ws.Cells(hdr, oc).Value = nM(k)
+        ws.Cells(hdr, oc).value = nm(k)
         For r = hdr + 1 To lastL
-            v = ws.Cells(r, keyL).Value
+            v = ws.Cells(r, keyL).value
             isBlank = False
             If Not IsError(v) Then isBlank = (Len(Trim$(CStr(v))) = 0)
             If isBlank Then
@@ -10977,9 +10977,9 @@ Sub 左右に並んだ表を突き合わせる()
         Next r
         ws.Range(ws.Cells(hdr + 1, oc), ws.Cells(lastL, oc)).NumberFormat = ws.Cells(hdr + 1, bring(k)).NumberFormat
     Next k
-    ws.Cells(hdr, chkCol).Value = CHK
+    ws.Cells(hdr, chkCol).value = CHK
     For r = hdr + 1 To lastR
-        v = ws.Cells(r, keyR).Value
+        v = ws.Cells(r, keyR).value
         isBlank = False
         If Not IsError(v) Then isBlank = (Len(Trim$(CStr(v))) = 0)
         If isBlank Then
@@ -11269,7 +11269,7 @@ Sub 上限内で最大になる組み合わせを選ぶ()
 
     件数 = 組み合わせの行(ws, 表, 重列, 値列, 上限, 行s, 重s, 値s, 容量, 倍)
     If 件数 < 0 Then 先撃ちに断る "数が大きすぎて計算できません（上限 " & 組の数字(上限) & "）。上限の単位を大きくしてください": Exit Sub
-    If 件数 = 0 Then 先撃ちに断る "使える行がありません（" & 見出しの字(ws.Cells(表.Row, 重列)) & " に上限以下の正の数、" & 見出しの字(ws.Cells(表.Row, 値列)) & " に正の数が入っている行）": Exit Sub
+    If 件数 = 0 Then 先撃ちに断る "使える行がありません（" & 見出しの字(ws.Cells(表.row, 重列)) & " に上限以下の正の数、" & 見出しの字(ws.Cells(表.row, 値列)) & " に正の数が入っている行）": Exit Sub
     If CDbl(件数) * (容量 + 1) > 30000000# Then 先撃ちに断る "数が大きすぎて計算できません（" & 件数 & " 行 × 上限 " & 組の数字(上限) & "）。上限の単位を大きくしてください": Exit Sub
 
     ReDim 最良(0 To 容量)
@@ -11290,18 +11290,18 @@ Sub 上限内で最大になる組み合わせを選ぶ()
     Loop
 
     出列 = 組み合わせの出し列(ws, 表, "最適な組み合わせ", True)
-    ws.Range(ws.Cells(表.Row + 1, 出列), ws.Cells(表.Row + 表.rows.Count - 1, 出列)).ClearContents
+    ws.Range(ws.Cells(表.row + 1, 出列), ws.Cells(表.row + 表.rows.Count - 1, 出列)).ClearContents
     For k = 件数 To 1 Step -1
         If 取る(k, c) Then
-            ws.Cells(行s(k), 出列).Value = "○"
+            ws.Cells(行s(k), 出列).value = "○"
             選数 = 選数 + 1
             合重 = 合重 + 重s(k) / 倍
             合値 = 合値 + 値s(k)
             c = c - 重s(k)
         End If
     Next k
-    Application.StatusBar = "○ " & 選数 & " 件: " & 見出しの字(ws.Cells(表.Row, 重列)) & " の合計 " & 組の数字(合重) & "（上限 " & 組の数字(上限) & "）・" & _
-        見出しの字(ws.Cells(表.Row, 値列)) & " の合計 " & 組の数字(合値) & "（いちばん大きい組み合わせ）"
+    Application.StatusBar = "○ " & 選数 & " 件: " & 見出しの字(ws.Cells(表.row, 重列)) & " の合計 " & 組の数字(合重) & "（上限 " & 組の数字(上限) & "）・" & _
+        見出しの字(ws.Cells(表.row, 値列)) & " の合計 " & 組の数字(合値) & "（いちばん大きい組み合わせ）"
 End Sub
 
 Sub 合計がこの額になる組み合わせを探す()
@@ -11349,7 +11349,7 @@ Sub 合計がこの額になる組み合わせを探す()
 
     件数 = 組み合わせの行(ws, 表, 額列, 0, 目標, 行s, 重s, 値s, 容量, 倍)
     If 件数 < 0 Then 先撃ちに断る "額が大きすぎて計算できません（" & 組の数字(目標) & "）": Exit Sub
-    If 件数 = 0 Then 先撃ちに断る "使える行がありません（" & 見出しの字(ws.Cells(表.Row, 額列)) & " に " & 組の数字(目標) & " 以下の正の数が入っている行）": Exit Sub
+    If 件数 = 0 Then 先撃ちに断る "使える行がありません（" & 見出しの字(ws.Cells(表.row, 額列)) & " に " & 組の数字(目標) & " 以下の正の数が入っている行）": Exit Sub
     If CDbl(件数) * (容量 + 1) > 30000000# Then 先撃ちに断る "数が大きすぎて計算できません（" & 件数 & " 行 × 額 " & 組の数字(目標) & "）": Exit Sub
 
     大 = 1000000000
@@ -11370,7 +11370,7 @@ Sub 合計がこの額になる組み合わせを探す()
     Next k
 
     出列 = 組み合わせの出し列(ws, 表, "合う組み合わせ", (最少(容量) < 大))
-    If 出列 > 0 Then ws.Range(ws.Cells(表.Row + 1, 出列), ws.Cells(表.Row + 表.rows.Count - 1, 出列)).ClearContents
+    If 出列 > 0 Then ws.Range(ws.Cells(表.row + 1, 出列), ws.Cells(表.row + 表.rows.Count - 1, 出列)).ClearContents
     If 最少(容量) >= 大 Then
         For c = 容量 To 0 Step -1
             If 最少(c) < 大 Then Exit For
@@ -11381,12 +11381,12 @@ Sub 合計がこの額になる組み合わせを探す()
     c = 容量
     For k = 件数 To 1 Step -1
         If 取る(k, c) Then
-            ws.Cells(行s(k), 出列).Value = "○"
+            ws.Cells(行s(k), 出列).value = "○"
             選数 = 選数 + 1
             c = c - 重s(k)
         End If
     Next k
-    Application.StatusBar = "○ " & 選数 & " 件で " & 見出しの字(ws.Cells(表.Row, 額列)) & " の合計が " & 組の数字(目標) & " になります（行の数がいちばん少ない組み合わせ）"
+    Application.StatusBar = "○ " & 選数 & " 件で " & 見出しの字(ws.Cells(表.row, 額列)) & " の合計が " & 組の数字(目標) & " になります（行の数がいちばん少ない組み合わせ）"
 End Sub
 
 ' 頼みの文の最初の数（全角の数字・カンマも読む・後ろに「万」があれば 1 万倍）と、その位置。無ければ -1
@@ -11491,7 +11491,7 @@ Function 組み合わせの行(ByVal ws As Worksheet, ByVal 表 As Range, ByVal 重列 As 
     ReDim 重s(1 To 表.rows.Count)
     ReDim 値s(1 To 表.rows.Count)
     For r = 2 To 表.rows.Count
-        If Not ws.rows(表.Row + r - 1).Hidden Then
+        If Not ws.rows(表.row + r - 1).Hidden Then
             w = 値(r, 重列 - 表.Column + 1)
             使う = (VarType(w) = vbDouble)
             If 使う Then 使う = (w > 0 And w <= 上限 + 0.000001)
@@ -11502,7 +11502,7 @@ Function 組み合わせの行(ByVal ws As Worksheet, ByVal 表 As Range, ByVal 重列 As 
             End If
             If 使う Then
                 n = n + 1
-                行s(n) = 表.Row + r - 1
+                行s(n) = 表.row + r - 1
                 重s(n) = CLng(Round(w * 倍, 0))
                 If 重s(n) > 容量 Then 重s(n) = 容量
                 If 値列 > 0 Then 値s(n) = v
@@ -11516,21 +11516,21 @@ End Function
 Function 組み合わせの出し列(ByVal ws As Worksheet, ByVal 表 As Range, ByVal 見出し As String, ByVal 作る As Boolean) As Long
     Dim c As Long, c2 As Long, 最終 As Long
     c2 = 表.Column + 表.Columns.Count - 1
-    最終 = 表.Row + 表.rows.Count - 1
+    最終 = 表.row + 表.rows.Count - 1
     For c = 表.Column To c2 + 1
-        If 見出しの字(ws.Cells(表.Row, c)) = 見出し Then 組み合わせの出し列 = c: Exit Function
+        If 見出しの字(ws.Cells(表.row, c)) = 見出し Then 組み合わせの出し列 = c: Exit Function
     Next c
     If Not 作る Then Exit Function
     c = c2 + 1
-    If Application.WorksheetFunction.CountA(ws.Range(ws.Cells(表.Row, c), ws.Cells(最終, c))) > 0 Then ws.Columns(c).Insert
-    ws.Range(ws.Cells(表.Row, c2), ws.Cells(最終, c2)).Copy ws.Range(ws.Cells(表.Row, c), ws.Cells(最終, c))
+    If Application.WorksheetFunction.CountA(ws.Range(ws.Cells(表.row, c), ws.Cells(最終, c))) > 0 Then ws.Columns(c).Insert
+    ws.Range(ws.Cells(表.row, c2), ws.Cells(最終, c2)).Copy ws.Range(ws.Cells(表.row, c), ws.Cells(最終, c))
     Application.CutCopyMode = False
-    With ws.Range(ws.Cells(表.Row + 1, c), ws.Cells(最終, c))
+    With ws.Range(ws.Cells(表.row + 1, c), ws.Cells(最終, c))
         .ClearContents
         .NumberFormat = "General"
         .HorizontalAlignment = xlCenter
     End With
-    ws.Cells(表.Row, c).Value = 見出し
+    ws.Cells(表.row, c).value = 見出し
     ws.Columns(c).AutoFit
     組み合わせの出し列 = c
 End Function
@@ -11617,8 +11617,8 @@ Sub デザイン美化を実行する( _
     If ur.rows.Count < 2 Or ur.Columns.Count < 1 Then GoTo FinallyExit
 
     Dim rStart As Long, cStart As Long, rLast As Long, cLast As Long
-    rStart = ur.Row: cStart = ur.Column
-    rLast = ur.Row + ur.rows.Count - 1
+    rStart = ur.row: cStart = ur.Column
+    rLast = ur.row + ur.rows.Count - 1
     cLast = ur.Column + ur.Columns.Count - 1
 
     ' 1. 表の見出し行を検出（全幅結合セル等のタイトル行を除外）
@@ -11629,7 +11629,7 @@ Sub デザイン美化を実行する( _
         Dim isMergedTitle As Boolean: isMergedTitle = False
 
         For c = cStart To cLast
-            Dim cv As Variant: cv = ws.Cells(r, c).Value
+            Dim cv As Variant: cv = ws.Cells(r, c).value
             If ws.Cells(r, c).MergeCells Then
                 If ws.Cells(r, c).MergeArea.Columns.Count >= (cLast - cStart) Then
                     isMergedTitle = True
@@ -11657,7 +11657,7 @@ Sub デザイン美化を実行する( _
     Dim curStart As Long: curStart = 0
 
     For c = cStart To cLast
-        Dim hv As Variant: hv = ws.Cells(hdrRow, c).Value
+        Dim hv As Variant: hv = ws.Cells(hdrRow, c).value
         Dim hasHdrText As Boolean
         hasHdrText = (VarType(hv) = vbString And Trim(CStr(hv)) <> "")
 
@@ -11675,7 +11675,7 @@ Sub デザイン美化を実行する( _
                     For chkR = hdrRow + 1 To Application.Min(hdrRow + 10, rLast)
                         Dim chkC As Long
                         For chkC = curStart To c - 1
-                            If Not isEmpty(ws.Cells(chkR, chkC).Value) Then
+                            If Not isEmpty(ws.Cells(chkR, chkC).value) Then
                                 hasDataBelow = True
                                 Exit For
                             End If
@@ -11697,7 +11697,7 @@ Sub デザイン美化を実行する( _
         Dim hasDataBelowEnd As Boolean: hasDataBelowEnd = False
         For chkR = hdrRow + 1 To Application.Min(hdrRow + 10, rLast)
             For chkC = curStart To cLast
-                If Not isEmpty(ws.Cells(chkR, chkC).Value) Then
+                If Not isEmpty(ws.Cells(chkR, chkC).value) Then
                     hasDataBelowEnd = True
                     Exit For
                 End If
@@ -11753,7 +11753,7 @@ Sub デザイン美化を実行する( _
         For sr = pureDataEnd + 1 To Application.Min(pureDataEnd + 4, rLast)
             Dim isSumLine As Boolean: isSumLine = False
             For c = bCStart To bCEnd
-                Dim cVal As Variant: cVal = ws.Cells(sr, c).Value
+                Dim cVal As Variant: cVal = ws.Cells(sr, c).value
                 If VarType(cVal) = vbString Then
                     Dim sStr As String: sStr = Trim(CStr(cVal))
                     If sStr = "合計" Or sStr = "総合計" Or sStr = "総計" Or sStr = "小計" Or _
@@ -11871,7 +11871,7 @@ Sub デザイン美化を実行する( _
         ' 列ごとのアライメント・書式整流化（メモリ配列による最速判定）
         Dim numCols As Long: numCols = bCEnd - bCStart + 1
         Dim bValArr As Variant
-        bValArr = tblRange.Value
+        bValArr = tblRange.value
         Dim numR As Long: numR = UBound(bValArr, 1)
 
         For c = 1 To numCols
@@ -12015,7 +12015,7 @@ Sub デザイン美化を実行する( _
         Next r
         If 題の行 > 0 Then
             For c = cStart To cLast
-                Dim titleVal As Variant: titleVal = ws.Cells(題の行, c).Value
+                Dim titleVal As Variant: titleVal = ws.Cells(題の行, c).value
                 If VarType(titleVal) = vbString And Trim(titleVal) <> "" Then
                     With ws.Cells(題の行, c).Font
                         .Name = fontName
@@ -12073,8 +12073,8 @@ Sub 表の上にKPIサマリーカードを作る()
     If ur.rows.Count < 2 Then GoTo FinallyExit
 
     Dim rStart As Long, cStart As Long, rLast As Long, cLast As Long
-    rStart = ur.Row: cStart = ur.Column
-    rLast = ur.Row + ur.rows.Count - 1
+    rStart = ur.row: cStart = ur.Column
+    rLast = ur.row + ur.rows.Count - 1
     cLast = ur.Column + ur.Columns.Count - 1
 
     ' 末尾の空行を除外して真の最終行を特定
@@ -12082,7 +12082,7 @@ Sub 表の上にKPIサマリーカードを作る()
     Dim realLastRow As Long: realLastRow = 0
     For r = rLast To rStart Step -1
         For c = cStart To cLast
-            If Not isEmpty(ws.Cells(r, c).Value) Then
+            If Not isEmpty(ws.Cells(r, c).value) Then
                 realLastRow = r
                 Exit For
             End If
@@ -12096,7 +12096,7 @@ Sub 表の上にKPIサマリーカードを作る()
     For r = rStart To rLast
         Dim txtCount As Long: txtCount = 0
         For c = cStart To cLast
-            Dim cv As Variant: cv = ws.Cells(r, c).Value
+            Dim cv As Variant: cv = ws.Cells(r, c).value
             If VarType(cv) = vbString And Trim(cv) <> "" Then txtCount = txtCount + 1
         Next c
         If txtCount >= 2 Or (cLast = cStart And txtCount >= 1) Then
@@ -12108,7 +12108,7 @@ Sub 表の上にKPIサマリーカードを作る()
     ' 合計行の除外判定
     Dim hasTotalRow As Boolean: hasTotalRow = False
     For c = cStart To cLast
-        Dim lv As Variant: lv = ws.Cells(rLast, c).Value
+        Dim lv As Variant: lv = ws.Cells(rLast, c).value
         If VarType(lv) = vbString Then
             Dim strLv As String: strLv = Trim(CStr(lv))
             If strLv = "合計" Or strLv = "総合計" Or strLv = "総計" Or strLv = "小計" Or _
@@ -12130,9 +12130,9 @@ Sub 表の上にKPIサマリーカードを作る()
     Dim kpiCount As Long: kpiCount = 0
 
     For c = cStart To cLast
-        Dim hTitle As String: hTitle = Trim(CStr(ws.Cells(hdrRow, c).Value))
+        Dim hTitle As String: hTitle = Trim(CStr(ws.Cells(hdrRow, c).value))
         If InStr(hTitle, "コード") = 0 And InStr(hTitle, "No") = 0 And InStr(hTitle, "ID") = 0 Then
-            Dim valSample As Variant: valSample = ws.Cells(hdrRow + 1, c).Value
+            Dim valSample As Variant: valSample = ws.Cells(hdrRow + 1, c).value
             If IsNumeric(valSample) And Not isEmpty(valSample) Then
                 kpiCount = kpiCount + 1
                 numCols(kpiCount) = c
@@ -12182,7 +12182,7 @@ Sub 表の上にKPIサマリーカードを作る()
         Set lblRange = ws.Range(ws.Cells(カード行, cLeft), ws.Cells(カード行 + 1, cRight))
         lblRange.Merge
         With lblRange
-            .Value = IIf(numTypes(k) = "AVG", "平均 ", "合計 ") & kTitle
+            .value = IIf(numTypes(k) = "AVG", "平均 ", "合計 ") & kTitle
             .Font.Name = "BIZ UDゴシック"
             .Font.Size = 9
             .Font.Bold = True
