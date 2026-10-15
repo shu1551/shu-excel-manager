@@ -194,6 +194,7 @@ replace-procedure -y [--module 名] [--code-file f]    # _last_proc.vba で置�
 add-procedure <モジュール> -y / delete-procedure [モジュール] <Sub名> [Sub名…] -y   # 追加・削除（複数は控え 1 冊・保存 1 回）
 add-module <名> [--type std|class|form] / delete-module <名> -y
 replace-module <モジュール> <basファイル>                 # Remove+Import（VB_Name 照合・.frm は .frx 同伴）
+import-module <ファイル…> [--book 名] [--replace] -y      # モジュール（.bas/.cls/.frm）を取り込む（同名は --replace で置換、取り込み後全体コンパイル確認）
 code-replace "旧" "新" [--module 名] [--regex] -y       # 全マクロ横断の一括置換（変更行だけ ReplaceLine・寛容な探し直し）
 rename-procedure <旧名> <新名> [--module 名] -y [--dry-run]  # 改名＝宣言・呼び元・Application.Run の文字・OnAction・ショートカット再登録（2026-09-16）
 grep "文字" [--regex] [-i] [--module 名] [--max N]      # 全モジュール横断の検索
@@ -217,7 +218,7 @@ call-graph [--macro 名] [--mermaid] / impact <マクロ> / wiring / docs   # �
 flow <マクロ名> [--module 名] [--out x.md]    # マクロの中の流れ図（Mermaid・コードから機械的に・AI なし。引き継ぎ資料に）
 checkup [--form] [--note "…"] [--history]              # 健康診断（利用者が明示したときだけ）
 inspect-gui [マクロ] / capabilities [コマンド] / metrics / process [--kill PID] / setup-check / diag
-close-form [題名] [--list] / vbe-reset [--check]        # 表示中フォームを閉じる・中断モード解除（人の指示でだけ）
+close-form [題名] [--list] / vbe-reset [--check] / unstick [--fix] / close-vbe   # 表示中フォームを閉じる・中断モード解除・Excelの詰まり解除・VBEを閉じる
 form-to-vba <フォーム> [--all] [--add モジュール] [--verify]   # UserForm を作成マクロに変換
 stats [--days 7] [--top 20] [--slow 8] / status         # 呼び出し台帳の集計・いま走っているコマンドと進み具合（COM 不要）
 <長い手> --bg                                          # MCP の vba() で行末に付けると待たずに job id（checkup・export-all・gate・rehearse・snapshot・docs）。段は status、結果は agent_status("job…")（2026-09-17）
@@ -278,6 +279,7 @@ datamodel list / relation add|delete / measure add|delete
   図形・テーブル）を見る。変更を伴う作業は前後で snapshot → snapshot-diff。
 - **動作検証は COM 経由が第一選択**（run-macro／test／snapshot-diff）。computer-use の打鍵は最終手段。
 - **checkup／check は利用者が明示したときだけ**。裁量で回さない。
+- **Excel が詰まったとき**: 「開いているブックが見つかりません」やセル編集中・ダイアログ・VBE中断で COM が返らないときは `unstick` で状況を見て、`unstick --fix` で解く（リセット窓［OK］・編集Esc）。
 
 ## マクロ作成・修正時の最速原則（初手からプロレベル最速構成の徹底）
 

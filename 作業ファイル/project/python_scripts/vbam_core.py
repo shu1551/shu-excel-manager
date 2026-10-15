@@ -897,6 +897,7 @@ def _get_workbook_uncached(target_file_arg=None, load_addins=False, readonly=Fal
         if wb is None:
             raise Exception(
                 "起動中の Excel に開いているブックが見つかりません。\n"
+                "  ・詰まっていれば `unstick` で見て、`unstick --fix` で解けます。\n"
                 "  ・ブックは open で開く: vba(\"open ブックのパス\")（見えている Excel に合流して開く。"
                 "Excel が無ければ普通に起動する＝アドインも読み込まれる）。\n"
                 "  ・Excel のプロセスを終了しない（taskkill・Stop-Process は使う人が作業中のブックを保存せずに落とす）。"
@@ -2747,7 +2748,298 @@ def shelf_module_of(vbproject, sub):
     return None
 
 
-__all__ = ['split_command_line',
+# ================================================================
+# unstick: Excel の詰まりを道具が自分で見つけて解く（2026-10-15）
+# ================================================================
+
+def classify_unstick_dialog(title, body, buttons):
+    """ダイアログのタイトル・本文・ボタンから処置方針を判定する純粋関数（テスト用・Win32非依存）。
+    buttons: [(hwnd, label, ctrl_id), ...]
+    戻り値: ('reset_ok', button_info) | ('manual', None)
+    """
+    text = f"{title or ''} {body or ''}".lower()
+    # 「プロジェクトがリセットされます」のダイアログ
+    if "プロジェクトがリセットされます" in text or ("project" in text and "reset" in text) or "リセットされます" in text:
+        for b_hwnd, b_label, b_id in buttons:
+            clean_lbl = (b_label or '').replace('&', '').strip().upper()
+            if clean_lbl == 'OK' or b_id == 1:
+                return 'reset_ok', (b_hwnd, b_label, b_id)
+        return 'manual', None
+    return 'manual', None
+
+
+def inspect_excel_unstick():
+    """Excel の詰まりを COM を使わず Win32 だけで点検する。
+    戻り値:
+      {
+        'excel_pids': list,
+        'dialogs': [{'hwnd': int, 'pid': int, 'title': str, 'body': str, 'buttons': list, 'action': str, 'target_btn': tuple}],
+        'vbe_breaks': [{'hwnd': int, 'title': str}],
+        'editing': [{'xlmain': int, 'excel6': int}],
+        'stuck': bool,
+      }
+    """
+    try:
+        import win32gui
+        import win32process
+    except Exception as ex:
+        return {'error': f"win32gui が使えません: {ex}", 'stuck': False}
+
+    excel_pids = set()
+    xlmain_hwnds = []
+
+    def _find_excel(h, _):
+        try:
+            if win32gui.GetClassName(h) == 'XLMAIN':
+                xlmain_hwnds.append(h)
+                _, p = win32process.GetWindowThreadProcessId(h)
+                excel_pids.add(p)
+        except Exception:
+            pass
+
+    try:
+        win32gui.EnumWindows(_find_excel, None)
+    except Exception:
+        pass
+
+    # 1. ダイアログ（クラス #32770）の列挙
+    dialogs = []
+    def _find_dialogs(hwnd, _):
+        try:
+            if not win32gui.IsWindowVisible(hwnd):
+                return
+            if win32gui.GetClassName(hwnd) != '#32770':
+                return
+            _, pid = win32process.GetWindowThreadProcessId(hwnd)
+            if excel_pids and pid not in excel_pids:
+                return
+            title = win32gui.GetWindowText(hwnd) or ''
+            kids = []
+            win32gui.EnumChildWindows(hwnd, lambda h, acc: acc.append(h), kids)
+            texts = []
+            buttons = []
+            for h in kids:
+                k_cls = win32gui.GetClassName(h)
+                k_txt = (win32gui.GetWindowText(h) or '').strip()
+                cid = win32gui.GetDlgCtrlID(h) if hasattr(win32gui, 'GetDlgCtrlID') else 0
+                if k_cls == 'Button':
+                    buttons.append((h, k_txt.replace('&', ''), cid))
+                elif k_cls == 'Static' and k_txt:
+                    texts.append(k_txt)
+            body = ' / '.join(texts)
+            act, btn = classify_unstick_dialog(title, body, buttons)
+            dialogs.append({
+                'hwnd': hwnd,
+                'pid': pid,
+                'title': title,
+                'body': body,
+                'buttons': buttons,
+                'action': act,
+                'target_btn': btn,
+            })
+        except Exception:
+            pass
+
+    try:
+        win32gui.EnumWindows(_find_dialogs, None)
+    except Exception:
+        pass
+
+    # 2. VBE の主窓（クラス wndclass_desked_gsk）の [中断] 検出
+    vbe_breaks = []
+    def _find_vbe(hwnd, _):
+        try:
+            if not win32gui.IsWindowVisible(hwnd):
+                return
+            if win32gui.GetClassName(hwnd) == 'wndclass_desked_gsk':
+                _, pid = win32process.GetWindowThreadProcessId(hwnd)
+                if excel_pids and pid not in excel_pids:
+                    return
+                title = win32gui.GetWindowText(hwnd) or ''
+                if '[中断]' in title or '[break]' in title.lower():
+                    vbe_breaks.append({'hwnd': hwnd, 'title': title})
+        except Exception:
+            pass
+
+    try:
+        win32gui.EnumWindows(_find_vbe, None)
+    except Exception:
+        pass
+
+    # 3. Excel 本体の窓が編集中か（EXCEL6 クラスの可視コントロール）
+    editing = []
+    for xh in xlmain_hwnds:
+        kids = []
+        try:
+            win32gui.EnumChildWindows(xh, lambda h, acc: acc.append(h), kids)
+            for h in kids:
+                if win32gui.GetClassName(h) == 'EXCEL6' and win32gui.IsWindowVisible(h):
+                    editing.append({'xlmain': xh, 'excel6': h})
+                    break
+        except Exception:
+            pass
+
+    stuck = bool(dialogs or vbe_breaks or editing)
+    return {
+        'excel_pids': list(excel_pids),
+        'dialogs': dialogs,
+        'vbe_breaks': vbe_breaks,
+        'editing': editing,
+        'stuck': stuck,
+    }
+
+
+def cmd_unstick(args):
+    """Excel の詰まりを道具が自分で見つけて解く: unstick [--fix]"""
+    fix = bool(getattr(args, 'fix', False))
+    info = inspect_excel_unstick()
+    if 'error' in info:
+        print(f"エラー: {info['error']}")
+        return False
+
+    if not info['stuck']:
+        try:
+            xl, wb = get_workbook(None)
+            print(f"詰まりは見つかりませんでした（COM接続正常: {wb.Name}）")
+            return True
+        except Exception as ex:
+            print(f"詰まりの窓は見当たりませんが、COM 接続できませんでした: {ex}")
+            return False
+
+    if not fix:
+        print("===== Excel の詰まりを検出しました =====")
+        if info['dialogs']:
+            print(f"・ダイアログ表示中（{len(info['dialogs'])}件）:")
+            for d in info['dialogs']:
+                btns = ' / '.join(b[1] for b in d['buttons']) if d['buttons'] else 'なし'
+                print(f"  - 題名: {d['title'] or '(無題)'}")
+                print(f"    本文: {d['body'] or '(本文なし)'}")
+                print(f"    ボタン: [{btns}]")
+                if d['action'] == 'reset_ok':
+                    print("    方針: --fix で［OK］を押して解除できます")
+                else:
+                    print("    方針: 人の判断が必要なダイアログです")
+        if info['vbe_breaks']:
+            print(f"・VBE が中断モードです（{len(info['vbe_breaks'])}件）:")
+            for v in info['vbe_breaks']:
+                print(f"  - {v['title']}")
+        if info['editing']:
+            print("・Excel 本体のセルまたは数式バーを編集中です（In-cell editing）")
+            print("  方針: --fix で Esc を送信して編集を取り消せます")
+        print("解くには: unstick --fix を実行してください")
+        return True
+
+    # --fix の実行
+    try:
+        import win32gui
+        import win32con
+    except Exception as ex:
+        print(f"エラー: win32gui が使えません: {ex}")
+        return False
+
+    actions_taken = []
+
+    # 1. ダイアログの処理
+    manual_dialogs = []
+    for d in info['dialogs']:
+        if d['action'] == 'reset_ok' and d['target_btn']:
+            btn_h = d['target_btn'][0]
+            try:
+                win32gui.PostMessage(btn_h, win32con.BM_CLICK, 0, 0)
+                try:
+                    cid = d['target_btn'][2] or 1
+                    win32gui.SendMessage(d['hwnd'], win32con.WM_COMMAND, cid, btn_h)
+                except Exception:
+                    pass
+                time.sleep(0.3)
+                actions_taken.append(f"「{d['title']}」の窓を［OK］で閉じました")
+            except Exception as ex:
+                actions_taken.append(f"「{d['title']}」の［OK］押下に失敗: {ex}")
+        else:
+            manual_dialogs.append(d)
+
+    if manual_dialogs:
+        print("⚠ 以下のダイアログは自動で押せません（人の判断が必要です）:")
+        for d in manual_dialogs:
+            btns = ' / '.join(b[1] for b in d['buttons']) if d['buttons'] else 'なし'
+            print(f"  - 題名: {d['title'] or '(無題)'}")
+            print(f"    本文: {d['body'] or '(本文なし)'}")
+            print(f"    ボタン: [{btns}]")
+        return False
+
+    # 2. セル編集中の解除
+    for e in info['editing']:
+        try:
+            eh = e.get('excel6')
+            xh = e.get('xlmain')
+            if eh and win32gui.IsWindow(eh):
+                win32gui.PostMessage(eh, win32con.WM_KEYDOWN, win32con.VK_ESCAPE, 0)
+                time.sleep(0.05)
+                win32gui.PostMessage(eh, win32con.WM_KEYUP, win32con.VK_ESCAPE, 0)
+            if xh and win32gui.IsWindow(xh):
+                win32gui.PostMessage(xh, win32con.WM_KEYDOWN, win32con.VK_ESCAPE, 0)
+                time.sleep(0.05)
+                win32gui.PostMessage(xh, win32con.WM_KEYUP, win32con.VK_ESCAPE, 0)
+            time.sleep(0.2)
+            actions_taken.append("セルの編集を取り消しました（Esc 送信）")
+        except Exception as ex:
+            actions_taken.append(f"セルの編集解除に失敗: {ex}")
+
+    time.sleep(0.5)
+
+    # 3. COM 疎通確認
+    com_ok = False
+    wb_name = ""
+    try:
+        _wb_cache.clear()
+        xl, wb = get_workbook(None)
+        com_ok = True
+        wb_name = wb.Name
+    except Exception:
+        pass
+
+    if com_ok:
+        msg = '／'.join(actions_taken) if actions_taken else '詰まりを解消しました'
+        print(f"解けました（{msg}。COM接続正常: {wb_name}）")
+        return True
+    else:
+        print(f"処置を実行しました（{'／'.join(actions_taken)}）が、まだ COM で応答がありません。")
+        return False
+
+
+def cmd_close_vbe(args=None):
+    """VBE ウィンドウを閉じる: close-vbe"""
+    closed = False
+    try:
+        xl = _get_active_excel()
+        if xl and hasattr(xl, 'VBE'):
+            xl.VBE.MainWindow.Visible = False
+            closed = True
+    except Exception:
+        pass
+    try:
+        import win32gui
+        import win32con
+        def _enum(hwnd, _):
+            nonlocal closed
+            if win32gui.GetClassName(hwnd) == 'wndclass_desked_gsk':
+                win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
+                closed = True
+        win32gui.EnumWindows(_enum, None)
+    except Exception:
+        pass
+    if closed:
+        print("VBE を閉じました")
+    else:
+        print("VBE は開いていません")
+    return True
+
+
+__all__ = ['cmd_close_vbe',
+    'classify_unstick_dialog',
+    'inspect_excel_unstick',
+    'cmd_unstick',
+    'split_command_line',
     'SHELF_MODULE',
     'is_shelf_module',
     'SHELF_HELPER_SUFFIX',
