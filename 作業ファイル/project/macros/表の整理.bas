@@ -5327,3 +5327,184 @@ Sub 表の合計と小計の行を消す()
         End If
     Next r
 End Sub
+
+Sub 選んだ列で表を並べ替える()
+    ' 選んだ1列をキーに表全体（見出しの下から合計行の上まで）を昇順に並べ替える。頼みに「降順・大きい順・新しい順」があれば降順。合計・小計の行は動かさない。
+    ' 階級: 基本
+    ' 依頼の語: 表を並べ替え|表をソート|昇順に並べ替え|降順に並べ替え|表を昇順に|表を降順に|日付順に表を|新しい順に表を|古い順に表を
+    ' 依頼の組: 並べ替え,ソート+表+-列を,列の,選んだ順,左へ,0の行,ゼロ,テーブル,何位,順位
+    ' 扱う: 並べ替え ソート 昇順 降順 表並べ替え
+    ' 見出し: なし
+    ' 選ぶ列: 1
+    ' 形: なし
+    ' 列は頼みから: あり
+
+    Dim ws As Worksheet
+    Set ws = ActiveSheet
+    If ws Is Nothing Then Exit Sub
+    If ws.UsedRange Is Nothing Then Exit Sub
+
+    Dim hdrRow As Long, keyCol As Long
+    If Selection Is Nothing Then
+        hdrRow = ws.UsedRange.row
+        keyCol = ws.UsedRange.Column
+    Else
+        hdrRow = Selection.Cells(1, 1).row
+        keyCol = Selection.Cells(1, 1).Column
+    End If
+
+    Dim usedLeft As Long, usedRight As Long
+    usedLeft = ws.UsedRange.Column
+    usedRight = usedLeft + ws.UsedRange.Columns.Count - 1
+
+    Dim firstDataRow As Long, lastRow As Long
+    firstDataRow = hdrRow + 1
+    Dim lastUsedRow As Long
+    lastUsedRow = 表の本文の最終行(ws)
+
+    ' 合計行を探す（firstDataRow以降で集計の語を含むセル）
+    Dim totRow As Long, i As Long, cc As Long, s As String
+    totRow = 0
+    Dim scanFrom As Long
+    scanFrom = lastUsedRow + 3
+    If scanFrom > ws.UsedRange.row + ws.UsedRange.rows.Count - 1 Then scanFrom = ws.UsedRange.row + ws.UsedRange.rows.Count - 1
+    For i = scanFrom To firstDataRow Step -1
+        For cc = usedLeft To usedRight
+            s = CStr(ws.Cells(i, cc).value)
+            If 集計の語か(s) Then
+                totRow = i
+                Exit For
+            End If
+        Next cc
+        If totRow > 0 Then Exit For
+    Next i
+
+    If totRow > 0 Then
+        lastRow = totRow - 1
+        Do While lastRow > firstDataRow And Application.WorksheetFunction.CountA(ws.Range(ws.Cells(lastRow, usedLeft), ws.Cells(lastRow, usedRight))) = 0
+            lastRow = lastRow - 1
+        Loop
+    Else
+        lastRow = lastUsedRow
+    End If
+
+    If lastRow <= firstDataRow Then Exit Sub
+
+    ' 頼みの文の判定（降順判定）
+    Dim isDesc As Boolean
+    isDesc = False
+    Dim req As String
+    req = ""
+    On Error Resume Next
+    req = コンボ道具.m頼みの文
+    On Error GoTo 0
+    If InStr(req, "降順") > 0 Or InStr(req, "大きい順") > 0 Or InStr(req, "新しい順") > 0 Or InStr(req, "高い順") > 0 Or InStr(req, "多い順") > 0 Then
+        isDesc = True
+    End If
+
+    Dim sortOrder As XlSortOrder
+    If isDesc Then sortOrder = xlDescending Else sortOrder = xlAscending
+
+    ' 並べ替え実行
+    Dim targetRng As Range
+    Set targetRng = ws.Range(ws.Cells(firstDataRow, usedLeft), ws.Cells(lastRow, usedRight))
+    targetRng.Sort Key1:=ws.Cells(firstDataRow, keyCol), Order1:=sortOrder, Header:=xlNo, Orientation:=xlTopToBottom
+End Sub
+
+Sub 見出しで枠を固定しA1に戻す()
+    ' 全シートで、表の見出しの下で枠を固定し、選択を A1、表示を左上へ。値は変えない。
+    ' 階級: 基本
+    ' 依頼の語: 枠を固定|枠固定|A1に戻|A1選択|全シートの枠|全シートA1|見出しで枠固定|ウィンドウ枠固定|枠の固定|A1にして保存|A1にして
+    ' 依頼の組: 枠,固定,A1+シート,見出し,戻,そろえ+-CSV,文字数字,印刷,ピボット
+    ' 扱う: 枠固定 A1 全シート
+    ' 見出し: なし
+    ' 選ぶ列: なし
+    ' 形: なし
+
+    Dim ws As Worksheet, actWs As Worksheet
+    Dim origScreen As Boolean
+    Set actWs = ActiveSheet
+    origScreen = Application.ScreenUpdating
+    Application.ScreenUpdating = False
+
+    Dim sh As Worksheet
+    For Each sh In actWs.Parent.Worksheets
+        If sh.Visible = xlSheetVisible Then
+            sh.Activate
+            ActiveWindow.FreezePanes = False
+
+            ' 見出し行の判定
+            Dim hdrRow As Long
+            hdrRow = 1
+            If Not sh.UsedRange Is Nothing Then
+                hdrRow = sh.UsedRange.row
+            End If
+
+            ActiveWindow.ScrollRow = 1
+            ActiveWindow.ScrollColumn = 1
+
+            sh.Cells(hdrRow + 1, 1).Select
+            ActiveWindow.FreezePanes = True
+
+            sh.Range("A1").Select
+            ActiveWindow.ScrollRow = 1
+            ActiveWindow.ScrollColumn = 1
+        End If
+    Next sh
+
+    If Not actWs Is Nothing Then
+        If actWs.Visible = xlSheetVisible Then actWs.Activate
+    End If
+    Application.ScreenUpdating = origScreen
+End Sub
+
+Sub 選んだ列の式を値にする()
+    ' 選んだ列（選ばなければ表全体）の式を、今の値に置き換える。書式は変えない。エラーの式は値にせず数を報告。
+    ' 階級: 基本
+    ' 依頼の語: 式を値に|数式を値に|式を値にする|数式を値にする|式を値に変換|数式を値に変換|計算式を値に|式を固定|値貼り付け|値貼付|数式を消して値
+    ' 依頼の組: 式,数式,計算式+値,貼り付け,貼付,固定,変換+-外部リンク,別ブック,参照
+    ' 扱う: 式を値 数式値化 値貼り付け
+    ' 見出し: なし
+    ' 選ぶ列: 0-1
+    ' 形: なし
+
+    Dim ws As Worksheet
+    Set ws = ActiveSheet
+    If ws Is Nothing Then Exit Sub
+    If ws.UsedRange Is Nothing Then Exit Sub
+
+    Dim targetRng As Range
+    If Selection Is Nothing Then
+        Set targetRng = ws.UsedRange
+    ElseIf Selection.CountLarge = 1 And Selection.Address = ws.Cells(1, 1).Address Then
+        Set targetRng = ws.UsedRange
+    Else
+        Set targetRng = Selection
+    End If
+
+    ' 数式を含むセルを探す
+    Dim formulaRng As Range
+    On Error Resume Next
+    Set formulaRng = targetRng.SpecialCells(xlCellTypeFormulas)
+    On Error GoTo 0
+
+    If formulaRng Is Nothing Then Exit Sub
+
+    Dim cell As Range, errCount As Long, convertedCount As Long
+    errCount = 0
+    convertedCount = 0
+
+    For Each cell In formulaRng
+        If IsError(cell.value) Then
+            errCount = errCount + 1
+        Else
+            cell.value = cell.value
+            convertedCount = convertedCount + 1
+        End If
+    Next cell
+
+    If errCount > 0 Then
+        ' エラーの式は値にせず数を報告
+        Call 先撃ちに断る("エラーの式 " & errCount & " 件は値にせず残しました（" & convertedCount & " 件を値に変換）")
+    End If
+End Sub

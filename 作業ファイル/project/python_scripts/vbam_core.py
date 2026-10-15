@@ -2754,11 +2754,21 @@ def shelf_module_of(vbproject, sub):
 
 def classify_unstick_dialog(title, body, buttons):
     """ダイアログのタイトル・本文・ボタンから処置方針を判定する純粋関数（テスト用・Win32非依存）。
-    buttons: [(hwnd, label, ctrl_id), ...]
-    戻り値: ('reset_ok', button_info) | ('manual', None)
+    buttons: [(hwnd_or_elem, label, ctrl_id), ...]
+    戻り値: ('reset_ok', button_info) | ('recovery_keep', button_info) | ('manual', None)
     """
     text = f"{title or ''} {body or ''}".lower()
-    # 「プロジェクトがリセットされます」のダイアログ
+
+    # 1. 回復の窓（ドキュメントの回復）
+    # 題名か本文に「回復」があれば、「後で表示」か「はい」を含み、「削除」を含まないボタンを押す
+    if "回復" in (title or '') or "回復" in (body or ''):
+        for btn in buttons:
+            lbl = btn[1] or ''
+            if ("後で表示" in lbl or "はい" in lbl) and "削除" not in lbl:
+                return 'recovery_keep', btn
+        return 'manual', None
+
+    # 2. 「プロジェクトがリセットされます」のダイアログ
     if "プロジェクトがリセットされます" in text or ("project" in text and "reset" in text) or "リセットされます" in text:
         for b_hwnd, b_label, b_id in buttons:
             clean_lbl = (b_label or '').replace('&', '').strip().upper()
@@ -2802,13 +2812,23 @@ def inspect_excel_unstick():
     except Exception:
         pass
 
-    # 1. ダイアログ（クラス #32770）の列挙
+    # EXCEL.EXE のプロセスを PID から漏れなく収集（閉じる途中は主窓が消えている）
+    try:
+        for p in win32process.EnumProcesses():
+            if _pid_is_excel(p):
+                excel_pids.add(p)
+    except Exception:
+        pass
+
+    # 1. ダイアログ（クラス #32770, NUIDialog, bosa_sdm_XL9）の列挙
+    TARGET_DIALOG_CLASSES = {'#32770', 'NUIDialog', 'bosa_sdm_XL9'}
     dialogs = []
     def _find_dialogs(hwnd, _):
         try:
             if not win32gui.IsWindowVisible(hwnd):
                 return
-            if win32gui.GetClassName(hwnd) != '#32770':
+            cls_name = win32gui.GetClassName(hwnd)
+            if cls_name not in TARGET_DIALOG_CLASSES:
                 return
             _, pid = win32process.GetWindowThreadProcessId(hwnd)
             if excel_pids and pid not in excel_pids:
@@ -2826,6 +2846,31 @@ def inspect_excel_unstick():
                     buttons.append((h, k_txt.replace('&', ''), cid))
                 elif k_cls == 'Static' and k_txt:
                     texts.append(k_txt)
+
+            # 子窓（Button/Static）が無い場合（DirectUIHWND・NetUI 等）は UI Automation で探索
+            if not buttons and not texts:
+                try:
+                    import comtypes.client
+                    uia_mod = comtypes.client.GetModule('UIAutomationCore.dll')
+                    uia = comtypes.client.CreateObject(uia_mod.CUIAutomation, interface=uia_mod.IUIAutomation)
+                    elem = uia.ElementFromHandle(hwnd)
+                    if elem:
+                        cond_true = uia.CreateTrueCondition()
+                        elements = elem.FindAll(uia_mod.TreeScope_Descendants, cond_true)
+                        for i in range(elements.Length):
+                            el = elements.GetElement(i)
+                            try:
+                                ctype = el.CurrentControlType
+                                name = el.CurrentName or ''
+                                if ctype == getattr(uia_mod, 'UIA_ButtonControlTypeId', 50000) or ctype == 50000:
+                                    buttons.append((el, name.replace('&', ''), 0))
+                                elif (ctype == getattr(uia_mod, 'UIA_TextControlTypeId', 50020) or ctype == 50020) and name:
+                                    texts.append(name.strip())
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+
             body = ' / '.join(texts)
             act, btn = classify_unstick_dialog(title, body, buttons)
             dialogs.append({
@@ -2917,6 +2962,9 @@ def cmd_unstick(args):
                 print(f"    ボタン: [{btns}]")
                 if d['action'] == 'reset_ok':
                     print("    方針: --fix で［OK］を押して解除できます")
+                elif d['action'] == 'recovery_keep':
+                    lbl = d['target_btn'][1] if d['target_btn'] else '残す'
+                    print(f"    方針: --fix で［{lbl}］を押して解除できます")
                 else:
                     print("    方針: 人の判断が必要なダイアログです")
         if info['vbe_breaks']:
@@ -2942,19 +2990,27 @@ def cmd_unstick(args):
     # 1. ダイアログの処理
     manual_dialogs = []
     for d in info['dialogs']:
-        if d['action'] == 'reset_ok' and d['target_btn']:
-            btn_h = d['target_btn'][0]
+        if d['action'] in ('reset_ok', 'recovery_keep') and d['target_btn']:
+            target = d['target_btn'][0]
+            label = d['target_btn'][1]
             try:
-                win32gui.PostMessage(btn_h, win32con.BM_CLICK, 0, 0)
-                try:
-                    cid = d['target_btn'][2] or 1
-                    win32gui.SendMessage(d['hwnd'], win32con.WM_COMMAND, cid, btn_h)
-                except Exception:
-                    pass
+                if hasattr(target, 'GetCurrentPattern'):
+                    import comtypes.client
+                    uia_mod = comtypes.client.GetModule('UIAutomationCore.dll')
+                    pattern = target.GetCurrentPattern(getattr(uia_mod, 'UIA_InvokePatternId', 10000))
+                    inv_pat = pattern.QueryInterface(uia_mod.IUIAutomationInvokePattern)
+                    inv_pat.Invoke()
+                elif isinstance(target, int):
+                    win32gui.PostMessage(target, win32con.BM_CLICK, 0, 0)
+                    try:
+                        cid = d['target_btn'][2] or 1
+                        win32gui.SendMessage(d['hwnd'], win32con.WM_COMMAND, cid, target)
+                    except Exception:
+                        pass
                 time.sleep(0.3)
-                actions_taken.append(f"「{d['title']}」の窓を［OK］で閉じました")
+                actions_taken.append(f"「{d['title']}」の窓を［{label}］で閉じました")
             except Exception as ex:
-                actions_taken.append(f"「{d['title']}」の［OK］押下に失敗: {ex}")
+                actions_taken.append(f"「{d['title']}」の［{label}］押下に失敗: {ex}")
         else:
             manual_dialogs.append(d)
 
