@@ -693,6 +693,7 @@ _SHELF_QUESTION = ("とは何", "とは？", "とは?", "って何", "の違い�
                    "使い方は", "使い方が分", "使い方がわ", "相談", "コツ", "作り方", "分析して", "傾向",
                    "考え方", "何が言え", "何が分か", "した方がいい", "しない方がいい", "使わない方がいい",
                    "ばいいか", "ばよいか", "には何を")   # 「整えるには何を直せばいいか教えて」は質問（2026-10-14）
+_SHELF_QUESTION_EXCEPT = ("ABC分析", "ＡＢＣ分析", "パレート分析", "abc分析")
 # 条件付き書式を付ける依頼は AI の役目（棚にあるのは一覧にするマクロだけ）。調べる・一覧の語があるときだけ棚に当てる
 # （2026-10-14: seiri の「条件付き書式で赤くして」が 入力規則などの仕掛けを一覧にする に当たっていた。VBA の 先撃ち候補 と同じ決まり）
 _SHELF_CF_LOOK = ("調べ", "一覧", "どこ", "探", "確認", "チェック", "点検", "洗い出", "リスト")
@@ -759,7 +760,7 @@ def shelf_pick(request, entries=()):
         if not req:
             return ''
     low = req.lower()
-    if any(w in req for w in _SHELF_NOT_WORK) or any(w.lower() in low for w in _SHELF_QUESTION):
+    if any(w in req for w in _SHELF_NOT_WORK) or (any(w.lower() in low for w in _SHELF_QUESTION) and not any(e.lower() in low for e in _SHELF_QUESTION_EXCEPT)):
         return ''
     if '条件付き書式' in req and not any(w in req for w in _SHELF_CF_LOOK):
         return ''
