@@ -7098,6 +7098,111 @@ def _start_call_watchdog(seconds, owned_pid=None):
     return _Watchdog()
 
 
+def check_form_timeout(initial_hwnds, current_windows, first_seen_time, now, wait_seconds=3.0):
+    """新しい UserForm 窓が出現してから wait_seconds 秒経過したか判定する純粋関数。
+
+    戻り値: (should_cancel: bool, next_first_seen: float | None, form_caption: str | None)
+    """
+    initial_set = set(initial_hwnds or ())
+    new_forms = [(h, cap) for (h, cap) in (current_windows or []) if h not in initial_set]
+    if not new_forms:
+        return (False, None, None)
+
+    caption = new_forms[0][1]
+    next_first_seen = first_seen_time if first_seen_time is not None else now
+    elapsed = now - next_first_seen
+    should_cancel = elapsed >= wait_seconds
+    return (should_cancel, next_first_seen, caption)
+
+
+def _start_form_watcher(wait_seconds=3.0):
+    """UserForm（ThunderDFrame）が開いて戻らないマクロの呼び出しを取り消す見張りスレッド。
+
+    新しい UserForm が出現して wait_seconds 秒（既定 3 秒）経過しても戻らなければ、
+    CoCancelCall で呼び出しの待機を解除する。
+    """
+    import threading
+    import time
+
+    class _Noop:
+        fired = False
+        form_name = ""
+
+        def stop(self):
+            pass
+
+    try:
+        import vbam_edit
+        initial_windows = vbam_edit._list_form_windows()
+        initial_hwnds = {h for (h, _) in initial_windows}
+    except Exception:
+        return _Noop()
+
+    cancel = None
+    try:
+        import ctypes
+        ole32 = ctypes.windll.ole32
+        tid = ctypes.windll.kernel32.GetCurrentThreadId()
+        if ole32.CoEnableCallCancellation(None) >= 0:
+            cancel = (ole32, tid)
+    except Exception:
+        cancel = None
+
+    if cancel is None:
+        return _Noop()
+
+    state = {'fired': False, 'form_name': ''}
+    stop_evt = threading.Event()
+
+    def _fire():
+        first_seen = None
+        while not stop_evt.wait(0.5):
+            try:
+                import vbam_edit
+                current_windows = vbam_edit._list_form_windows()
+            except Exception:
+                current_windows = []
+            now = time.monotonic()
+            should_cancel, next_first_seen, caption = check_form_timeout(
+                initial_hwnds, current_windows, first_seen, now, wait_seconds
+            )
+            first_seen = next_first_seen
+            if should_cancel:
+                state['fired'] = True
+                state['form_name'] = caption or ""
+                try:
+                    cancel[0].CoCancelCall(cancel[1], 0)
+                except Exception:
+                    pass
+                break
+
+    th = threading.Thread(target=_fire, daemon=True)
+    th.start()
+
+    class _FormWatcher:
+        @property
+        def fired(self):
+            return state['fired']
+
+        @property
+        def form_name(self):
+            return state['form_name']
+
+        def stop(self):
+            stop_evt.set()
+            try:
+                th.join(timeout=1.0)
+            except Exception:
+                pass
+            if cancel is not None:
+                try:
+                    cancel[0].CoDisableCallCancellation(None)
+                except Exception:
+                    pass
+
+    return _FormWatcher()
+
+
 _ADDIN_REGISTER_MACRO = 'アドインの更新登録'
 
 
@@ -7555,11 +7660,13 @@ def cmd_run_macro(args):
     # --timeout: 制限時間で待つのをやめる（ユーザーの Excel は殺せないので CoCancelCall。
     # VBA が応答する状態でだけ効き、マクロ自体は止まらない＝報告に明記する）
     _watchdog = _start_call_watchdog(getattr(args, 'timeout', None))
+    _form_watcher = _start_form_watcher()
 
     try:
         if harness is not None:
             ret = xl.Application.Run(harness["entry"])
             _watchdog.stop()
+            _form_watcher.stop()
             ret = "" if ret is None else str(ret)
             if ret.startswith("OK|"):
                 result = ret[3:] or None
@@ -7575,11 +7682,22 @@ def cmd_run_macro(args):
         else:
             result = xl.Application.Run(full_macro_path, *run_args)
             _watchdog.stop()
+            _form_watcher.stop()
 
         # 報告を組む前に監視を止める（stop は最後にもう一度見て「閉じた」を確定する）。
         # 止める前に読むと、Run が戻る直前に閉じた最後のダイアログが数え漏れる
         # （2026-08-23 実測: InputBox 2枚のうち2枚目が報告から落ちた）
         _dlg_watcher.stop()
+        if _form_watcher.fired:
+            fname = _form_watcher.form_name or macro_name
+            if getattr(args, 'json', False):
+                import json
+                out = {"success": True, "macro": full_macro_path, "form_opened": fname}
+                print(json.dumps(out, ensure_ascii=False), file=sys.stdout)
+            else:
+                print(f"窓「{fname}」を開きました（閉じるまで戻らない窓なので、待つのをやめました。窓は開いたままです。閉じるのは close-form）")
+            return True
+
         _dlg_note = _dialog_watcher_note(_dlg_watcher, _auto_dialog)
         if getattr(args, 'json', False):
             import json
@@ -7597,6 +7715,15 @@ def cmd_run_macro(args):
                 print(_dlg_note, file=sys.stderr)
         return True
     except _VbaRuntimeError as e:
+        if _form_watcher.fired:
+            fname = _form_watcher.form_name or macro_name
+            if getattr(args, 'json', False):
+                import json
+                out = {"success": True, "macro": full_macro_path, "form_opened": fname}
+                print(json.dumps(out, ensure_ascii=False), file=sys.stdout)
+            else:
+                print(f"窓「{fname}」を開きました（閉じるまで戻らない窓なので、待つのをやめました。窓は開いたままです。閉じるのは close-form）")
+            return True
         err_msg = str(e)
         if getattr(args, 'json', False):
             import json
@@ -7625,6 +7752,15 @@ def cmd_run_macro(args):
                   file=sys.stderr)
         return False
     except Exception as e:
+        if _form_watcher.fired:
+            fname = _form_watcher.form_name or macro_name
+            if getattr(args, 'json', False):
+                import json
+                out = {"success": True, "macro": full_macro_path, "form_opened": fname}
+                print(json.dumps(out, ensure_ascii=False), file=sys.stdout)
+            else:
+                print(f"窓「{fname}」を開きました（閉じるまで戻らない窓なので、待つのをやめました。窓は開いたままです。閉じるのは close-form）")
+            return True
         err_msg = _com_error_text(e)
         _timed_out = bool(_watchdog.fired)
         if _timed_out:
@@ -7641,6 +7777,8 @@ def cmd_run_macro(args):
         return False
     finally:
         _watchdog.stop()
+        if _form_watcher is not None:
+            _form_watcher.stop()
         if _dlg_watcher is not None:
             _dlg_watcher.stop()
         if harness is not None:
