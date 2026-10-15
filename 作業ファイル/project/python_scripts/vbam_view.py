@@ -2006,7 +2006,7 @@ def _seiri_fire_request(xl, wb, ws, request, before_snap):
         t0 = time.time()
         try:
             ws.Activate()
-            out = str(xl.Run(f"'{q}'!コンボ道具.レシピを撃つ", recipe, False) or '')
+            out = str(xl.Run(f"'{q}'!コンボ道具.レシピを撃つ", recipe, False, False) or '')
         except Exception as ex:
             out = f"レシピ「{recipe}」を撃てませんでした: {ex}"
         try:
