@@ -195,11 +195,16 @@ Sub 表の書き方と罫線と列幅をそろえる()
     Dim dblTop() As Boolean, dblBot() As Boolean, dblI As Long, dblJ As Long
     ReDim dblTop(1 To lastR - hr + 1, 1 To hc2 - hc1 + 1)
     ReDim dblBot(1 To lastR - hr + 1, 1 To hc2 - hc1 + 1)
+    Dim dblBottomStart As Long
+    dblBottomStart = IIf(lastR - hr > 200, IIf(sumR1 > 0 And sumR1 - 2 < lastR - 30, sumR1 - 2, lastR - 30), hr)
+    If dblBottomStart < hr Then dblBottomStart = hr
     For dblI = hr To lastR
-        For dblJ = hc1 To hc2
-            dblTop(dblI - hr + 1, dblJ - hc1 + 1) = (ws.Cells(dblI, dblJ).Borders(xlEdgeTop).LineStyle = xlDouble)
-            dblBot(dblI - hr + 1, dblJ - hc1 + 1) = (ws.Cells(dblI, dblJ).Borders(xlEdgeBottom).LineStyle = xlDouble)
-        Next dblJ
+        If lastR - hr <= 200 Or dblI <= hr + 5 Or dblI >= dblBottomStart Then
+            For dblJ = hc1 To hc2
+                dblTop(dblI - hr + 1, dblJ - hc1 + 1) = (ws.Cells(dblI, dblJ).Borders(xlEdgeTop).LineStyle = xlDouble)
+                dblBot(dblI - hr + 1, dblJ - hc1 + 1) = (ws.Cells(dblI, dblJ).Borders(xlEdgeBottom).LineStyle = xlDouble)
+            Next dblJ
+        End If
     Next dblI
     ' 罫線: 空の行の下の、表より細い塊（合計・平均など）は表と分けて、埋まっている列だけを囲む（2026-09-13）
     If sumR1 > 0 Then
@@ -218,10 +223,12 @@ Sub 表の書き方と罫線と列幅をそろえる()
     ' 合計の上・下の二重線は引き直しで細線にしない（2026-09-24 通しの実測 4 で合計行の上の二重線が消えた）
     Dim dblR As Long, dblC As Long
     For dblR = hr To lastR
-        For dblC = hc1 To hc2
-            If dblTop(dblR - hr + 1, dblC - hc1 + 1) Then ws.Cells(dblR, dblC).Borders(xlEdgeTop).LineStyle = xlDouble
-            If dblBot(dblR - hr + 1, dblC - hc1 + 1) Then ws.Cells(dblR, dblC).Borders(xlEdgeBottom).LineStyle = xlDouble
-        Next dblC
+        If lastR - hr <= 200 Or dblR <= hr + 5 Or dblR >= dblBottomStart Then
+            For dblC = hc1 To hc2
+                If dblTop(dblR - hr + 1, dblC - hc1 + 1) Then ws.Cells(dblR, dblC).Borders(xlEdgeTop).LineStyle = xlDouble
+                If dblBot(dblR - hr + 1, dblC - hc1 + 1) Then ws.Cells(dblR, dblC).Borders(xlEdgeBottom).LineStyle = xlDouble
+            Next dblC
+        End If
     Next dblR
     End If
     ' 列幅は広げるだけ（### と字の切れを直す）。人が広めに取った幅は狭めない・折り返しの列は触らない・広げても 60 まで
@@ -316,14 +323,18 @@ Sub 表の書き方と罫線と列幅をそろえる()
             If u = CStr(xlGeneral) Then u = CStr(wantAl)
         End If
     End If
-    For i = hr + 1 To lastR
-        If Not 集計行(i) Then
-            Set c = ws.Cells(i, j)
-            If Not c.MergeCells Then
-                If c.HorizontalAlignment <> CLng(u) Then c.HorizontalAlignment = CLng(u)
+    If rgC.MergeCells = False Then
+        rgC.HorizontalAlignment = CLng(u)
+    Else
+        For i = hr + 1 To lastR
+            If Not 集計行(i) Then
+                Set c = ws.Cells(i, j)
+                If Not c.MergeCells Then
+                    If c.HorizontalAlignment <> CLng(u) Then c.HorizontalAlignment = CLng(u)
+                End If
             End If
-        End If
-    Next
+        Next
+    End If
     Return
 
 罫線は様式か:
@@ -1452,8 +1463,11 @@ Sub 表の下に合計行を足す()
         hs = Replace(hs, "ａ", "a"): hs = Replace(hs, "ｂ", "b"): hs = Replace(hs, "ｃ", "c")
         hs = Trim(hs)
         If InStr(hs, "番号") > 0 Or InStr(hs, "NO") > 0 Or InStr(hs, "No") > 0 Or _
-           InStr(hs, "コード") > 0 Or InStr(hs, "CODE") > 0 Or InStr(hs, "年度") > 0 Or InStr(hs, "単価") > 0 Or _
-           Right$(hs, 1) = "比" Or Right$(hs, 1) = "率" Or InStr(hs, "割合") > 0 Then   ' 比・率は足しても意味が無い（前年比を合計していた・2026-09-24）
+           InStr(hs, "内線") > 0 Or InStr(hs, "電話") > 0 Or InStr(hs, "コード") > 0 Or _
+           InStr(hs, "CODE") > 0 Or InStr(UCase$(hs), "ID") > 0 Or InStr(hs, "郵便") > 0 Or _
+           hs = "年" Or hs = "月" Or hs = "日" Or InStr(hs, "日付") > 0 Or InStr(hs, "年月") > 0 Or InStr(hs, "生年") > 0 Or _
+           InStr(hs, "年齢") > 0 Or InStr(hs, "年度") > 0 Or InStr(hs, "単価") > 0 Or _
+           Right$(hs, 1) = "比" Or Right$(hs, 1) = "率" Or InStr(hs, "割合") > 0 Then   ' 2026-10-15 指標列の除外（レシピの試験）
             skipByHeader(c) = True
         End If
     Next c
@@ -1665,7 +1679,14 @@ Sub 選んだコード列を名称で上書きする()
     Set ws = ActiveSheet
     selCol = Selection.Cells(1, 1).Column
     headerRow = Selection.Cells(1, 1).Row
-    lastRow = 表の本文の最終行(ws)
+    Dim maxRow As Long
+    maxRow = 表の本文の最終行(ws)
+    If Selection.rows.Count > 1 Then ' 2026-10-15 選んだ範囲だけ（レシピの試験）
+        lastRow = Selection.Row + Selection.rows.Count - 1
+        If lastRow > maxRow Then lastRow = maxRow
+    Else
+        lastRow = maxRow
+    End If
 
     ' サンプル値収集（見出し行の次から）
     Dim sampleVals As Object
@@ -1890,12 +1911,17 @@ Sub 選んだ列の空白を上の値で埋める()
     Set ws = ActiveSheet
     Set sel = Selection
     Set ur = ws.UsedRange
-    ' 表の下のメモの行は埋めない（使用範囲の最終行まで見ていた・2026-09-24 総点検）
-    lastRow = 表の本文の最終行(ws)
-    headerRow = sel.Cells(1, 1).Row
-    startRow = headerRow + 1
-
+    Dim maxRow As Long
+    maxRow = 表の本文の最終行(ws)
     For Each area In sel.Areas
+        headerRow = area.Row
+        If area.rows.Count > 1 Then ' 2026-10-15 選んだ範囲だけ（レシピの試験）
+            lastRow = area.Row + area.rows.Count - 1
+            If lastRow > maxRow Then lastRow = maxRow
+        Else
+            lastRow = maxRow
+        End If
+        startRow = headerRow + 1
         For aCol = 1 To area.Columns.Count
             c = area.Columns(aCol).Column
             lastVal = Empty
@@ -1955,10 +1981,16 @@ Sub 選んだ列の文字の日付を日付にする()
     Dim okNum As Boolean, v数 As Double
 
     Set ws = ActiveSheet
-    hdrRow = Selection.Cells(1, 1).Row
-    lastRow = ws.UsedRange.Row + ws.UsedRange.rows.Count - 1
-
+    Dim maxRow As Long
+    maxRow = ws.UsedRange.Row + ws.UsedRange.rows.Count - 1
     For Each area In Selection.Areas
+        hdrRow = area.Row
+        If area.rows.Count > 1 Then ' 2026-10-15 選んだ範囲だけ（レシピの試験）
+            lastRow = area.Row + area.rows.Count - 1
+            If lastRow > maxRow Then lastRow = maxRow
+        Else
+            lastRow = maxRow
+        End If
         For col = 1 To area.Columns.Count
             colIdx = area.Column + col - 1
             ' 8 桁の「数値」（20260615 が数のもの。基幹システムの出力に多い）は、列の数値が全部 8 桁の日付の形のときだけ日付にする
@@ -2057,7 +2089,15 @@ Sub 選んだ列の文字の数字を数にする()
 
     For Each area In sel.Areas
       For colIdx = area.Column To area.Column + area.Columns.Count - 1
-        lastR = ws.Cells(ws.rows.Count, colIdx).End(xlUp).Row
+        Dim maxR As Long
+        maxR = ws.Cells(ws.rows.Count, colIdx).End(xlUp).Row
+        If area.rows.Count > 1 Then ' 2026-10-15 選んだ範囲だけ（レシピの試験）
+            lastR = area.Row + area.rows.Count - 1
+            headerRow = area.Row
+            If lastR > maxR Then lastR = maxR
+        Else
+            lastR = maxR
+        End If
         ' 列をまとめて読み、文字のセルだけを 1 つずつ見る（1 万行の数の列でセルを 1 つずつ読んで遅かった・2026-10-08）
         Dim 列値 As Variant
         If lastR > headerRow + 1 Then 列値 = ws.Range(ws.Cells(headerRow + 1, colIdx), ws.Cells(lastR, colIdx)).Value2 Else 列値 = Empty
@@ -2746,6 +2786,9 @@ Sub 選んだ列の途切れた式を戻す()
     hdrRow = Selection.Cells(1, 1).Row
 
     Dim col As Long
+    Dim maxRow As Long
+    maxRow = 表の本文の最終行(ws)
+
     Dim area As Range
     For Each area In Selection.Areas
         Dim c As Long
@@ -2753,7 +2796,13 @@ Sub 選んだ列の途切れた式を戻す()
             col = c
             ' 本文の範囲
             Dim lastRow As Long
-            lastRow = 表の本文の最終行(ws)
+            If area.rows.Count > 1 Then ' 2026-10-15 選んだ範囲だけ（レシピの試験）
+                lastRow = area.Row + area.rows.Count - 1
+                hdrRow = area.Row
+                If lastRow > maxRow Then lastRow = maxRow
+            Else
+                lastRow = maxRow
+            End If
 
             ' 式の集計
             Dim dict As Object
