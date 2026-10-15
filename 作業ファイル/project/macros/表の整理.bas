@@ -5196,3 +5196,134 @@ Public Function マクロ撃ち診断(Optional ByVal ws As Worksheet = Nothing) As Stri
 End Function
 
 
+
+Sub 選んだ列の日付を和暦で表示する()
+    ' 依頼の語: 日付を和暦|日付の和暦|和暦で表示|和暦表示|和暦にして|元号で表示|日付を元号|日付を令和|和暦に直|和暦に変
+    ' 依頼の組: 日付,年月日+和暦,元号,令和,平成,表示
+    ' 扱う: 和暦表示 和暦 元号 日付
+    ' 見出し: なし
+    ' 選ぶ列: 1
+    ' 形: なし
+    ' 選んでいる範囲の日付（シリアル値）の表示形式を和暦にする。値は変えない。文字の日付は触らずスキップする。
+
+    Dim ws As Worksheet
+    Dim area As Range
+    Dim cell As Range
+    Dim hdrRow As Long
+    Dim lastRow As Long
+    Dim col As Long, colIdx As Long, r As Long
+    Dim maxRow As Long
+    Dim isDateVal As Boolean
+    Dim startR As Long
+
+    If typeName(Selection) <> "Range" Then Exit Sub
+    Set ws = ActiveSheet
+    maxRow = ws.UsedRange.row + ws.UsedRange.rows.Count - 1
+
+    For Each area In Selection.Areas
+        hdrRow = area.row
+        If area.rows.Count > 1 Then
+            lastRow = area.row + area.rows.Count - 1
+            If lastRow > maxRow Then lastRow = maxRow
+        Else
+            lastRow = maxRow
+        End If
+
+        For col = 1 To area.Columns.Count
+            colIdx = area.Column + col - 1
+            If area.rows.Count = 1 Then
+                startR = hdrRow + 1
+            Else
+                If VarType(ws.Cells(hdrRow, colIdx).value) = vbString And Not IsDate(ws.Cells(hdrRow, colIdx).value) Then
+                    startR = hdrRow + 1
+                Else
+                    startR = hdrRow
+                End If
+            End If
+
+            For r = startR To lastRow
+                Set cell = ws.Cells(r, colIdx)
+                If Not isEmpty(cell.value) Then
+                    isDateVal = False
+                    If VarType(cell.value) = vbDate Then
+                        isDateVal = True
+                    ElseIf VarType(cell.value) = vbDouble Then
+                        If (cell.value >= 1 And cell.value <= 73050) Or InStr(cell.NumberFormat, "y") > 0 Or InStr(cell.NumberFormat, "m") > 0 Or InStr(cell.NumberFormat, "d") > 0 Then
+                            isDateVal = True
+                        End If
+                    End If
+
+                    If isDateVal And Not cell.HasFormula Then
+                        On Error Resume Next
+                        cell.NumberFormatLocal = "ggge年m月d日"
+                        If Err.Number <> 0 Then
+                            Err.Clear
+                            cell.NumberFormat = "[$-411]ggge""年""m""月""d""日"
+                        End If
+                        If Err.Number <> 0 Then
+                            Err.Clear
+                            cell.NumberFormatLocal = "ggge""年""m""月""d""日"
+                        End If
+                        On Error GoTo 0
+                    End If
+                End If
+            Next r
+        Next col
+    Next area
+End Sub
+
+Sub 表の合計と小計の行を消す()
+    ' 依頼の語: 合計行を消|小計行を消|合計と小計を消|小計を削除|合計行を削除|合計の行を消|小計の行を消|合計行と小計行を|小計行を削除|合計小計を削除|集計行を消|集計行を削除
+    ' 依頼の組: 合計,小計,総計,総合計,集計+行+消,削除,取,クリア+-足,挿入,作
+    ' 扱う: 合計行削除 小計行削除 合計
+    ' 見出し: なし
+    ' 選ぶ列: -
+    ' 形: 数の列
+    ' 表の中の、合計・総計・計・小計の行（見出しの列のどこかにその字がある行）を削除して、明細だけにする。前の月の表を使い回して集計し直すときの下ごしらえ
+
+    Dim ws As Worksheet
+    Set ws = ActiveSheet
+
+    Dim ur As Range
+    Set ur = ws.UsedRange
+    If ur Is Nothing Then Exit Sub
+
+    Dim urTop As Long, urLeft As Long, urRight As Long, urBottom As Long
+    urTop = ur.row
+    urLeft = ur.Column
+    urRight = ur.Column + ur.Columns.Count - 1
+    urBottom = 表の本文の最終行(ws)
+
+    ' 見出し行を探す
+    Dim hdrRow As Long
+    hdrRow = 0
+    Dim r As Long, c As Long, cnt As Long
+    For r = urTop To urBottom
+        cnt = 0
+        For c = urLeft To urRight
+            If セルの字(ws.Cells(r, c).value) <> "" Then cnt = cnt + 1
+        Next c
+        If cnt >= 2 Then
+            hdrRow = r
+            Exit For
+        End If
+    Next r
+    If hdrRow = 0 Then Exit Sub
+
+    ' 下から上へ走査して集計の行を削除
+    Dim deletedCount As Long
+    deletedCount = 0
+    For r = urBottom To hdrRow + 1 Step -1
+        If 集計の行か(ws, r, urLeft, urRight) Then
+            ' 結合セルがあれば結合解除してから行削除
+            Dim maC As Long
+            For maC = urLeft To urRight
+                If ws.Cells(r, maC).MergeCells Then
+                    ws.Cells(r, maC).MergeArea.UnMerge
+                End If
+            Next maC
+            ws.rows(r).Delete Shift:=xlUp
+            deletedCount = deletedCount + 1
+        End If
+    Next r
+End Sub

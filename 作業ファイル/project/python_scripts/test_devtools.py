@@ -714,3 +714,51 @@ def test_report_write_result_error_and_hash_detection(capsys):
     out = capsys.readouterr().out
     assert "⚠ 【表示崩れ】列幅不足により '###' 表示になっているセルがあります: 1件 （C1(幅不足)）" in out
 
+
+# ================================================================
+# unstick（Excel の詰まり判定テスト）
+# ================================================================
+
+def test_unstick_classify_reset_dialog():
+    """「プロジェクトがリセットされます」ダイアログで OK ボタンが特定されること。"""
+    title = "Microsoft Visual Basic"
+    body = "このアクションを実行するとプロジェクトがリセットされます。実行しますか?"
+    buttons = [(1001, "OK", 1), (1002, "キャンセル", 2), (1003, "ヘルプ", 3)]
+    act, btn = vc.classify_unstick_dialog(title, body, buttons)
+    assert act == "reset_ok"
+    assert btn == (1001, "OK", 1)
+
+
+def test_unstick_classify_manual_dialog():
+    """リセット以外のダイアログは manual 扱いになること。"""
+    title = "Microsoft Excel"
+    body = "変更を保存しますか?"
+    buttons = [(2001, "保存(&S)", 6), (2002, "保存しない(&N)", 7), (2003, "キャンセル", 2)]
+    act, btn = vc.classify_unstick_dialog(title, body, buttons)
+    assert act == "manual"
+    assert btn is None
+
+
+def test_unstick_command_wired():
+    """unstick コマンドがテーブルに配線されていること。"""
+    table = vm._command_table()
+    assert "unstick" in table
+    assert vm.raw_command(table["unstick"]) is vc.cmd_unstick
+
+
+def test_import_module_and_close_vbe_wired():
+    """import-module と close-vbe コマンドがテーブルに配線されていること。"""
+    table = vm._command_table()
+    assert "import-module" in table
+    assert vm.raw_command(table["import-module"]) is vm.cmd_import_module
+    assert "close-vbe" in table
+    assert vm.raw_command(table["close-vbe"]) is vc.cmd_close_vbe
+
+    p = vm.build_parser()
+    ns = p.parse_args(["import-module", "a.bas", "b.cls", "--book", "Test.xlsm", "--replace", "-y"])
+    assert ns.posargs == ["a.bas", "b.cls"]
+    assert ns.book_opt == "Test.xlsm"
+    assert ns.replace is True
+    assert ns.yes is True
+
+

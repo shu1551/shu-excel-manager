@@ -206,10 +206,18 @@ def _find_versions(stem, extra_dirs=()):
     return found
 
 
-def _versions_rows(paths):
+def _versions_rows(paths, timeout=60.0, max_files=200):
     """各写しを読んで [{path, mtime, size, modules, procs, code{名: 本文}, error}]（新しい順）。"""
     rows = []
-    for p in paths:
+    t0 = time.time()
+    stopped_reason = None
+    for i, p in enumerate(paths):
+        if max_files is not None and i >= max_files:
+            stopped_reason = f"ファイル数上限（{max_files}冊）"
+            break
+        if timeout is not None and (time.time() - t0) > timeout:
+            stopped_reason = f"時間上限（{timeout:g}秒）"
+            break
         row = {'path': p, 'mtime': os.path.getmtime(p), 'size': os.path.getsize(p), 'modules': 0, 'procs': 0,
                'code': {}, 'error': None}
         try:
@@ -222,7 +230,7 @@ def _versions_rows(paths):
             row['error'] = str(ex)
         rows.append(row)
     rows.sort(key=lambda r: r['mtime'], reverse=True)
-    return rows
+    return rows, stopped_reason
 
 
 def _diff_against_latest(rows):
@@ -268,14 +276,20 @@ def cmd_versions(args):
     _m = getattr(args, 'max_hits', None)
     keep = len(baks) if getattr(args, 'all', False) else (3 if _m is None else max(0, int(_m)))
     hidden = baks[keep:]
-    rows = _diff_against_latest(_versions_rows(main + baks[:keep]))
+    target_paths = main + baks[:keep]
+    timeout_sec = float(getattr(args, 'timeout', 60.0) or 60.0)
+    max_f = getattr(args, 'max_files', 200)
+    max_f = int(max_f) if max_f is not None else 200
+    rows_raw, stopped_reason = _versions_rows(target_paths, timeout=timeout_sec, max_files=max_f)
+    rows = _diff_against_latest(rows_raw)
     opened = _open_book_paths()
     for r in rows:
         r['open'] = os.path.normcase(os.path.abspath(r['path'])) in opened
         r['backup'] = is_bak(r['path'])
     if getattr(args, 'json', False):
         slim = [{k: v for k, v in r.items() if k != 'code'} for r in rows]
-        print(json.dumps({"success": True, "stem": stem, "count": len(rows), "hidden_backups": len(hidden),
+        print(json.dumps({"success": True, "stem": stem, "count": len(rows), "total_targets": len(target_paths),
+                          "stopped_reason": stopped_reason, "hidden_backups": len(hidden),
                           "versions": slim}, ensure_ascii=False), file=sys.stdout)
         return True
     if not rows:
@@ -307,6 +321,8 @@ def cmd_versions(args):
             notes.append("この写しだけ: " + "・".join(r['added'][:5]) + (f" 他{len(r['added']) - 5}" if len(r['added']) > 5 else ""))
         print(head)
         print("      " + ("最新との差: " + " ／ ".join(notes) if notes else "最新とコードは同じ"))
+    if stopped_reason:
+        print(f"上限で止めました（全 {len(target_paths)} 冊中 {len(rows)} 冊・{stopped_reason}）")
     if hidden:
         oldest = time.strftime('%m/%d %H:%M', time.localtime(os.path.getmtime(hidden[-1])))
         print(f"  … 他 {len(hidden)} 冊の控え（backups・{oldest} まで。読んでいない。--all で全部、--max N で冊数）")
@@ -526,11 +542,24 @@ def cmd_grep_files(args):
         return False
     _m = getattr(args, 'max_hits', None)
     max_hits = 200 if _m is None else int(_m)
+    timeout_sec = float(getattr(args, 'timeout', 60.0) or 60.0)
+    max_f = getattr(args, 'max_files', 200)
+    max_f = int(max_f) if max_f is not None else 200
     files, missing = _expand_targets(targets)
     for t in missing:
         print(f"⚠ 見つかりません: {t}")
+    if len(files) > max_f:
+        print(f"多すぎるので 1 本ずつか --max-files で（対象 {len(files)} 冊 > 上限 {max_f} 冊）")
+        return False
     hits, total, unread, hit_files = [], 0, [], set()
+    t0 = time.time()
+    stopped_reason = None
+    processed_files = 0
     for fp in files:
+        if timeout_sec is not None and (time.time() - t0) > timeout_sec:
+            stopped_reason = f"時間上限（{timeout_sec:g}秒）"
+            break
+        processed_files += 1
         try:
             mods = _read_closed_modules(fp)
         except Exception as ex:
@@ -551,7 +580,8 @@ def cmd_grep_files(args):
                     hits.append({'file': base, 'path': fp, 'module': name, 'proc': _proc_of_index(procs, i - 1) or '',
                                  'line': i, 'text': ln.rstrip()})
     if getattr(args, 'json', False):
-        print(json.dumps({"success": True, "pattern": needle, "files": len(files), "files_hit": len(hit_files),
+        print(json.dumps({"success": True, "pattern": needle, "files": len(files), "processed_files": processed_files,
+                          "stopped_reason": stopped_reason, "files_hit": len(hit_files),
                           "total": total, "hits": hits, "unread": [{"path": p, "error": e} for p, e in unread]},
                          ensure_ascii=False), file=sys.stdout)
         return True
@@ -560,9 +590,11 @@ def cmd_grep_files(args):
         print(f"[{h['file']}][{h['module']}]{proc_part}:{h['line']}: {h['text'].strip()}")
     if total > len(hits):
         print(f"…他 {total - len(hits)} 件（--max で上限変更可）")
+    if stopped_reason:
+        print(f"上限で止めました（全 {len(files)} 冊中 {processed_files} 冊・{stopped_reason}）")
     for p, e in unread:
         print(f"⚠ 読めませんでした: {p} ({e})")
-    print(f"--- {total} 件（{len(files)} 冊を読んだ・ヒット {len(hit_files)} 冊・Excel は開いていない）---")
+    print(f"--- {total} 件（{processed_files} 冊を読んだ・ヒット {len(hit_files)} 冊・Excel は開いていない）---")
     return True
 
 

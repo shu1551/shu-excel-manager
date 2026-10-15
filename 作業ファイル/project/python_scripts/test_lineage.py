@@ -270,3 +270,22 @@ def test_export_file_only_named_modules(tmp_path, capsys):
     ns = argparse.Namespace(posargs=[FIXTURE, "無いモジュール"], dir_opt=str(tmp_path / "out2"), json=False)
     assert lg.cmd_export_file(ns) is False
     assert "無いモジュール" in capsys.readouterr().out
+
+
+def test_lineage_timeout_and_max_files_args():
+    p = vm.build_parser()
+    ns = p.parse_args(["versions", "ポスター", "--timeout", "30", "--max-files", "50"])
+    assert ns.timeout == 30.0 and ns.max_files == 50
+    ns = p.parse_args(["grep-files", "x", "a", "--timeout", "15", "--max-files", "100"])
+    assert ns.timeout == 15.0 and ns.max_files == 100
+
+
+def test_grep_files_refuses_when_too_many_files(tmp_path, capsys):
+    for i in range(5):
+        (tmp_path / f"book{i}.xlsm").write_bytes(b"dummy")
+    ns = argparse.Namespace(posargs=["needle", str(tmp_path)], regex=False, ignore_case=False,
+                            max_hits=200, timeout=60.0, max_files=3, json=False)
+    ok = lg.cmd_grep_files(ns)
+    assert ok is False
+    out = capsys.readouterr().out
+    assert "多すぎるので 1 本ずつか --max-files で" in out

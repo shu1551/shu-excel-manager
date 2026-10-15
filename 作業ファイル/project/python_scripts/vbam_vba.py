@@ -1351,6 +1351,9 @@ _CAPABILITIES = {
         ("print-setup", "印刷設定"), ("printer-setup", "プリンター設定"),
         ("save", "保存"), ("save-as", "名前を付けて保存"),
         ("export-pdf", "PDF 書き出し"), ("open", "ブックを開く"),
+        ("unstick", "Excel の詰まりを解除（リセット確認窓［OK］・セル編集Esc）"),
+        ("import-module", "モジュール取り込み（.bas/.cls/.frm）"),
+        ("close-vbe", "VBE ウィンドウを閉じる"),
     ],
     "destructive": [
         ("delete-procedure", "プロシージャ削除（確認あり）"),
@@ -3654,6 +3657,114 @@ def cmd_replace_module(args):
         _remove_export_artifacts(tmp_norm)
     print(f"エラー: モジュール '{module_name}' が見つかりません")
     return False
+
+
+def cmd_import_module(args):
+    """モジュール（.bas/.cls/.frm）を取り込む: import-module <ファイル…> [--book 名] [--replace] [-y]"""
+    raw_files = list(args.posargs or [])
+    if not raw_files:
+        print("使い方: import-module <ファイル> [<ファイル> …] [--book 名] [--replace] [-y]")
+        return False
+
+    target_book = getattr(args, 'book_opt', None)
+    if not target_book and looks_like_xl_file(raw_files[0]) and len(raw_files) > 1:
+        target_book = raw_files[0]
+        raw_files = raw_files[1:]
+
+    replace_mode = bool(getattr(args, 'replace', False))
+    yes_mode = bool(getattr(args, 'yes', False))
+
+    plan = []  # [(abs_path, module_name, ext)]
+    for rf in raw_files:
+        p = smart_path_resolve(rf) or rf
+        if not os.path.exists(p) or not os.path.isfile(p):
+            print(f"エラー: ファイルが見つかりません: {rf}")
+            return False
+        abs_p = os.path.abspath(p)
+        ext = os.path.splitext(abs_p)[1].lower()
+        if ext not in ('.bas', '.cls', '.frm'):
+            print(f"エラー: 対応していないファイル形式です（.bas/.cls/.frm のみ）: {rf}")
+            return False
+
+        mod_name = None
+        try:
+            with open(abs_p, 'rb') as f:
+                head = f.read(4096).decode('cp932', errors='replace')
+            m = re.search(r'^\s*Attribute\s+VB_Name\s*=\s*"([^"]+)"', head, re.MULTILINE | re.IGNORECASE)
+            if m:
+                mod_name = m.group(1).strip()
+        except Exception:
+            pass
+        if not mod_name:
+            mod_name = os.path.splitext(os.path.basename(abs_p))[0]
+
+        plan.append((abs_p, mod_name, ext))
+
+    xl, wb = get_workbook(target_book)
+
+    existing_comps = {c.Name.lower(): c for c in wb.VBProject.VBComponents}
+    clashes = [mod_name for _, mod_name, _ in plan if mod_name.lower() in existing_comps]
+
+    if clashes and not replace_mode:
+        names_str = "、".join(f"'{n}'" for n in clashes)
+        print(f"エラー: モジュール {names_str} は既に存在します。（置き換える場合は --replace を指定してください）")
+        return False
+
+    if not yes_mode:
+        action_desc = "取り込み（同名は置き換え）" if replace_mode else "取り込み"
+        ans = input(f"{len(plan)} 本のモジュールを {wb.Name} に{action_desc}しますか？ (y/N): ")
+        if ans.strip().lower() not in ('y', 'yes'):
+            print("キャンセルされました。")
+            return False
+
+    if make_backup(wb.FullName, "import_module") is None and not getattr(args, 'force', False):
+        print("エラー: バックアップが取れないため中止しました（--force で強行可）。")
+        return False
+    if clashes and replace_mode:
+        for cname in clashes:
+            make_module_backup(wb, cname)
+
+    imported_names = []
+    xl.DisplayAlerts = False
+    try:
+        wb.Save()
+        pythoncom.PumpWaitingMessages()
+
+        for abs_p, mod_name, ext in plan:
+            if mod_name.lower() in existing_comps:
+                comp = existing_comps[mod_name.lower()]
+                wb.VBProject.VBComponents.Remove(comp)
+                pythoncom.PumpWaitingMessages()
+                _wait_component_gone(wb, mod_name)
+                existing_comps = {c.Name.lower(): c for c in wb.VBProject.VBComponents}
+
+            new_comp = wb.VBProject.VBComponents.Import(abs_p)
+            pythoncom.PumpWaitingMessages()
+            imported_names.append(new_comp.Name)
+
+        _save_with_retry(wb)
+    except Exception as ex:
+        print(f"エラー: 取り込み中に失敗しました: {ex}")
+        return False
+    finally:
+        xl.DisplayAlerts = True
+
+    print(f"取り込み完了: {', '.join(imported_names)}（{len(imported_names)}本）→ 保存しました")
+    note_if_macro_free_book(wb)
+
+    comp_res = _compile_vbproject(xl, wb)
+    if not comp_res.get('ok', True) or comp_res.get('state') == 'error':
+        loc = _vbe_error_location(xl.VBE)
+        detail = _compile_error_detail(loc, comp_res.get('detail', ''))
+        print(f"⚠ コンパイルエラーを検出しました（取り込んだモジュールは残してあります）:\n  {detail}")
+        hint = _compile_fix_hint(loc, comp_res.get('detail', ''))
+        if hint:
+            print(f"  {hint}")
+        return False
+    else:
+        print("コンパイル確認: 全体コンパイル PASS（エラーなし）")
+
+    return True
 
 
 def _parse_module_blocks(bas_text):
@@ -8762,6 +8873,7 @@ __all__ = [
     'cmd_list_shortcuts',
     'cmd_reorder_macro',
     'cmd_replace_module',
+    'cmd_import_module',
     'cmd_replace_procedure',
     'cmd_patch_procedure',
     'cmd_restore',

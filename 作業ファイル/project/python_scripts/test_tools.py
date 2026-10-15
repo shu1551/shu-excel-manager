@@ -1219,6 +1219,7 @@ def test_injection_route_ledger():
         ('vbam_vba.py', 'cmd_replace_procedure'),     # validate_vba_code で識別子検査
         ('vbam_vba.py', '_replace_body_keeping_decl'),  # cmd_replace_procedure の中（検査済みの new_code）・宣言の行は同じものだけ
         ('vbam_vba.py', 'cmd_add_procedure'),         # validate_vba_code で識別子検査
+        ('vbam_vba.py', 'cmd_import_module'),        # 2026-10-15: import-module。既存重複検査・控え・取込後の全体コンパイル確認つき
         ('vbam_vba.py', 'cmd_test'),                  # 機械固定名 VMT_n ハーネス＝安全
         # 2026-08-23: run-macro のハーネス（実行時エラーをダイアログにせず番号・説明で持ち帰る）。
         # 生成コードに埋めるのは呼び出し名だけで、check_vba_identifier を通し、さらに

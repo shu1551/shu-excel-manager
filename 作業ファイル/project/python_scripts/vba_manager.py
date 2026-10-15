@@ -14,6 +14,7 @@ VBAマネージャー (アクティブブック対応版)
   get             [excel_file] <macro_name>        プロシージャのコード取得
   replace-procedure [excel_file] [--code-file f]  プロシージャを置換
   replace-module  [excel_file] <module> <bas_file> モジュール全体を置換
+  import-module   <ファイル…> [--book 名] [--replace] モジュール（.bas/.cls/.frm）を取り込む
   export-module   [excel_file] <module>            モジュールを .bas にエクスポート
   form-to-vba     [excel_file] <form> [--all]      UserForm を作成マクロ(.vba)に変換
                   [--add モジュール] [--verify]      （別名: フォーム書き出し）
@@ -76,6 +77,8 @@ VBAマネージャー (アクティブブック対応版)
   close          <ブック名> --save|--no-save         ブックを1冊閉じる（名指し・保存方針・確認の三点セット）
   close-form     [キャプション] [--list]             表示中の UserForm を閉じる（×相当。モーダル中でも効く。引数なしで全部）
   vbe-reset      [--check]                          VBE「実行>リセット」＝中断モードの解除（走っているVBAは全部止まる。人の指示でだけ）
+  unstick        [--fix]                            Excel の詰まり（ダイアログ・VBE中断・セル編集）を解除（COM不要）
+  close-vbe                                         VBE ウィンドウを閉じる
   -- 予行演習・関所 --
   rehearse       [excel_file] <マクロ名> [引数...]   コピーに試し撃ちして差分を報告（本体は無傷。--timeout 秒）
   gate           [excel_file] [絞り込み] [--timeout 秒]  関所＝停止条件。コピーで check＋全体コンパイル＋test して PASS/FAIL（終了コード 0/1。別名: 関所）
@@ -487,6 +490,8 @@ def build_parser():
     p.add_argument("--dir", dest="dir_opt", action="append", default=None, help="探すフォルダを足す（複数可）")
     p.add_argument("--all", action="store_true", help="backups の控えも全部読む（既定は新しい 3 冊だけ）")
     p.add_argument("--max", dest="max_hits", type=int, default=None, help="backups の控えを読む冊数（既定 3）")
+    p.add_argument("--timeout", type=float, default=60.0, help="時間の上限（秒・既定 60）")
+    p.add_argument("--max-files", dest="max_files", type=int, default=200, help="読むファイル数の上限（本・既定 200）")
     p.add_argument("--json", action="store_true", help="結果をJSON形式で出力")
 
     # history <マクロ名> [--book ブック名] [--deep] [--max N] [--json]
@@ -509,6 +514,8 @@ def build_parser():
     p.add_argument("--regex", action="store_true", help="正規表現として検索")
     p.add_argument("-i", "--ignore-case", dest="ignore_case", action="store_true", help="大文字小文字を区別しない")
     p.add_argument("--max", dest="max_hits", type=int, default=None, help="表示件数の上限（既定200）")
+    p.add_argument("--timeout", type=float, default=60.0, help="時間の上限（秒・既定 60）")
+    p.add_argument("--max-files", dest="max_files", type=int, default=200, help="読むファイル数の上限（本・既定 200）")
     p.add_argument("--json", action="store_true", help="結果をJSON形式で出力")
 
     # export-file <path.xlsm> [--dir 先] [--json]
@@ -598,6 +605,14 @@ def build_parser():
     p.add_argument("posargs", nargs="+")
     p.add_argument("--force", action="store_true", dest="force",
                    help="バックアップ失敗時も強行する")
+
+    # import-module <ファイル…> [--book 名] [--replace] [-y]
+    p = sub.add_parser("import-module", help="モジュール（.bas/.cls/.frm）を取り込む（--book で名指し可・--replace で置換）")
+    p.add_argument("posargs", nargs="+", help="取り込むファイル（.bas/.cls/.frm）")
+    p.add_argument("--book", dest="book_opt", default=None, help="対象ブック名（省略時はアクティブブック）")
+    p.add_argument("--replace", action="store_true", help="同名モジュールが既にあれば置き換える（置き換え前に控えを取る）")
+    p.add_argument("-y", "--yes", action="store_true", dest="yes", help="確認プロンプトをスキップ")
+    p.add_argument("--force", action="store_true", dest="force", help="バックアップ失敗時も強行する")
 
     # delete-module [excel_file] <module_name> [-y]
     p = sub.add_parser("delete-module", help="モジュール丸ごと削除（要約表示→確認→バックアップつき）")
@@ -1125,6 +1140,13 @@ def build_parser():
                        help="VBE の「実行>リセット」を押す（中断モードの解除。走っている VBA は全部止まるので人の指示でだけ使う）")
     p.add_argument("posargs", nargs="*")
     p.add_argument("--check", action="store_true", help="押さずに、今リセットが要る状態かだけ返す")
+    p = sub.add_parser("unstick",      # unstick [--fix]
+                       help="Excel の詰まり（ダイアログ・VBE中断・セル編集）を検出・解除（COM不要）")
+    p.add_argument("posargs", nargs="*")
+    p.add_argument("--fix", action="store_true", help="詰まり（リセット確認窓・セル編集）を自動解除する")
+    p = sub.add_parser("close-vbe",    # close-vbe
+                       help="VBE ウィンドウを閉じる")
+    p.add_argument("posargs", nargs="*")
     p = sub.add_parser("save")         # save [excel_file]
     p.add_argument("posargs", nargs="*")
     p = sub.add_parser("save-as")      # save-as [excel_file] <path> [--overwrite]
@@ -1932,6 +1954,7 @@ def _raw_command_table():
         "impact":            cmd_impact,
         "影響範囲":            cmd_impact,
         "replace-module":    cmd_replace_module,
+        "import-module":     cmd_import_module,
         "delete-module":     cmd_delete_module,
         "export-module":     cmd_export_module,
         "export-all":        cmd_export_all,
@@ -2016,6 +2039,8 @@ def _raw_command_table():
         "form-click":        cmd_form_click,
         "form-read":         cmd_form_read,
         "vbe-reset":         cmd_vbe_reset,
+        "unstick":           cmd_unstick,
+        "close-vbe":         cmd_close_vbe,
         "save":              cmd_save,
         "save-as":           cmd_save_as,
         "export-pdf":        cmd_export_pdf,
