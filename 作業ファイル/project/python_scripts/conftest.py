@@ -106,7 +106,16 @@ def _no_real_ai_in_tests(monkeypatch):
                 monkeypatch.setattr(mod, attr, _refuse_real_ai)
 
 
+# 見えない Excel を DispatchEx で起こすフィクスチャ。これを使う試験は e2e 扱い（既定では走らせない）。
+# 2026-10-16: 印の無いまま既定の pytest で走り、Quit した Excel が窓なしで残った（10/15 夜に 3 つ・
+# 再現でも test_table_query_edges の 2 つが pytest の終了後も残った）。既定の pytest は Excel を起こさない
+_EXCEL_FIXTURES = {"temp_excel_sheet", "temp_form_excel", "temp_macro_excel", "temp_open_excel"}
+
+
 def pytest_collection_modifyitems(config, items):
+    for item in items:
+        if _EXCEL_FIXTURES & set(getattr(item, "fixturenames", ())):
+            item.add_marker(pytest.mark.e2e)
     if config.getoption("--run-e2e"):
         return
     skip_e2e = pytest.mark.skip(reason="実機E2E（走らせるには --run-e2e）")
