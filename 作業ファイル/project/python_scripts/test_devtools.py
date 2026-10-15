@@ -784,3 +784,79 @@ def test_import_module_and_close_vbe_wired():
     assert ns.yes is True
 
 
+class _FakeWin:
+    def __init__(self, visible):
+        self.Visible = visible
+
+
+class _FakeVBE:
+    def __init__(self, visible):
+        self.MainWindow = _FakeWin(visible)
+
+
+class _FakeApp:
+    def __init__(self, hwnd, vbe_visible):
+        self.Hwnd = hwnd
+        self.VBE = _FakeVBE(vbe_visible)
+
+
+def test_close_vbe_hides_by_com_and_never_posts_wm_close(monkeypatch):
+    """close-vbe は VBE を COM で隠すだけ。窓に WM_CLOSE を送ると Excel ごと閉じる（2026-10-16 再現）。"""
+    import win32gui
+    posted = []
+    monkeypatch.setattr(win32gui, "PostMessage", lambda *a: posted.append(a))
+    user = _FakeApp(100, True)
+    hidden = _FakeApp(200, False)
+
+    class _Wb:
+        def __init__(self, app):
+            self.Application = app
+    monkeypatch.setattr(vc, "_running_excel_workbooks", lambda: [_Wb(user), _Wb(user)])
+    monkeypatch.setattr(vc, "_get_active_excel", lambda: hidden)
+    assert vc.cmd_close_vbe() is True
+    assert user.VBE.MainWindow.Visible is False      # ROT 先頭でない使う人の Excel も隠す
+    assert posted == []
+
+
+def test_restore_after_register_makes_excel_visible_and_reopens_book(tmp_path):
+    """更新登録の後は「Excel が見えていて、焼く元のブックが開いている」に戻す（2026-10-16）。"""
+    import vbam_vba as vv
+    src = tmp_path / "秀コンボ.xlsm"
+    src.write_bytes(b"x")
+
+    class _Book:
+        def __init__(self, name):
+            self.Name = name
+            self.active = False
+
+        def Activate(self):
+            self.active = True
+
+    class _Books:
+        def __init__(self):
+            self.items = []
+
+        def __iter__(self):
+            return iter(self.items)
+
+        def __call__(self, name):
+            return next(b for b in self.items if b.Name == name)
+
+        def Open(self, path):
+            self.items.append(_Book(os.path.basename(path)))
+
+    class _Xl:
+        Visible = False
+        ScreenUpdating = False
+        EnableEvents = False
+        DisplayAlerts = True
+
+        def __init__(self):
+            self.Workbooks = _Books()
+
+    xl = _Xl()
+    vv._restore_after_register(xl, "秀コンボ.xlsm", str(src), True)
+    assert xl.Visible is True
+    assert xl.ScreenUpdating is True and xl.EnableEvents is True
+    assert [b.Name for b in xl.Workbooks] == ["秀コンボ.xlsm"]
+    assert xl.Workbooks("秀コンボ.xlsm").active

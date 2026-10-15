@@ -7317,6 +7317,10 @@ def cmd_register_addin(args):
     addin_file = f"{stem}.xlam"
     addin_path = os.path.join(os.environ.get('AppData', ''), 'Microsoft', 'AddIns', addin_file)
     before = os.path.getmtime(addin_path) if os.path.isfile(addin_path) else 0
+    try:
+        was_visible, book_full = bool(xl.Visible), str(wb.FullName)
+    except Exception:
+        was_visible, book_full = True, ''
     print(f"更新登録: {book} → {addin_path}")
     # 読み込み中の .xlam をそのまま上書きすると、登録一覧は Installed=True のままなのに
     # VBA プロジェクトだけ Excel から外れる＝どのブックからもアドインのマクロが使えなくなる。
@@ -7413,6 +7417,33 @@ def cmd_register_addin(args):
                   "Excel を閉じて開き直すと消えます（閉じても EXCEL.EXE が残るなら道具の常駐が参照を握っている）")
         else:
             print("抜け殻: なし（古いアドインはきれいに閉じました）")
+        _restore_after_register(xl, book, book_full, was_visible)
+
+
+def _restore_after_register(xl, book, book_full, was_visible):
+    """更新登録の後、使う人の Excel を「見えていて・焼く元のブックが開いている」状態に戻す（2026-10-16）。
+    焼きのマクロは ScreenUpdating・EnableEvents を切って写しを開け閉めするので、途中で止まると切れたまま残る。
+    10/15 夜に使う人の Excel が「見えない・ブック 0 冊」で 2 回残った（番頭が COM で戻した）＝最後に必ず確かめる。"""
+    for prop in ('ScreenUpdating', 'EnableEvents', 'DisplayAlerts'):
+        try:
+            if not bool(getattr(xl, prop)):
+                setattr(xl, prop, True)
+        except Exception:
+            pass
+    try:
+        if was_visible and not bool(xl.Visible):
+            xl.Visible = True
+            print("⚠ Excel が見えなくなっていたので見えるように戻しました")
+    except Exception as ex:
+        print(f"⚠ Excel を見えるように戻せませんでした: {ex}")
+    try:
+        names = {str(b.Name).lower() for b in xl.Workbooks}
+        if book.lower() not in names and book_full and os.path.isfile(book_full):
+            xl.Workbooks.Open(book_full)
+            print(f"⚠ {book} が閉じていたので開き直しました")
+        xl.Workbooks(book).Activate()
+    except Exception as ex:
+        print(f"⚠ {book} を前に出せませんでした: {ex}")
 
 
 def _ghost_projects(xl):

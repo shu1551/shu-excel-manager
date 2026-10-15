@@ -3064,28 +3064,44 @@ def cmd_unstick(args):
 
 
 def cmd_close_vbe(args=None):
-    """VBE ウィンドウを閉じる: close-vbe"""
-    closed = False
+    """VBE ウィンドウを閉じる: close-vbe
+    VBE の窓は COM で隠すだけ（VBE.MainWindow.Visible = False）。窓（wndclass_desked_gsk）に WM_CLOSE を送ると
+    **Excel そのものが閉じる**＝ブックが全部閉じて窓が消え、COM の参照だけでプロセスが残る（2026-10-16 再現。
+    10/15 夜にフラッシュ君の更新登録の後、close-vbe のたびに使う人の Excel が「見えない・ブック 0 冊」になった）。
+    隠すのは見えている Excel（使う人の Excel）すべて。GetActiveObject は ROT の先頭＝裏の Excel を返すことがある。"""
+    apps, seen = [], set()
+    cands = []
+    for wbk in _running_excel_workbooks():
+        try:
+            cands.append(wbk.Application)
+        except Exception:
+            continue
     try:
-        xl = _get_active_excel()
-        if xl and hasattr(xl, 'VBE'):
-            xl.VBE.MainWindow.Visible = False
-            closed = True
+        cands.append(_get_active_excel())
     except Exception:
         pass
-    try:
-        import win32gui
-        import win32con
-        def _enum(hwnd, _):
-            nonlocal closed
-            if win32gui.GetClassName(hwnd) == 'wndclass_desked_gsk':
-                win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
-                closed = True
-        win32gui.EnumWindows(_enum, None)
-    except Exception:
-        pass
+    for app in cands:
+        try:
+            h = int(app.Hwnd)
+        except Exception:
+            continue
+        if h not in seen:
+            seen.add(h)
+            apps.append(app)
+    closed = failed = 0
+    for app in apps:
+        try:
+            win = app.VBE.MainWindow
+            if bool(win.Visible):
+                win.Visible = False
+                closed += 1
+        except Exception:
+            failed += 1
     if closed:
-        print("VBE を閉じました")
+        print(f"VBE を閉じました（{closed} 個）")
+    elif failed:
+        print("VBE を閉じられませんでした（Excel が応答しません。窓が出ていれば閉じてから撃ち直してください）")
+        return False
     else:
         print("VBE は開いていません")
     return True
