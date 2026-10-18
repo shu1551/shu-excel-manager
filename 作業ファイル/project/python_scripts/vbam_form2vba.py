@@ -104,9 +104,15 @@ def _f2v_lit(v):
     if isinstance(v, bool):
         return "True" if v else "False"
     if isinstance(v, (int, float)):
-        if isinstance(v, int) and (v > 0x7FFFFFF or v < -0x7FFFFFF):
-            return "&H%X" % (v & 0xFFFFFFFF)
-        return "%g" % v
+        if isinstance(v, int) or (isinstance(v, float) and v.is_integer()):
+            iv = int(v)
+            if iv > 0x7FFFFFFF or iv < -0x7FFFFFFF:
+                return "&H%X" % (iv & 0xFFFFFFFF)
+            if iv > 0xFFFF:
+                return "&H%X" % iv
+            return str(iv)
+        s = ("%.4f" % v).rstrip("0").rstrip(".")
+        return s if s else "0"
     return _f2v_q(v)
 
 
@@ -378,6 +384,19 @@ def build_form_builder(wb, src_form, new_form=None, sub_name=None):
                     emit(k, kt, "c", adder="p.Pages(%d)" % pg_i)
                     page_ctx[0] = None
                     a('')
+        elif t == "Frame":
+            kids = [(k, kt, pn) for (k, kt, pn) in items if pn == c.Name and kt]
+            if kids:
+                kids.sort(key=_ti)
+                a('')
+                for k, kt, pn in kids:
+                    a("    ' %s（%s 内）" % (k.Name, c.Name))
+                    emit(k, kt, "c", adder="dsn.Controls(%s)" % _f2v_q(c.Name))
+                    try:
+                        tab_order.append((int(k.TabIndex), k.Name))
+                    except Exception:
+                        pass
+                    a('')
         a("")
 
     if tab_order:
@@ -432,7 +451,7 @@ def build_form_builder(wb, src_form, new_form=None, sub_name=None):
         a("    ' 継ぎ目に余分な空行が残るので、追記の前に末尾の空行を落とす")
         a("    With vbc.CodeModule")
         a("        Do While .CountOfLines > 0")
-        a("            If Len(Trim(.Lines(.CountOfLines, 1))) > 0 Then Exit Do")
+        a("            If Len(Trim(.lines(.CountOfLines, 1))) > 0 Then Exit Do")
         a("            .DeleteLines .CountOfLines")
         a("        Loop")
         a("        .InsertLines .CountOfLines + 1, s")
