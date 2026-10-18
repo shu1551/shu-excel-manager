@@ -664,6 +664,21 @@ def test_patch_procedure_logic_counts_and_validation(monkeypatch, capsys):
     assert "Dim a As Double" in content
     assert "Dim b As Long" in content
 
+    # 6. 大文字小文字の違い（Case-Insensitive）でも正常置換できること
+    class ArgsCaseInsensitive:
+        posargs = ["テストSub"]
+        module_opt = "Module1"
+        target = "dim a as long"  # 小文字で指定
+        replacement = "Dim a As Currency"
+        target_file_opt = None
+        replacement_file_opt = None
+        yes = True
+
+    assert vv.cmd_patch_procedure(ArgsCaseInsensitive()) is True
+    with open(vv.LAST_PROC_FILE, "r", encoding="utf-8") as f:
+        content_case = f.read()
+    assert "Dim a As Currency" in content_case
+
 
 def test_report_write_result_error_and_hash_detection(capsys):
     import vbam_edit as ve

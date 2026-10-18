@@ -3008,7 +3008,7 @@ def cmd_replace_procedure(args):
 
 
 def _patch_loose(code, target, replacement):
-    """字下げ・行末の空白を無視して target の行の並びを code から探し、1 か所なら置き換える → (新しいコード, 見つかった数)。
+    """字下げ・行末の空白、大文字小文字を無視して target の行の並びを code から探し、1 か所なら置き換える → (新しいコード, 見つかった数)。
 
     見つからない・2 か所以上なら (None, 数)。replacement の字下げは、見つかった先頭行と target の先頭行の差だけ足す
     （target を字下げなしで渡した AI は、replacement も字下げなしで渡すため）。
@@ -3020,7 +3020,16 @@ def _patch_loose(code, target, replacement):
     c_lines = code.split('\n')
     c_key = [ln.strip() for ln in c_lines]
     n = len(t_key)
+
+    # 1. まず字下げ無視（大文字小文字は区別）で探す
     hits = [i for i in range(len(c_key) - n + 1) if c_key[i:i + n] == t_key]
+
+    # 2. 見つからなければ、大文字小文字も無視して探す（VBAの特性に合わせる）
+    if not hits:
+        t_key_lower = [ln.lower() for ln in t_key]
+        c_key_lower = [ln.lower() for ln in c_key]
+        hits = [i for i in range(len(c_key_lower) - n + 1) if c_key_lower[i:i + n] == t_key_lower]
+
     if len(hits) != 1:
         return None, len(hits)
     i = hits[0]
