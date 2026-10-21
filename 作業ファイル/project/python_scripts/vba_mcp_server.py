@@ -761,12 +761,19 @@ def vba_help(command: str = "") -> str:
 
 
 @mcp.tool()
-def get_procedure(name: str, module: str = "") -> str:
+def get_procedure(name: str = "", module: str = "", procedure: str = "", proc: str = "") -> str:
     """プロシージャのコードを取得して返す（_last_proc.vba にも保存される）。
 
     同名プロシージャが複数モジュールにある場合は module を指定する。
     修正の流れ: get_procedure → replace_procedure(code=修正後の全文)
     """
+    if not name:
+        if procedure:
+            name = procedure
+        elif proc:
+            name = proc
+        else:
+            return "エラー: 引数 'name' が指定されていません。例: get_procedure(name='プロシージャ名')"
     cmd = f'get "{module}" "{name}"' if module else f'get "{name}"'
     ok, out, err = _run(cmd)
     # get のコード本文は stdout、情報行・警告は stderr。人が読むので両方返す
@@ -813,15 +820,24 @@ def replace_procedure(module: str = "", code: str = "") -> str:
 
 
 @mcp.tool()
-def patch_procedure(name: str, target: str, replacement: str, module: str = "") -> str:
+def patch_procedure(name: str = "", target: str = "", replacement: str = "", module: str = "", procedure: str = "", proc: str = "", old: str = "", new: str = "") -> str:
     """プロシージャ内の指定コードをピンポイントで置換する（差分置換・自動バックアップ・Attribute保持）。
-
-    全文の上書きが不要になり、狙った行だけを安全・確実に変更できます。
     name: プロシージャ名（例: "印刷実行"）
-    target: 置換前の既存コード（プロシージャ内で一意に特定できる文字列）
+    target: 置換前の既存コード
     replacement: 置換後の新しいコード
-    module: 対象モジュール名（同名プロシージャが複数ある場合）
+    module: 対象モジュール名
     """
+    if not name:
+        name = procedure or proc
+    if not target:
+        target = old
+    if not replacement and new:
+        replacement = new
+
+    if not name:
+        return "エラー: 引数 'name' が指定されていません。例: patch_procedure(name='マクロ名', target='前', replacement='後')"
+    if not target:
+        return "エラー: 引数 'target' が指定されていません（'old' ではなく 'target' を指定してください）。"
     tgt_path, rep_path = PATCH_TGT, PATCH_REP
     with open(tgt_path, "w", encoding="utf-8") as f:
         f.write(target.replace("\r\n", "\n"))
