@@ -13132,9 +13132,9 @@ Public Sub 選んだ列のVLOOKUPをXLOOKUPに変換する()
     Next cell
 
     If myCount > 0 Then
-        MsgBox myCount & " 個の VLOOKUP 数式を XLOOKUP に変換しました。", vbInformation, "秀コンボ"
+        Application.StatusBar = "選んだ列のVLOOKUPをXLOOKUPに変換する: " & myCount & " 個の VLOOKUP 数式を XLOOKUP に変換しました。"   ' 窓を出さない＝先撃ちで止まらない（2026-10-21）
     Else
-        MsgBox "対象の範囲に変換可能な VLOOKUP 数式は見つかりませんでした。", vbInformation, "秀コンボ"
+        Application.StatusBar = "選んだ列のVLOOKUPをXLOOKUPに変換する: 対象の範囲に変換可能な VLOOKUP 数式は見つかりませんでした。"
     End If
 End Sub
 

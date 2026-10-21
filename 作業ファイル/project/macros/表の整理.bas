@@ -6939,7 +6939,7 @@ Sub 選んだ列の値ごとにシートを分割する(Optional ByVal 知らせる As Boolean = True
     Application.ScreenUpdating = oldScreen
 
     If 知らせる And Not コンボ道具.mレシピ中 Then
-        MsgBox "分割完了: " & createdCount & " 個のシートに振り分けました。", vbInformation, "シート分割"
+        Application.StatusBar = "選んだ列の値ごとにシートを分割する: " & createdCount & " 個のシートに振り分けました。"   ' 窓を出さない＝先撃ちで止まらない（2026-10-21）
     End If
 End Sub
 
@@ -7130,38 +7130,55 @@ Public Sub スピルエラーを検出し邪魔なセルをクリアする()
     Set formCells = ws.UsedRange.SpecialCells(xlCellTypeFormulas)
     On Error GoTo 0
     If formCells Is Nothing Then
-        MsgBox "シート内に数式セルが見つかりません。", vbInformation, "秀コンボ"
+        Application.StatusBar = "スピルエラーを検出し邪魔なセルをクリアする: シート内に数式セルが見つかりません。"   ' 窓を出さない＝先撃ちで止まらない（2026-10-21）
         Exit Sub
     End If
 
     For Each cell In formCells
-        If cell.text = "#SPILL!" Then
+        ' 日本語版の表示は「#スピル!」＝文字でなくエラーの種類（2045＝#SPILL!）で見る（2026-10-21）
+        Dim スピルか As Boolean: スピルか = False
+        If IsError(cell.Value) Then スピルか = (cell.Value = CVErr(2045))
+        If スピルか Then
+            ' #SPILL! の間は SpillingToRange が空（広がれていない）＝式を評価して広がる大きさを求める（2026-10-21 総点検・前は一度も見つけられなかった）
+            Dim 答え As Variant, 行数 As Long, 列数 As Long
+            Set spillRng = Nothing
             On Error Resume Next
-            Set spillRng = cell.SpillingToRange
+            答え = ws.Evaluate(Mid$(cell.Formula2, 2))
+            If IsArray(答え) Then
+                行数 = UBound(答え, 1) - LBound(答え, 1) + 1
+                列数 = 1
+                列数 = UBound(答え, 2) - LBound(答え, 2) + 1
+                Set spillRng = cell.Resize(行数, 列数)
+            End If
             On Error GoTo 0
 
             If Not spillRng Is Nothing Then
+                ' 先に邪魔なセルを全部見つけてから消す（1 つ消すと式が広がり、広がった先まで数えていた・2026-10-21）
+                Dim 邪魔 As Range: Set 邪魔 = Nothing
                 For Each blkCell In spillRng
                     If blkCell.Address <> cell.Address Then
-                        If blkCell.MergeCells Then
-                            blkCell.MergeArea.UnMerge
-                            clearedCount = clearedCount + 1
-                        End If
-                        If Not isEmpty(blkCell.Value) Or Len(blkCell.Formula) > 0 Then
-                            blkCell.ClearContents
-                            clearedCount = clearedCount + 1
+                        If blkCell.MergeCells Or Not isEmpty(blkCell.Value) Or Len(blkCell.Formula) > 0 Then
+                            If 邪魔 Is Nothing Then Set 邪魔 = blkCell Else Set 邪魔 = Union(邪魔, blkCell)
                         End If
                     End If
                 Next blkCell
-                If cell.text <> "#SPILL!" Then solvedCount = solvedCount + 1
+                If Not 邪魔 Is Nothing Then
+                    clearedCount = clearedCount + 邪魔.Cells.Count
+                    For Each blkCell In 邪魔.Cells
+                        If blkCell.MergeCells Then blkCell.MergeArea.UnMerge
+                    Next blkCell
+                    邪魔.ClearContents
+                End If
+                cell.Calculate
+                If Not IsError(cell.Value) Then solvedCount = solvedCount + 1
             End If
         End If
     Next cell
 
     If clearedCount > 0 Then
-        MsgBox clearedCount & " 個の障害セルをクリアし、スピルエラーを解消しました。", vbInformation, "秀コンボ"
+        Application.StatusBar = "スピルエラーを検出し邪魔なセルをクリアする: " & clearedCount & " 個の障害セルをクリアし、スピルエラーを解消しました。"
     Else
-        MsgBox "#SPILL! エラーまたはクリア可能な障害セルは見つかりませんでした。", vbInformation, "秀コンボ"
+        Application.StatusBar = "スピルエラーを検出し邪魔なセルをクリアする: #SPILL! エラーまたはクリア可能な障害セルは見つかりませんでした。"
     End If
 End Sub
 
@@ -7199,19 +7216,25 @@ Public Sub 英数を半角にカナを全角にする()
                 文字長 = Len(文字列値)
                 If 文字長 > 0 Then
                     変換後文字列 = ""
+                    ' 半角カナは続いている分をまとめて全角にする（1 字ずつだと「ｶﾞ」が「カ゛」に割れた・2026-10-21）
+                    Dim カナの続き As String: カナの続き = ""
                     For 文字位置 = 1 To 文字長
                         判定文字 = Mid(文字列値, 文字位置, 1)
                         コード値 = AscW(判定文字) And &HFFFF&
-                        If (コード値 >= &HFF10& And コード値 <= &HFF19&) Or _
-                           (コード値 >= &HFF21& And コード値 <= &HFF3A&) Or _
-                           (コード値 >= &HFF41& And コード値 <= &HFF5A&) Then
-                            変換後文字列 = 変換後文字列 & StrConv(判定文字, vbNarrow)
-                        ElseIf コード値 >= &HFF61& And コード値 <= &HFF9F& Then
-                            変換後文字列 = 変換後文字列 & StrConv(判定文字, vbWide)
+                        If コード値 >= &HFF61& And コード値 <= &HFF9F& Then
+                            カナの続き = カナの続き & 判定文字
                         Else
-                            変換後文字列 = 変換後文字列 & 判定文字
+                            If Len(カナの続き) > 0 Then 変換後文字列 = 変換後文字列 & StrConv(カナの続き, vbWide): カナの続き = ""
+                            If (コード値 >= &HFF10& And コード値 <= &HFF19&) Or _
+                               (コード値 >= &HFF21& And コード値 <= &HFF3A&) Or _
+                               (コード値 >= &HFF41& And コード値 <= &HFF5A&) Then
+                                変換後文字列 = 変換後文字列 & StrConv(判定文字, vbNarrow)
+                            Else
+                                変換後文字列 = 変換後文字列 & 判定文字
+                            End If
                         End If
                     Next 文字位置
+                    If Len(カナの続き) > 0 Then 変換後文字列 = 変換後文字列 & StrConv(カナの続き, vbWide)
                     If 変換後文字列 <> 文字列値 Then
                         If Not 選択範囲.Cells(行位置, 列位置).HasFormula Then
                             選択範囲.Cells(行位置, 列位置).Value = 変換後文字列
