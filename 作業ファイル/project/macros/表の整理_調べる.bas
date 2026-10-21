@@ -1742,7 +1742,7 @@ Sub マクロの呼び出し関係を一覧にする(Optional ByVal 勇退 As Boolean = True)
     ' Excelコンボの［マクロ］タブで選んだマクロ（選んでいなければ名前を聞く）について、そのマクロが呼んでいるマクロ・そのマクロを呼んでいる所（マクロ・ボタン）を、
     ' 新しいシート「調査_呼び出し関係」に一覧にする。直すとどこまで影響するかの見当に使う。何も変えない。
     Dim wb As Workbook, sh As Object, out As Worksheet, old As Object, comp As Object, cm As Object, shp As Object
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, hR As Long, NC As Long
+    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, hR As Long, nc As Long
     Dim 対象 As String, n As Long, jj As Long, proc As String, nxt As Long, k As Long, i As Long, tgt As Long
     Dim モジュ() As String, 名() As String, 始() As Long, 数() As Long, 本文() As String, 本数 As Long, 種() As Long
     Dim 行 As Variant, ln As String, p As Long, 前 As String, 後 As String, 見つけた As Boolean, act As String, nc1 As Long, nc2 As Long
@@ -1824,7 +1824,7 @@ Sub マクロの呼び出し関係を一覧にする(Optional ByVal 勇退 As Boolean = True)
     out.Name = nm
     out.Range("A1").Value = "調査：マクロの呼び出し関係　" & 名(tgt) & "（" & wb.Name & "）"
     out.Range("A2").Value = "「呼んでいる」＝このマクロの中で使われている他のマクロ／「呼ばれている」＝このマクロ名を使っている所。コメント行は数えません。"
-    hR = 4: NC = 5
+    hR = 4: nc = 5
     out.Range("A4:E4").Value = Array("種類", "モジュール", "マクロ", "行", "その行")
     r = hR
     行 = Split(本文(tgt), vbCrLf)
@@ -1916,16 +1916,16 @@ Sub マクロの呼び出し関係を一覧にする(Optional ByVal 勇退 As Boolean = True)
     With out
         .Range("A1").Font.Bold = True
         .Range("A1").Font.Size = 12
-        With .Range(.Cells(hR, 1), .Cells(hR, NC))
+        With .Range(.Cells(hR, 1), .Cells(hR, nc))
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, NC))
+        With .Range(.Cells(hR, 1), .Cells(rt, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
         End With
-        For j = 1 To NC
+        For j = 1 To nc
             If .Columns(j).ColumnWidth > 60 Then
                 .Columns(j).ColumnWidth = 60
                 .Columns(j).WrapText = True
@@ -1952,7 +1952,7 @@ Sub マクロが何を変えるかを一覧にする(Optional ByVal 勇退 As Boolean = True)
     ' Excelコンボの［マクロ］タブで選んだマクロ（選んでいなければ名前を聞く）の、頭のコメント・呼んでいるマクロ・触っているシート・出すメッセージ・
     ' 変わる可能性のある命令（削除・書き込み・保存など）を、行番号つきで新しいシート「調査_マクロの中身」に一覧にする。実行前の見当に使う。何も変えない・実行もしない。
     Dim wb As Workbook, sh As Object, out As Worksheet, old As Object, comp As Object, cm As Object
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, hR As Long, NC As Long
+    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, hR As Long, nc As Long
     Dim 対象 As String, n As Long, jj As Long, proc As String, nxt As Long, k As Long, i As Long, tgt As Long
     Dim モジュ() As String, 名() As String, 始() As Long, 数() As Long, 本文() As String, 本数 As Long, 種() As Long
     Dim 行 As Variant, ln As String, p As Long, 前 As String, 後 As String, 見つけた As Boolean, w As Variant, ラベル As Variant, m As Long
@@ -2034,7 +2034,7 @@ Sub マクロが何を変えるかを一覧にする(Optional ByVal 勇退 As Boolean = True)
     out.Name = nm
     out.Range("A1").Value = "調査：マクロの中身　" & 名(tgt) & "（" & wb.Name & "）"
     out.Range("A2").Value = "コードを読んで拾った目安です（動かしていません）。変わる可能性のある命令は、実際に動くかどうかまでは分かりません。"
-    hR = 4: NC = 4
+    hR = 4: nc = 4
     out.Range("A4:D4").Value = Array("項目", "行", "内容", "メモ")
     r = hR
     行 = Split(本文(tgt), vbCrLf)
@@ -2146,16 +2146,16 @@ Sub マクロが何を変えるかを一覧にする(Optional ByVal 勇退 As Boolean = True)
     With out
         .Range("A1").Font.Bold = True
         .Range("A1").Font.Size = 12
-        With .Range(.Cells(hR, 1), .Cells(hR, NC))
+        With .Range(.Cells(hR, 1), .Cells(hR, nc))
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, NC))
+        With .Range(.Cells(hR, 1), .Cells(rt, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
         End With
-        For j = 1 To NC
+        For j = 1 To nc
             If .Columns(j).ColumnWidth > 60 Then
                 .Columns(j).ColumnWidth = 60
                 .Columns(j).WrapText = True
@@ -2182,7 +2182,7 @@ Sub 使われていないマクロを一覧にする(Optional ByVal 勇退 As Boolean = True)
     ' 開いているブックのマクロのうち、他のマクロからもボタンからも呼ばれていないもの（使われていない候補）と、中身が同じマクロを、新しいシート「調査_使われていないマクロ」に一覧にする。
     ' ショートカットキーやリボンから直接使っているものは見分けられないので「候補」。何も変えない・消さない。
     Dim wb As Workbook, sh As Object, out As Worksheet, old As Object, comp As Object, cm As Object, shp As Object
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, hR As Long, NC As Long
+    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, hR As Long, nc As Long
     Dim n As Long, jj As Long, proc As String, nxt As Long, k As Long, i As Long, a As Long
     Dim モジュ() As String, 名() As String, 始() As Long, 数() As Long, 本文() As String, 本数 As Long, 種() As Long
     Dim 行 As Variant, ln As String, p As Long, 前 As String, 後 As String, 総 As Long, 自 As Long, 全 As String, 自本 As String
@@ -2271,7 +2271,7 @@ Sub 使われていないマクロを一覧にする(Optional ByVal 勇退 As Boolean = True)
     out.Name = nm
     out.Range("A1").Value = "調査：使われていないマクロ・中身が同じマクロ　" & wb.Name
     out.Range("A2").Value = "「使われていない候補」は、他のマクロ・図形のボタンから呼ばれていないもの。ショートカットキー・リボン・Alt+F8 で直接使っているものは見分けられません。"
-    hR = 4: NC = 6
+    hR = 4: nc = 6
     out.Range("A4:F4").Value = Array("種類", "モジュール", "マクロ", "行数", "公開", "メモ")
     r = hR
     Set 鍵 = CreateObject("Scripting.Dictionary")
@@ -2350,16 +2350,16 @@ Sub 使われていないマクロを一覧にする(Optional ByVal 勇退 As Boolean = True)
     With out
         .Range("A1").Font.Bold = True
         .Range("A1").Font.Size = 12
-        With .Range(.Cells(hR, 1), .Cells(hR, NC))
+        With .Range(.Cells(hR, 1), .Cells(hR, nc))
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, NC))
+        With .Range(.Cells(hR, 1), .Cells(rt, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
         End With
-        For j = 1 To NC
+        For j = 1 To nc
             If .Columns(j).ColumnWidth > 60 Then
                 .Columns(j).ColumnWidth = 60
                 .Columns(j).WrapText = True
@@ -2385,7 +2385,7 @@ Sub このシートを使うマクロの一覧(Optional ByVal 勇退 As Boolean = True)
     ' （開発用マクロ：棚目録からは勇退・エージェントMCP移管）
     ' 今のシートの名前（と、VBA 上のオブジェクト名）を使っているマクロを、行数の多い順に新しいシート「調査_シートを使うマクロ」に一覧にする。何も変えない。
     Dim wb As Workbook, sh As Object, out As Worksheet, old As Object, comp As Object, cm As Object, ws As Object
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, hR As Long, NC As Long
+    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, hR As Long, nc As Long
     Dim n As Long, jj As Long, proc As String, nxt As Long, k As Long, i As Long
     Dim モジュ() As String, 名() As String, 始() As Long, 数() As Long, 本文() As String, 本数 As Long, 種() As Long
     Dim 行 As Variant, ln As String, p As Long, 前 As String, 後 As String, 境 As String, シート名 As String, コード名 As String
@@ -2459,7 +2459,7 @@ Sub このシートを使うマクロの一覧(Optional ByVal 勇退 As Boolean = True)
     out.Name = nm
     out.Range("A1").Value = "調査：シート「" & シート名 & "」を使っているマクロ　" & wb.Name
     out.Range("A2").Value = "シート名を文字（「""" & シート名 & """」）で書いている所と、オブジェクト名（" & コード名 & "）を使っている所を探しました。コメント行は数えません。"
-    hR = 4: NC = 5
+    hR = 4: nc = 5
     out.Range("A4:E4").Value = Array("モジュール", "マクロ", "該当の行数", "最初の行", "その行")
     r = hR
     For i = 0 To 本数 - 1
@@ -2499,7 +2499,7 @@ Sub このシートを使うマクロの一覧(Optional ByVal 勇退 As Boolean = True)
             out.Cells(r, 5).Value = "'" & Left$(初行, 100)
         End If
     Next i
-    If r > hR + 1 Then out.Range(out.Cells(hR + 1, 1), out.Cells(r, NC)).Sort Key1:=out.Cells(hR + 1, 3), Order1:=2, Header:=2
+    If r > hR + 1 Then out.Range(out.Cells(hR + 1, 1), out.Cells(r, nc)).Sort Key1:=out.Cells(hR + 1, 3), Order1:=2, Header:=2
     If r = hR Then
         r = r + 1
         out.Cells(r, 1).Value = "このシートを使っているマクロは見つかりませんでした"
@@ -2508,16 +2508,16 @@ Sub このシートを使うマクロの一覧(Optional ByVal 勇退 As Boolean = True)
     With out
         .Range("A1").Font.Bold = True
         .Range("A1").Font.Size = 12
-        With .Range(.Cells(hR, 1), .Cells(hR, NC))
+        With .Range(.Cells(hR, 1), .Cells(hR, nc))
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, NC))
+        With .Range(.Cells(hR, 1), .Cells(rt, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
         End With
-        For j = 1 To NC
+        For j = 1 To nc
             If .Columns(j).ColumnWidth > 60 Then
                 .Columns(j).ColumnWidth = 60
                 .Columns(j).WrapText = True
@@ -2543,7 +2543,7 @@ Sub 言葉でマクロのコードを探す(Optional ByVal 勇退 As Boolean = True)
     ' （開発用マクロ：棚目録からは勇退・エージェントMCP移管）
     ' 探す言葉を聞いて、開いているブックのマクロのコードの中から、その言葉を含む行をモジュール・マクロ名・行番号つきで新しいシート「調査_コード検索」に一覧にする（500 行まで）。何も変えない。
     Dim wb As Workbook, sh As Object, out As Worksheet, old As Object, comp As Object, cm As Object
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, hR As Long, NC As Long
+    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, hR As Long, nc As Long
     Dim n As Long, jj As Long, proc As String, nxt As Long, k As Long, i As Long, 探す As String
     Dim モジュ() As String, 名() As String, 始() As Long, 数() As Long, 本文() As String, 本数 As Long, 種() As Long
     Dim 行 As Variant, ln As String, 件 As Long, 打切 As Boolean
@@ -2610,7 +2610,7 @@ Sub 言葉でマクロのコードを探す(Optional ByVal 勇退 As Boolean = True)
     Set out = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
     out.Name = nm
     out.Range("A1").Value = "調査：言葉でマクロのコードを探す「" & 探す & "」　" & wb.Name
-    hR = 4: NC = 4
+    hR = 4: nc = 4
     out.Range("A4:D4").Value = Array("モジュール", "マクロ", "行", "その行")
     r = hR
     For i = 0 To 本数 - 1
@@ -2639,16 +2639,16 @@ Sub 言葉でマクロのコードを探す(Optional ByVal 勇退 As Boolean = True)
     With out
         .Range("A1").Font.Bold = True
         .Range("A1").Font.Size = 12
-        With .Range(.Cells(hR, 1), .Cells(hR, NC))
+        With .Range(.Cells(hR, 1), .Cells(hR, nc))
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, NC))
+        With .Range(.Cells(hR, 1), .Cells(rt, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
         End With
-        For j = 1 To NC
+        For j = 1 To nc
             If .Columns(j).ColumnWidth > 60 Then
                 .Columns(j).ColumnWidth = 60
                 .Columns(j).WrapText = True
@@ -2679,7 +2679,7 @@ Sub ブックの全シートを一覧にする()
     ' 開いているブックの全シートを、状態・使用範囲・行列数・データのセル数・数式のセル数・テーブル・グラフ・図形の数で一覧にする。
     ' 新しいシート「調査_全体像」に出す（前に作った同名の調査シートは作り直す）。元のシートは何も変えない。
     Dim wb As Workbook, sh As Object, out As Worksheet, old As Object
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, hR As Long, NC As Long
+    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, hR As Long, nc As Long
     Dim ur As Range, fr As Range, lk As Variant, st As String
     On Error GoTo 失敗
     Set wb = ActiveWorkbook
@@ -2706,7 +2706,7 @@ Sub ブックの全シートを一覧にする()
     out.Name = nm
     out.Range("A1").Value = "調査：ブックの全体像　" & wb.Name
     out.Range("A2").Value = "調べた日時 " & Format(Now, "yyyy/m/d hh:nn")
-    hR = 4: NC = 12
+    hR = 4: nc = 12
     out.Range("A4:L4").Value = Array("シート名", "種類", "表示", "使用範囲", "行数", "列数", "データのセル", "数式のセル", "テーブル", "グラフ", "図形", "保護")
     r = hR
     For Each sh In wb.Sheets
@@ -2768,16 +2768,16 @@ Sub ブックの全シートを一覧にする()
     With out
         .Range("A1").Font.Bold = True
         .Range("A1").Font.Size = 12
-        With .Range(.Cells(hR, 1), .Cells(hR, NC))
+        With .Range(.Cells(hR, 1), .Cells(hR, nc))
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, NC))
+        With .Range(.Cells(hR, 1), .Cells(rt, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
         End With
-        For j = 1 To NC
+        For j = 1 To nc
             If .Columns(j).ColumnWidth > 60 Then
                 .Columns(j).ColumnWidth = 60
                 .Columns(j).WrapText = True
@@ -2808,7 +2808,7 @@ Sub 表の見出しと列の型を一覧にする()
     ' 今のシートの表（選んでいるセルを含むひとまとまり。空のセルなら使用範囲）について、見出し・データの件数・列ごとの型／空欄／種類の数／最小・最大／例を、
     ' 新しいシート「調査_表の作り」に一覧にする。見出し行は範囲の先頭行とみなす。列の「意味」までは決められないので、見出しと例を並べる。元の表は何も変えない。
     Dim wb As Workbook, ws As Object, out As Worksheet, old As Object
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, NC As Long
+    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, nc As Long
     Dim tb As Range, v As Variant, nr As Long, nc2 As Long, x As Variant, s As String, 注 As String
     Dim d As Object, n数 As Long, n日 As Long, n文 As Long, n他 As Long, n空 As Long, n誤 As Long, n文数 As Long
     Dim mn As Variant, mx As Variant, 例 As String, 例数 As Long, 型 As String, n型数 As Long, 部 As String
@@ -2854,7 +2854,7 @@ Sub 表の見出しと列の型を一覧にする()
     out.Range("A1").Value = "調査：表の作り　" & ws.Name
     out.Range("A2").Value = "範囲 " & tb.Address(False, False) & "　見出し行 " & tb.row & "　データ " & Format(nr - 1, "#,##0") & " 行　" & nc2 & " 列 " & 注
     out.Range("A3").Value = "見出し行は範囲の先頭行とみなしています。列の意味は決められないので、見出しと例を並べています。"
-    hR = 5: NC = 11
+    hR = 5: nc = 11
     out.Range("A5:K5").Value = Array("列", "見出し", "入力あり", "空欄", "型", "種類の数", "最小", "最大", "文字の数字", "エラー", "例")
     r = hR
     For j = 1 To nc2
@@ -2951,16 +2951,16 @@ Sub 表の見出しと列の型を一覧にする()
     With out
         .Range("A1").Font.Bold = True
         .Range("A1").Font.Size = 12
-        With .Range(.Cells(hR, 1), .Cells(hR, NC))
+        With .Range(.Cells(hR, 1), .Cells(hR, nc))
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, NC))
+        With .Range(.Cells(hR, 1), .Cells(rt, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
         End With
-        For j = 1 To NC
+        For j = 1 To nc
             If .Columns(j).ColumnWidth > 60 Then
                 .Columns(j).ColumnWidth = 60
                 .Columns(j).WrapText = True
@@ -2990,7 +2990,7 @@ Sub 入力規則などの仕掛けを一覧にする()
     ' 形: なし
     ' 今のシートにある入力規則（ドロップダウンなど）・条件付き書式・結合セルを、範囲と内容つきで新しいシート「調査_仕掛け」に一覧にする。元のシートは何も変えない。
     Dim wb As Workbook, ws As Object, out As Worksheet, old As Object
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, NC As Long
+    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, nc As Long
     Dim dv As Range, ar As Range, fc As Object, c As Range, ur As Range, s As String, s2 As String, s3 As String
     Dim n1 As Long, n2 As Long, n3 As Long, n As Long, first As String, op As String
     On Error GoTo 失敗
@@ -3019,7 +3019,7 @@ Sub 入力規則などの仕掛けを一覧にする()
     Set out = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
     out.Name = nm
     out.Range("A1").Value = "調査：仕掛け（入力規則・条件付き書式・結合セル）　" & ws.Name
-    hR = 4: NC = 5
+    hR = 4: nc = 5
     out.Range("A4:E4").Value = Array("種類", "範囲", "内容1", "内容2", "内容3")
     r = hR
     Set dv = Nothing
@@ -3137,16 +3137,16 @@ Sub 入力規則などの仕掛けを一覧にする()
     With out
         .Range("A1").Font.Bold = True
         .Range("A1").Font.Size = 12
-        With .Range(.Cells(hR, 1), .Cells(hR, NC))
+        With .Range(.Cells(hR, 1), .Cells(hR, nc))
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, NC))
+        With .Range(.Cells(hR, 1), .Cells(rt, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
         End With
-        For j = 1 To NC
+        For j = 1 To nc
             If .Columns(j).ColumnWidth > 60 Then
                 .Columns(j).ColumnWidth = 60
                 .Columns(j).WrapText = True
@@ -3178,7 +3178,7 @@ Sub 印刷ページ数と切れ目を一覧にする()
     ' 開いているブックの表示中のシートごとに、印刷範囲・向き・用紙・拡大縮小・総ページ数・行と列の切れ目・繰り返す見出し行を、新しいシート「調査_印刷ページ」に一覧にする。
     ' プリンターが未設定だとページ数が出ないことがある。元のシートは何も変えない。
     Dim wb As Workbook, sh As Object, out As Worksheet, old As Object
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, NC As Long
+    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, nc As Long
     Dim pg As Long, hb As String, vb2 As String, s As String, zm As Variant, col As Long
     On Error GoTo 失敗
     Set wb = ActiveWorkbook
@@ -3205,7 +3205,7 @@ Sub 印刷ページ数と切れ目を一覧にする()
     out.Name = nm
     out.Range("A1").Value = "調査：印刷ページ　" & wb.Name
     out.Range("A2").Value = "切れ目の「N行目」は、その行から次のページが始まる位置です。"
-    hR = 4: NC = 9
+    hR = 4: nc = 9
     out.Range("A4:I4").Value = Array("シート", "印刷範囲", "向き", "用紙", "拡大縮小", "総ページ数", "行の切れ目", "列の切れ目", "繰り返す見出し行")
     r = hR
     For Each sh In wb.Worksheets
@@ -3265,16 +3265,16 @@ Sub 印刷ページ数と切れ目を一覧にする()
     With out
         .Range("A1").Font.Bold = True
         .Range("A1").Font.Size = 12
-        With .Range(.Cells(hR, 1), .Cells(hR, NC))
+        With .Range(.Cells(hR, 1), .Cells(hR, nc))
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, NC))
+        With .Range(.Cells(hR, 1), .Cells(rt, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
         End With
-        For j = 1 To NC
+        For j = 1 To nc
             If .Columns(j).ColumnWidth > 60 Then
                 .Columns(j).ColumnWidth = 60
                 .Columns(j).WrapText = True
@@ -3304,7 +3304,7 @@ Sub 非表示のシートと行列を一覧にする()
     ' 形: なし
     ' ブックの中の非表示のシート・行・列・名前と、絞り込みで隠れている行を、新しいシート「調査_非表示」に一覧にする。何も表示し直さず、元のシートは変えない。
     Dim wb As Workbook, sh As Object, out As Worksheet, old As Object
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, NC As Long
+    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, nc As Long
     Dim ur As Range, x As Variant, a As Long, lastR As Long, lastC As Long, nn As Object, 何 As String
     On Error GoTo 失敗
     Set wb = ActiveWorkbook
@@ -3330,7 +3330,7 @@ Sub 非表示のシートと行列を一覧にする()
     Set out = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
     out.Name = nm
     out.Range("A1").Value = "調査：非表示のもの　" & wb.Name
-    hR = 4: NC = 4
+    hR = 4: nc = 4
     out.Range("A4:D4").Value = Array("種類", "シート", "場所", "備考")
     r = hR
     For Each sh In wb.Sheets
@@ -3433,16 +3433,16 @@ Sub 非表示のシートと行列を一覧にする()
     With out
         .Range("A1").Font.Bold = True
         .Range("A1").Font.Size = 12
-        With .Range(.Cells(hR, 1), .Cells(hR, NC))
+        With .Range(.Cells(hR, 1), .Cells(hR, nc))
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, NC))
+        With .Range(.Cells(hR, 1), .Cells(rt, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
         End With
-        For j = 1 To NC
+        For j = 1 To nc
             If .Columns(j).ColumnWidth > 60 Then
                 .Columns(j).ColumnWidth = 60
                 .Columns(j).WrapText = True
@@ -3472,7 +3472,7 @@ Sub 壊れた参照と名前を一覧にする()
     ' 形: なし
     ' ブックの中の #REF!・#NAME? のセルと、式の中に #REF! を持つセル、参照先が壊れた名前を、新しいシート「調査_壊れた参照」に一覧にする。何も直さない。
     Dim wb As Workbook, sh As Object, out As Worksheet, old As Object
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, NC As Long
+    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, nc As Long
     Dim fr As Range, c As Range, f As Range, s As String, n As Long, first As String, seen As Object, nn As Object, 他 As Long, 何 As String
     On Error GoTo 失敗
     Set wb = ActiveWorkbook
@@ -3499,7 +3499,7 @@ Sub 壊れた参照と名前を一覧にする()
     Set out = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
     out.Name = nm
     out.Range("A1").Value = "調査：壊れた参照　" & wb.Name
-    hR = 4: NC = 5
+    hR = 4: nc = 5
     out.Range("A4:E4").Value = Array("種類", "シート", "セル／名前", "内容（式）", "備考")
     r = hR
     For Each sh In wb.Worksheets
@@ -3592,16 +3592,16 @@ Sub 壊れた参照と名前を一覧にする()
     With out
         .Range("A1").Font.Bold = True
         .Range("A1").Font.Size = 12
-        With .Range(.Cells(hR, 1), .Cells(hR, NC))
+        With .Range(.Cells(hR, 1), .Cells(hR, nc))
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, NC))
+        With .Range(.Cells(hR, 1), .Cells(rt, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
         End With
-        For j = 1 To NC
+        For j = 1 To nc
             If .Columns(j).ColumnWidth > 60 Then
                 .Columns(j).ColumnWidth = 60
                 .Columns(j).WrapText = True
@@ -3632,7 +3632,7 @@ Sub 参照とリンクを一覧にする()
     ' 数式が他のシートや他のブックを参照している関係と、ブックのリンク元ファイルを、新しいシート「調査_参照とリンク」に一覧にする。何も変えない（リンクの解消は「外部リンクを値に変えて切る」）。
     Dim wb As Workbook, sh As Object, t As Object, out As Worksheet, old As Object
     Dim kv As Variant
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, NC As Long
+    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, nc As Long
     Dim fr As Range, ar As Range, v As Variant, a As Long, b As Long, f As String, key As String, total As Long
     Dim cnt As Object, ex As Object, cnt2 As Object, ex2 As Object, lk As Variant, p1 As Long, p2 As Long, bk As String, 打切 As Boolean
     On Error GoTo 失敗
@@ -3661,7 +3661,7 @@ Sub 参照とリンクを一覧にする()
     Set out = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
     out.Name = nm
     out.Range("A1").Value = "調査：参照とリンク　" & wb.Name
-    hR = 4: NC = 5
+    hR = 4: nc = 5
     out.Range("A4:E4").Value = Array("種類", "参照元", "参照先", "件数", "最初の例")
     r = hR
     For Each sh In wb.Worksheets
@@ -3793,16 +3793,16 @@ Sub 参照とリンクを一覧にする()
     With out
         .Range("A1").Font.Bold = True
         .Range("A1").Font.Size = 12
-        With .Range(.Cells(hR, 1), .Cells(hR, NC))
+        With .Range(.Cells(hR, 1), .Cells(hR, nc))
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, NC))
+        With .Range(.Cells(hR, 1), .Cells(rt, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
         End With
-        For j = 1 To NC
+        For j = 1 To nc
             If .Columns(j).ColumnWidth > 60 Then
                 .Columns(j).ColumnWidth = 60
                 .Columns(j).WrapText = True
@@ -3833,7 +3833,7 @@ Sub ブックが重い原因を一覧にする()
     ' ブックが重くなる代表的な原因（余計に広がった使用範囲・図形と画像・条件付き書式・スタイル・名前・外部リンク・再計算の多い関数など）の状況を、
     ' 新しいシート「調査_重い原因」に一覧にして、気になるものに印を付ける。何も変えない（直すのは「余分な行列を削除し軽くする」）。
     Dim wb As Workbook, sh As Object, out As Worksheet, old As Object
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, NC As Long
+    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, nc As Long
     Dim ur As Range, lc As Range, fr As Range, endR As Long, endC As Long, lastR As Long, lastC As Long, gR As Long, gC As Long
     Dim shp As Object, np As Long, ns As Long, fcN As Long, lk As Variant, f As Range, first As String, n As Long, w As Variant, 数式計 As Long, s As String
     On Error GoTo 失敗
@@ -3861,7 +3861,7 @@ Sub ブックが重い原因を一覧にする()
     out.Name = nm
     out.Range("A1").Value = "調査：ブックが重い原因　" & wb.Name
     out.Range("A2").Value = "「要確認」は目安です。直すなら「余分な行列を削除し軽くする」（使用範囲の余計な書式を落とす）から。"
-    hR = 4: NC = 4
+    hR = 4: nc = 4
     out.Range("A4:D4").Value = Array("項目", "状況", "判定", "説明")
     r = hR
     r = r + 1
@@ -4057,16 +4057,16 @@ Sub ブックが重い原因を一覧にする()
     With out
         .Range("A1").Font.Bold = True
         .Range("A1").Font.Size = 12
-        With .Range(.Cells(hR, 1), .Cells(hR, NC))
+        With .Range(.Cells(hR, 1), .Cells(hR, nc))
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, NC))
+        With .Range(.Cells(hR, 1), .Cells(rt, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
         End With
-        For j = 1 To NC
+        For j = 1 To nc
             If .Columns(j).ColumnWidth > 60 Then
                 .Columns(j).ColumnWidth = 60
                 .Columns(j).WrapText = True
@@ -4080,7 +4080,7 @@ Sub ブックが重い原因を一覧にする()
     ActiveWindow.FreezePanes = True
     out.Range("A1").Select
     For i = hR + 1 To rt
-        If out.Cells(i, 3).Value = "要確認" Then out.Range(out.Cells(i, 1), out.Cells(i, NC)).Interior.Color = RGB(255, 242, 204)
+        If out.Cells(i, 3).Value = "要確認" Then out.Range(out.Cells(i, 1), out.Cells(i, nc)).Interior.Color = RGB(255, 242, 204)
     Next i
     Application.ScreenUpdating = True
     Application.StatusBar = "調査_重い原因: " & (rt - hR) & " 項目を一覧にしました（要確認は色付き）。"
@@ -4100,7 +4100,7 @@ Sub 同じ形の表のシートを一覧にする(Optional ByVal 勇退 As Boolean = True)
     ' ブックの各シートの見出し行（先頭 30 行のうち最初に 3 つ以上の文字が並ぶ行）を比べ、見出しが 6 割以上そろっているシートの組を、新しいシート「調査_同じ形の表」に一覧にする。
     ' 集計で足し合わせられる表を見つけるのに使う。何も変えない。
     Dim wb As Workbook, sh As Object, out As Worksheet, old As Object
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, NC As Long
+    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, nc As Long
     Dim ur As Range, hrow As Long, v As Variant, s As String, n As Long, a As Long, b As Long, common As Long, sim As Double
     Dim nms() As String, dic() As Object, rowsN() As Long, k As Variant, 差A As String, 差B As String, cA As Long, cB As Long
     On Error GoTo 失敗
@@ -4163,7 +4163,7 @@ Sub 同じ形の表のシートを一覧にする(Optional ByVal 勇退 As Boolean = True)
     out.Name = nm
     out.Range("A1").Value = "調査：同じ形の表　" & wb.Name
     out.Range("A2").Value = "各シートの見出し行を比べ、見出しが 6 割以上そろっている組を出しています（類似度が高い順）。"
-    hR = 4: NC = 8
+    hR = 4: nc = 8
     out.Range("A4:H4").Value = Array("シートA", "シートB", "そろっている見出し", "類似度", "Aだけの見出し", "Bだけの見出し", "Aのデータ行", "Bのデータ行")
     r = hR
     For a = 1 To n - 1
@@ -4200,7 +4200,7 @@ Sub 同じ形の表のシートを一覧にする(Optional ByVal 勇退 As Boolean = True)
             End If
         Next b
     Next a
-    If r > hR + 1 Then out.Range(out.Cells(hR + 1, 1), out.Cells(r, NC)).Sort Key1:=out.Cells(hR + 1, 4), Order1:=2, Header:=2
+    If r > hR + 1 Then out.Range(out.Cells(hR + 1, 1), out.Cells(r, nc)).Sort Key1:=out.Cells(hR + 1, 4), Order1:=2, Header:=2
     If r = hR Then
         r = r + 1
         out.Cells(r, 1).Value = "見出しが似ているシートの組は見つかりませんでした"
@@ -4209,16 +4209,16 @@ Sub 同じ形の表のシートを一覧にする(Optional ByVal 勇退 As Boolean = True)
     With out
         .Range("A1").Font.Bold = True
         .Range("A1").Font.Size = 12
-        With .Range(.Cells(hR, 1), .Cells(hR, NC))
+        With .Range(.Cells(hR, 1), .Cells(hR, nc))
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, NC))
+        With .Range(.Cells(hR, 1), .Cells(rt, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
         End With
-        For j = 1 To NC
+        For j = 1 To nc
             If .Columns(j).ColumnWidth > 60 Then
                 .Columns(j).ColumnWidth = 60
                 .Columns(j).WrapText = True
@@ -4245,7 +4245,7 @@ Sub マクロを役割つきで一覧にする(Optional ByVal 勇退 As Boolean = True)
     ' 開いているブックの VBA のマクロ（Sub・Function）を、モジュール名・種類・公開／非公開・行数・役割（頭のコメントの 1 行）つきで、新しいシート「調査_マクロ一覧」に一覧にする。
     ' VBA プロジェクトを読めない設定のときは、その旨を出して止まる。何も変えない。
     Dim wb As Workbook, out As Worksheet, old As Object, comp As Object, cm As Object
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, hR As Long, NC As Long
+    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, hR As Long, nc As Long
     Dim proc As String, nxt As Long, jj As Long, n As Long, bl As Long, decl As String, role As String, t As String, k As Long, 型名 As String, 種 As String, 公 As String
     On Error GoTo 失敗
     Set wb = ActiveWorkbook
@@ -4280,7 +4280,7 @@ Sub マクロを役割つきで一覧にする(Optional ByVal 勇退 As Boolean = True)
     Set out = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
     out.Name = nm
     out.Range("A1").Value = "調査：マクロ一覧　" & wb.Name
-    hR = 4: NC = 6
+    hR = 4: nc = 6
     out.Range("A4:F4").Value = Array("モジュール", "モジュールの種類", "マクロ名", "公開", "行数", "役割（頭のコメント）")
     r = hR
     For Each comp In wb.VBProject.VBComponents
@@ -4353,16 +4353,16 @@ Sub マクロを役割つきで一覧にする(Optional ByVal 勇退 As Boolean = True)
     With out
         .Range("A1").Font.Bold = True
         .Range("A1").Font.Size = 12
-        With .Range(.Cells(hR, 1), .Cells(hR, NC))
+        With .Range(.Cells(hR, 1), .Cells(hR, nc))
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, NC))
+        With .Range(.Cells(hR, 1), .Cells(rt, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
         End With
-        For j = 1 To NC
+        For j = 1 To nc
             If .Columns(j).ColumnWidth > 60 Then
                 .Columns(j).ColumnWidth = 60
                 .Columns(j).WrapText = True
@@ -4389,7 +4389,7 @@ Sub ボタンとマクロの対応を一覧にする(Optional ByVal 勇退 As Boolean = True)
     ' ブックのシートにあるボタン・図形・画像のうち、マクロが割り当てられているものを、場所・表示文字・割り当てマクロ・マクロが実在するかつきで、新しいシート「調査_ボタンとマクロ」に一覧にする。
     ' マクロの実在は、VBA プロジェクトを読める場合だけ確かめる。何も変えない（図形の位置をそろえるのは「図形を一覧にし位置をそろえる」）。
     Dim wb As Workbook, sh As Object, shp As Object, out As Worksheet, old As Object, comp As Object, cm As Object
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, hR As Long, NC As Long
+    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, hR As Long, nc As Long
     Dim procs As Object, okVba As Boolean, n As Long, jj As Long, proc As String, nxt As Long
     Dim act As String, maC As String, p As Long, t As String, 種 As String, 確 As String, 他 As Boolean, loc As String
     On Error GoTo 失敗
@@ -4443,7 +4443,7 @@ Sub ボタンとマクロの対応を一覧にする(Optional ByVal 勇退 As Boolean = True)
     Set out = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
     out.Name = nm
     out.Range("A1").Value = "調査：ボタン・図形とマクロの対応　" & wb.Name
-    hR = 4: NC = 7
+    hR = 4: nc = 7
     out.Range("A4:G4").Value = Array("シート", "図形の名前", "種類", "場所", "表示文字", "割り当てマクロ", "マクロの有無")
     r = hR
     For Each sh In wb.Worksheets
@@ -4489,7 +4489,7 @@ Sub ボタンとマクロの対応を一覧にする(Optional ByVal 勇退 As Boolean = True)
                     確 = "あり"
                 Else
                     確 = "見つからない"
-                    out.Range(out.Cells(r, 1), out.Cells(r, NC)).Interior.Color = RGB(255, 199, 206)
+                    out.Range(out.Cells(r, 1), out.Cells(r, nc)).Interior.Color = RGB(255, 199, 206)
                 End If
                 out.Cells(r, 7).Value = 確
             End If
@@ -4503,16 +4503,16 @@ Sub ボタンとマクロの対応を一覧にする(Optional ByVal 勇退 As Boolean = True)
     With out
         .Range("A1").Font.Bold = True
         .Range("A1").Font.Size = 12
-        With .Range(.Cells(hR, 1), .Cells(hR, NC))
+        With .Range(.Cells(hR, 1), .Cells(hR, nc))
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, NC))
+        With .Range(.Cells(hR, 1), .Cells(rt, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
         End With
-        For j = 1 To NC
+        For j = 1 To nc
             If .Columns(j).ColumnWidth > 60 Then
                 .Columns(j).ColumnWidth = 60
                 .Columns(j).WrapText = True
@@ -4544,7 +4544,7 @@ Sub シートの数式を形ごとに一覧にする()
     ' 式が「何をしているか」の言葉での説明は AI の役目なので、形と例を並べる。何も変えない。
     Dim wb As Workbook, ws As Object, out As Worksheet, old As Object
     Dim kv As Variant
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, NC As Long
+    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, nc As Long
     Dim fr As Range, ar As Range, v As Variant, v2 As Variant, a As Long, b As Long, key As String, total As Long, 打切 As Boolean
     Dim cnt As Object, first As Object, ex As Object, re As Object, ms As Object, m As Object, fn As Object, sm As Object, s As String, f As String, tk As String
     On Error GoTo 失敗
@@ -4574,7 +4574,7 @@ Sub シートの数式を形ごとに一覧にする()
     Set out = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
     out.Name = nm
     out.Range("A1").Value = "調査：数式の一覧　" & ws.Name
-    hR = 4: NC = 6
+    hR = 4: nc = 6
     out.Range("A4:F4").Value = Array("数式の形（R1C1）", "セル数", "最初のセル", "例（A1形式）", "使っている関数", "参照しているシート")
     r = hR
     Set fr = Nothing
@@ -4653,7 +4653,7 @@ Sub シートの数式を形ごとに一覧にする()
         Next m
         out.Cells(r, 6).Value = "'" & s
     Next kv
-    If r > hR + 1 Then out.Range(out.Cells(hR + 1, 1), out.Cells(r, NC)).Sort Key1:=out.Cells(hR + 1, 2), Order1:=2, Header:=2
+    If r > hR + 1 Then out.Range(out.Cells(hR + 1, 1), out.Cells(r, nc)).Sort Key1:=out.Cells(hR + 1, 2), Order1:=2, Header:=2
     If 打切 Then out.Range("A2").Value = "数式が多いので、先頭の 100,000 個までを調べました。"
     If r = hR Then
         r = r + 1
@@ -4663,16 +4663,16 @@ Sub シートの数式を形ごとに一覧にする()
     With out
         .Range("A1").Font.Bold = True
         .Range("A1").Font.Size = 12
-        With .Range(.Cells(hR, 1), .Cells(hR, NC))
+        With .Range(.Cells(hR, 1), .Cells(hR, nc))
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, NC))
+        With .Range(.Cells(hR, 1), .Cells(rt, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
         End With
-        For j = 1 To NC
+        For j = 1 To nc
             If .Columns(j).ColumnWidth > 60 Then
                 .Columns(j).ColumnWidth = 60
                 .Columns(j).WrapText = True
@@ -5276,7 +5276,7 @@ Sub ブックの構造を一覧にする()
     Dim 名 As String, 名0 As String, 回 As Long, 行 As Long, 全 As Long, 打切 As Boolean
     Dim 域 As Range, 面 As Range, 交 As Range, 見 As Range, 柱 As Range
     Dim fa As Variant, fr As Variant, fv As Variant, v As Variant, 組 As Variant, 並 As Variant
-    Dim i As Long, j As Long, k As Long, r0 As Long, c0 As Long, nr As Long, NC As Long
+    Dim i As Long, j As Long, k As Long, r0 As Long, c0 As Long, nr As Long, nc As Long
     Dim 一括 As Boolean, 式 As String, 式R As String, 種 As String, 鍵 As Variant
     Dim 型数 As Object, 型先 As Object, 型末 As Object, 型式 As Object, 型種 As Object, 辞 As Object
     Dim 関辞 As Object, 関全 As Object, 参辞 As Object, 名辞 As Object
@@ -5346,7 +5346,7 @@ Sub ブックの構造を一覧にする()
         End If
         If ws.ProtectContents Then 保数 = 保数 + 1
         Set 域 = ws.UsedRange
-        nr = 域.rows.Count: NC = 域.Columns.Count
+        nr = 域.rows.Count: nc = 域.Columns.Count
         r0 = 域.row: c0 = 域.Column
 
         位 = 詳.Count + 1
@@ -5355,9 +5355,9 @@ Sub ブックの構造を一覧にする()
         Set 型末 = CreateObject("Scripting.Dictionary"): Set 型式 = CreateObject("Scripting.Dictionary")
         Set 型種 = CreateObject("Scripting.Dictionary"): Set 関辞 = CreateObject("Scripting.Dictionary")
         隠式 = 0: 読めず = 0: 一括 = False
-        If CDbl(nr) * NC <= 1000000# Then
+        If CDbl(nr) * nc <= 1000000# Then
             On Error Resume Next
-            If nr * NC = 1 Then
+            If nr * nc = 1 Then
                 ReDim fa(1 To 1, 1 To 1): ReDim fr(1 To 1, 1 To 1): ReDim fv(1 To 1, 1 To 1)
                 fa(1, 1) = 域.Formula: fr(1, 1) = 域.FormulaR1C1: fv(1, 1) = 域.Value
             Else
@@ -5369,7 +5369,7 @@ Sub ブックの構造を一覧にする()
         End If
         If 一括 Then
             For i = 1 To nr
-                For j = 1 To NC
+                For j = 1 To nc
                     If VarType(fa(i, j)) = vbString Then
                         If Left$(fa(i, j), 1) = "=" Then
                             式 = fa(i, j): 式R = fr(i, j): v = fv(i, j)
@@ -5379,7 +5379,7 @@ Sub ブックの構造を一覧にする()
                     End If
                 Next j
             Next i
-        ElseIf CDbl(nr) * NC <= 200000# Then
+        ElseIf CDbl(nr) * nc <= 200000# Then
             For Each 見 In 域.Cells
                 On Error Resume Next
                 If 見.HasFormula Then
@@ -5458,7 +5458,7 @@ Sub ブックの構造を一覧にする()
         End If
         結合 = 0
         If IsNull(域.MergeCells) Or 域.MergeCells = True Then
-            If CDbl(nr) * NC <= 200000# Then
+            If CDbl(nr) * nc <= 200000# Then
                 For Each 見 In 域.Cells
                     If 見.MergeCells Then
                         If 見.Address = 見.MergeArea.Cells(1, 1).Address Then 結合 = 結合 + 1
@@ -5595,7 +5595,7 @@ Sub ブックの構造を一覧にする()
         ' 1e. シートの行
         区 = "シート": 項 = IIf(ws.Visible = -1, "表示", IIf(ws.Visible = 2, "完全に非表示", "非表示")) & IIf(ws.ProtectContents, "・保護", "")
         場 = ws.Name
-        容 = "使用範囲 " & 域.Address(False, False) & "（" & nr & " 行×" & NC & " 列）"
+        容 = "使用範囲 " & 域.Address(False, False) & "（" & nr & " 行×" & nc & " 列）"
         法 = "ロック解除 " & Format$(解除, "#,##0") & "・非表示の式 " & 隠式 & "・結合 " & 結合 & "・条件付き書式 " & 条数 & "・入力規則 " & Format$(規数, "#,##0") & " セル"
         規計 = 規計 + 規数
         If 位 <= 詳.Count Then 詳.Add Array(区, 項, 場, 容, 法), Before:=位 Else GoSub 詳を足す

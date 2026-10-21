@@ -4160,9 +4160,55 @@ def _form_geometry_path(form_name):
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), f"_form_geometry_{form_name}.json")
 
 
-def _learn_form_geometry(wb, form_name):
+def _container_offset(c, form_name):
+    """コントロールの Left/Top は入れ物（MultiPage のページ・Frame）の中の座標。フォームの座標に直す足し分を返す。
+    10/22: ワークシート一覧の［表示⇔非表示］（MultiPage の 2 ページ目）を押すと、ページの中の座標のまま送って一覧に当たっていた"""
+    dx = dy = 0.0
+    try:
+        p = c.Parent
+        for _ in range(8):
+            if p is None or str(p.Name) == form_name:
+                break
+            try:
+                mp = p.Parent                      # Page なら親は MultiPage
+                is_page = hasattr(mp, 'Pages') and str(mp.Name) != form_name
+            except Exception:
+                mp, is_page = None, False
+            if is_page:
+                tabs = 0.0 if int(getattr(mp, 'Style', 0)) == 2 else (float(getattr(mp, 'TabFixedHeight', 0) or 0) or 18.0)
+                dx += float(mp.Left) + 2.0
+                dy += float(mp.Top) + 2.0 + tabs
+                p = mp.Parent
+            else:                                  # Frame: 枠と題の分は外の大きさと中の大きさの差から
+                side = max(0.0, (float(p.Width) - float(p.InsideWidth)) / 2.0)
+                dx += float(p.Left) + side
+                dy += float(p.Top) + max(0.0, float(p.Height) - float(p.InsideHeight) - side)
+                p = p.Parent
+    except Exception:
+        pass
+    return dx, dy
+
+
+def _form_designer(xl, wb, form_name):
+    """form_name の Designer。前に出ているブックに無ければ、開いているブック・アドインの VBA から探す
+    （試しのブックを前に出してフォームを試すと、前のブックにはフォームが無い・10/22）"""
+    try:
+        return wb.VBProject.VBComponents(form_name).Designer
+    except Exception:
+        pass
+    for p in xl.VBE.VBProjects:
+        try:
+            comp = p.VBComponents(form_name)
+            if comp.Type == 3:
+                return comp.Designer
+        except Exception:
+            continue
+    return None
+
+
+def _learn_form_geometry(wb, form_name, xl=None):
     """フォームが閉じているとき（Designer が取れるとき）、コントロールの位置と大きさ（点）を控える。→ {名前: [Left, Top, Width, Height, Caption]}"""
-    d = wb.VBProject.VBComponents(form_name).Designer
+    d = _form_designer(xl, wb, form_name) if xl is not None else wb.VBProject.VBComponents(form_name).Designer
     if d is None:
         return None
     geo = {}
@@ -4171,7 +4217,8 @@ def _learn_form_geometry(wb, form_name):
             cap = str(getattr(c, 'Caption', '') or '')
         except Exception:
             cap = ''
-        geo[str(c.Name)] = [float(c.Left), float(c.Top), float(c.Width), float(c.Height), cap]
+        dx, dy = _container_offset(c, form_name)
+        geo[str(c.Name)] = [float(c.Left) + dx, float(c.Top) + dy, float(c.Width), float(c.Height), cap]
     with open(_form_geometry_path(form_name), 'w', encoding='utf-8') as f:
         json.dump(geo, f, ensure_ascii=False)
     return geo
@@ -4215,9 +4262,12 @@ def cmd_form_click(args):
         # フォームがクリックを受けなくなる（2026-10-03 実機: Designer を取りに行った直後の押下が全部空振りした）
         xl, wb = get_workbook(None)
         try:
-            geo = _learn_form_geometry(wb, form_name)
+            geo = _learn_form_geometry(wb, form_name, xl)
         except Exception:
             geo = None
+        if geo is None and learn:
+            print(f"エラー: {form_name} が開いているブック・アドインに見つからないので、位置を控えられません")
+            return False
     elif learn:
         print("エラー: フォームが表示中です。--learn は閉じているときに撃ってください（close-form で閉じてから）")
         return False
@@ -4281,7 +4331,20 @@ def cmd_form_click(args):
     dpi = ctypes.windll.user32.GetDpiForWindow(picked) or 96
     cx = int((hit[0] + hit[2] / 2) * dpi / 72.0)
     cy = int((hit[1] + hit[3] / 2) * dpi / 72.0)
-    lp = win32api.MAKELONG(cx, cy)
+    # MultiPage・Frame の中は別の子窓。外の窓に送ると届かないので、その点のいちばん奥の窓に、その窓の座標で送る
+    # （10/22: ワークシート一覧の［表示⇔非表示］が押しても効かなかった）
+    tx, ty = cx, cy
+    for _ in range(6):
+        try:
+            child = win32gui.ChildWindowFromPointEx(picked, (tx, ty), 0x0001)   # CWP_SKIPINVISIBLE
+        except Exception:
+            break
+        if not child or child == picked:
+            break
+        sx, sy = win32gui.ClientToScreen(picked, (tx, ty))
+        tx, ty = win32gui.ScreenToClient(child, (sx, sy))
+        picked = child
+    lp = win32api.MAKELONG(tx, ty)
     # MSForms は「マウスが乗った」を見てからでないと押下を受けない（先に MOUSEMOVE・押下と離しの間に少し間を置く。
     # 間なしの押下だけでは、表示した直後の窓が受け付けないことがあった・2026-10-03 実機）
     win32gui.PostMessage(picked, win32con.WM_MOUSEMOVE, 0, lp)
