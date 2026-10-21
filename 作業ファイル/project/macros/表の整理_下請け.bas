@@ -1102,3 +1102,55 @@ Function 含む語(ByVal 文 As String, ByVal 語々 As String) As Boolean
         If Len(語) > 0 And InStr(1, 文, 語, vbBinaryCompare) > 0 Then 含む語 = True: Exit Function
     Next 語
 End Function
+
+Public Sub 変えたセルだけ書く(ByVal 先頭 As Range, ByRef 新値 As Variant, ByRef 変えた() As Boolean, Optional ByVal 文字書式にする As Boolean = False, Optional ByVal 書式 As String = "")
+    ' 配列で読んだ範囲のうち「変えたセルだけ」を書き戻す（範囲ごと書くと、文字の数字 "00123" や文字の日付が
+    ' 数・日付に化け、数式セルが値で潰れる・2026-10-22）。縦に続く変えたセルは 1 回で書く。
+    ' 先頭 = 配列の左上に当たるセル / 新値 = 1 始まりの 2 次元配列（Empty は空にする）/ 変えた = 同じ形の Boolean
+    Dim nr As Long, nc As Long, r As Long, r2 As Long, c As Long, k As Long
+    Dim 書く先 As Range, 配列() As Variant, v As Variant, 形 As Variant
+    nr = UBound(新値, 1): nc = UBound(新値, 2)
+    For c = 1 To nc
+        r = 1
+        Do While r <= nr
+            If Not 変えた(r, c) Then
+                r = r + 1
+            Else
+                r2 = r
+                Do While r2 < nr
+                    If Not 変えた(r2 + 1, c) Then Exit Do
+                    r2 = r2 + 1
+                Loop
+                Set 書く先 = 先頭.Offset(r - 1, c - 1).Resize(r2 - r + 1, 1)
+                ReDim 配列(1 To r2 - r + 1, 1 To 1)
+                If 文字書式にする Then 書く先.NumberFormat = "@"      ' 変えたセルだけ表示形式を文字にする（数式・負の数などは触らない）
+                If Not 文字書式にする And Len(書式) > 0 Then 書く先.NumberFormat = 書式
+                形 = 書く先.NumberFormat          ' 混在のときは Null
+                For k = 1 To r2 - r + 1
+                    v = 新値(r + k - 1, c)
+                    If VarType(v) = vbString Then
+                        If Len(v) > 0 Then
+                            If IsNull(形) Then
+                                If 書く先.Cells(k, 1).NumberFormat <> "@" Then v = 文字のまま書く字(CStr(v))
+                            ElseIf 形 <> "@" Then
+                                v = 文字のまま書く字(CStr(v))
+                            End If
+                        End If
+                    End If
+                    配列(k, 1) = v
+                Next k
+                書く先.Value = 配列
+                r = r2 + 1
+            End If
+        Loop
+    Next c
+End Sub
+
+Function 文字のまま書く字(ByVal s As String) As String
+    ' 文字を「文字のまま」セルに書くための字（数・日付・式・TRUE/FALSE・エラー値に化けるものへ ' を付ける）。表示形式が @ のセルには付けない
+    Dim 頭 As String
+    文字のまま書く字 = s
+    If Len(s) = 0 Then Exit Function
+    頭 = Left$(s, 1)
+    If InStr("=+-@#'", 頭) > 0 Or IsNumeric(s) Or IsDate(s) Or UCase$(s) = "TRUE" Or UCase$(s) = "FALSE" Then 文字のまま書く字 = "'" & s
+End Function

@@ -18,7 +18,7 @@ Sub 表の書き方と罫線と列幅をそろえる()
     ' 値の意味は変えずに書き方をそろえる（行は消さない・数式のセルは触らない）: 前後の空白・全角英数→半角・半角カナ→全角・
     ' 文字の間の空白（列の多い方の 1 つ）・（株）→株式会社・電話・郵便番号・メール・文字の日付と和暦→日付・文字の金額→数値・率・罫線・列幅
     Dim ws As Worksheet, ur As Range, tb As Range, c As Range, dv As Object
-    Dim r0 As Long, c0 As Long, nr As Long, NC As Long, scanTo As Long
+    Dim r0 As Long, c0 As Long, nr As Long, nc As Long, scanTo As Long
     Dim hR As Long, hc1 As Long, hc2 As Long, lastR As Long
     Dim i As Long, j As Long, k As Long, n As Long, best As Long, ln As Long, a As Long, b As Long, g As Long
     Dim v As Variant, nv As Variant, x As Variant, parts As Variant, ks As Variant
@@ -40,7 +40,7 @@ Sub 表の書き方と罫線と列幅をそろえる()
 
     Set ws = ActiveSheet
     Set ur = ws.UsedRange
-    r0 = ur.row: c0 = ur.Column: nr = ur.rows.Count: NC = ur.Columns.Count
+    r0 = ur.row: c0 = ur.Column: nr = ur.rows.Count: nc = ur.Columns.Count
     If nr < 2 Then Exit Sub
     GoSub 見出しを探す
     If hR = 0 Then Exit Sub
@@ -50,13 +50,13 @@ Sub 表の書き方と罫線と列幅をそろえる()
     ' 見出しの帯が 2 行（縦に結合した見出し＋「数量」の下の「実棚」「帳簿」）なら、下の行まで見出し（下の段を明細と見て寄せを
     ' 変えた・2026-10-08 Sonnet の採点 S7 C4・D4）。下の行が文字だけで、見出しの行に 2 行にまたがる結合があるときだけ
     ok = False
-    For j = c0 To c0 + NC - 1
+    For j = c0 To c0 + nc - 1
         If ws.Cells(hR, j).MergeCells Then
             If ws.Cells(hR, j).MergeArea.rows.Count > 1 And ws.Cells(hR, j).MergeArea.row = hR Then ok = True: Exit For
         End If
     Next
     If ok And hR + 1 <= r0 + nr - 1 Then
-        For j = c0 To c0 + NC - 1
+        For j = c0 To c0 + nc - 1
             v = ws.Cells(hR + 1, j).Value
             If ws.Cells(hR + 1, j).HasFormula Then ok = False: Exit For
             If Not isEmpty(v) And VarType(v) <> vbString Then ok = False: Exit For
@@ -69,9 +69,9 @@ Sub 表の書き方と罫線と列幅をそろえる()
     ' 表の列、2024 のような数の見出しも区切りにしない（年を並べた横持ちの表を割らない）
     Dim blk1(1 To 50) As Long, blk2(1 To 50) As Long, nBlk As Long, bi As Long, inBlk As Boolean
     nBlk = 0: inBlk = False
-    For j = c0 To c0 + NC
+    For j = c0 To c0 + nc
         ok = False
-        If j <= c0 + NC - 1 Then
+        If j <= c0 + nc - 1 Then
             If ws.Cells(hR, j).HasFormula Then
                 ok = False
             ElseIf Len(Trim(ws.Cells(hR, j).text)) > 0 Then
@@ -105,10 +105,10 @@ Sub 表の書き方と罫線と列幅をそろえる()
     ' 表の下に空行をはさんで別の表（見出しの行＝値が 2 つ以上）があれば、それも直す（2 つ目の表の「２」が文字のまま残り、
     ' 合計が合わなかった・2026-10-08 Sonnet の採点 S9 B14）。注記（1 行に 1 セル）は表ではない
     For i = 最後 + 2 To r0 + nr - 1
-        If Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i - 1, c0), ws.Cells(i - 1, c0 + NC - 1))) = 0 Then
-            If Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, c0), ws.Cells(i, c0 + NC - 1))) >= 2 Then
+        If Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i - 1, c0), ws.Cells(i - 1, c0 + nc - 1))) = 0 Then
+            If Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, c0), ws.Cells(i, c0 + nc - 1))) >= 2 Then
                 If i + 1 <= r0 + nr - 1 Then
-                    If Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i + 1, c0), ws.Cells(i + 1, c0 + NC - 1))) >= 1 Then
+                    If Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i + 1, c0), ws.Cells(i + 1, c0 + nc - 1))) >= 1 Then
                         hR = i: 下の表 = True
                         GoTo 表の始まり
                     End If
@@ -426,13 +426,13 @@ Sub 表の書き方と罫線と列幅をそろえる()
     scanTo = r0 + IIf(nr > 20, 20, nr) - 1
     best = 0
     For i = r0 To scanTo
-        n = Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, c0), ws.Cells(i, c0 + NC - 1)))
+        n = Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, c0), ws.Cells(i, c0 + nc - 1)))
         If n > best Then best = n
     Next
     hR = 0
     If best < 2 Then Return
     For i = r0 To scanTo
-        n = Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, c0), ws.Cells(i, c0 + NC - 1)))
+        n = Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, c0), ws.Cells(i, c0 + nc - 1)))
         If hR = 0 And n >= 2 And n >= best * 0.6 Then hR = i
     Next
     Return
@@ -1097,7 +1097,7 @@ Sub 全列が同じ重複行を削除する()
     ' 依頼の語: 重複行を消|同じ行が二つ|同じ行が2つ|ダブっている行|ダブった行|重複データ|重複した行を1つ|重複した行をひとつ|二重に入っている行|重複行を削除|重複を消|重複を削除|重複を取り除|重複を除|重複データを消|重複をなくし|重複を無くし|ダブりを消|同じ行を消|同じ行を削除|重複している行を消|重複している行を削除|重複した行を消|重複した行を削除|重複行を取
     ' 依頼の組: 重複,ダブ,二重,かぶ,同じデータ,同じ行+消,削除,除,取り,なくし,無くし,1つに,ひとつに+-番号,キー,伝票,一覧にし,洗い出,マクロ,二重計上,二重払
     Dim ws As Worksheet, ur As Range, seen As Object
-    Dim r0 As Long, c0 As Long, nr As Long, NC As Long, scanTo As Long
+    Dim r0 As Long, c0 As Long, nr As Long, nc As Long, scanTo As Long
     Dim hR As Long, hc1 As Long, hc2 As Long, lastR As Long
     Dim i As Long, j As Long, k As Long, n As Long, best As Long
     Dim v As Variant, x As Variant, parts As Variant, dup() As Boolean
@@ -1115,7 +1115,7 @@ Sub 全列が同じ重複行を削除する()
     Set ws = ActiveSheet
     Set ur = ws.UsedRange
     If ur Is Nothing Then Exit Sub
-    r0 = ur.row: c0 = ur.Column: nr = ur.rows.Count: NC = ur.Columns.Count
+    r0 = ur.row: c0 = ur.Column: nr = ur.rows.Count: nc = ur.Columns.Count
     If nr < 3 Then Exit Sub
     GoSub 見出しを探す
     If hR = 0 Or lastR <= hR + 1 Then Exit Sub
@@ -1167,7 +1167,7 @@ Sub 全列が同じ重複行を削除する()
     batchStr = ""
     For i = lastR To hR + 1 Step -1
         If dup(i) Then
-            n = Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, c0), ws.Cells(i, c0 + NC - 1))) _
+            n = Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, c0), ws.Cells(i, c0 + nc - 1))) _
                 - Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, hc1), ws.Cells(i, hc2)))
             If n = 0 Then
                 If Len(batchStr) > 200 Then
@@ -1195,18 +1195,18 @@ CleanUp:
     scanTo = r0 + IIf(nr > 20, 20, nr) - 1
     best = 0
     For i = r0 To scanTo
-        n = Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, c0), ws.Cells(i, c0 + NC - 1)))
+        n = Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, c0), ws.Cells(i, c0 + nc - 1)))
         If n > best Then best = n
     Next
     hR = 0
     If best < 2 Then Return
     For i = r0 To scanTo
-        n = Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, c0), ws.Cells(i, c0 + NC - 1)))
+        n = Application.WorksheetFunction.CountA(ws.Range(ws.Cells(i, c0), ws.Cells(i, c0 + nc - 1)))
         If hR = 0 And n >= 2 And n >= best * 0.6 Then hR = i
     Next
     If hR = 0 Then Return
     hc1 = 0: hc2 = 0
-    For j = c0 To c0 + NC - 1
+    For j = c0 To c0 + nc - 1
         ok = Len(Trim(ws.Cells(hR, j).text)) > 0
         If Not ok And ws.Cells(hR, j).MergeCells Then ok = (ws.Cells(hR, j).MergeArea.row < hR)
         If ok Then
@@ -1738,6 +1738,7 @@ Sub 選んだコード列を名称で上書きする()
     Dim s As String
     Dim cellVal As String
     Dim normalKey As String
+    Dim 変えた() As Boolean
 
     Set ws = ActiveSheet
     If ws Is Nothing Then Exit Sub
@@ -1900,6 +1901,7 @@ NextSheet:
     ' 置き換え（メモリ配列上で一括置換）
     Dim hasChange As Boolean
     hasChange = False
+    ReDim 変えた(1 To nData, 1 To 1)
     For i = 1 To nData
         cellVal = CStr(arrCode(i, 1))
         If セルの字(cellVal) = "" Then GoTo NextCell
@@ -1907,15 +1909,19 @@ NextSheet:
         s = cellVal: GoSub 正規化
         normalKey = s
         If dict.exists(normalKey) Then
-            arrCode(i, 1) = dict(normalKey)
-            hasChange = True
+            ' 数式のあるセルは触らない（保護）
+            If Not ws.Cells(headerRow + i, selCol).HasFormula Then
+                arrCode(i, 1) = dict(normalKey)
+                変えた(i, 1) = True
+                hasChange = True
+            End If
         End If
 NextCell:
     Next i
 
-    ' 一撃代入
+    ' 変えたセルだけ書く（未置換のコード・文字の数字 "00123"・数式セルを壊さない・2026-10-22）
     If hasChange Then
-        srcRange.Value2 = arrCode
+        Call 表の整理_下請け.変えたセルだけ書く(srcRange.Cells(1, 1), arrCode, 変えた, False)
     End If
 
 CleanUp:
@@ -2006,9 +2012,18 @@ Sub 結合セルをほどいて値を埋める()
         val = mergedValues(i)
         mc.UnMerge
         If Not isTitles(i) Then
-            mc.Value = val  ' 範囲への一括代入（セルループ全廃）
+            ' 文字の数字や日付が化けないよう文字のまま書く（2026-10-22）
+            If VarType(val) = vbString Then
+                mc.Value = 表の整理_下請け.文字のまま書く字(CStr(val))
+            Else
+                mc.Value = val
+            End If
         Else
-            mc.Cells(1, 1).Value = val
+            If VarType(val) = vbString Then
+                mc.Cells(1, 1).Value = 表の整理_下請け.文字のまま書く字(CStr(val))
+            Else
+                mc.Cells(1, 1).Value = val
+            End If
         End If
     Next i
 
@@ -2043,7 +2058,7 @@ Sub 選んだ列の空白を上の値で埋める()
     Dim maxRow As Long
     Dim 表値 As Variant, 行スキップ() As Boolean
     Dim 列値 As Variant, 列式 As Variant, colRange As Range
-    Dim nRows As Long, idx As Long, tblR As Long
+    Dim nRows As Long, idx As Long, tblR As Long, 変えた() As Boolean
     Dim rowEmpty As Boolean, isTotal As Boolean, colChanged As Boolean, 式あり As Boolean
 
     Set ws = ActiveSheet
@@ -2111,6 +2126,7 @@ Sub 選んだ列の空白を上の値で埋める()
 
                 colChanged = False
                 式あり = False
+                ReDim 変えた(1 To nRows, 1 To 1)
                 For idx = 1 To nRows
                     If Left$(CStr(列式(idx, 1)), 1) = "=" Then 式あり = True
                     r = startRow + idx - 1
@@ -2121,13 +2137,8 @@ Sub 選んだ列の空白を上の値で埋める()
                                 If Not isEmpty(lastVal) Then
                                     If Not IsError(lastVal) Then
                                         If セルの字(lastVal) <> "" Then
-                                            If VarType(lastVal) = vbString And (IsNumeric(lastVal) Or Left$(CStr(lastVal), 1) = "0" Or Left$(CStr(lastVal), 1) = "=") Then
-                                                列値(idx, 1) = "'" & CStr(lastVal)
-                                                列式(idx, 1) = "'" & CStr(lastVal)
-                                            Else
-                                                列値(idx, 1) = lastVal
-                                                列式(idx, 1) = lastVal
-                                            End If
+                                            列値(idx, 1) = lastVal      ' 文字の数字・式に見える文字は書くときに文字のまま書く（変えたセルだけ書く）
+                                            変えた(idx, 1) = True
                                             colChanged = True
                                         End If
                                     End If
@@ -2139,13 +2150,8 @@ Sub 選んだ列の空白を上の値で埋める()
                     End If
                 Next idx
 
-                If colChanged Then
-                    If 式あり Then
-                        colRange.Formula = 列式
-                    Else
-                        colRange.Value = 列値
-                    End If
-                End If
+                ' 埋めたセルだけ書く（列ごと書き戻すと、文字の数字 "00123" が数に化け、式が値に潰れる・2026-10-22）
+                If colChanged Then 変えたセルだけ書く colRange.Cells(1, 1), 列値, 変えた
             Next aCol
         End If
     Next area
@@ -2176,7 +2182,7 @@ Sub 選んだ列の文字の日付を日付にする()
     Dim maxRow As Long
     Dim oldScreenUpdating As Boolean, oldEvents As Boolean
     Dim colRange As Range, arr As Variant, nRows As Long
-    Dim colChanged As Boolean
+    Dim colChanged As Boolean, changed() As Boolean
 
     Set ws = ActiveSheet
     If ws.UsedRange Is Nothing Then Exit Sub
@@ -2207,6 +2213,7 @@ Sub 選んだ列の文字の日付を日付にする()
                 Else
                     arr = colRange.Value2
                 End If
+                ReDim changed(1 To nRows, 1 To 1)
 
                 ' 8 桁の「数値」（20260615 が数のもの。基幹システムの出力に多い）は、列の数値が全部 8 桁の日付の形のときだけ日付にする
                 ' （金額の列を日付にしない）。数値が無い列・日付の形でない数値のある列は、数値には触らない
@@ -2266,16 +2273,16 @@ Sub 選んだ列の文字の日付を日付にする()
                         ' 数式のあるセルは触らない（保護）
                         If Not ws.Cells(hdrRow + r, colIdx).HasFormula Then
                             arr(r, 1) = parsed
+                            changed(r, 1) = True
                             colChanged = True
                         End If
                     End If
 NextRow:
                 Next r
 
-                ' 変更があった列だけ一括代入
+                ' 変更があったセルだけ書き戻す（元から日付・日時のセルの書式は触らない・2026-10-22）
                 If colChanged Then
-                    colRange.NumberFormat = "yyyy/m/d"
-                    colRange.Value = arr
+                    Call 表の整理_下請け.変えたセルだけ書く(colRange.Cells(1, 1), arr, changed, False, "yyyy/m/d")
                 End If
             Next col
         End If
@@ -2315,6 +2322,7 @@ Sub 選んだ列の文字の数字を数にする()
     Dim colChanged As Boolean
     Dim oldScreenUpdating As Boolean, oldEvents As Boolean
     Dim 頭文字 As String
+    Dim 変えた() As Boolean
 
     Set ws = ActiveSheet
     Set sel = Selection
@@ -2362,6 +2370,7 @@ Sub 選んだ列の文字の数字を数にする()
             If fc = "@" Or fc = "" Then fc = "General"
 
             colChanged = False
+            ReDim 変えた(1 To nRows, 1 To 1)
             For r = 1 To nRows
                 If isEmpty(arr(r, 1)) Then GoTo NextRow
                 Select Case VarType(arr(r, 1))
@@ -2404,15 +2413,14 @@ Sub 選んだ列の文字の数字を数にする()
                 v = CDbl(s)
                 If Not ws.Cells(headerRow + r, colIdx).HasFormula Then
                     arr(r, 1) = v
+                    変えた(r, 1) = True
                     colChanged = True
                 End If
 NextRow:
             Next r
 
-            If colChanged Then
-                colRange.NumberFormat = fc
-                colRange.Value = arr
-            End If
+            ' 数にしたセルだけ書く（列ごと書き戻すと、数式が値に潰れ、先頭ゼロの文字 "00123" が数に化けた・2026-10-22）
+            If colChanged Then 変えたセルだけ書く colRange.Cells(1, 1), arr, 変えた, False, fc
         End If
       Next colIdx
     Next area
@@ -4213,6 +4221,7 @@ Sub 住所と郵便番号の形をそろえる()
     Dim arrZip As Variant, arrAddr As Variant
     Dim colZipRange As Range, colAddrRange As Range
     Dim zipChanged As Boolean, addrChanged As Boolean
+    Dim 変えた住所() As Boolean
 
     Set ws = ActiveSheet
     On Error Resume Next
@@ -4311,6 +4320,7 @@ Sub 住所と郵便番号の形をそろえる()
         arrAddr = colAddrRange.Value2
     End If
     addrChanged = False
+    ReDim 変えた住所(1 To nRows, 1 To 1)
 
     For r = 1 To nRows
         If ws.Cells(hdrRow + r, 住所列).HasFormula Then GoTo 次の行
@@ -4348,6 +4358,7 @@ Sub 住所と郵便番号の形をそろえる()
         t = Trim$(t)
         If t <> s Then
             arrAddr(r, 1) = t
+            変えた住所(r, 1) = True
             n住所 = n住所 + 1
             addrChanged = True
         End If
@@ -4360,8 +4371,9 @@ Sub 住所と郵便番号の形をそろえる()
 次の行:
     Next r
 
+    ' 変えたセルだけ書く（数式セル・空欄・番地 "1-2-3" の日付化を防ぐ・2026-10-22）
     If addrChanged Then
-        colAddrRange.Value = arrAddr
+        Call 表の整理_下請け.変えたセルだけ書く(colAddrRange.Cells(1, 1), arrAddr, 変えた住所, False)
     End If
 
 CleanUp:
@@ -5267,6 +5279,7 @@ Sub 空白の有無を多い方にそろえる()
     Dim forms As Object, bestMap As Object, useCol As Object, f As Object, key As Variant, key2 As Variant
     Dim 列値 As Variant, 列式 As Variant, colRange As Range
     Dim colChanged As Boolean, 式あり As Boolean, v As Variant
+    Dim 変えた() As Boolean
     Dim oldScreenUpdating As Boolean, oldEvents As Boolean
     Dim urVal As Variant
 
@@ -5363,6 +5376,7 @@ Sub 空白の有無を多い方にそろえる()
 
             If bestMap.Count > 0 Then
                 colChanged = False
+                ReDim 変えた(1 To nRows, 1 To 1)
                 For idx = 1 To nRows
                     If Left$(CStr(列式(idx, 1)), 1) <> "=" And VarType(列値(idx, 1)) = vbString Then
                         s = CStr(列値(idx, 1))
@@ -5370,25 +5384,16 @@ Sub 空白の有無を多い方にそろえる()
                         If bestMap.exists(k) Then
                             best = bestMap(k)
                             If s <> best Then
-                                ' そろえた字が数・日付に見えるなら文字のまま入れる（プレフィックス ' でセル個別アクセス全廃）
-                                If IsNumeric(best) Or IsDate(best) Then
-                                    列値(idx, 1) = "'" & best
-                                    列式(idx, 1) = "'" & best
-                                Else
-                                    列値(idx, 1) = best
-                                    列式(idx, 1) = best
-                                End If
+                                列値(idx, 1) = best
+                                変えた(idx, 1) = True
                                 colChanged = True
                             End If
                         End If
                     End If
                 Next idx
+                ' 変えたセルだけ書く（数式セル・文字の数字・空欄を壊さない・2026-10-22）
                 If colChanged Then
-                    If 式あり Then
-                        colRange.Formula = 列式
-                    Else
-                        colRange.Value = 列値
-                    End If
+                    Call 表の整理_下請け.変えたセルだけ書く(colRange.Cells(1, 1), 列値, 変えた, False)
                 End If
             End If
         End If
@@ -6957,6 +6962,7 @@ Sub 選んだ列の数値を指定桁数でゼロ埋め文字列にする(Optional ByVal 指定桁数 As Lo
     Dim v As Variant, fStr As String, numVal As Double, fmtStr As String
     Dim startRow As Long, endRow As Long, headerRow As Long, maxRow As Long
     Dim colRng As Range
+    Dim chg() As Boolean, changed As Boolean
 
     If TypeName(ActiveSheet) <> "Worksheet" Then Exit Sub
     Set ws = ActiveSheet
@@ -7014,20 +7020,25 @@ Sub 選んだ列の数値を指定桁数でゼロ埋め文字列にする(Optional ByVal 指定桁数 As Lo
                         End If
                     End If
                 Else
+                    ' 変えるセル（0 以上の整数）だけ文字にして書く。数式・負の数・小数・空欄は触らない（列ごと "@" にして書き戻すと
+                    ' 数式が文字になり、空欄が空文字に化けて =C10*2 がエラーになった・2026-10-22）
                     dataArr = colRng.Value2
                     formArr = colRng.Formula
+                    ReDim chg(1 To UBound(dataArr, 1), 1 To 1)
+                    changed = False
                     For r = 1 To UBound(dataArr, 1)
                         v = dataArr(r, 1)
                         fStr = CStr(formArr(r, 1))
                         If Left$(fStr, 1) <> "=" And IsNumeric(v) And Len(CStr(v)) > 0 And VarType(v) <> vbDate Then
                             numVal = CDbl(v)
                             If numVal >= 0 And numVal = Fix(numVal) Then
-                                formArr(r, 1) = "'" & Format$(numVal, fmtStr)
+                                dataArr(r, 1) = Format$(numVal, fmtStr)
+                                chg(r, 1) = True
+                                changed = True
                             End If
                         End If
                     Next r
-                    colRng.NumberFormatLocal = "@"
-                    colRng.Formula = formArr
+                    If changed Then 変えたセルだけ書く colRng.Cells(1, 1), dataArr, chg, True
                 End If
             End If
         End If
@@ -7040,9 +7051,11 @@ Private Sub セル空白トリム_本体(ByVal モード As Long)
     ' モード 1: 文字の先頭の空白（半角・全角・タブ）を取る
     ' モード 2: 空白・空文字だけのセルを完全にクリアする（Emptyにする）
     ' モード 3: 前後の空白（Trim）を取る
+    ' 変えたセルだけを書き戻す（範囲ごと書くと文字の数字・文字の日付が数・日付に化け、数式セルが潰れた・2026-10-22）
     Dim rng As Range, area As Range
     Dim dataArr As Variant, formArr As Variant, r As Long, c As Long
     Dim v As Variant, fStr As String, s As String, t As String, changed As Boolean
+    Dim chg() As Boolean
 
     If TypeName(ActiveSheet) <> "Worksheet" Then Exit Sub
     If TypeName(Selection) = "Range" And Selection.CountLarge > 1 Then
@@ -7064,18 +7077,19 @@ Private Sub セル空白トリム_本体(ByVal モード As Long)
                     Do While Len(t) > 0
                         If Left$(t, 1) = " " Or Left$(t, 1) = "　" Or Left$(t, 1) = vbTab Then t = Mid$(t, 2) Else Exit Do
                     Loop
-                    If t <> s Then area.Value = t
+                    If t <> s Then area.Value = IIf(area.NumberFormat = "@", t, 文字のまま書く字(t))
                 ElseIf モード = 2 Then
                     t = Replace(Replace(Replace(s, " ", ""), "　", ""), vbTab, "")
                     If Len(t) = 0 Then area.ClearContents
                 ElseIf モード = 3 Then
                     t = Trim$(Replace(s, "　", " "))
-                    If t <> s Then area.Value = t
+                    If t <> s Then area.Value = IIf(area.NumberFormat = "@", t, 文字のまま書く字(t))
                 End If
             End If
         Else
             dataArr = area.Value2
             formArr = area.Formula
+            ReDim chg(1 To UBound(dataArr, 1), 1 To UBound(dataArr, 2))
             changed = False
             For r = 1 To UBound(dataArr, 1)
                 For c = 1 To UBound(dataArr, 2)
@@ -7090,26 +7104,29 @@ Private Sub セル空白トリム_本体(ByVal モード As Long)
                                 If Left$(t, 1) = " " Or Left$(t, 1) = "　" Or Left$(t, 1) = vbTab Then t = Mid$(t, 2) Else Exit Do
                             Loop
                             If t <> s Then
-                                formArr(r, c) = IIf(Left$(t, 1) = "=" Or Left$(t, 1) = "'" Or IsNumeric(t), "'" & t, t)
+                                dataArr(r, c) = t
+                                chg(r, c) = True
                                 changed = True
                             End If
                         ElseIf モード = 2 Then
                             t = Replace(Replace(Replace(s, " ", ""), "　", ""), vbTab, "")
                             If Len(t) = 0 Then
-                                formArr(r, c) = Empty
+                                dataArr(r, c) = Empty
+                                chg(r, c) = True
                                 changed = True
                             End If
                         ElseIf モード = 3 Then
                             t = Trim$(Replace(s, "　", " "))
                             If t <> s Then
-                                formArr(r, c) = IIf(Left$(t, 1) = "=" Or Left$(t, 1) = "'" Or IsNumeric(t), "'" & t, t)
+                                dataArr(r, c) = t
+                                chg(r, c) = True
                                 changed = True
                             End If
                         End If
                     End If
                 Next c
             Next r
-            If changed Then area.Formula = formArr
+            If changed Then 変えたセルだけ書く area.Cells(1, 1), dataArr, chg
         End If
     Next area
 
@@ -7208,7 +7225,9 @@ Public Sub 英数を半角にカナを全角にする()
     Dim コード値 As Long
     Dim 変換後文字列 As String
     Dim 変更件数 As Long
+    Dim 変えた() As Boolean
 
+    ReDim 変えた(1 To 行総数, 1 To 列総数)
     For 行位置 = 1 To 行総数
         For 列位置 = 1 To 列総数
             If VarType(データ(行位置, 列位置)) = vbString Then
@@ -7237,7 +7256,8 @@ Public Sub 英数を半角にカナを全角にする()
                     If Len(カナの続き) > 0 Then 変換後文字列 = 変換後文字列 & StrConv(カナの続き, vbWide)
                     If 変換後文字列 <> 文字列値 Then
                         If Not 選択範囲.Cells(行位置, 列位置).HasFormula Then
-                            選択範囲.Cells(行位置, 列位置).Value = 変換後文字列
+                            データ(行位置, 列位置) = 変換後文字列
+                            変えた(行位置, 列位置) = True
                             変更件数 = 変更件数 + 1
                         End If
                     End If
@@ -7245,6 +7265,11 @@ Public Sub 英数を半角にカナを全角にする()
             End If
         Next 列位置
     Next 行位置
+
+    ' 変えたセルだけ書く（文字の数字 "00123" が数に化けるのを防ぐ・2026-10-22）
+    If 変更件数 > 0 Then
+        Call 表の整理_下請け.変えたセルだけ書く(選択範囲.Cells(1, 1), データ, 変えた, False)
+    End If
 
     Application.StatusBar = "英数を半角にカナを全角にする: " & 変更件数 & " 個のセルを直しました。"
     Exit Sub
@@ -7273,32 +7298,63 @@ Public Sub セルの見えない空白と改行を取る()
     If 行総数 < 1 Or 列総数 < 1 Then Exit Sub
 
     Dim 行位置 As Long, 列位置 As Long
-    Dim 文字列値 As String
+    Dim 文字列値 As String, 新文字 As String
     Dim 変更件数 As Long
+    Dim 変えた() As Boolean
+    Dim 文字長 As Long, p1 As Long, p2 As Long, cCode As Long
+
+    ReDim 変えた(1 To 行総数, 1 To 列総数)
 
     For 行位置 = 1 To 行総数
         For 列位置 = 1 To 列総数
             If VarType(データ(行位置, 列位置)) = vbString Then
                 文字列値 = CStr(データ(行位置, 列位置))
-                文字列値 = Replace(文字列値, ChrW(&HA0), " ")
-                文字列値 = Replace(文字列値, vbTab, " ")
-                Do While Left(文字列値, 1) = " " Or Left(文字列値, 1) = "　" Or Left(文字列値, 1) = vbCr Or Left(文字列値, 1) = vbLf
-                    文字列値 = Mid(文字列値, 2)
-                Loop
-                Do While Right(文字列値, 1) = " " Or Right(文字列値, 1) = "　" Or Right(文字列値, 1) = vbCr Or Right(文字列値, 1) = vbLf
-                    文字列値 = Left(文字列値, Len(文字列値) - 1)
-                Loop
-                If 文字列値 <> CStr(データ(行位置, 列位置)) Then
-                    If Not 選択範囲.Cells(行位置, 列位置).HasFormula Then
-                        選択範囲.Cells(行位置, 列位置).Value = 文字列値
-                        変更件数 = 変更件数 + 1
+                文字長 = Len(文字列値)
+                If 文字長 > 0 Then
+                    ' 前後の見えない空白・改行（半角・全角空白、タブ、NBSP、vbCr、vbLf、ゼロ幅空白）だけを取る（途中は触らない・2026-10-22 組長決定）
+                    p1 = 1
+                    Do While p1 <= 文字長
+                        cCode = AscW(Mid$(文字列値, p1, 1)) And &HFFFF&
+                        If cCode = 32 Or cCode = 12288 Or cCode = 9 Or cCode = 160 Or cCode = 10 Or cCode = 13 Or cCode = 8203 Then
+                            p1 = p1 + 1
+                        Else
+                            Exit Do
+                        End If
+                    Loop
+
+                    p2 = 文字長
+                    Do While p2 >= p1
+                        cCode = AscW(Mid$(文字列値, p2, 1)) And &HFFFF&
+                        If cCode = 32 Or cCode = 12288 Or cCode = 9 Or cCode = 160 Or cCode = 10 Or cCode = 13 Or cCode = 8203 Then
+                            p2 = p2 - 1
+                        Else
+                            Exit Do
+                        End If
+                    Loop
+
+                    If p1 > p2 Then
+                        新文字 = ""
+                    ElseIf p1 > 1 Or p2 < 文字長 Then
+                        新文字 = Mid$(文字列値, p1, p2 - p1 + 1)
+                    Else
+                        新文字 = 文字列値
+                    End If
+
+                    If 新文字 <> 文字列値 Then
+                        If Not 選択範囲.Cells(行位置, 列位置).HasFormula Then
+                            データ(行位置, 列位置) = 新文字
+                            変えた(行位置, 列位置) = True
+                            変更件数 = 変更件数 + 1
+                        End If
                     End If
                 End If
             End If
         Next 列位置
     Next 行位置
 
+    ' 変えたセルだけ書く（文字の数字 "00123" や数式セルを壊さない・2026-10-22）
     If 変更件数 > 0 Then
+        Call 表の整理_下請け.変えたセルだけ書く(選択範囲.Cells(1, 1), データ, 変えた, False)
         Application.StatusBar = "セルの見えない空白と改行を取る: " & 変更件数 & " 個のセルの前後の空白・改行を取りました。"
     Else
         Application.StatusBar = "セルの見えない空白と改行を取る: 前後の空白・改行は見つかりませんでした。"
