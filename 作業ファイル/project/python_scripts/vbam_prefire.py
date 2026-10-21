@@ -160,6 +160,9 @@ def _combo_groups(combo):
     return pos, neg
 
 
+_ASK_REGEX_RE = re.compile(r'[()\[\]{}*+?^$\\]|\.\*')
+
+
 def _only_general(word):
     """語が一般の語と助詞だけでできているか（「青で美化」は 美化 が残る＝固有、「見出しを青に」も 見出し が残る）。"""
     rest = str(word)
@@ -174,6 +177,7 @@ def shelf_lint(text):
     - 依頼の組を一般の語 1 つで満たせる（グラフ＋グラフ）     → 止める
     - 依頼の組の全部の組を一般の語で満たせる（この＋にして）  → 止める。ただし ' 階級: 基本 の棚は通す（表＋整え など）
     - ' 階級: 作り替え の棚が依頼の組を持つ・依頼の語が一般の語だけ → 止める
+    - 依頼の語が 1 字（「削」「取」）・正規表現の記号入り（「(空白」「.*」） → 止める
     - 階級の綴りが違う・同じ依頼の語が 2 本以上の棚にある    → 注意"""
     out, seen = [], {}
     for e in shelf_entries_from_text(text):
@@ -183,7 +187,13 @@ def shelf_lint(text):
         asks = [w.strip() for w in str(e.get('ask') or '').split('|') if w.strip()]
         for w in asks:
             seen.setdefault(w, []).append(name)
-            if w in GENERAL_WORDS:
+            # 先撃ちは依頼の語を字面で探す（正規表現ではない）。1 字は「削除」「取引先」のどれにも当たり、
+            # 「(空白」「改行).*(消」は記号ごと探すので当たらない（2026-10-21・Gemini が足した棚 5 本の点検）
+            if _ASK_REGEX_RE.search(w):
+                out.append(('止める', name, f"依頼の語「{w}」に正規表現の記号がある（先撃ちは字面で探すので当たらない。| で語を並べる）"))
+            elif len(w) == 1:
+                out.append(('止める', name, f"依頼の語「{w}」が 1 字だけ（どの頼みにも当たる）"))
+            elif w in GENERAL_WORDS:
                 out.append(('止める', name, f"依頼の語「{w}」が一般の語 1 つだけ（日常の頼みを横取りする）"))
             elif tier == '作り替え' and _only_general(w):
                 out.append(('止める', name, f"作り替えの棚の依頼の語「{w}」が一般の語だけ（固有の言い方にする）"))

@@ -154,19 +154,19 @@ def _f2v_defaults(wb):
                 try:
                     props[p] = c.__getattr__(p)
                 except Exception:
-                    pass
+                    pass  # 意図的に無視：対象コントロールが持たない属性へのアクセスをスキップ
             d[t] = props
         d["_form"] = {}
         for pr in tmp.Properties:
             try:
                 d["_form"][pr.Name] = pr.Value
             except Exception:
-                pass
+                pass  # 意図的に無視：取得できないフォームプロパティをスキップ
     finally:
         try:
             wb.VBProject.VBComponents.Remove(tmp)
         except Exception:
-            pass
+            pass  # 意図的に無視：一時コンポーネント削除失敗時のクリーンアップ
     return d
 
 
@@ -292,7 +292,7 @@ def build_form_builder(wb, src_form, new_form=None, sub_name=None):
             if pn != src_form:
                 parent_name = pn
         except Exception:
-            pass
+            pass  # 意図的に無視：Parentプロパティ非サポート等の例外
         items.append((c, t, parent_name))
 
     def geom(c, var):
@@ -321,7 +321,7 @@ def build_form_builder(wb, src_form, new_form=None, sub_name=None):
             if t in ("Label", "CommandButton", "CheckBox", "OptionButton", "ToggleButton", "Frame"):
                 a('    %s.Caption = %s' % (var, _f2v_q(c.Caption)))
         except Exception:
-            pass
+            pass  # 意図的に無視：Caption非サポートのコントロール
         if t == "CommandButton":
             try:
                 if c.Default:
@@ -329,7 +329,7 @@ def build_form_builder(wb, src_form, new_form=None, sub_name=None):
                 if c.Cancel:
                     a('    %s.Cancel = True' % var)
             except Exception:
-                pass
+                pass  # 意図的に無視：Default/Cancelプロパティ非サポート時
         # 既定と違う属性だけを機械的に拾う（種類ごとの取りこぼしを防ぐ・罠5）
         base = DEF.get(t, {})
         for pname in _F2V_SWEEP:
@@ -359,7 +359,7 @@ def build_form_builder(wb, src_form, new_form=None, sub_name=None):
         try:
             tab_order.append((int(c.TabIndex), c.Name))
         except Exception:
-            pass
+            pass  # 意図的に無視：TabIndex非サポート等のコントロール
         if t == "MultiPage":
             n_pages = c.Pages.Count
             a('    Set p = c')
@@ -395,7 +395,7 @@ def build_form_builder(wb, src_form, new_form=None, sub_name=None):
                     try:
                         tab_order.append((int(k.TabIndex), k.Name))
                     except Exception:
-                        pass
+                        pass  # 意図的に無視：Frame内コントロールのTabIndex非サポート
                     a('')
         a("")
 
@@ -488,7 +488,7 @@ def _f2v_verify(xl, wb, vba_text, form_name):
         try:
             os.remove(tmp_path)
         except Exception:
-            pass
+            pass  # 意図的に無視：一時ファイル削除時の例外
 
     src_cm = wb.VBProject.VBComponents(form_name).CodeModule
     orig = (src_cm.Lines(1, src_cm.CountOfLines) if src_cm.CountOfLines else "")
@@ -539,12 +539,12 @@ def _f2v_verify(xl, wb, vba_text, form_name):
         try:
             tw.Close(SaveChanges=False)
         except Exception:
-            pass
+            pass  # 意図的に無視：一時ブックClose失敗時の例外
         if os.path.exists(tmp_path):
             try:
                 os.remove(tmp_path)
             except Exception:
-                pass
+                pass  # 意図的に無視：一時ファイル削除失敗時の例外
     return ok
 
 

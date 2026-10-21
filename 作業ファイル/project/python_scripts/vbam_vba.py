@@ -1272,6 +1272,7 @@ _CAPABILITIES = {
         ("diag", "動作確認"), ("setup-check", "導入セルフ診断"),
         ("list-open", "開いているブックの点呼"), ("list", "マクロ一覧"),
         ("list-modules", "モジュール一覧"), ("list-forms", "フォーム一覧"),
+        ("active-form", "開いている（ロード中）のフォームのみを1行で即答"),
         ("get", "プロシージャ取得"), ("docs", "取説の自動生成"),
         ("checkup", "健康診断"), ("check", "静的診断"), ("check-bas", ".bas 単体検査"),
         ("compile", "全体コンパイル（押すだけ・ブックは変わらない）"),
@@ -2140,6 +2141,22 @@ def cmd_list_forms(args):
                 print(f"[DEBUG] Failed to access VBComponents of {proj_name}: {ex}", file=sys.stderr)
                 continue
 
+        if getattr(args, 'loaded', False):
+            loaded_map = {p: [f for f in flist if f.get("loaded")] for p, flist in all_results.items()}
+            loaded_map = {p: flist for p, flist in loaded_map.items() if flist}
+            if getattr(args, 'json', False):
+                import json
+                print(json.dumps({"success": True, "file": "all", "forms": loaded_map}, ensure_ascii=False), file=sys.stdout)
+                return True
+            if not loaded_map:
+                print("開いている（ロード中）のフォームはありません。")
+                return True
+            for p_name, forms in loaded_map.items():
+                print(f"--- {p_name} ---")
+                for f in forms:
+                    print(format_form(f))
+            return True
+
         if getattr(args, 'json', False):
             import json
             print(json.dumps({"success": True, "file": "all", "forms": all_results}, ensure_ascii=False), file=sys.stdout)
@@ -2161,6 +2178,19 @@ def cmd_list_forms(args):
         print(f"エラー: VBComponentsへのアクセスに失敗しました: {ex}", file=sys.stderr)
         return False
 
+    if getattr(args, 'loaded', False):
+        loaded_forms = [f for f in forms if f.get("loaded")]
+        if getattr(args, 'json', False):
+            import json
+            print(json.dumps({"success": True, "file": proj_name, "forms": loaded_forms}, ensure_ascii=False), file=sys.stdout)
+            return True
+        if not loaded_forms:
+            print("開いている（ロード中）のフォームはありません。")
+        else:
+            for f in loaded_forms:
+                print(format_form(f))
+        return True
+
     if getattr(args, 'json', False):
         import json
         print(json.dumps({"success": True, "file": proj_name, "forms": forms}, ensure_ascii=False), file=sys.stdout)
@@ -2173,11 +2203,18 @@ def cmd_list_forms(args):
     return True
 
 
+def cmd_active_form(args):
+    """開いている（ロード中）のフォームのみを1行で即答"""
+    setattr(args, 'loaded', True)
+    return cmd_list_forms(args)
+
+
+
 def _all_procedure_names(wb):
     """ブック内の全プロシージャ名を列挙（did-you-mean 用の機械的リスト）"""
     pat = re.compile(
         r'^\s*(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?'
-        r'(?:Sub|Function)\s+([^\s\(\)]+)',
+        r'(?:Sub|Function|Property\s+(?:Get|Let|Set))\s+([^\s\(\)]+)',
         re.IGNORECASE | re.MULTILINE)
     names = []
     try:
@@ -2270,10 +2307,33 @@ def _book_holding_proc(wb, name):
         return None
 
 
+def _is_line_continuation(line):
+    """行が VBA の行継続（" _"）で終わっているかを厳密に判定。
+
+    末尾に行末コメント（" _ ' コメント"）がある実戦構文も認識し、
+    文字列リテラル内部の " _" は無視する。
+    """
+    if not line:
+        return False
+    # 文字列リテラルをマスク
+    no_str = re.sub(r'"(?:[^"]|"")*"', '""', line)
+    # コメント部分を分離
+    comment_idx = -1
+    in_quote = False
+    for i, ch in enumerate(no_str):
+        if ch == "'":
+            comment_idx = i
+            break
+        elif no_str[i:i+4].lower() == 'rem ':
+            comment_idx = i
+            break
+    code_part = no_str[:comment_idx] if comment_idx != -1 else no_str
+    return bool(re.search(r'(?:^|[\s\(\),])_\s*$', code_part))
+
 def _decl_span(lines, i):
     """lines[i] から始まる宣言の行（行継続 " _" で折り返した分も含む）の終わりの添字。"""
     j = i
-    while j + 1 < len(lines) and re.search(r'\s_\s*$', lines[j]):
+    while j + 1 < len(lines) and _is_line_continuation(lines[j]):
         j += 1
     return j
 
@@ -2299,7 +2359,7 @@ def _replace_body_keeping_decl(cm, macro_name, new_code, attr_block, end_pattern
     d0 = body - 1
     d1 = _decl_span(mod_lines, d0)
     decl_old = mod_lines[d0:d1 + 1]
-    if re.search(r'\bEnd\s+(?:Sub|Function)\b', _strip_vba_comment(re.sub(r'"[^"]*"', '""', decl_old[-1])), re.I):
+    if re.search(r'\bEnd\s+(?:Sub|Function|Property)\b', _strip_vba_comment(re.sub(r'"[^"]*"', '""', decl_old[-1])), re.I):
         return False                                   # 1 行完結
     end_idx = None
     for k in range(min(start + count - 2, total - 1), d1, -1):
@@ -2309,7 +2369,7 @@ def _replace_body_keeping_decl(cm, macro_name, new_code, attr_block, end_pattern
     if end_idx is None:
         return False
     new_lines = new_code.replace('\r\n', '\n').split('\n')
-    decl_pat = re.compile(r'^\s*(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?(?:Sub|Function)\s+'
+    decl_pat = re.compile(r'^\s*(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?(?:Sub|Function|Property\s+(?:Get|Let|Set))\s+'
                           + re.escape(macro_name) + r'\s*[\(\s]', re.I)
     n0 = next((i for i, ln in enumerate(new_lines) if decl_pat.match(ln)), None)
     if n0 is None:
@@ -2400,17 +2460,35 @@ def _extract_proc(wb, module_name, macro_name):
         if len(matched) > 1:
             raise ValueError(matched)
 
-    for comp in wb.VBProject.VBComponents:
+    # モジュール名指定時は直接アクセスを試行（全件走査のCOM負荷回避）
+    target_comps = None
+    if module_name:
+        try:
+            direct_comp = wb.VBProject.VBComponents(module_name)
+            if direct_comp:
+                target_comps = [direct_comp]
+        except Exception:
+            try:
+                direct_comp = wb.VBProject.VBComponents.Item(module_name)
+                if direct_comp:
+                    target_comps = [direct_comp]
+            except Exception:
+                target_comps = None
+
+    if target_comps is None:
+        target_comps = wb.VBProject.VBComponents
+
+    for comp in target_comps:
         if module_name and comp.Name.lower() != module_name.lower():
             continue
         cm = comp.CodeModule
         try:
-            proc_start = cm.ProcStartLine(macro_name, 0)
-            count      = cm.ProcCountLines(macro_name, 0)
+            proc_start = com_retry(lambda: cm.ProcStartLine(macro_name, 0), op_name="")
+            count      = com_retry(lambda: cm.ProcCountLines(macro_name, 0), op_name="")
             # ProcStartLine 起点の領域には宣言の上のコメントも含まれる。
             # replace-procedure と対称にし、get→replace の往復で
             # ヘッダーコメントが消えないようにする。
-            code = cm.Lines(proc_start, count)
+            code = com_retry(lambda: cm.Lines(proc_start, count), op_name="")
         except Exception:
             continue
 
@@ -2473,9 +2551,9 @@ def _narrow_proc_range(cm, start, count):
         if last == '':
             end -= 1
         elif (re.match(
-                r'^(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?(?:Sub|Function)\s+',
+                r'^(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?(?:Sub|Function|Property\s+(?:Get|Let|Set))\s+',
                 last, re.IGNORECASE)
-              and not re.search(r'\bEnd\s+(?:Sub|Function)\b', last, re.IGNORECASE)):
+              and not re.search(r'\bEnd\s+(?:Sub|Function|Property)\b', last, re.IGNORECASE)):
             end -= 1
         else:
             break
@@ -2566,6 +2644,10 @@ def cmd_get(args):
     if not target_file and len(requests) == 1:
         wb = _book_holding_proc(wb, requests[0][1]) or wb
 
+    if is_vbproject_protected(wb):
+        print("【安全保護】VBAプロジェクトがパスワード保護（ロック）されています。Excel側でパスワードを解除してから再実行してください。")
+        return False
+
     results = []
     for module_name, macro_name in requests:
         try:
@@ -2647,14 +2729,32 @@ def cmd_replace_procedure(args):
 
     new_code = read_code_file(resolved)
 
+    # 既存ブックの識別子（大文字小文字）に合わせて自動補正（2026-10-20 総点検拡充）
+    p_fn = _project_code_fn(target_file)
+    if p_fn is not None:
+        try:
+            p_code = p_fn()
+            if p_code:
+                aligned_code, diffs = auto_align_code_case(new_code, p_code)
+                if diffs:
+                    new_code = aligned_code
+                    is_json_mode = getattr(args, 'json', False)
+                    vba_log_info(f"（ブックの既存綴りに合わせて大文字小文字を自動補正しました: {len(diffs)}箇所）", is_json=is_json_mode)
+                    for _d_ln, _d_old, _d_new in diffs[:3]:
+                        vba_log_info(f"  行{_d_ln}: {_d_old} → {_d_new}", is_json=is_json_mode)
+                    if len(diffs) > 3:
+                        vba_log_info(f"  … 他 {len(diffs) - 3} 件", is_json=is_json_mode)
+        except Exception as _e:
+            print(f"（大文字小文字の自動補正をスキップしました: {_e}）", file=sys.stderr)
+
     # 簡易構文チェック・エンコード検証
-    if not validate_vba_code(new_code, getattr(args, 'force', False), project_code=_project_code_fn(target_file)):
+    if not validate_vba_code(new_code, getattr(args, 'force', False), project_code=p_fn):
         return False
 
     # プロシージャ名を特定
     pattern = re.compile(
         r'^\s*(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?'
-        r'(?:Sub|Function)\s+([^\s\(\)]+)',
+        r'(?:Sub|Function|Property\s+(?:Get|Let|Set))\s+([^\s\(\)]+)',
         re.IGNORECASE | re.MULTILINE
     )
     m = pattern.search(new_code)
@@ -2672,7 +2772,7 @@ def cmd_replace_procedure(args):
         if last == '':
             code_lines.pop()
         elif (pattern.match(last)
-              and not re.search(r'\bEnd\s+(?:Sub|Function)\b', last, re.IGNORECASE)
+              and not re.search(r'\bEnd\s+(?:Sub|Function|Property)\b', last, re.IGNORECASE)
               and code_lines[-1].strip() != code_lines[0].strip()):
             code_lines.pop()
         else:
@@ -2704,6 +2804,10 @@ def cmd_replace_procedure(args):
     xl, wb = get_workbook(target_file)
     if not target_file:
         wb = _book_holding_proc(wb, macro_name) or wb
+
+    if is_vbproject_protected(wb):
+        print("【安全保護】VBAプロジェクトがパスワード保護（ロック）されています。Excel側でパスワードを解除してから再実行してください。")
+        return False
 
     # --module 未指定時：同名プロシージャが複数モジュールにある場合はエラー
     module_opt = getattr(args, 'module_opt', None)
@@ -2769,7 +2873,7 @@ def cmd_replace_procedure(args):
         if last == '':
             end -= 1
         elif (pattern.match(last)
-              and not re.search(r'\bEnd\s+(?:Sub|Function)\b', last, re.IGNORECASE)):
+              and not re.search(r'\bEnd\s+(?:Sub|Function|Property)\b', last, re.IGNORECASE)):
             end -= 1
         else:
             break
@@ -2828,13 +2932,13 @@ def cmd_replace_procedure(args):
         # .bas 内で対象プロシージャの Sub/Function 宣言行を探す
         proc_pattern = re.compile(
             r'^\s*(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?'
-            r'(?:Sub|Function)\s+' + re.escape(macro_name) + r'\s*[\(\s]',
+            r'(?:Sub|Function|Property\s+(?:Get|Let|Set))\s+' + re.escape(macro_name) + r'\s*[\(\s]',
             re.IGNORECASE
         )
         # 末尾コメント（End Sub 'xxx）を許容しないと次のプロシージャの End Sub まで
         # スキャンが伸び、置換範囲が次のプロシージャを丸ごと巻き込む（消失事故）
         end_pattern = re.compile(
-            r"^\s*End\s+(?:Sub|Function)\s*(?:'.*)?$", re.IGNORECASE
+            r"^\s*End\s+(?:Sub|Function|Property)\s*(?:'.*)?$", re.IGNORECASE
         )
 
         sub_line_idx = None
@@ -2848,7 +2952,7 @@ def cmd_replace_procedure(args):
                 # （宣言が行継続 " _" で複数行の場合は継続行を読み飛ばしてから収集。
                 #   読み飛ばさないと Attribute を見逃し、ショートカット定義が失われる）
                 check = idx + 1
-                while check < len(bas_lines) and re.search(r'\s_\s*$', bas_lines[check - 1]):
+                while check < len(bas_lines) and _is_line_continuation(bas_lines[check - 1]):
                     check += 1
                 while check < len(bas_lines) and bas_lines[check].strip().startswith('Attribute '):
                     attr_block.append(bas_lines[check])
@@ -2861,12 +2965,14 @@ def cmd_replace_procedure(args):
                 # 行末コメントを1行完結Subと誤判定し、置換範囲が宣言行だけになって
                 # 旧本体が残る（新旧の本体が並んで二重化・構文破壊）
                 no_str = _strip_vba_comment(re.sub(r'"[^"]*"', '""', line))
-                if re.search(r'\bEnd\s+(?:Sub|Function)\b', no_str, re.IGNORECASE):
+                if re.search(r'\bEnd\s+(?:Sub|Function|Property)\b', no_str, re.IGNORECASE):
                     proc_end_idx = check - 1
                     break
-            elif sub_line_idx is not None and end_pattern.match(line):
-                proc_end_idx = idx
-                break
+            elif sub_line_idx is not None:
+                # #If ディレクティブのネストも追跡
+                if end_pattern.match(line):
+                    proc_end_idx = idx
+                    break
 
         if sub_line_idx is None or proc_end_idx is None:
             _remove_export_artifacts(tmp_bas)
@@ -2876,9 +2982,9 @@ def cmd_replace_procedure(args):
             # Attribute行なし → 従来の InsertLines 方式（高速・モジュール順維持）
             # InsertLines は末尾改行を余分な空行として挿入するため取り除く
             _remove_export_artifacts(tmp_bas)
-            cm.DeleteLines(eff_start, eff_count)
-            cm.InsertLines(eff_start, new_code.rstrip('\n'))
-            wb.Save()
+            com_retry(lambda: cm.DeleteLines(eff_start, eff_count), op_name="行削除")
+            com_retry(lambda: cm.InsertLines(eff_start, new_code.rstrip('\n')), op_name="行挿入")
+            com_retry(wb.Save, op_name="保存")
             print(f"置換完了: [{comp.Name}] '{macro_name}' → 保存しました")
             note_if_macro_free_book(wb)
             return True
@@ -2903,7 +3009,7 @@ def cmd_replace_procedure(args):
         # 新コード側の宣言より上の行は使わない（使うと二重になる）。
         new_lines = new_code.rstrip('\n').split('\n')
         sub_decl_pattern = re.compile(
-            r'^\s*(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?(?:Sub|Function)\s+',
+            r'^\s*(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?(?:Sub|Function|Property\s+(?:Get|Let|Set))\s+',
             re.IGNORECASE
         )
         decl_idx = None
@@ -2913,7 +3019,7 @@ def cmd_replace_procedure(args):
                 break
         if decl_idx is None:
             _remove_export_artifacts(tmp_bas)
-            print("エラー: 置換コードに Sub/Function 宣言が見つかりません")
+            print("エラー: 置換コードに Sub/Function/Property 宣言が見つかりません")
             return False
         if decl_idx > 0:
             print("  (宣言より上のコメント行は、Attribute方式では .bas 側の既存行を維持します)")
@@ -2923,7 +3029,7 @@ def cmd_replace_procedure(args):
         # 1行目の直後へ入れると Attribute が継続行の前に割り込んで構文破壊になる。
         # 読み取り側（上の attr_block 収集）と対称に、継続行を読み飛ばしてから入れる
         insert_at = 1
-        while insert_at < len(new_lines) and re.search(r'\s_\s*$', new_lines[insert_at - 1]):
+        while insert_at < len(new_lines) and _is_line_continuation(new_lines[insert_at - 1]):
             insert_at += 1
         for ai, al in enumerate(attr_block):
             new_lines.insert(insert_at + ai, al)
@@ -3007,28 +3113,65 @@ def cmd_replace_procedure(args):
     return False
 
 
+def _loose_key(line, fold_case=False, squash_ws=False):
+    """行を「コード部分」と「文字列リテラル」に分離し、コード部分にのみ大小文字無視や空白圧縮を適用する（2026-10-20）。"""
+    s = line.strip()
+    if not s:
+        return ''
+    parts = []
+    last = 0
+    import re as _re
+    for m in _re.finditer(r'"(?:[^"]|"")*"', s):
+        code_part = s[last:m.start()]
+        str_part = m.group(0)
+        if fold_case:
+            code_part = code_part.lower()
+        if squash_ws:
+            code_part = _re.sub(r'\s+', ' ', code_part)
+        parts.append(code_part)
+        parts.append(str_part)
+        last = m.end()
+    rest = s[last:]
+    if fold_case:
+        rest = rest.lower()
+    if squash_ws:
+        rest = _re.sub(r'\s+', ' ', rest)
+    parts.append(rest)
+    res = ''.join(parts)
+    if squash_ws:
+        pass  # 文字列リテラルをまたぐ全体再圧縮は行わない（文字列リテラル内部の空白を保護するため）
+    return res
+
+
 def _patch_loose(code, target, replacement):
     """字下げ・行末の空白、大文字小文字を無視して target の行の並びを code から探し、1 か所なら置き換える → (新しいコード, 見つかった数)。
 
     見つからない・2 か所以上なら (None, 数)。replacement の字下げは、見つかった先頭行と target の先頭行の差だけ足す
     （target を字下げなしで渡した AI は、replacement も字下げなしで渡すため）。
     """
-    t_lines = target.strip('\n').split('\n')
+    # 前後の空行を除去して行リストを作成
+    t_lines = target.replace('\r\n', '\n').strip('\n').split('\n')
     t_key = [ln.strip() for ln in t_lines]
     if not any(t_key):
         return None, 0
-    c_lines = code.split('\n')
+    c_lines = code.replace('\r\n', '\n').split('\n')
     c_key = [ln.strip() for ln in c_lines]
     n = len(t_key)
 
     # 1. まず字下げ無視（大文字小文字は区別）で探す
     hits = [i for i in range(len(c_key) - n + 1) if c_key[i:i + n] == t_key]
 
-    # 2. 見つからなければ、大文字小文字も無視して探す（VBAの特性に合わせる）
+    # 2. 見つからなければ、大文字小文字も無視して探す（文字列リテラル内は保護）
     if not hits:
-        t_key_lower = [ln.lower() for ln in t_key]
-        c_key_lower = [ln.lower() for ln in c_key]
+        t_key_lower = [_loose_key(ln, fold_case=True, squash_ws=False) for ln in t_lines]
+        c_key_lower = [_loose_key(ln, fold_case=True, squash_ws=False) for ln in c_lines]
         hits = [i for i in range(len(c_key_lower) - n + 1) if c_key_lower[i:i + n] == t_key_lower]
+
+    # 3. それでも見つからなければ、連続空白を単一スペースと見なしてファジー比較（文字列リテラル内は保護）
+    if not hits:
+        t_squash = [_loose_key(ln, fold_case=True, squash_ws=True) for ln in t_lines]
+        c_squash = [_loose_key(ln, fold_case=True, squash_ws=True) for ln in c_lines]
+        hits = [i for i in range(len(c_squash) - n + 1) if c_squash[i:i + n] == t_squash]
 
     if len(hits) != 1:
         return None, len(hits)
@@ -3036,7 +3179,7 @@ def _patch_loose(code, target, replacement):
     first = next(k for k in range(n) if t_key[k])
     indent = lambda s: len(s) - len(s.lstrip(' \t'))
     shift = indent(c_lines[i + first]) - indent(t_lines[first])
-    r_lines = replacement.strip('\n').split('\n') if replacement.strip('\n') else []
+    r_lines = replacement.replace('\r\n', '\n').strip('\n').split('\n') if replacement.strip('\n') else []
     if shift > 0:
         r_lines = [(' ' * shift + ln) if ln.strip() else ln for ln in r_lines]
     return '\n'.join(c_lines[:i] + r_lines + c_lines[i + n:]), 1
@@ -3186,17 +3329,36 @@ def cmd_add_procedure(args):
         print(f"エラー: コードファイルが見つかりません: {code_file}")
         return False
     new_code = read_code_file(resolved)
-    if not validate_vba_code(new_code, force=getattr(args, 'force', False), project_code=_project_code_fn(target_file)):
+
+    # 既存ブックの識別子（大文字小文字）に合わせて自動補正（2026-10-20 総点検拡充）
+    p_fn = _project_code_fn(target_file)
+    if p_fn is not None:
+        try:
+            p_code = p_fn()
+            if p_code:
+                aligned_code, diffs = auto_align_code_case(new_code, p_code)
+                if diffs:
+                    new_code = aligned_code
+                    is_json_mode = getattr(args, 'json', False)
+                    vba_log_info(f"（ブックの既存綴りに合わせて大文字小文字を自動補正しました: {len(diffs)}箇所）", is_json=is_json_mode)
+                    for _d_ln, _d_old, _d_new in diffs[:3]:
+                        vba_log_info(f"  行{_d_ln}: {_d_old} → {_d_new}", is_json=is_json_mode)
+                    if len(diffs) > 3:
+                        vba_log_info(f"  … 他 {len(diffs) - 3} 件", is_json=is_json_mode)
+        except Exception as _e:
+            print(f"（大文字小文字の自動補正をスキップしました: {_e}）", file=sys.stderr)
+
+    if not validate_vba_code(new_code, force=getattr(args, 'force', False), project_code=p_fn):
         return False
     # コードファイルに複数本入っていることがある（get は3本以上を連結して
     # 1つの _last_proc.vba に書く）。先頭1本だけ見て重複検査すると、2本目以降が
     # 既存と同名でも素通りし、同一モジュール内に二重定義されてコンパイル不能になる
     decl_names = re.findall(
         r'^\s*(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?'
-        r'(?:Sub|Function)\s+([^\s\(]+)', new_code,
+        r'(?:Sub|Function|Property\s+(?:Get|Let|Set))\s+([^\s\(]+)', new_code,
         re.MULTILINE | re.IGNORECASE)
     if not decl_names:
-        print("エラー: コードに Sub/Function 宣言が見つかりません")
+        print("エラー: コードに Sub/Function/Property 宣言が見つかりません")
         return False
     proc_name = decl_names[0]
     # コードファイル自身の中の同名重複も弾く（VBA は大小文字を区別しない）
@@ -6263,16 +6425,20 @@ def cmd_grep(args):
                           "total": total, "hits": hits}, ensure_ascii=False), file=sys.stdout)
         return True
     if total == 0:
-        print(f"'{needle}' は見つかりませんでした。")
         if not getattr(args, 'regex', False) and not getattr(args, 'ignore_case', False):
-            # VBA は保存時に識別子の大小文字や演算子前後の空白を揃える＝書いた字面で空振りしやすい。
-            # 寛容に数え直して案内する（黙って0件にしない・2026-08-23）
+            # 寛容に数え直してそのままヒット結果として返す（空振り・再検索の手間を撲滅）
             tol = _vba_tolerant_pattern(needle)
-            n_tol = sum(1 for code in _scanned for ln in code.split('\r\n') if tol.search(ln))
-            if n_tol:
-                print(f"  （大小文字・空白の違いを無視すると {n_tol} 件あります。VBA は保存時に識別子の大小文字や"
-                      "演算子前後の空白を揃えるので、-i で探すか、出てきた字面で指定してください）")
-        return True
+            hits_tol, total_tol, _ = _scan(tol)
+            if total_tol:
+                print(f"（完全一致では 0 件でしたが、大小文字・空白の違いを無視して {total_tol} 件ヒットしました）")
+                hits = hits_tol
+                total = total_tol
+            else:
+                print(f"'{needle}' は見つかりませんでした。")
+                return True
+        else:
+            print(f"'{needle}' は見つかりませんでした。")
+            return True
     for h in hits:
         proc_part = f" {h['proc']}" if h['proc'] else ""
         book_part = f"[{h['book']}]" if h.get('book') else ""
@@ -9046,6 +9212,7 @@ __all__ = [
     'cmd_list',
     'cmd_list_backups',
     'cmd_list_forms',
+    'cmd_active_form',
     'cmd_list_modules',
     'cmd_list_open',
     'cmd_list_shortcuts',

@@ -145,6 +145,17 @@ def parse_target_and_rest(posargs):
     return None, list(posargs)
 
 
+def vba_log_warn(msg):
+    """警告メッセージ用。常に stderr に出力して stdout の JSON 汚染を防ぐ。"""
+    print(f"警告: {msg}", file=sys.stderr)
+
+
+def vba_log_info(msg, is_json=False):
+    """情報メッセージ用。is_json=True 時は stderr、通常CLI時は stdout に出力。"""
+    target_out = sys.stderr if is_json else sys.stdout
+    print(msg, file=target_out)
+
+
 # Excel が「今は応答できない」ときに返す HRESULT（参照が死んだわけではない）。
 # マクロ実行中・モーダルダイアログ表示中・セル編集中は普通にこれが返る。
 _COM_BUSY_HRESULTS = (
@@ -404,9 +415,9 @@ def cleanup_excel():
             except Exception as ex:
                 print(f"[DEBUG] Error during Excel cleanup: {ex}")
 
-        # 新規起動したPIDが存在する場合は強制クリーンアップ。
+        # 自前で起動記録されたPIDのみに限定して終了確認。
         # 撃つ前に「その PID が今も EXCEL.EXE か」を確認する（既に終了していた場合、
-        # Windows は PID を再利用するため無関係のプロセスを殺しうる）
+        # Windows は PID を再利用するため無関係のプロセスを殺しうる。外部起動プロセスは絶対触らない）
         if pid is not None:
             if not _pid_is_excel(pid):
                 print(f"[DEBUG] PID {pid} は既に EXCEL.EXE ではありません（終了済み）。強制終了はしません。")
@@ -418,11 +429,14 @@ def cleanup_excel():
                 except Exception as ex:
                     print(f"[DEBUG] Excel process force-kill failed or already exited: {ex}")
 
+        # 明示的に参照を切りCOMオブジェクトの解放を確実にする
+        inst["xl"] = None
+
     _created_instances = []
     _created_xl = None
     _created_xl_pid = None
 
-    # 最後の解放
+    # Python側のCOM参照を解放するためにGCを強制実行
     gc.collect()
     try:
         pythoncom.CoUninitialize()
@@ -567,21 +581,119 @@ def _get_active_excel():
     return win32com.client.dynamic.Dispatch(disp)
 
 
+def _get_foreground_excel_pid():
+    """現在最前面（フォアグラウンド）にあるウィンドウの PID を返す。Excel でなければ None。"""
+    try:
+        import win32gui
+        import win32process
+        fg_hwnd = win32gui.GetForegroundWindow()
+        if not fg_hwnd:
+            return None
+        _, fg_pid = win32process.GetWindowThreadProcessId(fg_hwnd)
+        return fg_pid if _pid_is_excel(fg_pid) else None
+    except Exception:
+        return None
+
+
+def _get_excel_from_oleacc():
+    """OLEACC (AccessibleObjectFromWindow) を使って可視の Excel ウィンドウから直接 Application を取得。
+
+    ROT に登録される前の新規未保存ブック（Book1 等）を救済する。
+    """
+    try:
+        import win32gui
+        import ctypes
+        from ctypes import wintypes
+        import pythoncom
+        from win32com.client import dynamic
+
+        # Find visible XLMAIN window
+        def _enum_cb(hwnd, results):
+            if win32gui.IsWindowVisible(hwnd):
+                cls_name = win32gui.GetClassName(hwnd)
+                if cls_name == "XLMAIN":
+                    results.append(hwnd)
+            return True
+
+        xlmain_hwnds = []
+        win32gui.EnumWindows(_enum_cb, xlmain_hwnds)
+        if not xlmain_hwnds:
+            return None
+
+        # Look for EXCEL7 child window inside XLMAIN -> XLDESK
+        for xlmain in xlmain_hwnds:
+            excel7_hwnd = None
+            def _child_cb(hwnd, res):
+                if win32gui.GetClassName(hwnd) == "EXCEL7":
+                    res.append(hwnd)
+                return True
+
+            children = []
+            win32gui.EnumChildWindows(xlmain, _child_cb, children)
+            if children:
+                excel7_hwnd = children[0]
+
+            if not excel7_hwnd:
+                continue
+
+            # OBJID_NATIVEOM = -16 (0xFFFFFFF0)
+            OBJID_NATIVEOM = -16
+            oleacc = ctypes.oledll.oleacc
+            AccessibleObjectFromWindow = oleacc.AccessibleObjectFromWindow
+            AccessibleObjectFromWindow.restype = wintypes.HRESULT
+            AccessibleObjectFromWindow.argtypes = [
+                wintypes.HWND,
+                wintypes.DWORD,
+                ctypes.c_void_p,
+                ctypes.POINTER(ctypes.c_void_p),
+            ]
+
+            # IID_IDispatch = {00020400-0000-0000-C000-000000000046}
+            iid_dispatch = pythoncom.IID_IDispatch
+            iid_bytes = bytes(iid_dispatch)
+            p_unk = ctypes.c_void_p()
+            hr = AccessibleObjectFromWindow(excel7_hwnd, OBJID_NATIVEOM & 0xFFFFFFFF, iid_bytes, ctypes.byref(p_unk))
+            if hr == 0 and p_unk.value:
+                py_disp = pythoncom.ObjectFromAddress(p_unk.value, pythoncom.IID_IDispatch)
+                obj = dynamic.Dispatch(py_disp)
+                # obj is usually Window; obj.Application is Excel.Application
+                app = getattr(obj, "Application", None)
+                if app:
+                    return app
+        return None
+    except Exception:
+        return None
+
+def is_vbproject_protected(wb):
+    """VBProject がパスワード保護（ロック）されているかを判定（0=非保護, 1=保護）。
+
+    ロックされている場合は True を返し、不用意な COM アクセスによるクラッシュを防ぐ。
+    """
+    try:
+        vp = getattr(wb, 'VBProject', None)
+        if vp is None:
+            return False
+        # 1 = vbext_pp_locked
+        return int(getattr(vp, 'Protection', 0)) == 1
+    except Exception:
+        return False
+
 def _running_excel_workbooks():
-    """Running Object Table を走査し、起動中の全 Excel の全ブックを返す。
+    """Running Object Table を走査し、起動中の全 Excel の全ブックを最前面ウィンドウ優先スコア順で返す。
 
     GetActiveObject は ROT 先頭の1インスタンスしか返さず、非表示ゾンビ Excel
     (ブック0個)を掴むことがある。ROT を直接舐めれば、実際にブックを開いている
     インスタンスだけ拾える(ゾンビはブックを持たないので現れない)。
     失敗時は [] を返し、呼び出し側は GetActiveObject にフォールバックする。
     """
-    wbs = []
+    scored_wbs = []
+    fg_pid = _get_foreground_excel_pid()
     try:
         rot = pythoncom.GetRunningObjectTable()
         ctx = pythoncom.CreateBindCtx(0)
         monikers = list(rot)
     except Exception:
-        return wbs
+        return []
     for mon in monikers:
         try:
             disp = mon.GetDisplayName(ctx, None)
@@ -594,10 +706,32 @@ def _running_excel_workbooks():
             obj = rot.GetObject(mon)
             wb = win32com.client.dynamic.Dispatch(obj.QueryInterface(pythoncom.IID_IDispatch))
             _ = wb.FullName  # ブックか確認(違えば例外)
-            wbs.append(wb)
+
+            # スコアリング: 最前面PID一致=100, 通常可視画面ブック=50, 通常ブック=10, ゾンビ=0
+            score = 10
+            try:
+                app = wb.Application
+                app_pid = None
+                try:
+                    import win32process
+                    app_pid = win32process.GetWindowThreadProcessId(int(app.Hwnd))[1]
+                except Exception:
+                    pass
+
+                if bool(app.Visible):
+                    score = 50
+                    if fg_pid is not None and app_pid == fg_pid:
+                        score = 100
+                if getattr(wb, 'IsAddin', False):
+                    score = 1
+            except Exception:
+                pass
+            scored_wbs.append((score, wb))
         except Exception:
             continue
-    return wbs
+
+    scored_wbs.sort(key=lambda x: x[0], reverse=True)
+    return [wb for _s, wb in scored_wbs]
 
 
 # get_workbook の接続キャッシュ。通常の1コマンド1プロセスでは1回しか呼ばれないので
@@ -627,6 +761,7 @@ def pinned_workbook(wb):
     @contextlib.contextmanager
     def _ctx():
         global _wb_pin_hard
+        # ネスト安全なスタック管理
         prev_entry = _wb_cache.get("__active__")
         prev_hard = _wb_pin_hard
         pin_active_workbook(wb)
@@ -639,6 +774,8 @@ def pinned_workbook(wb):
                 _wb_cache.pop("__active__", None)
             else:
                 _wb_cache["__active__"] = prev_entry
+            import gc
+            gc.collect()
 
     return _ctx()
 
@@ -889,11 +1026,18 @@ def _get_workbook_uncached(target_file_arg=None, load_addins=False, readonly=Fal
                 "  ・Excel で VBA の画面（Alt+F11）→ デバッグ → コンパイル を押すと戻ります（保存は要りません）。\n"
                 "  ・窓（メッセージ・入力中のセル）が出ていれば閉じてから再実行してください。")
         if wb is None:
-            # ROT に出ない稀ケース(未保存ブック等)は GetActiveObject で再挑戦
+            # ROT に出ない稀ケース(未保存ブック等)は OLEACC または GetActiveObject で再挑戦
             try:
-                wb = _get_active_excel().ActiveWorkbook
+                ole_app = _get_excel_from_oleacc()
+                if ole_app and ole_app.ActiveWorkbook is not None:
+                    wb = _screen_book(ole_app)
             except Exception:
                 wb = None
+            if wb is None:
+                try:
+                    wb = _get_active_excel().ActiveWorkbook
+                except Exception:
+                    wb = None
         if wb is None:
             raise Exception(
                 "起動中の Excel に開いているブックが見つかりません。\n"
@@ -1330,12 +1474,13 @@ def validate_vba_code(code, force=False, old_code='', project_code=None):
         errors.append(f"行{ln}: プロシージャ名が VBA の識別子規則に反しています: {reason}")
 
     # 4. 小文字の宣言（`Dim value` など）が、ブック全体の `.Value` を小文字にし、消しても戻らない（2026-10-01）
-    pollution = find_case_pollution(code, old_code)
-    if pollution and project_code is not None:
+    proj_txt = None
+    if project_code is not None:
         try:
-            pollution = find_case_pollution(code, (old_code or '') + '\n' + str(project_code() or ''))
+            proj_txt = str(project_code() or '')
         except Exception:
-            pass                                 # ブックを読めなければ、読めた範囲（old_code）での判定のまま止める
+            proj_txt = None
+    pollution = find_case_pollution(code, old_code, project_text=((old_code or '') + ('\n' + proj_txt if proj_txt else '')) if proj_txt else None)
     # 5. ブックに既にある名前と大小文字だけ違う綴り（`t` があるのに `T` と書く）は止める（2026-10-03 実害・何度も繰り返した）
     if project_code is not None:
         try:
@@ -1632,6 +1777,30 @@ def _print_collision_guidance(ex, module_name, module_backup, err=False):
         print(f"  置換前の内容のバックアップ: {module_backup}", file=out)
 
 
+def com_retry(func, attempts=3, delay=0.4, op_name="COM操作"):
+    """Excel がビジー（_com_is_busy）のときに PumpWaitingMessages を挟んで自動再試行する。
+
+    ビジー以外の例外は即座に再送出する。
+    """
+    last_ex = None
+    for i in range(attempts):
+        try:
+            return func()
+        except Exception as ex:
+            last_ex = ex
+            if not _com_is_busy(ex) or i == attempts - 1:
+                raise
+            if op_name:
+                print(f"  Excel がビジーのため{op_name}を再試行します（{i + 1}/{attempts - 1}）...")
+            time.sleep(delay)
+            try:
+                pythoncom.PumpWaitingMessages()
+            except Exception:
+                pass
+    if last_ex:
+        raise last_ex
+
+
 def _save_with_retry(wb, attempts=5, delay=0.6):
     """Import 直後の保存だけはビジー拒否で諦めない。
 
@@ -1642,20 +1811,7 @@ def _save_with_retry(wb, attempts=5, delay=0.6):
     なので、少し待って撃ち直す。恒久的な失敗（読み取り専用・ロック等）は
     そのまま送出して呼び出し側に判断させる。
     """
-    last = None
-    for i in range(attempts):
-        try:
-            wb.Save()
-            return
-        except Exception as ex:
-            last = ex
-            if not _com_is_busy(ex) or i == attempts - 1:
-                raise
-            print(f"  Excel がビジーのため保存を再試行します（{i + 1}/{attempts - 1}）...")
-            time.sleep(delay)
-            pythoncom.PumpWaitingMessages()
-    if last:
-        raise last
+    return com_retry(wb.Save, attempts=attempts, delay=delay, op_name="保存")
 
 
 def _print_save_failed_guidance(module_name, err=False):
@@ -1747,9 +1903,14 @@ _CASE_SENSITIVE_NAMES = (
     'Enabled Title Tag Selected Checked Min Max Size Bold Italic Underline Pattern Weight Sheets Worksheets Selection '
     'Target Source Destination Result Description Global IgnoreCase Execute Test Match Matches SubMatches Length '
     'Workbook Worksheet Shape Chart Names Pages Areas Application Window '
+    # MSForms / UserForm / CodeModule の頻出プロパティ・メソッド（2026-10-20 総点検拡充）
+    'MultiLine MultiSelect ListCount ListIndex AddItem Clear Selected List ColumnCount ColumnWidths '
+    'SelStart SelLength SelText LineCount Lines InsertLines DeleteLines ReplaceLine ProcStartLine ProcCountLines '
+    'WordWrap AutoSize BackColor ForeColor BorderColor BorderStyle SpecialEffect ScrollBars '
+    'ControlTipText MousePointer Accelerator TabStop TabIndex '
     # VBA の組み込み関数（変数名にすると同じ綴りが組み込みの綴りまで書き換わる）
     'Date Time Now Format Mid Trim Len Split Join Filter Array Chr Asc Abs Int Fix Sgn Sqr Rnd Round Str Val '
-    'Year Month Day Hour Minute Second Weekday Instr InStrRev Ucase Lcase Space String Dir Err'
+    'Year Month Day Hour Minute Second Weekday Instr InStrRev Ucase Lcase Space String Dir Err TypeName'
 ).split()
 _CASE_CANON = {}
 for _n in _CASE_SENSITIVE_NAMES:
@@ -1814,13 +1975,21 @@ def declared_names(code):
     return out
 
 
-def find_case_pollution(code, old_code=''):
+def find_case_pollution(code, old_code='', project_text=None):
     """VBE がブック全体の綴りを書き換える宣言を列挙 → [(行番号(1始まり), 宣言の綴り, 本来の綴り)]（純 Python）。
 
     宣言した名前が、Excel・VBA の既存の名前と大小文字だけ違う（`value` ↔ `Value`）ものを返す。本来の綴りと同じ（`Value`）なら
     何も起きないので入れない。old_code に同じ綴りの宣言が既にあれば（もう汚れている・今回増やさない）入れない。
+    project_text が与えられている場合、ブック側で既に確定している綴り（例: `lines`）と一致する宣言は
+    ブックを汚す新規の食い違いではないため除外する。
     """
     already = declared_names(old_code)
+    proj_known = {}
+    if project_text:
+        for _idx, pnm in _code_identifiers(project_text):
+            if re.search(r'[A-Za-z]', pnm):
+                proj_known.setdefault(pnm.lower(), set()).add(pnm)
+
     hits, seen = [], set()
     for idx, ln in enumerate((code or '').replace('\r\n', '\n').split('\n'), 1):
         st = ln.strip()
@@ -1829,6 +1998,10 @@ def find_case_pollution(code, old_code=''):
         for nm in _decl_names_of_line(ln):
             canon = _CASE_CANON.get(nm.lower())
             if canon and nm != canon and nm not in already and (nm, idx) not in seen:
+                if proj_known:
+                    p_spells = proj_known.get(nm.lower())
+                    if p_spells and nm in p_spells and len(p_spells) == 1:
+                        continue
                 seen.add((nm, idx))
                 hits.append((idx, nm, canon))
     return hits
@@ -1887,6 +2060,69 @@ def project_case_clash_message(hits, limit=10):
             "ほかのモジュール（公開している棚のマクロなど）に無関係な差分が出ます。\n"
             "  ブックの綴りに合わせるか、別の名前（日本語の名前など）にしてください（それでも書くなら --force）:\n"
             + '\n'.join(lines))
+
+
+def auto_align_code_case(code, project_text):
+    """code 内の識別子を、project_text（既存ブック）で確定している大文字小文字の綴りに自動補正する（2026-10-20）。
+
+    AI が `multiline` や `X`、`typename` のように既存ブックと異なる大小文字で書いてきても、
+    既存ブックの正当な綴り（`Multiline`, `x`, `typeName` 等）へ水際で自動置換し、
+    不必要なエラー停止やブック汚染を手戻りゼロで防ぐ。
+    文字列リテラルおよびコメント行・行末コメントは保護する。
+    """
+    known = {}
+    for _idx, nm in _code_identifiers(project_text):
+        if re.search(r'[A-Za-z]', nm):
+            known.setdefault(nm.lower(), set()).add(nm)
+    
+    repl_map = {}
+    for k, v in known.items():
+        if len(v) == 1:
+            repl_map[k] = next(iter(v))
+            
+    if not repl_map:
+        return code, []
+
+    def _sub_ident(match):
+        w = match.group(0)
+        return repl_map.get(w.lower(), w)
+
+    out_lines = []
+    aligned = []
+    for idx, ln in enumerate((code or '').replace('\r\n', '\n').split('\n'), 1):
+        st = ln.strip()
+        if st.startswith("'") or st.lower().startswith('rem ') or st.lower().startswith('attribute '):
+            out_lines.append(ln)
+            continue
+        # 行末コメントの分離
+        comment_part = ""
+        code_part = ln
+        if "'" in ln:
+            # 簡易的に文字列の外の ' を探す
+            in_str = False
+            for c_i, ch in enumerate(ln):
+                if ch == '"':
+                    in_str = not in_str
+                elif ch == "'" and not in_str:
+                    code_part = ln[:c_i]
+                    comment_part = ln[c_i:]
+                    break
+        
+        # 文字列リテラルを保護しながら識別子を置換
+        parts = []
+        last = 0
+        for m in re.finditer(r'"(?:[^"]|"")*"', code_part):
+            before = code_part[last:m.start()]
+            parts.append(re.sub(r'[^\W\d]\w*', _sub_ident, before))
+            parts.append(m.group(0))
+            last = m.end()
+        parts.append(re.sub(r'[^\W\d]\w*', _sub_ident, code_part[last:]))
+        new_ln = ''.join(parts) + comment_part
+        if new_ln != ln:
+            aligned.append((idx, ln.strip(), new_ln.strip()))
+        out_lines.append(new_ln)
+        
+    return '\n'.join(out_lines), aligned
 
 
 _HEX_CMP_RE = re.compile(r'(?:<=|>=|<>|<|>)\s*&H([0-9A-Fa-f]{1,4})(?![0-9A-Fa-f&])'
@@ -3107,7 +3343,8 @@ def cmd_close_vbe(args=None):
     return True
 
 
-__all__ = ['cmd_close_vbe',
+__all__ = ['is_vbproject_protected',
+    'cmd_close_vbe',
     'classify_unstick_dialog',
     'inspect_excel_unstick',
     'cmd_unstick',
@@ -3157,6 +3394,7 @@ __all__ = ['cmd_close_vbe',
     'case_pollution_message',
     'find_project_case_clash',
     'project_case_clash_message',
+    'auto_align_code_case',
     'find_hex_sign_traps',
     'find_chr_wide',
     'vba_error_reason',
@@ -3168,6 +3406,7 @@ __all__ = ['cmd_close_vbe',
     '_print_collision_guidance',
     '_print_save_failed_guidance',
     '_save_with_retry',
+    'com_retry',
     '_range_values_2d',
     '_reject_extra_args',
     '_remove_export_artifacts',
@@ -3207,6 +3446,8 @@ __all__ = ['cmd_close_vbe',
     'normalize_bas_newlines',
     'os',
     'parse_target_and_rest',
+    'vba_log_warn',
+    'vba_log_info',
     'pythoncom',
     'pywintypes',
     're',

@@ -2555,7 +2555,7 @@ def test_write_helpers_exposed_by_recipe_fire():
 
 _JA_ALIASES = {'健康診断', '影響範囲', '予行演習', 'テスト',
                '全体コンパイル', '関所', 'フォーム書き出し', '配線図', 'エージェント',
-               'キー設定', 'キー削除', 'format'}
+               'キー設定', 'キー削除', 'format', '開いているフォーム'}
 
 
 def test_capabilities_classifies_every_command():
@@ -4734,11 +4734,12 @@ def test_design_and_summary_shelf_do_not_misfire_20261014():
         pytest.skip('棚の書き出しが無い')
     big = {'表をクラシックインディゴに美化する', '表をノーブルボルドーに美化する', '表をモダンエメラルドに美化する',
            '表をシックチャコールに美化する', '表をウォームアンバーに美化する', '表をエグゼクティブデザインに美化する',
-           '表の上にKPIサマリーカードを作る', '表からモダンサマリーシートを作る'}
+           '表の上にKPIサマリーカードを作る', '表からモダンサマリーシートを作る',
+           '表のデザインを美化する'}   # 10/20 に色の 6 本を 1 本へまとめた（古い名前は互換用に残る）
     for req in ('見出しを青にして', '文字を赤にして', 'マイナスの所を緑にして', '空欄をグレーにして', '合計の行を茶色にして',
                 '見出しをネイビーにして', 'このシートを整えて', '会員カードの番号をそろえて', '集計シートを作って'):
         assert vp.shelf_pick(req, entries) not in big, req
-    assert vp.shelf_pick('表を青系デザインで美化して', entries) == '表をクラシックインディゴに美化する'
+    assert vp.shelf_pick('表を青系デザインで美化して', entries) == '表のデザインを美化する'
     assert vp.shelf_pick('KPIカードを作って', entries) == '表の上にKPIサマリーカードを作る'
     assert vp.shelf_pick('サマリーシートを作って', entries) == '表からモダンサマリーシートを作る'
 
@@ -4804,6 +4805,43 @@ def test_shelf_lint_general_words_20261014():
     assert any(lv == '注意' and '重複行' in m for lv, _n, m in vp.shelf_lint(text))
     assert any(lv == '注意' and n == '間違い' for lv, n, _m in vp.shelf_lint(text))
     assert vp.shelf_entries_from_text(sub('x', '階級: 基本'))[0]['tier'] == '基本'
+
+
+def test_shelf_lint_one_char_and_regex_words_20261021():
+    """依頼の語は字面で探す: 1 字（削・取）は「削除」「取引先」に当たり、正規表現の記号入りは当たらない＝止める。
+    10/21 Gemini が足した棚が `(空白|…).*(消|削|落|取|除去)` で「合計を取って」に撃たれていた。"""
+    import vbam_prefire as vp
+
+    def sub(name, *heads):
+        return f"Sub {name}()\r\n" + "".join(f"    ' {h}\r\n" for h in heads) + "End Sub\r\n"
+    text = (sub('正規表現', '依頼の語: (空白|スペース).*(消|削|取)|目に見えない')
+            + sub('一字', '依頼の語: 削|空白を取')
+            + sub('ふつう', '依頼の語: 前後の空白|余分な空白', '依頼の組: 空白+取,削'))   # 組の 1 字は組がそろって初めて点＝通す
+    got = vp.shelf_lint(text)
+    stops = {n for lv, n, _m in got if lv == '止める'}
+    assert stops == {'正規表現', '一字'}
+    assert any(n == '正規表現' and '「(空白」' in m and '記号' in m for _lv, n, m in got)
+    assert any(n == '一字' and '「削」が 1 字' in m for _lv, n, m in got)
+    # 1 字の語が字面で当たっていたこと（直す前の誤爆の形）
+    assert vp._ask_points('(空白|削|取|除去)', '合計を取って') == 1
+
+
+def test_batch_stdin_and_shell_help_20261021(monkeypatch, capsys):
+    """10/20 の「意図的に無視」の注記を足す直しで、batch - の `text = sys.stdin.read()` と shell の
+    `parser = build_parser()` が消えていた（NameError）。標準入力の batch と shell の help が通ることを見る。"""
+    import io
+    import argparse
+    import vba_manager as vm
+
+    class FakeIn(io.StringIO):
+        def isatty(self):
+            return True
+    monkeypatch.setattr(vm.sys, 'stdin', FakeIn("# コメントだけ\n\n"))
+    assert vm.cmd_batch(argparse.Namespace(posargs=['-'])) is True
+    answers = iter(['help', 'exit'])
+    monkeypatch.setattr('builtins.input', lambda _prompt='': next(answers))
+    vm.cmd_shell(argparse.Namespace())
+    assert 'usage' in capsys.readouterr().out.lower()
 
 
 def test_vba_picker_uses_sheet_aware_judge_20261014():

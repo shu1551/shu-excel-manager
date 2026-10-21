@@ -220,6 +220,16 @@ def build_parser():
     # list-forms [excel_file]
     p = sub.add_parser("list-forms")
     p.add_argument("posargs", nargs="*")
+    p.add_argument("--loaded", action="store_true", help="ロード中・表示中のフォームのみを表示")
+    p.add_argument("--json", action="store_true", help="結果をJSON形式で出力")
+    p.add_argument("--personal", action="store_true", help="個人用マクロブック (PERSONAL.XLSB) を対象にする")
+    p.add_argument("--addin", nargs="?", const=True, default=False,
+                   help="アドインブック (.xlam/.xla) を対象にする。複数ロード時は名前(一部可)を指定")
+    p.add_argument("--all", action="store_true", help="開いているすべてのブック・アドインを対象にする")
+
+    # active-form [excel_file] (ロード中のフォームを1行で即答)
+    p = sub.add_parser("active-form", aliases=["開いているフォーム"], help="開いている（ロード中）のフォームのみを1行で即答")
+    p.add_argument("posargs", nargs="*")
     p.add_argument("--json", action="store_true", help="結果をJSON形式で出力")
     p.add_argument("--personal", action="store_true", help="個人用マクロブック (PERSONAL.XLSB) を対象にする")
     p.add_argument("--addin", nargs="?", const=True, default=False,
@@ -1480,7 +1490,19 @@ def normalize_command_tokens(parser, tokens):
         if head.lower() == "help":
             return (toks[1:2] + ["--help"]) if len(toks) > 1 else ["--help"], notes
         alias = _COMMAND_ALIASES.get(head.lower())
-        if alias:
+        if head.lower() in ("procedures", "list-procedures", "proc-list"):
+            # procedures [モジュール名] → grep --module [モジュール名] "Sub|Function"
+            mod = None
+            pos = [t for t in toks[1:] if not t.startswith("-")]
+            if pos:
+                mod = pos[0]
+            rest_opts = [t for t in toks[1:] if t != mod]
+            toks = ["grep", "--regex", r"^\s*(Public |Private |Friend )?(Static )?(Sub|Function|Property (Get|Let|Set)) "]
+            if mod:
+                toks.extend(["--module", mod])
+            toks.extend(rest_opts)
+            notes.append(f"（{head} は無いので grep で Sub/Function/Property の宣言行を探しました）")
+        elif alias:
             if head.lower() == "shortcut" or head.lower() == "shortcuts":
                 toks = [t for t in toks if t != "--list"]
             toks = alias + toks[1:]
@@ -1629,7 +1651,7 @@ def parse_command_tokens(parser, tokens):
             call_log_write(toks[0] if toks else "?", argparse.Namespace(posargs=toks[1:4]), 0.0, False,
                            via=_call_via(), why=msg.splitlines()[0][:120])
         except Exception:
-            pass
+            pass  # 意図的に無視：引数解析失敗時の台帳記録エラーは本処理を妨げない
     return ns, msg, notes
 
 
@@ -1683,7 +1705,7 @@ def cmd_batch(args):
             try:
                 sys.stdin.reconfigure(encoding='utf-8')
             except Exception:
-                pass
+                pass  # 意図的に無視：一部環境でstdin再構成が未対応でもフォールバック継続
         text = sys.stdin.read()
     else:
         path = smart_path_resolve(src)
@@ -1768,7 +1790,7 @@ def cmd_shell(args):
         try:
             sys.stdin.reconfigure(encoding='utf-8')
         except Exception:
-            pass
+            pass  # 意図的に無視：対話セッション起動時のstdin再構成失敗でも処理継続
     parser = build_parser()
     table = _command_table()
     hist_cmds = []
@@ -1931,6 +1953,8 @@ def _raw_command_table():
         "list":              cmd_list,
         "list-modules":      cmd_list_modules,
         "list-forms":        cmd_list_forms,
+        "active-form":       cmd_active_form,
+        "開いているフォーム": cmd_active_form,
         "get":               cmd_get,
         "replace-procedure": cmd_replace_procedure,
         "patch-procedure":   cmd_patch_procedure,

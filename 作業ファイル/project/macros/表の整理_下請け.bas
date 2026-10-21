@@ -23,7 +23,7 @@ Function •\‚Ì–{•¶‚ÌÅIs(ws As Object) As Long
     Dim cnt() As Long, sumRow() As Boolean, s As String
     Set ur = ws.UsedRange
     •\‚Ì–{•¶‚ÌÅIs = ur.row + ur.rows.Count - 1
-    v = ur.value
+    v = ur.Value
     If Not IsArray(v) Then Exit Function
     ReDim cnt(1 To UBound(v, 1))
     ReDim sumRow(1 To UBound(v, 1))
@@ -82,14 +82,14 @@ Function •\‚Ì‰º‚Ì‡Œvs(ws As Object, lastRow As Long) As Long
         If r > Bottom Then Exit Function
         n = 0
         For c = ur.Column To ur.Column + ur.Columns.Count - 1
-            If VarType(ws.Cells(r, c).value) = vbString Then
-                s = Replace(Trim$(ws.Cells(r, c).value), " ", "")
+            If VarType(ws.Cells(r, c).Value) = vbString Then
+                s = Replace(Trim$(ws.Cells(r, c).Value), " ", "")
                 If s = "‡Œv" Or s = "‘Œv" Or s = "Œv" Then
                     •\‚Ì‰º‚Ì‡Œvs = r
                     Exit Function
                 End If
                 If Len(s) > 0 Then n = n + 1
-            ElseIf Not isEmpty(ws.Cells(r, c).value) Then
+            ElseIf Not isEmpty(ws.Cells(r, c).Value) Then
                 n = n + 1
             End If
         Next c
@@ -134,10 +134,10 @@ Sub •\‚Ìdã‚°()
         End With
     End If
     For c = r.Column To r.Column + r.Columns.Count - 1
-        hname = CStr(r.Worksheet.Cells(r.row, c).value)
+        hname = CStr(r.Worksheet.Cells(r.row, c).Value)
         nNum = 0: nDate = 0: nAll = 0
         For rr = r.row + 1 To r.row + r.rows.Count - 1
-            v = r.Worksheet.Cells(rr, c).value
+            v = r.Worksheet.Cells(rr, c).Value
             If Not isEmpty(v) And Not IsError(v) Then
                 nAll = nAll + 1
                 If VarType(v) = vbDate Then
@@ -176,12 +176,12 @@ Function ƒZƒ‹‚Ìš(ByVal v As Variant) As String
     Dim x As Variant
     If IsObject(v) Then
         If v Is Nothing Then Exit Function
-        If typeName(v) <> "Range" Then
+        If TypeName(v) <> "Range" Then
             On Error Resume Next
             ƒZƒ‹‚Ìš = CStr(v)
             Exit Function
         End If
-        x = v.Cells(1, 1).value
+        x = v.Cells(1, 1).Value
     Else
         x = v
     End If
@@ -210,8 +210,8 @@ Function ‰E‚Ìo‚µæ(ws As Object, ByVal hdrRow As Long, ByVal Šù’è—ñ As Long, By
         ‡‚¤ = True
         For k = 0 To UBound(ˆó)
             If ˆó(k) = "*" Then
-                If ƒZƒ‹‚Ìš(ws.Cells(hdrRow, c + k).value) = "" Then ‡‚¤ = False
-            ElseIf ƒZƒ‹‚Ìš(ws.Cells(hdrRow, c + k).value) <> ˆó(k) Then
+                If ƒZƒ‹‚Ìš(ws.Cells(hdrRow, c + k).Value) = "" Then ‡‚¤ = False
+            ElseIf ƒZƒ‹‚Ìš(ws.Cells(hdrRow, c + k).Value) <> ˆó(k) Then
                 ‡‚¤ = False
             End If
             If Not ‡‚¤ Then Exit For
@@ -250,9 +250,9 @@ End Function
 ' Œ‹‡‚Ì‰E‘¤E‰º‘¤‚ğ‹ó‚ÆŒ©‚Ä•\‚Ì‰E’[‚ğæ‚èˆá‚¦A”õl‚Ì—ñ‚ğˆê——‚Ì‘‚«o‚µæ‚É‚µ‚ÄÁ‚µ‚Ä‚¢‚½jB
 Function Œ©o‚µ‚Ìš(ByVal c As Object) As String
     If c.MergeCells Then
-        Œ©o‚µ‚Ìš = Trim$(ƒZƒ‹‚Ìš(c.MergeArea.Cells(1, 1).value))
+        Œ©o‚µ‚Ìš = Trim$(ƒZƒ‹‚Ìš(c.MergeArea.Cells(1, 1).Value))
     Else
-        Œ©o‚µ‚Ìš = Trim$(ƒZƒ‹‚Ìš(c.value))
+        Œ©o‚µ‚Ìš = Trim$(ƒZƒ‹‚Ìš(c.Value))
     End If
 End Function
 
@@ -265,7 +265,7 @@ Function Œ©o‚µ‚Ì‰º‚Ì’i(ByVal ws As Object, ByVal hdrRow As Long, ByVal c1 As Lo
         If ws.Cells(hdrRow + 1, c).MergeCells Then
             If ws.Cells(hdrRow + 1, c).MergeArea.row = hdrRow Then vMerge = True
         Else
-            v = ws.Cells(hdrRow + 1, c).value
+            v = ws.Cells(hdrRow + 1, c).Value
             If ƒZƒ‹‚Ìš(v) <> "" Then
                 If IsNumeric(v) Or IsDate(v) Then Exit Function
                 txt = txt + 1
@@ -284,8 +284,8 @@ Sub ƒsƒ{ƒbƒg‚ÌWŒv‚Ìs‚ğŠO‚·(ByVal pt As Object, ByVal src As Object)
     ReDim isSum(2 To src.rows.Count)
     For r = 2 To src.rows.Count
         For c = 1 To src.Columns.Count
-            If VarType(src.Cells(r, c).value) = vbString Then
-                If WŒv‚ÌŒê‚©(src.Cells(r, c).value) Then isSum(r) = True: Exit For
+            If VarType(src.Cells(r, c).Value) = vbString Then
+                If WŒv‚ÌŒê‚©(src.Cells(r, c).Value) Then isSum(r) = True: Exit For
             End If
         Next c
     Next r
@@ -299,7 +299,7 @@ Sub ƒsƒ{ƒbƒg‚ÌWŒv‚Ìs‚ğŠO‚·(ByVal pt As Object, ByVal src As Object)
             blankDetail = False
             If k > 0 Then
                 For r = 2 To src.rows.Count
-                    If Not isSum(r) And ƒZƒ‹‚Ìš(src.Cells(r, k).value) = "" Then
+                    If Not isSum(r) And ƒZƒ‹‚Ìš(src.Cells(r, k).Value) = "" Then
                         If Application.WorksheetFunction.CountA(src.rows(r)) > 0 Then blankDetail = True: Exit For
                     End If
                 Next r
@@ -321,8 +321,8 @@ End Sub
 Function WŒv‚Ìs‚©(ByVal ws As Object, ByVal r As Long, ByVal c1 As Long, ByVal c2 As Long) As Boolean
     Dim c As Long
     For c = c1 To c2
-        If VarType(ws.Cells(r, c).value) = vbString Then
-            If WŒv‚ÌŒê‚©(ws.Cells(r, c).value) Then WŒv‚Ìs‚© = True: Exit Function
+        If VarType(ws.Cells(r, c).Value) = vbString Then
+            If WŒv‚ÌŒê‚©(ws.Cells(r, c).Value) Then WŒv‚Ìs‚© = True: Exit Function
         End If
     Next c
 End Function
@@ -339,7 +339,7 @@ Function –¾×‚Ì•\‚Ì”ÍˆÍ(ByVal ws As Object, ByRef why As String) As Object
     For r = ur.row To ur.row + ur.rows.Count - 1
         filled = 0: txt = 0
         For c = ur.Column To ur.Column + ur.Columns.Count - 1
-            v = ws.Cells(r, c).value
+            v = ws.Cells(r, c).Value
             If ƒZƒ‹‚Ìš(v) <> "" Then
                 filled = filled + 1
                 If VarType(v) = vbString And Not IsNumeric(v) Then txt = txt + 1
@@ -540,7 +540,7 @@ Function —Š‚İ‚©‚çƒsƒ{ƒbƒg‚Ì—ñ(ByVal ws As Worksheet, ByVal Œ©o‚µs As Long, ByV
         ' Œ^: –{•¶‚Ì 8 Š„ˆÈã‚ª”i“ú•t‚Íœ‚­j‚È‚ç”‚Ì—ñ
         ” = 0: š = 0
         For r = Œ©o‚µs + 1 To ÅIs
-            v = ws.Cells(r, c).value
+            v = ws.Cells(r, c).Value
             If Not IsError(v) And Not isEmpty(v) Then
                 If Len(Trim$(CStr(v))) > 0 Then
                     š = š + 1
@@ -702,8 +702,6 @@ Function ƒsƒ{ƒbƒg‚ÌŒê‚È‚ç‚µ(ByVal •¶ As String) As String
     ƒsƒ{ƒbƒg‚ÌŒê‚È‚ç‚µ = s
 End Function
 
-
-
 ' æŒ‚‚¿iExcelƒRƒ“ƒ{Eseirij‚ª“n‚µ‚½—Š‚İ‚Ì•¶i2026-10-09jB’I‚©‚çl‚ª’¼‚ÉŒ‚‚Á‚½‚Æ‚«EƒRƒ“ƒ{“¹‹ï‚ª–³‚¢ƒuƒbƒN‚Å‚Í ""
 Function æŒ‚‚¿‚Ì—Š‚İ‚Ì•¶() As String
     On Error Resume Next
@@ -775,7 +773,7 @@ Function —Š‚İ‚ÅƒOƒ‰ƒt‚ğì‚é(ByVal ws As Worksheet, ByVal —Š As String, ByVal í—
     For r = ã To ã + ur.rows.Count - 1
         ” = 0: š = 0
         For c = ¶ To ‰E
-            v = ws.Cells(r, c).value
+            v = ws.Cells(r, c).Value
             If IsNumeric(v) And Trim(ƒZƒ‹‚Ìš(v)) <> "" Then
                 ” = ” + 1
             ElseIf Trim(ƒZƒ‹‚Ìš(v)) <> "" Then
@@ -808,7 +806,7 @@ Function —Š‚İ‚ÅƒOƒ‰ƒt‚ğì‚é(ByVal ws As Worksheet, ByVal —Š As String, ByVal í—
         If Left$(Œó•â, Len("s‚É‚·‚éŒ©o‚µ‚ª")) = "s‚É‚·‚éŒ©o‚µ‚ª" And ’l—ñ = 0 Then
             š = 0
             For c = ¶ To ‰E
-                v = ws.Cells(Œ©o‚µs + 1, c).value
+                v = ws.Cells(Œ©o‚µs + 1, c).Value
                 If Not IsError(v) Then
                     If VarType(v) = vbString And Len(Trim$(ƒZƒ‹‚Ìš(v))) > 0 Then
                         If Not IsNumeric(v) Then š = š + 1
@@ -834,15 +832,15 @@ Function —Š‚İ‚ÅƒOƒ‰ƒt‚ğì‚é(ByVal ws As Worksheet, ByVal —Š As String, ByVal í—
     For r = Œ©o‚µs + 1 To ÅIs
         WŒvs = False
         For c = ¶ To ‰E
-            If WŒv‚ÌŒê‚©(Trim$(ƒZƒ‹‚Ìš(ws.Cells(r, c).value))) Then WŒvs = True: Exit For
+            If WŒv‚ÌŒê‚©(Trim$(ƒZƒ‹‚Ìš(ws.Cells(r, c).Value))) Then WŒvs = True: Exit For
         Next c
-        –¼1 = Trim$(ƒZƒ‹‚Ìš(ws.Cells(r, €–Ú—ñ).value))
+        –¼1 = Trim$(ƒZƒ‹‚Ìš(ws.Cells(r, €–Ú—ñ).Value))
         Œ®1 = 0
-        If €–Ú—ñ = Œ—ñ And VarType(ws.Cells(r, €–Ú—ñ).value) = vbDate Then
-            Œ®1 = Year(ws.Cells(r, €–Ú—ñ).value) * 100 + Month(ws.Cells(r, €–Ú—ñ).value)
-            –¼1 = Year(ws.Cells(r, €–Ú—ñ).value) & "”N" & Month(ws.Cells(r, €–Ú—ñ).value) & "Œ"
+        If €–Ú—ñ = Œ—ñ And VarType(ws.Cells(r, €–Ú—ñ).Value) = vbDate Then
+            Œ®1 = Year(ws.Cells(r, €–Ú—ñ).Value) * 100 + Month(ws.Cells(r, €–Ú—ñ).Value)
+            –¼1 = Year(ws.Cells(r, €–Ú—ñ).Value) & "”N" & Month(ws.Cells(r, €–Ú—ñ).Value) & "Œ"
         End If
-        v = ws.Cells(r, ’l—ñ).value
+        v = ws.Cells(r, ’l—ñ).Value
         If Not WŒvs And Len(–¼1) > 0 And Not IsError(v) Then
             If Len(Trim$(ƒZƒ‹‚Ìš(v))) > 0 And (WŒv = xlCount Or IsNumeric(v)) Then
                 For i = 1 To n
@@ -1041,7 +1039,7 @@ Function —Š‚İ‚ÌŒ‚Ì—ñ(ByVal ws As Worksheet, ByVal Œ©o‚µs As Long, ByVal ¶ As
     For c = ¶ To ‰E
         “ú = 0: š = 0
         For r = Œ©o‚µs + 1 To ÅIs
-            v = ws.Cells(r, c).value
+            v = ws.Cells(r, c).Value
             If Not IsError(v) And Not isEmpty(v) Then
                 š = š + 1
                 If VarType(v) = vbDate Then “ú = “ú + 1

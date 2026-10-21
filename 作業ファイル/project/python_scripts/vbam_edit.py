@@ -4389,6 +4389,24 @@ def cmd_form_read(args):
         if out != "NOFORM":
             break
     if out == "NOFORM":
+        # 表示されていないが、フォーム自体がブックに存在するか確認（静的確認なら form-inspect へ自動フォールバック）
+        found_form = None
+        for b in owners:
+            try:
+                for c in b.VBProject.VBComponents:
+                    if int(c.Type) == 3 and c.Name.lower() == form_name.lower():
+                        found_form = c.Name
+                        break
+                if found_form:
+                    break
+            except Exception:
+                continue
+        if found_form:
+            print(f"（'{form_name}' は表示されていません。静的な部品定義（form-inspect）を表示します）\n")
+            from vbam_form2vba import cmd_form_inspect
+            setattr(args, 'posargs', [found_form])
+            return cmd_form_inspect(args)
+
         print(f"エラー: '{form_name}' は表示されていません（表示中のフォームは form-click --list ではなく close-form --list で見られます）")
         return False
     for ln in out.split("\n"):
@@ -5113,8 +5131,9 @@ def _clean_cond_formats(xl, ws, target_rng=None):
     for idx in sorted(to_delete_idx, reverse=True):
         try:
             fc_coll.Item(idx).Delete()
-        except Exception:
-            pass
+        except Exception as _e:
+            import sys
+            print(f'（条件付き書式の削除をスキップしました (index={idx}): {_e}）', file=sys.stderr)
 
     after_info = _inspect_cond_formats(ws, target_rng)
     after_count = after_info["total_count"]
