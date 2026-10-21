@@ -4975,7 +4975,7 @@ NextMlo:
         "MATCH(" & keyRef & "," & mloName & "[" & masterKeyColName & "],0)),""未登録"")"
 
     On Error Resume Next
-    nameCol.DataBodyRange.Formula = formulaStr
+    nameCol.DataBodyRange.Formula = formulaStr ' 書き戻し: 新しい所
     On Error GoTo 0
 
     Exit Sub
@@ -7261,7 +7261,7 @@ NextRow:
     Dim targetRange As Range
     Set targetRange = ws.Range(ws.Cells(dataStart, insCol), ws.Cells(lastDataRow, insCol))
     targetRange.NumberFormat = srcFmt
-    targetRange.Formula = formArr
+    targetRange.Formula = formArr ' 書き戻し: 新しい所
 
     ' 足した列の見た目は共通の下請けに任せる。見出しは元の表の見出しをまねる（2026-09-23）
     Dim 仕上げ末 As Long
@@ -7473,7 +7473,7 @@ skipS2:
     Dim targetRange As Range
     Set targetRange = ws.Range(ws.Cells(bodyFirst, insCol), ws.Cells(urLastRow, insCol))
     targetRange.NumberFormat = "0.0%"
-    targetRange.Formula = formArr
+    targetRange.Formula = formArr ' 書き戻し: 新しい所
 
     ' 足した列の見た目は共通の下請けに任せる。見出しは元の表の見出しをまねる（2026-09-23）
     Dim 仕上げ末 As Long
@@ -7728,7 +7728,7 @@ NextRow:
     If colE = colD + 1 Then
         Dim targetBoth As Range
         Set targetBoth = ws.Range(ws.Cells(hdrRow + 1, colD), ws.Cells(lastRow, colE))
-        targetBoth.Formula = formArr
+        targetBoth.Formula = formArr ' 書き戻し: 新しい所
     Else
         Dim formArrD() As Variant, formArrE() As Variant
         ReDim formArrD(1 To nDataRows, 1 To 1)
@@ -7738,8 +7738,8 @@ NextRow:
             formArrD(idx, 1) = formArr(idx, 1)
             formArrE(idx, 1) = formArr(idx, 2)
         Next idx
-        targetD.Formula = formArrD
-        targetE.Formula = formArrE
+        targetD.Formula = formArrD ' 書き戻し: 新しい所
+        targetE.Formula = formArrE ' 書き戻し: 新しい所
     End If
 
     ' 足した列の見た目は共通の下請けに任せる。見出しは元の表の見出しをまねる（2026-09-23）
@@ -10287,7 +10287,7 @@ Sub ピボットを値だけの表に変える()
 
         Dim destCell As Range
         Set destCell = ws.Cells(rng.row, rng.Column)
-        destCell.Resize(UBound(arr, 1), UBound(arr, 2)).Value = arr
+        destCell.Resize(UBound(arr, 1), UBound(arr, 2)).Value = arr ' 書き戻し: 新しい所
         For i2 = 1 To UBound(arr, 1)
             For j2 = 1 To UBound(arr, 2)
                 destCell.Cells(i2, j2).NumberFormat = 形(i2, j2)
@@ -10793,7 +10793,7 @@ Sub 選んだ値に合う行を抜き出す()
     For c = 1 To nCols
         hdrArr(1, c) = urArr(relHdr, c)
     Next c
-    sh.Range(sh.Cells(2, 1), sh.Cells(2, nCols)).Value2 = hdrArr
+    sh.Range(sh.Cells(2, 1), sh.Cells(2, nCols)).Value2 = hdrArr ' 書き戻し: 新しい所
 
     ' 合致データをメモリ配列にパッキングして一撃代入
     If 当たり > 0 Then
@@ -10806,7 +10806,7 @@ Sub 選んだ値に合う行を抜き出す()
                 outArr(i, c) = urArr(srcR, c)
             Next c
         Next i
-        sh.Range(sh.Cells(3, 1), sh.Cells(当たり + 2, nCols)).Value2 = outArr
+        sh.Range(sh.Cells(3, 1), sh.Cells(当たり + 2, nCols)).Value2 = outArr ' 書き戻し: 新しい所
         sh.Range(sh.Cells(2, 1), sh.Cells(当たり + 2, nCols)).Borders.LineStyle = xlContinuous
     End If
 
@@ -12377,10 +12377,10 @@ Sub 表の上にKPIサマリーカードを作る(Optional ByVal 勇退 As Boolean = True)
         formulaRange = colLetter & (hdrRow + 1) & ":" & colLetter & dataEndRow
 
         If numTypes(k) = "AVG" Then
-            valRange.Formula = "=AVERAGE(" & formulaRange & ")"
+            valRange.Formula = "=AVERAGE(" & formulaRange & ")" ' 書き戻し: 新しい所
             valRange.NumberFormatLocal = "0.0%"
         Else
-            valRange.Formula = "=SUM(" & formulaRange & ")"
+            valRange.Formula = "=SUM(" & formulaRange & ")" ' 書き戻し: 新しい所
             ' 「数量」「人数」まで件にしない（件数の列だけ）
             If InStr(kTitle, "件数") > 0 Then
                 valRange.NumberFormatLocal = "#,##0 ""件"""
@@ -12861,11 +12861,18 @@ Sub 選んだ金額列に消費税と税込を足す()
         End If
     Next i
 
-    ' 選んだ列の右に2列挿入
+    ' 選んだ列の右に2列挿入（既に消費税・税込列があれば挿入せず更新）
     Dim colTax As Long, colTotal As Long
     colTax = selCol + 1
     colTotal = selCol + 2
-    ws.Columns(colTax).Resize(, 2).Insert Shift:=xlToRight
+    Dim needInsert As Boolean
+    needInsert = True
+    If ws.Cells(hdrRow, colTax).Value = "消費税" And ws.Cells(hdrRow, colTotal).Value = "税込" Then
+        needInsert = False
+    End If
+    If needInsert Then
+        ws.Columns(colTax).Resize(, 2).Insert Shift:=xlToRight
+    End If
 
     ws.Cells(hdrRow, colTax).Value = "消費税"
     ws.Cells(hdrRow, colTotal).Value = "税込"
@@ -12873,7 +12880,7 @@ Sub 選んだ金額列に消費税と税込を足す()
     Dim outRange As Range
     Set outRange = ws.Range(ws.Cells(hdrRow + 1, colTax), ws.Cells(lastRow, colTotal))
     outRange.NumberFormatLocal = sFmt
-    outRange.Value2 = taxArr
+    outRange.Value2 = taxArr ' 書き戻し: 新しい所
 
     ' 見た目の仕上げ
     Set m仕上げ手本 = ws.Cells(hdrRow, selCol)
@@ -12913,10 +12920,17 @@ Sub 選んだ日付列に曜日を足す()
     lastRow = 表の本文の最終行(ws)
     If lastRow < hdrRow + 1 Then Exit Sub
 
-    ' 選んだ列の右に1列挿入
+    ' 選んだ列の右に1列挿入（既に曜日列があれば挿入せず更新）
     Dim colWeek As Long
     colWeek = selCol + 1
-    ws.Columns(colWeek).Insert Shift:=xlToRight
+    Dim needInsert As Boolean
+    needInsert = True
+    If ws.Cells(hdrRow, colWeek).Value = "曜日" Then
+        needInsert = False
+    End If
+    If needInsert Then
+        ws.Columns(colWeek).Insert Shift:=xlToRight
+    End If
 
     ws.Cells(hdrRow, colWeek).Value = "曜日"
 
@@ -13060,7 +13074,7 @@ Sub 選んだ2列を1列につなげる()
     ws.Columns(outCol).Insert Shift:=xlToRight
 
     ws.Cells(hdrRow, outCol).Value = newHdr
-    ws.Range(ws.Cells(hdrRow + 1, outCol), ws.Cells(lastRow, outCol)).Value2 = outArr
+    ws.Range(ws.Cells(hdrRow + 1, outCol), ws.Cells(lastRow, outCol)).Value2 = outArr ' 書き戻し: 新しい所
 
     ' 見た目の仕上げ
     Set m仕上げ手本 = ws.Cells(hdrRow, col1)

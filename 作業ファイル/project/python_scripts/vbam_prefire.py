@@ -161,6 +161,22 @@ def _combo_groups(combo):
 
 
 _ASK_REGEX_RE = re.compile(r'[()\[\]{}*+?^$\\]|\.\*')
+_BULK_WRITE_PAT = re.compile(
+    r'^(?:(?:\s*If\b.*?\bThen\s+)?)(?!\s*If\b)'
+    r'(?P<lhs>[A-Za-z0-9_一-龠ぁ-んァ-ヶ\.\(\)]+?)'
+    r'\.(?P<prop>Value2?|Formula2?)\s*=\s*(?P<rhs>.+)$',
+    re.IGNORECASE
+)
+_BULK_EXCLUDE_LHS = re.compile(
+    r'(?:^|[\s\.])Cells\s*\([^()]*(?:\([^()]*\)[^()]*)*\)$'
+    r'|^(?:c|cel|cell|mc|newCel|tgt)$',
+    re.IGNORECASE
+)
+_BULK_SINGLE_RANGE = re.compile(
+    r'^(?:[A-Za-z0-9_一-龠ぁ-んァ-ヶ]+\.)?Range\s*\(\s*"[A-Za-z]+[0-9]+"\s*\)$',
+    re.IGNORECASE
+)
+_BULK_OK_MARK_RE = re.compile(r"'\s*書き戻し\s*[:：]\s*新しい所")
 
 
 def _only_general(word):
@@ -216,6 +232,45 @@ def shelf_lint(text):
     for w, names in seen.items():
         if len(set(names)) >= 2:
             out.append(('注意', '・'.join(sorted(set(names))), f"依頼の語「{w}」が {len(set(names))} 本の棚にある"))
+
+    # 範囲への丸ごと代入行（既存の表の数式・文字の数字を潰す穴）の検査（2026-10-22 指示書032）
+    curr_sub = None
+    for ln in str(text or '').splitlines():
+        m_sub = _REG_SUB_RE.match(ln.strip())
+        if m_sub:
+            curr_sub = m_sub.group(1)
+            continue
+        if not curr_sub:
+            continue
+        stripped = ln.strip()
+        if not stripped or stripped.startswith("'"):
+            continue
+
+        c_idx = ln.find("'")
+        code = ln[:c_idx].strip() if c_idx >= 0 else stripped
+        comment = ln[c_idx:] if c_idx >= 0 else ""
+
+        if _BULK_OK_MARK_RE.search(comment):
+            continue
+
+        m = _BULK_WRITE_PAT.match(code)
+        if not m:
+            continue
+        if re.search(r'^\s*If\b.*?Then\s*$', code, re.IGNORECASE):
+            continue
+
+        lhs = m.group('lhs').strip()
+        rhs = m.group('rhs').strip()
+
+        if _BULK_EXCLUDE_LHS.search(lhs):
+            continue
+        if _BULK_SINGLE_RANGE.match(lhs) and not re.search(r'\bArray\s*\(', rhs, re.IGNORECASE):
+            continue
+        if code.startswith("スピルか ="):
+            continue
+
+        out.append(('止める', curr_sub, f"範囲への丸ごと代入「{code}」（既存の範囲なら変えたセルだけ書く、新しい所なら末尾に ' 書き戻し: 新しい所）"))
+
     return out
 
 
