@@ -4177,6 +4177,20 @@ def _learn_form_geometry(wb, form_name):
     return geo
 
 
+def _form_owner_is_active_book(form_name):
+    """前に出ているブックが、form_name のフォームを持つブック（アドインの元）か。分からなければ False。
+    Designer には触らない（表示中に触るとフォームがクリックを受けなくなる）。名前を並べて見るだけ"""
+    try:
+        import win32com.client
+        xl = win32com.client.GetActiveObject('Excel.Application')
+        aw = xl.ActiveWorkbook
+        if aw is None:
+            return False
+        return any(c.Name == form_name and c.Type == 3 for c in aw.VBProject.VBComponents)
+    except Exception:
+        return False
+
+
 def cmd_form_click(args):
     """表示中の UserForm のボタンを外から押す: form-click <フォーム名> <コントロール名か見出し> [--learn]
 
@@ -4219,6 +4233,14 @@ def cmd_form_click(args):
             return False
         with open(path, encoding='utf-8') as f:
             geo = json.load(f)
+    if not getattr(args, 'here_flag', False) and _form_owner_is_active_book(form_name):
+        # フォームの多くは前に出ているブックを書き換える（シートの削除・並べ替え・タブの色…）。フォームの持ち主
+        # （アドインの元のブック）が前に出たまま押すと、道具自身のシートが壊れる（2026-10-22: ワークシート一覧の
+        # 削除ボタンを秀コンボ.xlsm で 2 回押して目次とボタン 3 つが消え、空のシートを「目次」に改名して報告しなかった）
+        print(f"エラー: 前に出ているのは {form_name} の持ち主のブックです。押しません。"
+              "試しは新しいブック（または試し用のブック）を前に出してから撃ってください"
+              "（シートを書き換えないボタンだと分かっていて押すなら --here）")
+        return False
     hit = geo.get(target)
     if hit is None:
         cands = [k for k, v in geo.items() if v[4] == target] or [k for k, v in geo.items() if target and target in v[4]]

@@ -149,6 +149,7 @@ from vbam_lineage import *  # noqa: F401,F403  (2026-09-17 系譜と閉じたブ
 from vbam_audit import *  # noqa: F401,F403  (2026-09-17 数式・データ総合診断エンジン)
 from vbam_flow import *  # noqa: F401,F403  (2026-10-01 マクロの中の流れを Mermaid の流れ図に・flow)
 from vbam_structure import cmd_structure, cmd_no_values, no_values_refusal  # noqa: F401  (2026-10-01 値を出さずにブックの構造だけ・structure)
+from vbam_recipes import cmd_recipe_save  # noqa: F401  (2026-10-22 業務レシピの保存・更新・削除)
 # AI の機能（agent・set-key・clear-key）は vbam_agent 一式があるときだけ読む（2026-09-12・本体だけでも動く形に）。
 # 黙って飛ばすのは「ファイルが無い」ときだけ。中身に誤りがあれば今まで通り例外で止まる
 import importlib.util as _ilu
@@ -711,6 +712,8 @@ def build_parser():
                    help="空のブックが開いていても撃つ")
     p.add_argument("--no-check", action="store_true", dest="no_check",
                    help="焼く前の先撃ちの照合（問題集を VBA と Python の写しに撃って食い違いを止める）を飛ばす")
+    p.add_argument("--no-test", action="store_true", dest="no_test",
+                   help="焼く前の gate（コピーでテスト Sub を全部撃つ）を飛ばす")
     p = sub.add_parser("shelf",
                        help="棚（表の整理）の目録を1手で返す。--grep 語で絞る（2026-09-23）")
     p.add_argument("posargs", nargs="*")
@@ -734,6 +737,10 @@ def build_parser():
                         "結果の式は値にしてから動かす（元の表を消すと、元を指す式が狂うため）")
     p.add_argument("--input-text", dest="input_text", action="append", default=None,
                    help="窓ありのマクロの InputBox にこの値を入れて OK で確定（複数回指定で出た順に1つずつ）")
+    p = sub.add_parser("recipe-save",
+                       help="AIが業務レシピを保存・更新・削除する（レシピ.tsvに追記・差替。2026-10-22）")
+    p.add_argument("posargs", nargs="+", help="<レシピ名> [棚名...]")
+    p.add_argument("--delete", action="store_true", help="指定したレシピを削除する")
     p = sub.add_parser("trace",
                        help="式の元をシートをまたいでたどる：番地・式・値の木。範囲は先頭と末尾と件数に畳み、"
                             "循環は印を付けて止める。何も書き換えない（2026-09-23）")
@@ -1143,6 +1150,8 @@ def build_parser():
                        help="表示中の UserForm のボタンを外から押す（窓にクリックのメッセージを直接送る。位置はコントロールの設計値）")
     p.add_argument("posargs", nargs="*")
     p.add_argument("--learn", action="store_true", dest="learn_flag", help="フォームが閉じているうちに位置を控える")
+    p.add_argument("--here", action="store_true", dest="here_flag",
+                   help="フォームの持ち主のブックが前に出ていても押す（シートを書き換えないボタンだけ。2026-10-22）")
     p = sub.add_parser("form-read",    # form-read <フォーム名>
                        help="表示中の UserForm の中身を読む（入力欄の文字・リストの項目と選択・チェックの状態・見出し）。何も書き換えない")
     p.add_argument("posargs", nargs="*")
@@ -2021,6 +2030,7 @@ def _raw_command_table():
         "更新登録":            cmd_register_addin,
         "shelf":             cmd_shelf,
         "shelf-run":         cmd_shelf_run,
+        "recipe-save":       cmd_recipe_save,
         "trace":             cmd_trace,
         "materials":         cmd_materials,
         "snapshot":          cmd_snapshot,

@@ -327,4 +327,93 @@ def compose_recipe_request(name, supplement=''):
 _RECIPE_MAX_TURNS = 6
 
 
-__all__ = ['SHEET_RECIPES', 'recipe_when', 'compose_recipe_request']
+# ----------------------------------------------------------------
+# 業務レシピ（VBA側）の保存・更新・削除（2026-10-22）
+# ----------------------------------------------------------------
+
+def get_recipes_tsv_path():
+    appdata = os.environ.get('APPDATA', '')
+    return os.path.join(appdata, '秀コンボ', 'レシピ.tsv')
+
+
+def load_recipes_tsv(path=None):
+    if path is None:
+        path = get_recipes_tsv_path()
+    if not os.path.exists(path):
+        return []
+    with open(path, 'rb') as f:
+        raw = f.read()
+    if not raw:
+        return []
+    if raw.startswith(b'\xef\xbb\xbf'):
+        text = raw[3:].decode('utf-8', errors='replace')
+    else:
+        try:
+            text = raw.decode('utf-8')
+        except UnicodeDecodeError:
+            text = raw.decode('cp932', errors='replace')
+    return [ln.strip('\r') for ln in text.split('\n') if ln.strip('\r')]
+
+
+def save_recipes_tsv(path, lines):
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    content = '\r\n'.join(lines) + '\r\n'
+    with open(path, 'w', encoding='cp932', errors='replace') as f:
+        f.write(content)
+
+
+def save_recipe(name, steps, path=None, delete=False):
+    if path is None:
+        path = get_recipes_tsv_path()
+    name = str(name).strip().replace('レシピ：', '')
+    if not name:
+        return False, "レシピ名が空です"
+    lines = load_recipes_tsv(path)
+    kept = [ln for ln in lines if ln.split('\t')[0] != name]
+    if delete or not steps:
+        save_recipes_tsv(path, kept)
+        return True, f"レシピ「{name}」を削除しました"
+    # 扱いは全段「元」＝1 段目と同じシートで撃つ（見本レシピと同じ）。「続き」はその時前に出ているシートで撃つので、
+    # 点検の一覧など新しいシートを作る棚の後ろに付くと、次の段が元の表でなく一覧に当たる（2026-10-22 点検）
+    new_lines = [f"{name}\t{step}\t\t\t元\t" for step in steps]
+    save_recipes_tsv(path, kept + new_lines)
+    return True, f"レシピ「{name}」を保存しました（{len(steps)}段）"
+
+
+def cmd_recipe_save(args):
+    """AIが業務レシピを保存・更新・削除する: recipe-save <名> <棚1> [棚2 ...] [--delete]"""
+    pos = list(args.posargs or [])
+    if not pos:
+        print("使い方: recipe-save <レシピ名> <棚名1> [棚名2 ...] [--delete]")
+        return False
+    name = pos[0]
+    steps = pos[1:]
+    is_delete = getattr(args, 'delete', False)
+    if not is_delete and not steps:
+        print("エラー: 棚の名前を1つ以上指定してください（削除する場合は --delete）")
+        return False
+    if not is_delete:
+        # 棚に無い名前は保存しない（撃つときに初めて「棚にありません」で止まる＝保存した AI が気づけない。2026-10-22 点検）
+        try:
+            from vbam_core import get_workbook
+            from vbam_view import _shelf_source, _parse_shelf_catalog
+            xl, _wb = get_workbook(None)
+            owner, lines = _shelf_source(xl)
+        except Exception:
+            owner, lines = None, None
+        if not owner:
+            print("エラー: 棚（秀コンボ）が開いている Excel に見つからないので、棚の名前を確かめられません。保存していません")
+            return False
+        have = {r['name'] for r in _parse_shelf_catalog(lines)}
+        missing = [s for s in steps if s not in have]
+        if missing:
+            print("エラー: 棚に無い名前があります（保存していません）: " + "・".join(missing))
+            print("  名前は shelf --grep 語 で確かめてください")
+            return False
+    ok, msg = save_recipe(name, steps, delete=is_delete)
+    print(msg)
+    return ok
+
+
+__all__ = ['SHEET_RECIPES', 'recipe_when', 'compose_recipe_request',
+           'get_recipes_tsv_path', 'load_recipes_tsv', 'save_recipes_tsv', 'save_recipe', 'cmd_recipe_save']
