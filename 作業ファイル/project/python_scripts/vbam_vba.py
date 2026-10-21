@@ -1355,6 +1355,7 @@ _CAPABILITIES = {
         ("unstick", "Excel の詰まりを解除（リセット確認窓［OK］・セル編集Esc）"),
         ("import-module", "モジュール取り込み（.bas/.cls/.frm）"),
         ("close-vbe", "VBE ウィンドウを閉じる"),
+        ("recipe-save", "業務レシピの保存・更新・削除（レシピ.tsv）"),
     ],
     "destructive": [
         ("delete-procedure", "プロシージャ削除（確認あり）"),
@@ -7549,6 +7550,46 @@ def _shelf_parity_gate(xl, wb):
     return True
 
 
+_TEST_SUB_RE = re.compile(r'^\s*(?:Public\s+)?Sub\s+(?:テスト|test)[^\s(]*\s*\(\s*\)', re.I | re.M)
+
+
+def _has_test_subs(wb):
+    """ブックに「テスト」/test 始まりの引数なし Sub が 1 本でもあるか（gate が撃つ物があるか）。"""
+    try:
+        for comp in wb.VBProject.VBComponents:
+            cm = comp.CodeModule
+            n = cm.CountOfLines
+            if n and _TEST_SUB_RE.search(cm.Lines(1, n)):
+                return True
+    except Exception:
+        return False
+    return False
+
+
+def _test_gate_before_burn(wb):
+    """焼く前の関所その 2（2026-10-21 総点検）: コピーで gate（構文・全体コンパイル・テスト Sub 全部）を撃ち、落ちたら焼かない。
+    10/16〜20 の直しで、テストは用意されていたのに回されず、性能の遅れと書式の決まりの食い違いが 2 本落ちたまま焼かれていた。
+    テスト Sub の無いブックは gate が「合否を言えない」で必ず落ちるので飛ばす。True＝焼いてよい"""
+    import contextlib
+    import io
+    if not _has_test_subs(wb):
+        print("テストの関所: テスト Sub が無いブックなので飛ばしました")
+        return True
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        ok = cmd_gate(argparse.Namespace(posargs=[str(wb.Name)], json=False, timeout=180, keep=False,
+                                         addins=False, module=None))
+    lines = [ln for ln in buf.getvalue().splitlines() if ln.startswith(('判定:', '    ✗', '結果:'))]
+    if ok:
+        print("テストの関所: 通りました")
+        print("\n".join("  " + ln for ln in lines))
+        return True
+    print("エラー: テストの関所（gate）で止まりました。焼きません")
+    print("\n".join("  " + ln for ln in lines))
+    print("  直してから撃ち直してください。分かって焼くなら --no-test")
+    return False
+
+
 def cmd_register_addin(args):
     """`register-addin [ブック]`: 開いているブックを .xlam に焼き直してアドインに登録し直す（2026-09-23）。
 
@@ -7593,6 +7634,8 @@ def cmd_register_addin(args):
         print(f"表示中のフォームを閉じます（{len(shown)} 件）")
         cmd_close_form(argparse.Namespace(posargs=[], list_flag=False))
     if not getattr(args, 'no_check', False) and not _shelf_parity_gate(xl, wb):
+        return False
+    if not getattr(args, 'no_test', False) and not _test_gate_before_burn(wb):
         return False
     addin_file = f"{stem}.xlam"
     addin_path = os.path.join(os.environ.get('AppData', ''), 'Microsoft', 'AddIns', addin_file)

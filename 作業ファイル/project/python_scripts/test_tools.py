@@ -4826,6 +4826,39 @@ def test_shelf_lint_one_char_and_regex_words_20261021():
     assert vp._ask_points('(空白|削|取|除去)', '合計を取って') == 1
 
 
+def test_register_addin_runs_test_gate_before_burn_20261021(monkeypatch, capsys):
+    """焼く前の関所その 2: テスト Sub のあるブックは gate を撃ち、落ちたら焼かない。テスト Sub の無いブックは飛ばす。
+    10/16〜20 にテストが回されず 2 本落ちたまま焼かれていた。"""
+    import vbam_vba as vv
+
+    class CM:
+        def __init__(self, text):
+            self.text = text
+            self.CountOfLines = text.count('\n') + 1
+
+        def Lines(self, a, n):
+            return self.text
+
+    class Comp:
+        def __init__(self, text):
+            self.CodeModule = CM(text)
+
+    class WB:
+        def __init__(self, *texts):
+            self.Name = 'x.xlsm'
+            self.VBProject = type('P', (), {'VBComponents': [Comp(t) for t in texts]})()
+
+    with_test = WB("Sub 普通()\nEnd Sub", "Public Sub テスト_何か()\nEnd Sub")
+    no_test = WB("Sub 普通()\nEnd Sub", "Sub テスト用に頼んで撃つ(ByVal a As String)\nEnd Sub")
+    assert vv._has_test_subs(with_test) and not vv._has_test_subs(no_test)
+    assert vv._test_gate_before_burn(no_test) is True              # テストが無ければ飛ばす（gate は撃たない）
+    monkeypatch.setattr(vv, 'cmd_gate', lambda a: (print('判定: 不通過（FAIL）'), False)[1])
+    assert vv._test_gate_before_burn(with_test) is False
+    assert '焼きません' in capsys.readouterr().out
+    monkeypatch.setattr(vv, 'cmd_gate', lambda a: (print('判定: 通過（PASS）'), True)[1])
+    assert vv._test_gate_before_burn(with_test) is True
+
+
 def test_batch_stdin_and_shell_help_20261021(monkeypatch, capsys):
     """10/20 の「意図的に無視」の注記を足す直しで、batch - の `text = sys.stdin.read()` と shell の
     `parser = build_parser()` が消えていた（NameError）。標準入力の batch と shell の help が通ることを見る。"""
@@ -5651,3 +5684,48 @@ def test_cmd_test_has_no_book_specific_cleanup_20261007():
     src = pathlib.Path(vvba.__file__).read_text(encoding="utf-8")
     body = src.split("def cmd_test(", 1)[1].split("\ndef ", 1)[0]
     assert "秀コンボ" not in body and "modMacroUchi50" not in body
+
+
+def test_recipe_save_and_delete_20261022(tmp_path):
+    """recipe-save でレシピが TSV に保存され、置換・削除が正常に動くこと。"""
+    import vbam_recipes as vr
+    tsv = tmp_path / "レシピ.tsv"
+    
+    # 1. 2段のレシピを保存
+    ok, msg = vr.save_recipe("テストレシピ", ["表の中の空行を削除して詰める", "空白を取る"], path=str(tsv))
+    assert ok
+    lines = vr.load_recipes_tsv(str(tsv))
+    assert len(lines) == 2
+    row0 = lines[0].split('\t')
+    row1 = lines[1].split('\t')
+    assert row0[0] == "テストレシピ" and row0[1] == "表の中の空行を削除して詰める" and row0[4] == "元"
+    assert row1[0] == "テストレシピ" and row1[1] == "空白を取る" and row1[4] == "元"   # 全段 元（見本レシピと同じ・10/22 点検）
+    
+    # 2. 同名レシピの置換
+    ok, msg = vr.save_recipe("テストレシピ", ["単一棚"], path=str(tsv))
+    assert ok
+    lines2 = vr.load_recipes_tsv(str(tsv))
+    assert len(lines2) == 1
+    assert lines2[0].split('\t')[1] == "単一棚"
+    
+    # 3. 削除
+    ok, msg = vr.save_recipe("テストレシピ", [], path=str(tsv), delete=True)
+    assert ok
+    lines3 = vr.load_recipes_tsv(str(tsv))
+    assert len(lines3) == 0
+
+
+def test_form_click_refuses_on_form_owner_book_20261022(monkeypatch, tmp_path, capsys):
+    """フォームの持ち主のブック（アドインの元）が前に出ているときは押さない。--here なら押しに進む。
+    10/22: ワークシート一覧の削除ボタンを秀コンボ.xlsm で押して目次とボタン 3 つが消えた。"""
+    import vbam_edit as ve2
+    geo = tmp_path / "geo.json"
+    geo.write_text(json.dumps({"CommandButton12": [10, 10, 40, 20, "削除"]}), encoding="utf-8")
+    monkeypatch.setattr(ve2, "_list_form_windows", lambda: [(1, "x")])
+    monkeypatch.setattr(ve2, "_form_geometry_path", lambda name: str(geo))
+    monkeypatch.setattr(ve2, "_form_owner_is_active_book", lambda name: True)
+    a = vm.build_parser().parse_args(["form-click", "ワークシート一覧", "CommandButton12"])
+    assert ve2.cmd_form_click(a) is False
+    assert "押しません" in capsys.readouterr().out
+    a2 = vm.build_parser().parse_args(["form-click", "ワークシート一覧", "CommandButton12", "--here"])
+    assert a2.here_flag is True
