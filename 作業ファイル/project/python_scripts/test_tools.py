@@ -4826,6 +4826,51 @@ def test_shelf_lint_one_char_and_regex_words_20261021():
     assert vp._ask_points('(空白|削|取|除去)', '合計を取って') == 1
 
 
+def test_shelf_lint_bulk_write_stop_20261022():
+    """既存の範囲へ配列を丸ごと代入して数式・文字の数字を潰す穴を止める（2026-10-22 指示書032）。
+    - 丸ごと代入（.Value = 配列、.Formula = 配列 等）は止める
+    - ' 書き戻し: 新しい所 の印付きは通す
+    - 変えたセルだけ書く は通す
+    - 単一セル代入（Cells や単一セル変数）は通す
+    """
+    import vbam_prefire as vp
+
+    vba = """
+Sub 穴のある棚()
+    ' 依頼の語: 穴のある棚
+    rng.Value = arr
+End Sub
+
+Sub 数式代入の穴()
+    ' 依頼の語: 数式代入の穴
+    colRng.Formula = formArr
+End Sub
+
+Sub 正当な新しい所()
+    ' 依頼の語: 正当な新しい所
+    newWs.Range("A1:B10").Value = arr ' 書き戻し: 新しい所
+End Sub
+
+Sub 変えたセルだけ書く棚()
+    ' 依頼の語: 変えたセルだけ書く棚
+    変えたセルだけ書く rng.Cells(1, 1), dataArr, chg, True
+End Sub
+
+Sub 単一セルの代入()
+    ' 依頼の語: 単一セルの代入
+    ws.Cells(r, c).Value = 123
+    c.Value = "abc"
+    target.Cells(1, 1).Value = Format$(v, "@")
+End Sub
+"""
+    got = vp.shelf_lint(vba)
+    stops = [(n, m) for lv, n, m in got if lv == '止める']
+    stop_names = {n for n, _m in stops}
+    assert stop_names == {'穴のある棚', '数式代入の穴'}
+    assert any(n == '穴のある棚' and '範囲への丸ごと代入' in m for n, m in stops)
+    assert any(n == '数式代入の穴' and '範囲への丸ごと代入' in m for n, m in stops)
+
+
 def test_register_addin_runs_test_gate_before_burn_20261021(monkeypatch, capsys):
     """焼く前の関所その 2: テスト Sub のあるブックは gate を撃ち、落ちたら焼かない。テスト Sub の無いブックは飛ばす。
     10/16〜20 にテストが回されず 2 本落ちたまま焼かれていた。"""

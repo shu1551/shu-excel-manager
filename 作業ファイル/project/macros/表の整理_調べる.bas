@@ -167,7 +167,7 @@ NextRow:
             End If
         Next i
 
-        ws.Range(ws.Cells(hdrRow + 1, outCol), ws.Cells(hdrRow + dupCount, outCol + 2)).Value2 = outArr
+        ws.Range(ws.Cells(hdrRow + 1, outCol), ws.Cells(hdrRow + dupCount, outCol + 2)).Value2 = outArr ' 書き戻し: 新しい所
         Set m仕上げ範囲 = ws.Range(ws.Cells(hdrRow, outCol), ws.Cells(hdrRow + dupCount, outCol + 2))
         Call 表の仕上げ
     End If
@@ -633,7 +633,7 @@ NextRow:
     For ci = 0 To colCount - 1
         hdrOutArr(1, ci + 2) = セルの字(urArr(relHdr, relTblLeft + ci))
     Next ci
-    ws.Range(ws.Cells(hdrRow, outStartCol), ws.Cells(hdrRow, outStartCol + colCount)).Value2 = hdrOutArr
+    ws.Range(ws.Cells(hdrRow, outStartCol), ws.Cells(hdrRow, outStartCol + colCount)).Value2 = hdrOutArr ' 書き戻し: 新しい所
 
     ' 重複組をメモリ配列に一括パッキング
     Dim outArr() As Variant
@@ -667,7 +667,7 @@ NextRow:
     ws.Range(ws.Cells(hdrRow + 1, amtColRelOut), ws.Cells(hdrRow + totalDupRows, amtColRelOut)).NumberFormat = "#,##0"
 
     ' 一撃代入
-    ws.Range(ws.Cells(hdrRow + 1, outStartCol), ws.Cells(hdrRow + totalDupRows, outStartCol + colCount)).Value2 = outArr
+    ws.Range(ws.Cells(hdrRow + 1, outStartCol), ws.Cells(hdrRow + totalDupRows, outStartCol + colCount)).Value2 = outArr ' 書き戻し: 新しい所
 
     ' 見た目は棚の共通の下請けに任せる
     Set m仕上げ範囲 = ws.Range(ws.Cells(hdrRow, outStartCol), ws.Cells(hdrRow + totalDupRows, outStartCol + colCount))
@@ -1825,7 +1825,7 @@ Sub マクロの呼び出し関係を一覧にする(Optional ByVal 勇退 As Boolean = True)
     out.Range("A1").Value = "調査：マクロの呼び出し関係　" & 名(tgt) & "（" & wb.Name & "）"
     out.Range("A2").Value = "「呼んでいる」＝このマクロの中で使われている他のマクロ／「呼ばれている」＝このマクロ名を使っている所。コメント行は数えません。"
     hR = 4: nc = 5
-    out.Range("A4:E4").Value = Array("種類", "モジュール", "マクロ", "行", "その行")
+    out.Range("A4:E4").Value = Array("種類", "モジュール", "マクロ", "行", "その行") ' 書き戻し: 新しい所
     r = hR
     行 = Split(本文(tgt), vbCrLf)
     For i = 0 To 本数 - 1
@@ -2035,7 +2035,7 @@ Sub マクロが何を変えるかを一覧にする(Optional ByVal 勇退 As Boolean = True)
     out.Range("A1").Value = "調査：マクロの中身　" & 名(tgt) & "（" & wb.Name & "）"
     out.Range("A2").Value = "コードを読んで拾った目安です（動かしていません）。変わる可能性のある命令は、実際に動くかどうかまでは分かりません。"
     hR = 4: nc = 4
-    out.Range("A4:D4").Value = Array("項目", "行", "内容", "メモ")
+    out.Range("A4:D4").Value = Array("項目", "行", "内容", "メモ") ' 書き戻し: 新しい所
     r = hR
     行 = Split(本文(tgt), vbCrLf)
     r = r + 1: out.Cells(r, 1).Value = "モジュール": out.Cells(r, 3).Value = "'" & モジュ(tgt)
@@ -2272,7 +2272,7 @@ Sub 使われていないマクロを一覧にする(Optional ByVal 勇退 As Boolean = True)
     out.Range("A1").Value = "調査：使われていないマクロ・中身が同じマクロ　" & wb.Name
     out.Range("A2").Value = "「使われていない候補」は、他のマクロ・図形のボタンから呼ばれていないもの。ショートカットキー・リボン・Alt+F8 で直接使っているものは見分けられません。"
     hR = 4: nc = 6
-    out.Range("A4:F4").Value = Array("種類", "モジュール", "マクロ", "行数", "公開", "メモ")
+    out.Range("A4:F4").Value = Array("種類", "モジュール", "マクロ", "行数", "公開", "メモ") ' 書き戻し: 新しい所
     r = hR
     Set 鍵 = CreateObject("Scripting.Dictionary")
     For i = 0 To 本数 - 1
@@ -2460,7 +2460,7 @@ Sub このシートを使うマクロの一覧(Optional ByVal 勇退 As Boolean = True)
     out.Range("A1").Value = "調査：シート「" & シート名 & "」を使っているマクロ　" & wb.Name
     out.Range("A2").Value = "シート名を文字（「""" & シート名 & """」）で書いている所と、オブジェクト名（" & コード名 & "）を使っている所を探しました。コメント行は数えません。"
     hR = 4: nc = 5
-    out.Range("A4:E4").Value = Array("モジュール", "マクロ", "該当の行数", "最初の行", "その行")
+    out.Range("A4:E4").Value = Array("モジュール", "マクロ", "該当の行数", "最初の行", "その行") ' 書き戻し: 新しい所
     r = hR
     For i = 0 To 本数 - 1
         行 = Split(本文(i), vbCrLf)
@@ -2611,7 +2611,7 @@ Sub 言葉でマクロのコードを探す(Optional ByVal 勇退 As Boolean = True)
     out.Name = nm
     out.Range("A1").Value = "調査：言葉でマクロのコードを探す「" & 探す & "」　" & wb.Name
     hR = 4: nc = 4
-    out.Range("A4:D4").Value = Array("モジュール", "マクロ", "行", "その行")
+    out.Range("A4:D4").Value = Array("モジュール", "マクロ", "行", "その行") ' 書き戻し: 新しい所
     r = hR
     For i = 0 To 本数 - 1
         行 = Split(本文(i), vbCrLf)
@@ -2707,7 +2707,7 @@ Sub ブックの全シートを一覧にする()
     out.Range("A1").Value = "調査：ブックの全体像　" & wb.Name
     out.Range("A2").Value = "調べた日時 " & Format(Now, "yyyy/m/d hh:nn")
     hR = 4: nc = 12
-    out.Range("A4:L4").Value = Array("シート名", "種類", "表示", "使用範囲", "行数", "列数", "データのセル", "数式のセル", "テーブル", "グラフ", "図形", "保護")
+    out.Range("A4:L4").Value = Array("シート名", "種類", "表示", "使用範囲", "行数", "列数", "データのセル", "数式のセル", "テーブル", "グラフ", "図形", "保護") ' 書き戻し: 新しい所
     r = hR
     For Each sh In wb.Sheets
         If TypeName(sh) = "Worksheet" Then
@@ -2855,7 +2855,7 @@ Sub 表の見出しと列の型を一覧にする()
     out.Range("A2").Value = "範囲 " & tb.Address(False, False) & "　見出し行 " & tb.row & "　データ " & Format(nr - 1, "#,##0") & " 行　" & nc2 & " 列 " & 注
     out.Range("A3").Value = "見出し行は範囲の先頭行とみなしています。列の意味は決められないので、見出しと例を並べています。"
     hR = 5: nc = 11
-    out.Range("A5:K5").Value = Array("列", "見出し", "入力あり", "空欄", "型", "種類の数", "最小", "最大", "文字の数字", "エラー", "例")
+    out.Range("A5:K5").Value = Array("列", "見出し", "入力あり", "空欄", "型", "種類の数", "最小", "最大", "文字の数字", "エラー", "例") ' 書き戻し: 新しい所
     r = hR
     For j = 1 To nc2
         n数 = 0: n日 = 0: n文 = 0: n他 = 0: n空 = 0: n誤 = 0: n文数 = 0
@@ -3020,7 +3020,7 @@ Sub 入力規則などの仕掛けを一覧にする()
     out.Name = nm
     out.Range("A1").Value = "調査：仕掛け（入力規則・条件付き書式・結合セル）　" & ws.Name
     hR = 4: nc = 5
-    out.Range("A4:E4").Value = Array("種類", "範囲", "内容1", "内容2", "内容3")
+    out.Range("A4:E4").Value = Array("種類", "範囲", "内容1", "内容2", "内容3") ' 書き戻し: 新しい所
     r = hR
     Set dv = Nothing
     On Error Resume Next
@@ -3206,7 +3206,7 @@ Sub 印刷ページ数と切れ目を一覧にする()
     out.Range("A1").Value = "調査：印刷ページ　" & wb.Name
     out.Range("A2").Value = "切れ目の「N行目」は、その行から次のページが始まる位置です。"
     hR = 4: nc = 9
-    out.Range("A4:I4").Value = Array("シート", "印刷範囲", "向き", "用紙", "拡大縮小", "総ページ数", "行の切れ目", "列の切れ目", "繰り返す見出し行")
+    out.Range("A4:I4").Value = Array("シート", "印刷範囲", "向き", "用紙", "拡大縮小", "総ページ数", "行の切れ目", "列の切れ目", "繰り返す見出し行") ' 書き戻し: 新しい所
     r = hR
     For Each sh In wb.Worksheets
         If TypeName(sh) = "Worksheet" Then
@@ -3331,7 +3331,7 @@ Sub 非表示のシートと行列を一覧にする()
     out.Name = nm
     out.Range("A1").Value = "調査：非表示のもの　" & wb.Name
     hR = 4: nc = 4
-    out.Range("A4:D4").Value = Array("種類", "シート", "場所", "備考")
+    out.Range("A4:D4").Value = Array("種類", "シート", "場所", "備考") ' 書き戻し: 新しい所
     r = hR
     For Each sh In wb.Sheets
         If TypeName(sh) = "Worksheet" Then
@@ -3500,7 +3500,7 @@ Sub 壊れた参照と名前を一覧にする()
     out.Name = nm
     out.Range("A1").Value = "調査：壊れた参照　" & wb.Name
     hR = 4: nc = 5
-    out.Range("A4:E4").Value = Array("種類", "シート", "セル／名前", "内容（式）", "備考")
+    out.Range("A4:E4").Value = Array("種類", "シート", "セル／名前", "内容（式）", "備考") ' 書き戻し: 新しい所
     r = hR
     For Each sh In wb.Worksheets
         If TypeName(sh) = "Worksheet" Then
@@ -3662,7 +3662,7 @@ Sub 参照とリンクを一覧にする()
     out.Name = nm
     out.Range("A1").Value = "調査：参照とリンク　" & wb.Name
     hR = 4: nc = 5
-    out.Range("A4:E4").Value = Array("種類", "参照元", "参照先", "件数", "最初の例")
+    out.Range("A4:E4").Value = Array("種類", "参照元", "参照先", "件数", "最初の例") ' 書き戻し: 新しい所
     r = hR
     For Each sh In wb.Worksheets
         If TypeName(sh) = "Worksheet" Then
@@ -3862,7 +3862,7 @@ Sub ブックが重い原因を一覧にする()
     out.Range("A1").Value = "調査：ブックが重い原因　" & wb.Name
     out.Range("A2").Value = "「要確認」は目安です。直すなら「余分な行列を削除し軽くする」（使用範囲の余計な書式を落とす）から。"
     hR = 4: nc = 4
-    out.Range("A4:D4").Value = Array("項目", "状況", "判定", "説明")
+    out.Range("A4:D4").Value = Array("項目", "状況", "判定", "説明") ' 書き戻し: 新しい所
     r = hR
     r = r + 1
     out.Cells(r, 1).Value = "ファイルの大きさ"
@@ -4164,7 +4164,7 @@ Sub 同じ形の表のシートを一覧にする(Optional ByVal 勇退 As Boolean = True)
     out.Range("A1").Value = "調査：同じ形の表　" & wb.Name
     out.Range("A2").Value = "各シートの見出し行を比べ、見出しが 6 割以上そろっている組を出しています（類似度が高い順）。"
     hR = 4: nc = 8
-    out.Range("A4:H4").Value = Array("シートA", "シートB", "そろっている見出し", "類似度", "Aだけの見出し", "Bだけの見出し", "Aのデータ行", "Bのデータ行")
+    out.Range("A4:H4").Value = Array("シートA", "シートB", "そろっている見出し", "類似度", "Aだけの見出し", "Bだけの見出し", "Aのデータ行", "Bのデータ行") ' 書き戻し: 新しい所
     r = hR
     For a = 1 To n - 1
         For b = a + 1 To n
@@ -4281,7 +4281,7 @@ Sub マクロを役割つきで一覧にする(Optional ByVal 勇退 As Boolean = True)
     out.Name = nm
     out.Range("A1").Value = "調査：マクロ一覧　" & wb.Name
     hR = 4: nc = 6
-    out.Range("A4:F4").Value = Array("モジュール", "モジュールの種類", "マクロ名", "公開", "行数", "役割（頭のコメント）")
+    out.Range("A4:F4").Value = Array("モジュール", "モジュールの種類", "マクロ名", "公開", "行数", "役割（頭のコメント）") ' 書き戻し: 新しい所
     r = hR
     For Each comp In wb.VBProject.VBComponents
         Set cm = comp.CodeModule
@@ -4444,7 +4444,7 @@ Sub ボタンとマクロの対応を一覧にする(Optional ByVal 勇退 As Boolean = True)
     out.Name = nm
     out.Range("A1").Value = "調査：ボタン・図形とマクロの対応　" & wb.Name
     hR = 4: nc = 7
-    out.Range("A4:G4").Value = Array("シート", "図形の名前", "種類", "場所", "表示文字", "割り当てマクロ", "マクロの有無")
+    out.Range("A4:G4").Value = Array("シート", "図形の名前", "種類", "場所", "表示文字", "割り当てマクロ", "マクロの有無") ' 書き戻し: 新しい所
     r = hR
     For Each sh In wb.Worksheets
         For Each shp In sh.Shapes
@@ -4575,7 +4575,7 @@ Sub シートの数式を形ごとに一覧にする()
     out.Name = nm
     out.Range("A1").Value = "調査：数式の一覧　" & ws.Name
     hR = 4: nc = 6
-    out.Range("A4:F4").Value = Array("数式の形（R1C1）", "セル数", "最初のセル", "例（A1形式）", "使っている関数", "参照しているシート")
+    out.Range("A4:F4").Value = Array("数式の形（R1C1）", "セル数", "最初のセル", "例（A1形式）", "使っている関数", "参照しているシート") ' 書き戻し: 新しい所
     r = hR
     Set fr = Nothing
     On Error Resume Next
@@ -4735,7 +4735,7 @@ Sub 列番号を直書きした式を一覧にする()
     Set 出 = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
     出.Name = 名
     出.Range("A1").Value = "調査：列番号・行番号が直書きの式　" & wb.Name
-    出.Range("A4:H4").Value = Array("シート", "セル", "関数", "数字の種類", "直書きの番号", "表の範囲", "番号が指す見出しの字", "式")
+    出.Range("A4:H4").Value = Array("シート", "セル", "関数", "数字の種類", "直書きの番号", "表の範囲", "番号が指す見出しの字", "式") ' 書き戻し: 新しい所
     行 = 4
 
     For Each 元 In wb.Worksheets
@@ -4975,7 +4975,7 @@ Sub ブックに隠れた物を一覧にする()
     Set 出 = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
     出.Name = 名
     出.Range("A1").Value = "調査：隠れた物　" & wb.Name
-    出.Range("A4:D4").Value = Array("種類", "場所", "内容（値は出さず、形と場所）", "見つけ方")
+    出.Range("A4:D4").Value = Array("種類", "場所", "内容（値は出さず、形と場所）", "見つけ方") ' 書き戻し: 新しい所
     行 = 4
 
     ' --- 1. シート（非表示・極秘・オブジェクト名）
@@ -6071,8 +6071,8 @@ Sub ブックの構造を一覧にする()
         .Range("A1").Value = "調査：ブックの構造　" & wb.Name
         .Range("A2").Value = "セルの値は出していません（式・名前・書式・規則の形だけ）。このシートをコピーして AI に貼れば、中身を出さずに相談できます。"
         .Range("A3").Value = IIf(打切, "多いので先頭の 60,000 行までを出しました。", "") & "気をつける所は「見つけたこと → なぜ → Excel のどこで確かめるか」。オフィス田中のワークシート診断ツールの項目に学んでいます。"
-        .Range("A4:E4").Value = Array("区分", "項目", "場所", "内容（値は出さない）", "なぜ・確かめる所・補足")
-        .Range("A5").Resize(全, 5).Value = 出力
+        .Range("A4:E4").Value = Array("区分", "項目", "場所", "内容（値は出さない）", "なぜ・確かめる所・補足") ' 書き戻し: 新しい所
+        .Range("A5").Resize(全, 5).Value = 出力 ' 書き戻し: 新しい所
         .Range("A1").Font.Bold = True
         .Range("A1").Font.Size = 12
         With .Range("A4:E4")

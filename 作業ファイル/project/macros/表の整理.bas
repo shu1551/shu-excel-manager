@@ -4279,6 +4279,8 @@ Sub 住所と郵便番号の形をそろえる()
             arrZip = colZipRange.Value2
         End If
         zipChanged = False
+        Dim 変えた郵便() As Boolean
+        ReDim 変えた郵便(1 To nRows, 1 To 1)
         For r = 1 To nRows
             If Not ws.Cells(hdrRow + r, 郵便列).HasFormula Then
                 s = Trim$(CStr(arrZip(r, 1)))
@@ -4300,14 +4302,14 @@ Sub 住所と郵便番号の形をそろえる()
                     If CStr(arrZip(r, 1)) <> zipFormatted Then
                         arrZip(r, 1) = zipFormatted
                         n郵便 = n郵便 + 1
+                        変えた郵便(r, 1) = True
                         zipChanged = True
                     End If
                 End If
             End If
         Next r
         If zipChanged Then
-            colZipRange.NumberFormatLocal = "@"
-            colZipRange.Value = arrZip
+            Call 表の整理_下請け.変えたセルだけ書く(colZipRange.Cells(1, 1), arrZip, 変えた郵便, 文字書式にする:=True)
         End If
     End If
 
@@ -5112,6 +5114,8 @@ Sub 番号の列を連番に振り直す()
 
     n = 0
     colChanged = False
+    Dim 変えた連番() As Boolean
+    ReDim 変えた連番(1 To lastRow - dataStart + 1, 1 To 1)
     For r = dataStart To lastRow
         tblR = r - urTop + 1
         idx = r - dataStart + 1
@@ -5127,13 +5131,13 @@ Sub 番号の列を連番に振り直す()
             If padL > 0 Then
                 sv = Right$(String(padL, "0") & CStr(n), IIf(Len(CStr(n)) > padL, Len(CStr(n)), padL))
                 If セルの字(表値(tblR, relNoCol)) <> sv Then
-                    列式(idx, 1) = "'" & sv
+                    列式(idx, 1) = sv
+                    変えた連番(idx, 1) = True
                     colChanged = True
-                Else
-                    列式(idx, 1) = "'" & sv
                 End If
             ElseIf セルの字(表値(tblR, relNoCol)) <> CStr(n) Then
                 列式(idx, 1) = n
+                変えた連番(idx, 1) = True
                 colChanged = True
             End If
         End If
@@ -5141,8 +5145,7 @@ Sub 番号の列を連番に振り直す()
 
     If colChanged Then
         Application.ScreenUpdating = False
-        If padL > 0 Then colRange.NumberFormat = "@"
-        colRange.Formula = 列式
+        Call 表の整理_下請け.変えたセルだけ書く(colRange.Cells(1, 1), 列式, 変えた連番, 文字書式にする:=(padL > 0))
         Application.ScreenUpdating = True
     End If
 End Sub
@@ -5240,20 +5243,21 @@ Sub 番号に先頭のゼロを付けてそろえる()
                 Next r
                 If cnt >= filled * 0.6 Then
                     colChanged = False
+                    Dim 変えた() As Boolean
+                    ReDim 変えた(1 To lastRow - dataStart + 1, 1 To 1)
                     For r = dataStart To lastRow
                         If Left$(CStr(列式(r - dataStart + 1, 1)), 1) <> "=" Then
                             v = 列値(r - dataStart + 1, 1)
                             s = Trim$(セルの字(v))
                             If s <> "" And Len(s) < bestL And s Like String(Len(s), "#") Then
-                                列式(r - dataStart + 1, 1) = "'" & Right$(String(bestL, "0") & s, bestL)
+                                列式(r - dataStart + 1, 1) = Right$(String(bestL, "0") & s, bestL)
+                                変えた(r - dataStart + 1, 1) = True
                                 colChanged = True
                             End If
                         End If
                     Next r
                     If colChanged Then
-                        Set colRange = ws.Range(ws.Cells(dataStart, c), ws.Cells(lastRow, c))
-                        colRange.NumberFormatLocal = "@"
-                        colRange.Formula = 列式
+                        Call 表の整理_下請け.変えたセルだけ書く(ws.Cells(dataStart, c), 列式, 変えた, 文字書式にする:=True)
                     End If
                 End If
             End If
@@ -6062,14 +6066,18 @@ Sub 選んだ列の式を値にする()
     errCount = 0
     convertedCount = 0
 
-    For Each cell In formulaRng
-        If IsError(cell.Value) Then
-            errCount = errCount + 1
-        Else
-            cell.Value = cell.Value
-            convertedCount = convertedCount + 1
-        End If
-    Next cell
+        For Each cell In formulaRng
+            If IsError(cell.Value) Then
+                errCount = errCount + 1
+            Else
+                If VarType(cell.Value) = vbString Then
+                    cell.Value = 表の整理_下請け.文字のまま書く字(CStr(cell.Value))
+                Else
+                    cell.Value = cell.Value
+                End If
+                convertedCount = convertedCount + 1
+            End If
+        Next cell
 
     If errCount > 0 Then
         ' エラーの式は値にせず数を報告
@@ -6257,7 +6265,7 @@ NextSheet:
         End If
     Next i
 
-    ws.Range(ws.Cells(headerRow + 1, selCol + 1), ws.Cells(lastRow, selCol + 1)).Value2 = vName
+    ws.Range(ws.Cells(headerRow + 1, selCol + 1), ws.Cells(lastRow, selCol + 1)).Value2 = vName ' 書き戻し: 新しい所
     ws.Columns(selCol + 1).AutoFit
 
 CleanUp:
@@ -6521,7 +6529,7 @@ Sub 横持ちマトリクス表を一撃で縦持ちデータベースにする()
     End With
 
     ' データ一撃代入
-    newWs.Range(newWs.Cells(2, 1), newWs.Cells(recIdx + 1, nFixedCols + 2)).Value = vDest
+    newWs.Range(newWs.Cells(2, 1), newWs.Cells(recIdx + 1, nFixedCols + 2)).Value = vDest ' 書き戻し: 新しい所
 
     ' 数値列の書式と列幅調整
     newWs.Columns(nFixedCols + 2).NumberFormatLocal = "#,##0"
@@ -6710,7 +6718,7 @@ Sub 表記ゆれをあいまい判定してマスタを引き当てる()
     Next i
 
     ' 5. データ代入とハイライト（最速・Union）
-    ws.Range(ws.Cells(headerRow + 1, selCol + 1), ws.Cells(lastRow, selCol + 1)).Value = vName
+    ws.Range(ws.Cells(headerRow + 1, selCol + 1), ws.Cells(lastRow, selCol + 1)).Value = vName ' 書き戻し: 新しい所
 
     Dim rngFuzzy As Range
     For i = 1 To cnt
@@ -6897,7 +6905,7 @@ Sub 選んだ列の値ごとにシートを分割する(Optional ByVal 知らせる As Boolean = True
         棚のシートの印 wsNew
 
         ' 見出し転記と書式復元
-        wsNew.Range(wsNew.Cells(1, 1), wsNew.Cells(1, nCols)).Value2 = headerArr
+        wsNew.Range(wsNew.Cells(1, 1), wsNew.Cells(1, nCols)).Value2 = headerArr ' 書き戻し: 新しい所
         For c = 1 To nCols
             If Len(hdrFmts(c)) > 0 Then wsNew.Cells(1, c).NumberFormat = hdrFmts(c)
         Next c
@@ -6913,7 +6921,7 @@ Sub 選んだ列の値ごとにシートを分割する(Optional ByVal 知らせる As Boolean = True
                     outArr(outR, c) = dataArr(srcR, c)
                 Next c
             Next outR
-            wsNew.Range(wsNew.Cells(2, 1), wsNew.Cells(matchCount + 1, nCols)).Value2 = outArr
+            wsNew.Range(wsNew.Cells(2, 1), wsNew.Cells(matchCount + 1, nCols)).Value2 = outArr ' 書き戻し: 新しい所
             For c = 1 To nCols
                 If Len(colFmts(c)) > 0 Then
                     wsNew.Range(wsNew.Cells(2, c), wsNew.Cells(matchCount + 1, c)).NumberFormat = colFmts(c)
@@ -7016,7 +7024,7 @@ Sub 選んだ列の数値を指定桁数でゼロ埋め文字列にする(Optional ByVal 指定桁数 As Lo
                         numVal = CDbl(v)
                         If numVal >= 0 And numVal = Fix(numVal) Then
                             colRng.NumberFormatLocal = "@"
-                            colRng.Value = Format$(numVal, fmtStr)
+                            colRng.Cells(1, 1).Value = Format$(numVal, fmtStr)
                         End If
                     End If
                 Else
@@ -7077,13 +7085,13 @@ Private Sub セル空白トリム_本体(ByVal モード As Long)
                     Do While Len(t) > 0
                         If Left$(t, 1) = " " Or Left$(t, 1) = "　" Or Left$(t, 1) = vbTab Then t = Mid$(t, 2) Else Exit Do
                     Loop
-                    If t <> s Then area.Value = IIf(area.NumberFormat = "@", t, 文字のまま書く字(t))
+                    If t <> s Then area.Cells(1, 1).Value = IIf(area.NumberFormat = "@", t, 文字のまま書く字(t))
                 ElseIf モード = 2 Then
                     t = Replace(Replace(Replace(s, " ", ""), "　", ""), vbTab, "")
                     If Len(t) = 0 Then area.ClearContents
                 ElseIf モード = 3 Then
                     t = Trim$(Replace(s, "　", " "))
-                    If t <> s Then area.Value = IIf(area.NumberFormat = "@", t, 文字のまま書く字(t))
+                    If t <> s Then area.Cells(1, 1).Value = IIf(area.NumberFormat = "@", t, 文字のまま書く字(t))
                 End If
             End If
         Else
@@ -7371,6 +7379,7 @@ Public Sub ブックの式を全部値にする()
     ' ブックの全シートの式を、今の値に置き換える。消す前にブックの控えを1部作る（未保存のブックは控えが作れないので止める）。
     Dim wb As Workbook, 対象シート As Worksheet, 式域 As Range
     Dim 控え As String, 処理シート数 As Long, 式の数 As Long
+    Dim 一区 As Range, 一つ As Range, 文字の式 As Collection, 組 As Variant
 
     Set wb = ActiveWorkbook
     If wb.path = "" Then
@@ -7398,7 +7407,18 @@ Public Sub ブックの式を全部値にする()
         On Error GoTo Catch
         If Not 式域 Is Nothing Then
             式の数 = 式の数 + 式域.Count
-            対象シート.UsedRange.Value = 対象シート.UsedRange.Value
+            ' 式のセルだけを値にする（使用範囲を丸ごと書き戻すと、式でない 00123 や文字の日付まで数・日付に化けた・2026-10-22）。
+            ' 式の結果が文字のセルは、数や日付に化けないよう文字のまま書き直す
+            Set 文字の式 = New Collection
+            For Each 一つ In 式域.Cells
+                If VarType(一つ.Value) = vbString Then 文字の式.Add Array(一つ, CStr(一つ.Value))
+            Next 一つ
+            For Each 一区 In 式域.Areas
+                一区.Value = 一区.Value ' 書き戻し: 新しい所（式のセルだけ）
+            Next 一区
+            For Each 組 In 文字の式
+                組(0).Value = "'" & 組(1)
+            Next 組
             処理シート数 = 処理シート数 + 1
         End If
     Next 対象シート
@@ -7450,7 +7470,7 @@ Public Sub 同じ形のシートを縦につなぐ()
                 データ行数 = UBound(シートデータ, 1)
                 データ列数 = UBound(シートデータ, 2)
                 If Not 見出しコピー済 Then
-                    統合シート.Range(統合シート.Cells(1, 1), 統合シート.Cells(データ行数, データ列数)).Value = シートデータ
+                    統合シート.Range(統合シート.Cells(1, 1), 統合シート.Cells(データ行数, データ列数)).Value = シートデータ ' 書き戻し: 新しい所
                     書き込み行 = データ行数 + 1
                     見出しコピー済 = True
                 ElseIf データ行数 >= 2 Then
@@ -7462,7 +7482,7 @@ Public Sub 同じ形のシートを縦につなぐ()
                         Next 列オフセット
                     Next 行オフセット
                     Set 貼付範囲 = 統合シート.Range(統合シート.Cells(書き込み行, 1), 統合シート.Cells(書き込み行 + コピー行数 - 1, データ列数))
-                    貼付範囲.Value = 部分データ
+                    貼付範囲.Value = 部分データ ' 書き戻し: 新しい所
                     書き込み行 = 書き込み行 + コピー行数
                 End If
             End If
@@ -7544,7 +7564,7 @@ Public Sub 二つの表の片方だけの行を抜く()
     Set 出力シート = Worksheets.Add(, ActiveSheet)
     出力シート.Name = "表Aのみ差分_" & Format(Now, "hhnnss")
 
-    出力シート.Range(出力シート.Cells(1, 1), 出力シート.Cells(差分行数, 列数A)).Value = 差分データ
+    出力シート.Range(出力シート.Cells(1, 1), 出力シート.Cells(差分行数, 列数A)).Value = 差分データ ' 書き戻し: 新しい所
     Application.StatusBar = "二つの表の片方だけの行を抜く: 表A にしか無い行 " & 差分行数 & " 件をシート「" & 出力シート.Name & "」に出しました。"
     Exit Sub
 Catch:
