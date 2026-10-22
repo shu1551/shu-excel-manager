@@ -519,7 +519,7 @@ Function —Š‚İ‚©‚çƒsƒ{ƒbƒg‚Ì—ñ(ByVal ws As Worksheet, ByVal Œ©o‚µs As Long, ByV
         ByRef Œó•â As String, Optional ByVal ”‚¦‚é‚¾‚¯ As Boolean = False) As Boolean
     Dim ‘g As Variant, ŒêX As Variant, —Š As String, •š As String, Œ© As String, Œ³ As String, ˆê—— As String
     Dim c As Long, r As Long, g As Long, k As Long, j As Long, ˆÊ’u As Long, Å‰ As Long, Œê As String, “–‚ÄŒê As String
-    Dim Œ©X() As String, “–‚ÄX() As String, ˆÊ’uX() As Long, ”‚©() As Boolean, ‹æØ‚è‚©() As Boolean, Ï‚İ() As Boolean
+    Dim Œ©X() As String, “–‚ÄX() As String, ˆÊ’uX() As Long, ”‚©() As Boolean, ‹æØ‚è‚©() As Boolean, Ï‚İ() As Boolean, ”‚¦‚é‘ÎÛ() As Boolean
     Dim DX As String, ’lX As String, ” As Long, š As Long, v As Variant, Œã As String, ’· As Long, ‘I As Long
     Dim D(1 To 3) As Long, D” As Long, ’lŒó•â As Long, ’lŒó•â” As Long, “ü‘Ö As Long, ’u1 As Long, ’u2 As Long
     —Š‚İ‚©‚çƒsƒ{ƒbƒg‚Ì—ñ = False
@@ -532,7 +532,7 @@ Function —Š‚İ‚©‚çƒsƒ{ƒbƒg‚Ì—ñ(ByVal ws As Worksheet, ByVal Œ©o‚µs As Long, ByV
               "¤•i|•i–¼|•i–Ú|»•i", "æˆøæ|“¾ˆÓæ|ŒÚ‹q", "’nˆæ|ƒGƒŠƒA|’n‹æ|x“X|“X•Ü|‹’“_", "”—Ê|ŒÂ”|‘ä”", _
               "”ï–Ú|‰È–Ú|Š¨’è‰È–Ú")
     ReDim Œ©X(¶ To ‰E): ReDim “–‚ÄX(¶ To ‰E): ReDim ˆÊ’uX(¶ To ‰E)
-    ReDim ”‚©(¶ To ‰E): ReDim ‹æØ‚è‚©(¶ To ‰E): ReDim Ï‚İ(¶ To ‰E)
+    ReDim ”‚©(¶ To ‰E): ReDim ‹æØ‚è‚©(¶ To ‰E): ReDim Ï‚İ(¶ To ‰E): ReDim ”‚¦‚é‘ÎÛ(¶ To ‰E)
     For c = ¶ To ‰E
         Œ³ = Œ©o‚µ‚Ìš(ws.Cells(Œ©o‚µs, c))
         Œ©X(c) = ƒsƒ{ƒbƒg‚ÌŒê‚È‚ç‚µ(Œ³)
@@ -563,6 +563,11 @@ Function —Š‚İ‚©‚çƒsƒ{ƒbƒg‚Ì—ñ(ByVal ws As Worksheet, ByVal Œ©o‚µs As Long, ByV
         If ˆÊ’u > 0 Then
             ˆÊ’uX(‘I) = ˆÊ’u: “–‚ÄX(‘I) = Œ©X(‘I)
             •š = Replace(•š, Œ©X(‘I), String$(Len(Œ©X(‘I)), "¬"))
+            ' uo‹Î“ú”‚ğ”‚¦‚Ävu“X•Ü”vŒ©o‚µ‚ÌŒã‚ë‚É ”E“ú”EŒ”El”E‰ñ” ‚ª‘±‚­”‚¦‚é—Š‚İ‚ÍA‚»‚Ì—ñ‚ğ”‚¦‚éis‚É‚µ‚È‚¢E2026-10-22 w¦‘046j
+            If ”‚¦‚é‚¾‚¯ Then
+                Œã = Mid$(—Š, ˆÊ’u + Len(Œ©X(‘I)), 2)
+                If Left$(Œã, 1) = "”" Or Œã = "“ú”" Or Œã = "Œ”" Or Œã = "l”" Or Œã = "‰ñ”" Then ”‚¦‚é‘ÎÛ(‘I) = True
+            End If
         End If
     Loop
     ' 2 ‰ñ–Ú: Œ©o‚µ‚ª—Š‚İ‚É–³‚¢—ñ‚¾‚¯AŒ¾‚¢Š·‚¦‚Ì‘g‚Åi•š‚¹‚½—Š‚İ‚Å’T‚·j
@@ -593,6 +598,30 @@ Function —Š‚İ‚©‚çƒsƒ{ƒbƒg‚Ì—ñ(ByVal ws As Worksheet, ByVal Œ©o‚µs As Long, ByV
             ˆÊ’uX(c) = Å‰: “–‚ÄX(c) = “–‚ÄŒê
         End If
     Next c
+    ' 3 ‰ñ–Ú: ‚Ü‚¾“–‚½‚ç‚È‚¢Œ©o‚µ‚ÍAŒ©o‚µ‚Ì––”ö‚Ì•”•ª‚ª—Š‚İ‚É‚ ‚ê‚ÎŒ‹‚Ôi“X¨w“ü“XE•”¨Š‘®•”E“ú¨‰ñ“š“úE2026-10-22 w¦‘046jB
+    '   2 šˆÈã‚Ì•”•ª‚Í‚»‚Ì‚Ü‚ÜB1 š‚Í •ÊE‚²‚ÆE–ˆE’PˆÊ ‚ª‘±‚­‚Æ‚«‚¾‚¯i«•Ê‚Ìu•ÊvE–¼‚Ìu–¼v‚Å“–‚Ä‚È‚¢jB“–‚½‚Á‚½Œê‚Í•š‚¹‚Äd‚Ë‚Äg‚í‚È‚¢
+    For c = ¶ To ‰E
+        If ˆÊ’uX(c) = 0 And Len(Œ©X(c)) >= 2 Then
+            Œ³ = Œ©X(c)
+            For ’· = Len(Œ³) - 1 To 1 Step -1
+                Œê = Right$(Œ³, ’·)
+                If ’· >= 2 Or InStr("•Ê–ˆ—¦”–¼Œv", Œê) = 0 Then
+                    ˆÊ’u = InStr(1, •š, Œê, vbBinaryCompare)
+                    Do While ˆÊ’u > 0
+                        Œã = Mid$(•š, ˆÊ’u + ’·, 2)
+                        If ’· >= 2 Then Exit Do
+                        If Left$(Œã, 1) = "•Ê" Or Left$(Œã, 1) = "–ˆ" Or Œã = "‚²‚Æ" Or Œã = "’PˆÊ" Then Exit Do
+                        ˆÊ’u = InStr(ˆÊ’u + 1, •š, Œê, vbBinaryCompare)
+                    Loop
+                    If ˆÊ’u > 0 Then
+                        ˆÊ’uX(c) = ˆÊ’u: “–‚ÄX(c) = Œê
+                        •š = Left$(•š, ˆÊ’u - 1) & String$(’·, "¬") & Mid$(•š, ˆÊ’u + ’·)
+                        Exit For
+                    End If
+                End If
+            Next ’·
+        End If
+    Next c
     For c = ¶ To ‰E
         If ˆÊ’uX(c) > 0 Then
             Œã = Mid$(—Š, ˆÊ’uX(c) + Len(“–‚ÄX(c)), 2)
@@ -621,7 +650,7 @@ Function —Š‚İ‚©‚çƒsƒ{ƒbƒg‚Ì—ñ(ByVal ws As Worksheet, ByVal Œ©o‚µs As Long, ByV
     ' sE—ñ‚ÌDi”‚Å‚È‚¢—ñ‚©A•ÊE‚²‚Æ ‚Ì‘±‚­”‚Ì—ñj‚Æ’li”‚Ì—ñj‚É•ª‚¯‚é
     For c = ¶ To ‰E
         If ˆÊ’uX(c) > 0 Then
-            If ”‚©(c) And Not ‹æØ‚è‚©(c) Then
+            If (”‚©(c) And Not ‹æØ‚è‚©(c)) Or ”‚¦‚é‘ÎÛ(c) Then
                 ’lX = ’lX & "E" & Œ©o‚µ‚Ìš(ws.Cells(Œ©o‚µs, c))
                 If ’l‚Ì—ñ = 0 Then ’l‚Ì—ñ = c Else ’l‚Ì—ñ = -1
             Else
@@ -785,6 +814,11 @@ Function —Š‚İ‚ÅƒOƒ‰ƒt‚ğì‚é(ByVal ws As Worksheet, ByVal —Š As String, ByVal í—
     If Œ©o‚µs = 0 Then Exit Function
     ÅIs = •\‚Ì–{•¶‚ÌÅIs(ws)
     WŒv = —Š‚İ‚ÌWŒv(—Š)
+    If í—Ş = "Ü‚êü" Then
+        ' Ü‚êü‚ÍA“ú•t‚Ì—ñ‚ğŒ‚Å‚Ü‚Æ‚ß‚é—Š‚İiuŒ‚²‚Æ‚Ìc‹Æ‚Ì„ˆÚvj‚Ì–¾×‚Ì•\‚¾‚¯‚±‚±‚Å•`‚­B‰¡’·‚Ì•\‚Ì„ˆÚ‚Í¡‚Ü‚Å‚ÌÜ‚êü‚Ì’Ii2026-10-22 w¦‘046j
+        Œ—ñ = —Š‚İ‚ÌŒ‚Ì—ñ(ws, Œ©o‚µs, ¶, ‰E, ÅIs, ƒsƒ{ƒbƒg‚ÌŒê‚È‚ç‚µ(—Š), ŒˆÊ’u)
+        If Œ—ñ = 0 Then Exit Function
+    End If
     If —Š‚İ‚©‚çƒsƒ{ƒbƒg‚Ì—ñ(ws, Œ©o‚µs, ¶, ‰E, ÅIs, —Š, €–Ú—ñ, —ñ‚Ì—ñ, ’l—ñ, Œó•â, WŒv = xlCount) Then
         If —ñ‚Ì—ñ > 0 Then
             If í—Ş = "‰~" Then
@@ -824,7 +858,9 @@ Function —Š‚İ‚ÅƒOƒ‰ƒt‚ğì‚é(ByVal ws As Worksheet, ByVal —Š As String, ByVal í—
         Exit Function
     End If
 
-    If WŒv = xlCount And InStr(Œ©o‚µ‚Ìš(ws.Cells(Œ©o‚µs, ’l—ñ)), "Œ”") > 0 And ’l—ñ <> €–Ú—ñ Then WŒv = xlSum
+    If WŒv = xlCount And ’l—ñ <> €–Ú—ñ Then
+        If InStr(Œ©o‚µ‚Ìš(ws.Cells(Œ©o‚µs, ’l—ñ)), "Œ”") > 0 Or InStr(Œ©o‚µ‚Ìš(ws.Cells(Œ©o‚µs, ’l—ñ)), "l”") > 0 Or InStr(Œ©o‚µ‚Ìš(ws.Cells(Œ©o‚µs, ’l—ñ)), "‰ñ“š”") > 0 Then WŒv = xlSum
+    End If
     Œ—ñ = —Š‚İ‚ÌŒ‚Ì—ñ(ws, Œ©o‚µs, ¶, ‰E, ÅIs, ƒsƒ{ƒbƒg‚ÌŒê‚È‚ç‚µ(—Š), ŒˆÊ’u)
     ' €–Ú‚²‚Æ‚ÉWŒvi‡ŒvE¬Œv‚Ìs‚ÍŠO‚·BŒ‚Ì—ñ‚Í”NŒ‚Å‚Ü‚Æ‚ß‚éB‰~ƒOƒ‰ƒt‚Í 0 ˆÈ‰º‚ğŠO‚·j
     ReDim –¼(1 To ÅIs - Œ©o‚µs + 1): ReDim ’l(1 To ÅIs - Œ©o‚µs + 1): ReDim Œ(1 To ÅIs - Œ©o‚µs + 1)
@@ -877,16 +913,18 @@ Function —Š‚İ‚ÅƒOƒ‰ƒt‚ğì‚é(ByVal ws As Worksheet, ByVal —Š As String, ByVal í—
         —Š‚İ‚ÅƒOƒ‰ƒt‚ğì‚é = 1
         Exit Function
     End If
-    ' ‘å‚«‚¢‡iŒ‚Å‚Ü‚Æ‚ß‚½‚Æ‚«‚ÍŒ‚Ì‡j
-    For i = 1 To n - 1
-        For j = 1 To n - i
-            If IIf(€–Ú—ñ = Œ—ñ, Œ®(j) > Œ®(j + 1), ’l(j) < ’l(j + 1)) Then
-                ’l1 = ’l(j): ’l(j) = ’l(j + 1): ’l(j + 1) = ’l1
-                –¼1 = –¼(j): –¼(j) = –¼(j + 1): –¼(j + 1) = –¼1
-                Œ®1 = Œ®(j): Œ®(j) = Œ®(j + 1): Œ®(j + 1) = Œ®1
-            End If
-        Next j
-    Next i
+    ' ‘å‚«‚¢‡iŒ‚Å‚Ü‚Æ‚ß‚½‚Æ‚«‚ÍŒ‚Ì‡BÜ‚êü‚ÅŒ‚É‚Ü‚Æ‚ß‚È‚¢‚Æ‚«‚Í•À‚×‘Ö‚¦‚È‚¢j
+    If í—Ş <> "Ü‚êü" Or €–Ú—ñ = Œ—ñ Then
+        For i = 1 To n - 1
+            For j = 1 To n - i
+                If IIf(€–Ú—ñ = Œ—ñ, Œ®(j) > Œ®(j + 1), ’l(j) < ’l(j + 1)) Then
+                    ’l1 = ’l(j): ’l(j) = ’l(j + 1): ’l(j + 1) = ’l1
+                    –¼1 = –¼(j): –¼(j) = –¼(j + 1): –¼(j + 1) = –¼1
+                    Œ®1 = Œ®(j): Œ®(j) = Œ®(j + 1): Œ®(j + 1) = Œ®1
+                End If
+            Next j
+        Next i
+    End If
     Dim –¼X() As String, ’lX() As Double
     ReDim –¼X(1 To n): ReDim ’lX(1 To n)
     For i = 1 To n
@@ -900,15 +938,17 @@ Function —Š‚İ‚ÅƒOƒ‰ƒt‚ğì‚é(ByVal ws As Worksheet, ByVal —Š As String, ByVal í—
         Case xlMax: Œn—ñ = Œn—ñ & "‚ÌÅ‘å"
         Case xlMin: Œn—ñ = Œn—ñ & "‚ÌÅ¬"
     End Select
-    ‘è = IIf(€–Ú—ñ = Œ—ñ, "Œ", Œ©o‚µ‚Ìš(ws.Cells(Œ©o‚µs, €–Ú—ñ))) & "•Ê‚Ì" & Œn—ñ & IIf(í—Ş = "‰~", "‚Ì\¬”ä", "")
+    ‘è = IIf(€–Ú—ñ = Œ—ñ, "Œ", Œ©o‚µ‚Ìš(ws.Cells(Œ©o‚µs, €–Ú—ñ))) & "•Ê‚Ì" & Œn—ñ & IIf(í—Ş = "‰~", "‚Ì\¬”ä", IIf(í—Ş = "Ü‚êü", "‚Ì„ˆÚ", ""))
     ' “¯‚¶í—Ş‚Ì’I‚ÌƒOƒ‰ƒt‚¾‚¯ì‚è’¼‚µA•Ê‚Ìí—Ş‚Ì’I‚ÌƒOƒ‰ƒt‚ª‚ ‚ê‚Î‚»‚Ì‰º‚É’u‚­il‚ÌƒOƒ‰ƒt‚Íc‚·j
-    –¼1 = IIf(í—Ş = "‰~", "’I_‰~ƒOƒ‰ƒt", "’I_–_ƒOƒ‰ƒt")
+    –¼1 = IIf(í—Ş = "‰~", "’I_‰~ƒOƒ‰ƒt", IIf(í—Ş = "Ü‚êü", "’I_„ˆÚƒOƒ‰ƒt", "’I_–_ƒOƒ‰ƒt"))
     Set co = ws.ChartObjects.Add(ws.Cells(Œ©o‚µs, ‰E + 2).Left, _
                                  ’I‚ÌƒOƒ‰ƒt‚Ì’u‚«ê(ws, –¼1, ws.Cells(Œ©o‚µs, ‰E + 2).Top), IIf(í—Ş = "‰~", 360, 440), 300)
     co.Name = –¼1
     Set ch = co.Chart
     If í—Ş = "‰~" Then
         ch.ChartType = xlPie
+    ElseIf í—Ş = "Ü‚êü" Then
+        ch.ChartType = xlLineMarkers
     ElseIf n >= 9 Then
         ch.ChartType = xlBarClustered
     Else
@@ -937,7 +977,7 @@ Sub ƒsƒ{ƒbƒg‚©‚çƒOƒ‰ƒt‚ğì‚é(ByVal pt As PivotTable, ByVal í—Ş As String)
     co.Name = ‘è
     Set ch = co.Chart
     ch.SetSourceData pt.TableRange1
-    ch.ChartType = IIf(í—Ş = "‰~", xlPie, xlColumnClustered)
+    ch.ChartType = IIf(í—Ş = "‰~", xlPie, IIf(í—Ş = "Ü‚êü", xlLineMarkers, xlColumnClustered))
     On Error Resume Next
     ‘è = pt.DataFields(1).SourceName
     If InStr(pt.DataFields(1).Caption, " / ") = 0 Then ‘è = pt.DataFields(1).Caption     ' Œ”E•½‹Ï‚ÍŒ©o‚µ‚Ì–¼‚Å
@@ -945,7 +985,7 @@ Sub ƒsƒ{ƒbƒg‚©‚çƒOƒ‰ƒt‚ğì‚é(ByVal pt As PivotTable, ByVal í—Ş As String)
     If pt.ColumnFields.Count > 0 Then ‘è = ‘è & "i" & pt.ColumnFields(1).Name & "‚²‚Æj"
     n = pt.RowFields(1).PivotItems.Count
     On Error GoTo 0
-    ƒOƒ‰ƒt‚Ì‘ÌÙ ch, í—Ş, ‘è & IIf(í—Ş = "‰~", "‚Ì\¬”ä", ""), n
+    ƒOƒ‰ƒt‚Ì‘ÌÙ ch, í—Ş, ‘è & IIf(í—Ş = "‰~", "‚Ì\¬”ä", IIf(í—Ş = "Ü‚êü", "‚Ì„ˆÚ", "")), n
     ' ƒsƒ{ƒbƒgƒOƒ‰ƒt‚Ì’†‚Ìƒ{ƒ^ƒ“iƒtƒB[ƒ‹ƒh‚Ìi‚è‚İj‚Íc‚·l‚ªƒsƒ{ƒbƒg‚Æ“¯‚¶‚æ‚¤‚Éi‚ê‚é
     If pt.ColumnFields.Count > 0 And í—Ş <> "‰~" Then
         ch.HasLegend = True
@@ -956,8 +996,16 @@ End Sub
 ' ’I‚ÌƒOƒ‰ƒt‚ÌŒ©‚½–Ú‚ğ‚»‚ë‚¦‚éi2026-10-09 ’i 4E–_ƒOƒ‰ƒt‚Ì¡‚Ü‚Å‚ÌŒ`‚É‡‚í‚¹‚éjBí—Ş"–_" ‚© "‰~"An€–Ú‚Ì”
 '   –_: Œn—ñ 1 –{‚È‚ç®‚Åˆê”Ô‘å‚«‚¢–_‚¾‚¯ÔE’l‚ğ•\¦E–}—á‚È‚µE”‚Ì²‚Í #,##0E–Ú·ü‚È‚µ^‰~: Š„‡‚ğ•\¦E–}—á‚Í‰E
 Sub ƒOƒ‰ƒt‚Ì‘ÌÙ(ByVal ch As Chart, ByVal í—Ş As String, ByVal ‘è As String, ByVal n As Long)
-    Dim sr As Series, ’l As Variant, i As Long, Å‘å As Long
+    Dim sr As Series, ’l As Variant, i As Long, Å‘å As Long, ‘® As String
     On Error Resume Next
+    ' •½‹Ï‚È‚Ç¬”‚Ì’l‚Í¬” 1 Œ…‚ÅŒ©‚¹‚éi–‘«“x‚Ì•½‹Ï‚ª‘S•” 3 ‚ÉŒ©‚¦‚Ä‚¢‚½E2026-10-22 w¦‘046j
+    ‘® = "#,##0"
+    ’l = ch.SeriesCollection(1).Values
+    For i = LBound(’l) To UBound(’l)
+        If IsNumeric(’l(i)) Then
+            If ’l(i) <> Int(’l(i)) Then ‘® = "#,##0.0": Exit For
+        End If
+    Next i
     ch.ChartArea.Format.TextFrame2.TextRange.Font.Name = "Meiryo UI"
     ch.HasTitle = True
     ch.chartTitle.text = ‘è
@@ -976,7 +1024,27 @@ Sub ƒOƒ‰ƒt‚Ì‘ÌÙ(ByVal ch As Chart, ByVal í—Ş As String, ByVal ‘è As String, By
         sr.DataLabels.ShowSeriesName = False
         Exit Sub
     End If
-    ch.Axes(xlValue).TickLabels.NumberFormat = "#,##0"
+    If í—Ş = "Ü‚êü" Then
+        ' Ü‚êü: ²‚Í #,##0EŒn—ñ 1 –{‚È‚ç®‚Å–}—á‚È‚µE“_‚Ì’l‚ğ•\¦i“_‚ª‘½‚¢‚Æ‚«‚Ío‚³‚È‚¢j
+        ch.Axes(xlValue).TickLabels.NumberFormat = ‘®
+        If ch.SeriesCollection.Count = 1 Then
+            ch.HasLegend = False
+            Set sr = ch.SeriesCollection(1)
+            sr.Format.Line.ForeColor.RGB = RGB(31, 78, 121)
+            sr.MarkerBackgroundColor = RGB(31, 78, 121)
+            sr.MarkerForegroundColor = RGB(31, 78, 121)
+            If n <= 12 Then
+                sr.HasDataLabels = True
+                sr.DataLabels.NumberFormat = ‘®
+                sr.DataLabels.Position = xlLabelPositionAbove
+            End If
+        Else
+            ch.HasLegend = True
+            ch.Legend.Position = xlLegendPositionRight
+        End If
+        Exit Sub
+    End If
+    ch.Axes(xlValue).TickLabels.NumberFormat = ‘®
     ch.Axes(xlValue).HasMajorGridlines = False
     ch.ChartGroups(1).GapWidth = 50
     If ch.ChartType = xlBarClustered Then ch.Axes(xlCategory).ReversePlotOrder = True
@@ -991,7 +1059,7 @@ Sub ƒOƒ‰ƒt‚Ì‘ÌÙ(ByVal ch As Chart, ByVal í—Ş As String, ByVal ‘è As String, By
         Next i
         sr.Points(Å‘å - LBound(’l) + 1).Format.Fill.ForeColor.RGB = RGB(192, 0, 0)
         sr.HasDataLabels = True
-        sr.DataLabels.NumberFormat = "#,##0"
+        sr.DataLabels.NumberFormat = ‘®
     End If
 End Sub
 
@@ -1014,7 +1082,7 @@ End Function
 ' —Š‚İ‚Ì•¶‚ÌWŒv‚Ìí—Şi2026-10-09j: Œ”E‰½ŒEƒJƒEƒ“ƒgxlCount^•½‹ÏxlAverage^Å‘åEÅ‚xlMax^Å¬EÅ’áxlMin^‚»‚êˆÈŠOxlSum
 Function —Š‚İ‚ÌWŒv(ByVal —Š As String) As Long
     —Š‚İ‚ÌWŒv = xlSum
-    If InStr(—Š, "Œ”") > 0 Or InStr(—Š, "‰½Œ") > 0 Or InStr(—Š, "ƒJƒEƒ“ƒg") > 0 Or InStr(—Š, "”‚ğ”‚¦") > 0 Or InStr(—Š, "l”") > 0 Then
+    If InStr(—Š, "Œ”") > 0 Or InStr(—Š, "‰½Œ") > 0 Or InStr(—Š, "ƒJƒEƒ“ƒg") > 0 Or InStr(—Š, "”‚ğ”‚¦") > 0 Or InStr(—Š, "l”") > 0 Or InStr(—Š, "‰ñ“š”") > 0 Or InStr(—Š, "‰½l") > 0 Or InStr(—Š, "”‚¦‚Ä") > 0 Then
         —Š‚İ‚ÌWŒv = xlCount
     ElseIf InStr(—Š, "•½‹Ï") > 0 Then
         —Š‚İ‚ÌWŒv = xlAverage
@@ -1028,12 +1096,17 @@ End Function
 ' —Š‚İ‚Ì•¶‚ªuŒ•ÊviŒ‚²‚ÆE–ˆŒEŒ’PˆÊEŒŸEŠeŒj‚ğ‹‚ß‚Ä‚¢‚ê‚ÎAŒ‚Å‚Ü‚Æ‚ß‚é“ú•t‚Ì—ñ‚ğ•Ô‚·i2026-10-09jB–³‚¯‚ê‚Î 0B
 '   “ú•t‚Ì—ñ‚ª 1 –{‚È‚ç‚»‚êB2 –{ˆÈã‚È‚ç—Š‚İ‚ÉŒ©o‚µ‚ª‘‚¢‚Ä‚ ‚é“ú•t‚Ì—ñiuó’“ú‚ÌŒ•ÊvjBŒˆ‚Ü‚ç‚È‚¯‚ê‚Î 0BŒ‚ÌˆÊ’u—Š‚İ‚Ì’†‚ÌuŒv‚ÌˆÊ’u
 Function —Š‚İ‚ÌŒ‚Ì—ñ(ByVal ws As Worksheet, ByVal Œ©o‚µs As Long, ByVal ¶ As Long, ByVal ‰E As Long, _
-        ByVal ÅIs As Long, ByVal —Š As String, ByRef Œ‚ÌˆÊ’u As Long) As Long
+        ByVal ÅIs As Long, ByVal —Š As String, ByRef Œ‚ÌˆÊ’u As Long, Optional ByRef l”¼Šú As Boolean = False) As Long
     Dim Œê As Variant, p As Long, c As Long, r As Long, “ú As Long, š As Long, v As Variant, Œó•â” As Long, Œó•â As Long, ‘‚¢‚½ As Long
-    Œ‚ÌˆÊ’u = 0
-    For Each Œê In Array("Œ•Ê", "Œ‚²‚Æ", "–ˆŒ", "Œ’PˆÊ", "ŒŸ", "ŠeŒ", "Œƒx[ƒX")
+    Œ‚ÌˆÊ’u = 0: l”¼Šú = False
+    ' Œ‚Å‚Ü‚Æ‚ß‚éŒ¾‚¢•ûi2026-10-22 w¦‘046: Œ‚ÅEu•”‚ÆŒ‚ÌƒNƒƒXv‚Ì ‚ÆŒ ‚àBl”¼Šú•ÊEl”¼Šú‚²‚ÆEl”¼Šú‚É‚Ü‚Æ‚ß ‚Íl”¼Šú‚Å‚Ü‚Æ‚ß‚éj
+    For Each Œê In Array("Œ•Ê", "Œ‚²‚Æ", "–ˆŒ", "Œ–ˆ", "Œ’PˆÊ", "ŒŸ", "ŠeŒ", "Œƒx[ƒX", "Œ‚Å", "‚ÆŒ", "Œ‚Æ", "~Œ", "Œ~", "EŒ")
         p = InStr(1, —Š, Œê, vbBinaryCompare)
         If p > 0 And (Œ‚ÌˆÊ’u = 0 Or p < Œ‚ÌˆÊ’u) Then Œ‚ÌˆÊ’u = p
+    Next Œê
+    For Each Œê In Array("l”¼Šú•Ê", "l”¼Šú‚²‚Æ", "l”¼Šú–ˆ", "l”¼Šú‚Å", "l”¼Šú’PˆÊ", "l”¼Šú‚É‚Ü‚Æ‚ß", "l”¼Šú‚Æ", "l”¼Šú‚Ì")
+        p = InStr(1, —Š, Œê, vbBinaryCompare)
+        If p > 0 Then l”¼Šú = True: Œ‚ÌˆÊ’u = p: Exit For
     Next Œê
     If Œ‚ÌˆÊ’u = 0 Then Exit Function
     For c = ¶ To ‰E
