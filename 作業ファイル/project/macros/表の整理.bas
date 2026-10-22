@@ -12,7 +12,7 @@ Attribute VB_Name = "表の整理"
 '   表の範囲 … 見出しの下から、空行が 2 行続く手前まで（途中の空行 1 行は表の続き）
 
 Sub 表の書き方と罫線と列幅をそろえる()
-    ' 依頼の語: 表を修正|表の修正|表を修復|表の修復|表を直して|表を直す|表の直し|表を整え|表記を統一|全角と半角|書き方をそろえ|書き方を揃え|入力の書き方|見やすく整理|表を整理|表をきれいに|表記をそろえ|表記を揃え|表記ゆれ|表記揺れ|表記の揺れ|全角半角|表の書式をそろえ|表の書式を整え|表の見た目を整え|表の体裁を整え|表全体を整え|整ってない|整っていない
+    ' 依頼の語: 表を修正|表の修正|表を修復|表の修復|表を直して|表を直す|表の直し|表を整え|表記を統一|全角と半角|書き方をそろえ|書き方を揃え|入力の書き方|見やすく整理|表を整理|表をきれいに|表記をそろえ|表記を揃え|表記ゆれ|表記揺れ|表記の揺れ|全角半角|表の書式をそろえ|表の書式を整え|表の見た目を整え|表の体裁を整え|表全体を整え|整ってない|整っていない|表記ゆれを直して|表記ゆれを直す
     ' 階級: 基本
     ' 依頼の組: 表,表の,表記,書き方,全角,半角,ばらばら,バラバラ,ごちゃごちゃ,ひらがな,カタカナ,混ざ,(株),株式会社,形式,書式,罫線+修正,修復,そろえ,揃え,統一,整え,整理,直,引き直+-住所,番地,郵便,グラフ,シート,名前の揺,列幅,ピボット,データ,洗い出,一覧,探,調べ
     ' 値の意味は変えずに書き方をそろえる（行は消さない・数式のセルは触らない）: 前後の空白・全角英数→半角・半角カナ→全角・
@@ -1944,6 +1944,7 @@ CleanUp:
 End Sub
 
 Sub 結合セルをほどいて値を埋める()
+    ' 変えてよい: 空欄
     ' 選択範囲（または表全体）のセル結合を解除し、結合されていた全セルに元の左上の値を埋めて補完する。
     ' 依頼の語: 結合セルを解除|結合を外|結合をはずして|結合を解いて|結合をぜんぶ解除|マージを解除|結合セルをばら|全部解除
     ' 依頼の組: 結合+解除,外,解い,やめ,ばら+-一覧,調べ,クエリ,マスタ,キー
@@ -2034,6 +2035,7 @@ CleanUp:
 End Sub
 
 Sub 選んだ列の空白を上の値で埋める()
+    ' 変えてよい: 空欄
     ' 選んでいる列の空欄セルに、直上の有効なセルの値をコピーして埋める。伝票や一覧表の欠損補完に使う。
     ' 依頼の語: 空白を上|上の値|空欄を上|上から埋め|値で埋|上と同|値の繰|セルの値|空白と欠損の処理|欠損の処理
     ' 依頼の組: 空白,空欄,空い,省略+上+-行を,行が,列,結合
@@ -2160,7 +2162,8 @@ Sub 選んだ列の空白を上の値で埋める()
 End Sub
 
 Sub 選んだ列の文字の日付を日付にする()
-    ' 依頼の語: 文字の日付を|和暦の文字|日付として認識|受付日の書|入っている日付|日付列|日付が文字列|列を日付の値
+    ' 変えてよい: 文字日付
+    ' 依頼の語: 文字の日付を|和暦の文字|日付として認識|受付日の書|入っている日付|日付列|日付が文字列|列を日付の値|文字列の日付|日付データに変換|日付データに
     ' 依頼の組: 日付+文字,和暦,認識,日付型,日付値,日付に+-異常,おかしい,間違い,ミス,妥当,年度,四半期,未来,ありえない,あり得ない
     ' 扱う: 文字日付変換
     ' 見出し: なし
@@ -2295,6 +2298,7 @@ CleanUp:
 End Sub
 
 Sub 選んだ列の文字の数字を数にする()
+    ' 変えてよい: 文字数字
     ' 選んでいる列の文字列として保存されている数字（カンマや空白付き含む）を計算可能な数値に変換する。先頭ゼロのコード列は触らない。
     ' 依頼の語: 数値に直|文字列の数字|数値に変換|金額が文字列|文字の数字を数値|計算できる数値|数に直|数値に変|文字を数値|カンマ付
     ' 依頼の組: 数字,数値,金額+文字+-日付,CSV
@@ -4201,6 +4205,7 @@ Sub 余分な行列を削除し軽くする()
 End Sub
 
 Sub 住所と郵便番号の形をそろえる()
+    ' 並びの代わり: 表の書き方と罫線と列幅をそろえる
     ' 依頼の語: 住所の整形|住所の表記|番地の書き方|住所の書き方|郵便番号を|住所を整え|住所がバラバラ|郵便番号を整え|郵便番号の形|住所と郵便番号|番地の表記|丁目の書き方|住所の全角半角
     ' 依頼の組: 住所,郵便,番地+-調べ,分割,分け
     ' 扱う: 住所 郵便番号 全角半角
@@ -5000,7 +5005,7 @@ Sub 他ブック参照を自ブックに直す()
 End Sub
 
 Sub 縦横1ページに収めて印刷設定()
-    ' 依頼の語: 1ページに収め|１ページに収め|一ページに収め|1枚に収め|1枚で印刷|1ページで印刷|1ページに印刷|1枚に印刷
+    ' 依頼の語: 1ページに収め|１ページに収め|一ページに収め|1枚に収め|1枚で印刷|1ページで印刷|1ページに印刷|1枚に印刷|1ページに収めて印刷できるように
     ' 依頼の組: 1ページ,１ページ,一ページ,1枚,１枚,一枚+収め,収まる,印刷,入れ+-調べ,何ページ,何枚,横,縦,幅,見出し
     ' 扱う: 印刷設定
     ' 見出し: なし
@@ -5015,6 +5020,7 @@ Sub 縦横1ページに収めて印刷設定()
 End Sub
 
 Sub 番号の列を連番に振り直す()
+    ' 変えてよい: 文字数字
     ' 依頼の語: 番号を振り直|番号を振りなお|連番を振り直|連番を振りなお|連番にし|番号を付け直|番号をつけ直|番号が飛|番号の抜け|番号が抜け|番号が重複|通し番号を|Noを振り直|No.を振り直|項番を振り直
     ' 依頼の組: 番号,連番,No,通し番号,項番+振り直,振りなお,付け直,つけ直,振って,飛,抜け,詰め,重複,ずれ,1から+-一覧,洗い出,チェック,調べ,探,確認,何件,右,伝票,会員,郵便
     ' 扱う: 番号 連番
@@ -5151,6 +5157,7 @@ Sub 番号の列を連番に振り直す()
 End Sub
 
 Sub 番号に先頭のゼロを付けてそろえる()
+    ' 変えてよい: 文字数字
     ' 依頼の語: 先頭のゼロ|先頭の0|頭のゼロ|ゼロが消え|0が消え|ゼロが落ち|0が落ち|桁をそろえ|桁を揃え|ゼロ埋め|0埋め|ゼロを付け|0を付け|桁数をそろえ|桁数を揃え
     ' 依頼の組: ゼロ,0,０,桁+消え,落ち,抜け,そろえ,揃え,埋め,付け,戻+-小数,四捨五入,切り捨て,丸め,円,金額,合計
     ' 扱う: 番号 桁 先頭ゼロ
@@ -5730,6 +5737,7 @@ Public Function マクロ撃ち診断(Optional ByVal ws As Worksheet = Nothing) As Stri
 End Function
 
 Sub 選んだ列の日付を和暦で表示する()
+    ' 変えてよい: 文字日付
     ' 依頼の語: 日付を和暦|日付の和暦|和暦で表示|和暦表示|和暦にして|元号で表示|日付を元号|日付を令和|和暦に直|和暦に変
     ' 依頼の組: 日付,年月日+和暦,元号,令和,平成,表示
     ' 扱う: 和暦表示 和暦 元号 日付
@@ -6031,6 +6039,7 @@ Sub 見出しで枠を固定しA1に戻す()
 End Sub
 
 Sub 選んだ列の式を値にする()
+    ' 変えてよい: 数式
     ' 選んだ列（選ばなければ表全体）の式を、今の値に置き換える。書式は変えない。エラーの式は値にせず数を報告。
     ' 階級: 基本
     ' 依頼の語: 式を値に|数式を値に|式を値にする|数式を値にする|式を値に変換|数式を値に変換|計算式を値に|式を固定|値貼り付け|値貼付|数式を消して値|関数を消して値|値だけにして|式を消して値|関数を値に
@@ -6957,6 +6966,7 @@ Sub 選んだ列の値ごとにシートを分割する(Optional ByVal 知らせる As Boolean = True
 End Sub
 
 Sub 選んだ列の数値を指定桁数でゼロ埋め文字列にする(Optional ByVal 指定桁数 As Long = 0)
+    ' 変えてよい: 文字数字
     ' 依頼の語: ゼロ埋め文字列|指定桁数でゼロ|0埋め文字列|ゼロパディング|前ゼロ復元|先頭ゼロを復元|0埋めにする|ゼロ埋めにする|桁数をそろえてゼロ埋め
     ' 依頼の組: ゼロ,0+埋め,パディング,復元+文字列,文字,桁+-行,小数
     ' 扱う: ゼロ埋め パディング コード復元
@@ -7569,4 +7579,313 @@ Public Sub 二つの表の片方だけの行を抜く()
     Exit Sub
 Catch:
     Application.StatusBar = "二つの表の片方だけの行を抜く: 途中で止まりました（" & Err.Description & "）。"
+End Sub
+
+Sub ふりがなの空欄を埋める()
+    ' 見出しが ふりがな・フリガナ・よみ・カナ の列の空欄だけを、同じ行の氏名（見出しが 氏名・名前・名称 の列）の読みで埋める（Application.GetPhonetic）。見出しやすでに入っている字のひらがな／カタカナに合わせる。埋まっている所と氏名が空の行は触らない（2026-10-22）
+    ' 依頼の語: ふりがなの空欄|ふりがなが空欄|ふりがなは空欄|ふりがなの空白|ふりがなが空白|ふりがなを埋|フリガナの空欄|フリガナが空欄|フリガナの空白|フリガナを埋|よみがなの空欄|読みがなの空欄|よみがなを埋|読みがなを埋
+    ' 依頼の組: ふりがな,フリガナ,ﾌﾘｶﾞﾅ,よみがな,ヨミガナ,読みがな+空欄,空白,空き,埋め,埋ま,未入力,抜け,入っていない+-消,削除,並べ,並び,ソート,ひらがなに,カタカナに,探,調べ,一覧,チェック,数え,件数,色,赤,塗,強調,目立,抽出,絞り込
+    ' 扱う: ふりがな フリガナ 読み 空欄 氏名
+    ' 見出し: なし
+    ' 変えてよい: 空欄
+
+    Dim ws As Worksheet, 表 As Range, why As String
+    Dim hdr As Long, c1 As Long, c2 As Long, 最終 As Long, c As Long, k As Long
+    Dim 読み列() As Long, 名前列() As Long, 読み数 As Long, 名数 As Long
+    Dim 一覧 As String, 名列 As Long, 差 As Long, 最小 As Long, 型 As String
+    Dim 名前々 As Variant, 読々 As Variant, 変() As Boolean, r As Long, n As Long, 行数 As Long
+    Dim 辞書 As Object, 名 As String, 読 As String, 埋めた As Long, 読めない As Long, 空き As Long
+    Dim 対 As String, 状況 As String
+    Dim oldScreen As Boolean, oldEvents As Boolean
+
+    Set ws = ActiveSheet
+    Set 表 = 明細の表の範囲(ws, why)
+    If 表 Is Nothing Then Call 先撃ちに断る(why): Exit Sub
+    hdr = 表.row
+    c1 = 表.Column
+    c2 = 表.Column + 表.Columns.Count - 1
+    最終 = 表.row + 表.rows.Count - 1
+    If 最終 <= hdr Then Call 先撃ちに断る("見出しの下に明細の行がありません。"): Exit Sub
+    行数 = 最終 - hdr
+
+    ReDim 読み列(1 To 表.Columns.Count)
+    ReDim 名前列(1 To 表.Columns.Count)
+    For c = c1 To c2
+        If ふりがなの見出しか(見出しの字(ws.Cells(hdr, c))) Then
+            読み数 = 読み数 + 1: 読み列(読み数) = c
+        ElseIf 氏名の見出しか(見出しの字(ws.Cells(hdr, c))) Then
+            名数 = 名数 + 1: 名前列(名数) = c
+        End If
+        一覧 = 一覧 & IIf(Len(一覧) > 0, "・", "") & 見出しの字(ws.Cells(hdr, c))
+    Next c
+    If 読み数 = 0 Then
+        Call 先撃ちに断る("見出しが ふりがな・フリガナ・よみ・カナ の列がありません（見出し: " & 一覧 & "）。ふりがなを入れる列の見出しを付けてください。")
+        Exit Sub
+    End If
+    If 名数 = 0 Then
+        Call 先撃ちに断る("読みのもとになる氏名の列（見出しが 氏名・名前・名称）がありません（見出し: " & 一覧 & "）。")
+        Exit Sub
+    End If
+
+    oldScreen = Application.ScreenUpdating
+    oldEvents = Application.EnableEvents
+    On Error GoTo 後始末
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    Set 辞書 = CreateObject("Scripting.Dictionary")
+
+    For k = 1 To 読み数
+        ' この読みの列に対応する氏名の列: いちばん近い氏名の列（同じ近さなら左）
+        名列 = 0: 最小 = 100000
+        For c = 1 To 名数
+            差 = Abs(名前列(c) - 読み列(k))
+            If 名前列(c) > 読み列(k) Then 差 = 差 * 2 - 1
+            If 差 < 最小 Then 最小 = 差: 名列 = 名前列(c)
+        Next c
+        型 = ふりがなの型(ws, 読み列(k), hdr + 1, 最終, 見出しの字(ws.Cells(hdr, 読み列(k))))
+        名前々 = 二次元にする(ws.Range(ws.Cells(hdr + 1, 名列), ws.Cells(最終, 名列)).Value2)
+        読々 = 二次元にする(ws.Range(ws.Cells(hdr + 1, 読み列(k)), ws.Cells(最終, 読み列(k))).Value2)
+        ReDim 変(1 To 行数, 1 To 1)
+        For r = 1 To 行数
+            If VarType(名前々(r, 1)) = vbString Then
+                名 = Trim$(CStr(名前々(r, 1)))
+            Else
+                名 = ""
+            End If
+            If Len(名) > 0 Then
+                ' 空欄: 空のセル・空白だけの字（式のセルは触らない）
+                If isEmpty(読々(r, 1)) Then
+                    空き = 1
+                ElseIf VarType(読々(r, 1)) = vbString Then
+                    If Trim$(Replace(CStr(読々(r, 1)), ChrW(&H3000), " ")) = "" And Not ws.Cells(hdr + r, 読み列(k)).HasFormula Then 空き = 1 Else 空き = 0
+                Else
+                    空き = 0
+                End If
+                If 空き = 1 Then
+                    If 埋めた Mod 200 = 199 Then Application.StatusBar = "ふりがなを調べています… " & r & " / " & 行数 & " 行"
+                    If 辞書.exists(名 & "|" & 型) Then
+                        読 = 辞書(名 & "|" & 型)
+                    Else
+                        読 = 読みの字(名, 型)
+                        辞書(名 & "|" & 型) = 読
+                    End If
+                    If Len(読) > 0 Then
+                        読々(r, 1) = 読
+                        変(r, 1) = True
+                        埋めた = 埋めた + 1
+                    Else
+                        読めない = 読めない + 1
+                    End If
+                End If
+            End If
+        Next r
+        If 埋めた > 0 Then Call 表の整理_下請け.変えたセルだけ書く(ws.Cells(hdr + 1, 読み列(k)), 読々, 変, False, "")
+        対 = 対 & IIf(Len(対) > 0, "・", "") & Split(ws.Cells(1, 読み列(k)).Address(True, False), "$")(0) & "列←" & Split(ws.Cells(1, 名列).Address(True, False), "$")(0) & "列"
+    Next k
+
+    If 埋めた = 0 Then
+        状況 = "ふりがなの空欄はありませんでした"
+        If 読めない > 0 Then 状況 = "読みを取れた氏名がありませんでした（" & 読めない & " 件）"
+        Call 先撃ちに断る(状況 & "（" & 対 & "）。")
+    Else
+        状況 = "ふりがなの空欄 " & 埋めた & " 件を氏名の読みで埋めました（" & 対 & "）。IME の読みなので人名は確かめてください"
+        If 読めない > 0 Then 状況 = 状況 & "。読みを取れなかった " & 読めない & " 件は空欄のままです"
+        Application.StatusBar = 状況
+    End If
+
+後始末:
+    Application.ScreenUpdating = oldScreen
+    Application.EnableEvents = oldEvents
+    If Err.Number <> 0 Then Err.Raise Err.Number
+End Sub
+
+' 見出しがふりがなの列か（ふりがな・フリガナ・よみ・カナ）。短い語（よみ・カナ）は見出しの頭か終わりにあるときだけ（「カナダ」を除く）
+Function ふりがなの見出しか(ByVal 見 As String) As Boolean
+    Dim s As String, w As Variant
+    s = ピボットの語ならし(見)
+    If Len(s) = 0 Then Exit Function
+    For Each w In Array("ふりがな", "フリガナ", "ﾌﾘｶﾞﾅ", "よみがな", "ヨミガナ", "読みがな", "読み仮名", "ふりかな", "フリカナ")
+        If InStr(s, CStr(w)) > 0 Then ふりがなの見出しか = True: Exit Function
+    Next w
+    For Each w In Array("よみ", "ヨミ", "読み", "カナ", "ｶﾅ")
+        If s = CStr(w) Or Left$(s, Len(w)) = CStr(w) Or Right$(s, Len(w)) = CStr(w) Then ふりがなの見出しか = True: Exit Function
+    Next w
+End Function
+
+' 見出しが氏名の列か（氏名・名前・名称。ふりがなの列は除く）
+Function 氏名の見出しか(ByVal 見 As String) As Boolean
+    Dim s As String, w As Variant
+    If ふりがなの見出しか(見) Then Exit Function
+    s = ピボットの語ならし(見)
+    For Each w In Array("氏名", "名前", "名称")
+        If InStr(s, CStr(w)) > 0 Then 氏名の見出しか = True: Exit Function
+    Next w
+End Function
+
+' ふりがなの列を埋める字の型。すでに入っている最初の字、無ければ見出しの字のひらがな／カタカナに合わせる。どちらも決まらなければカタカナ
+Function ふりがなの型(ByVal ws As Worksheet, ByVal 列 As Long, ByVal 開始行 As Long, ByVal 終行 As Long, ByVal 見 As String) As String
+    Dim 値 As Variant, r As Long, 型 As String
+    値 = 二次元にする(ws.Range(ws.Cells(開始行, 列), ws.Cells(終行, 列)).Value2)
+    For r = 1 To UBound(値, 1)
+        If VarType(値(r, 1)) = vbString Then
+            型 = かなの型(CStr(値(r, 1)))
+            If Len(型) > 0 Then ふりがなの型 = 型: Exit Function
+        End If
+    Next r
+    型 = かなの型(ピボットの語ならし(見))
+    If Len(型) > 0 Then ふりがなの型 = 型 Else ふりがなの型 = "カナ"
+End Function
+
+' 字の最初のかなが ひらがな なら "ひら"、カタカナ（半角も）なら "カナ"、かなが無ければ ""
+Function かなの型(ByVal s As String) As String
+    Dim i As Long, w As Long
+    For i = 1 To Len(s)
+        w = AscW(Mid$(s, i, 1))
+        If w < 0 Then w = w + 65536
+        If w >= &H3041 And w <= &H3096 Then かなの型 = "ひら": Exit Function
+        If (w >= &H30A1 And w <= &H30FA) Or (w >= &HFF66& And w <= &HFF9F&) Then かなの型 = "カナ": Exit Function
+    Next i
+End Function
+
+' 氏名の読み（IME）。型に合わせたかなの字にする。取れなければ ""
+Function 読みの字(ByVal 名 As String, ByVal 型 As String) As String
+    Dim s As String
+    On Error Resume Next
+    s = Application.GetPhonetic(名)
+    If Err.Number <> 0 Then s = "": Err.Clear
+    On Error GoTo 0
+    If Len(s) = 0 Then Exit Function
+    If Len(かなの型(s)) = 0 Then Exit Function         ' かなが 1 字も無い（英字の氏名など）は読みにしない
+    ' 氏名の区切りが半角の空白なら、読みの区切りも半角に合わせる
+    If InStr(名, " ") > 0 And InStr(名, ChrW(&H3000)) = 0 Then s = Replace(s, ChrW(&H3000), " ")
+    読みの字 = カナの字をそろえる(s, 型)
+End Function
+
+Sub 選んだ列のカナをひらがなにする()
+    ' 選んだ列（頼みに見出しの語があればその列・選ばず頼みも無ければ表全体）の文字の、全角カタカナと半角カナをひらがなにする。カナ以外の字（漢字・英数・記号）と数式のセルは触らない（2026-10-22）
+    ' 依頼の語: カタカナをひらがな|カナをひらがな|カタカナからひらがな|カナからひらがな|カタカナを平仮名|片仮名をひらがな|片仮名を平仮名|ｶﾅをひらがな
+    ' 依頼の組: カタカナ,カナ,片仮名,ｶﾅ+ひらがなに,ひらがなへ,平仮名に,ひらがな化,ひらがなで
+    ' 扱う: カタカナ ひらがな 半角カナ 変換
+    ' 見出し: なし
+    ' 列は頼みから: 列
+
+    Dim ws As Worksheet, 表 As Range, why As String, 頼 As String
+    Dim 列々() As Long, 上々() As Long, 下々() As Long, 本数 As Long
+    Dim hdr As Long, c1 As Long, c2 As Long, 最終 As Long, 最大行 As Long
+    Dim c As Long, k As Long, r As Long, 見 As String, 領 As Range, 全 As Variant
+    Dim 値 As Variant, 変() As Boolean, 行数 As Long, 変えた As Long, 変えた列 As Long, 列で As Boolean
+    Dim s As String, 新 As String, 名々 As String, 頼の語 As Variant, 取れた As Boolean
+    Dim oldScreen As Boolean, oldEvents As Boolean, 選単 As Boolean
+
+    Set ws = ActiveSheet
+    最大行 = ws.UsedRange.row + ws.UsedRange.rows.Count - 1
+    頼 = 先撃ちの頼みの文()
+    選単 = True
+    If TypeName(Selection) = "Range" Then 選単 = (Selection.CountLarge = 1)
+    Set 表 = 明細の表の範囲(ws, why)
+    ReDim 列々(1 To 1): ReDim 上々(1 To 1): ReDim 下々(1 To 1)
+
+    If Len(頼) > 0 Or 選単 Then
+        ' 頼みの文に出てくる見出しの列。無ければ表全体。選んでいる 1 セルは「選んでいない」と見る
+        If 表 Is Nothing Then Call 先撃ちに断る(why): Exit Sub
+        hdr = 表.row
+        c1 = 表.Column
+        c2 = 表.Column + 表.Columns.Count - 1
+        最終 = 表.row + 表.rows.Count - 1
+        If Len(頼) > 0 Then
+            For Each 頼の語 In Array("半角カタカナ", "全角カタカナ", "半角カナ", "全角カナ", "カタカナ", "片仮名", "ひらがな", "平仮名", "半角", "全角", "変換")
+                頼 = Replace(頼, CStr(頼の語), "")
+            Next 頼の語
+            For c = c1 To c2
+                見 = 見出しの字(ws.Cells(hdr, c))
+                If Len(見) >= 2 Then
+                    If 見出しの語の位置(頼, 見) > 0 Then
+                        取れた = True
+                        本数 = 本数 + 1
+                        ReDim Preserve 列々(1 To 本数): ReDim Preserve 上々(1 To 本数): ReDim Preserve 下々(1 To 本数)
+                        列々(本数) = c: 上々(本数) = hdr + 1: 下々(本数) = 最終
+                    End If
+                End If
+            Next c
+        End If
+        If Not 取れた Then
+            For c = c1 To c2
+                本数 = 本数 + 1
+                ReDim Preserve 列々(1 To 本数): ReDim Preserve 上々(1 To 本数): ReDim Preserve 下々(1 To 本数)
+                列々(本数) = c: 上々(本数) = hdr + 1: 下々(本数) = 最終
+            Next c
+        End If
+    Else
+        ' 選んでいる範囲（先頭の行は見出し）
+        最終 = 表の本文の最終行(ws)
+        For Each 領 In Selection.Areas
+            If 領.rows.Count > 100000 And Not 表 Is Nothing Then
+                hdr = 表.row
+            Else
+                hdr = 領.row
+            End If
+            If 領.rows.Count > 1 And 領.rows.Count <= 100000 Then
+                k = 領.row + 領.rows.Count - 1
+                If k > 最大行 Then k = 最大行
+            Else
+                k = 最終
+            End If
+            If k > hdr Then
+                For c = 領.Column To 領.Column + 領.Columns.Count - 1
+                    If c <= ws.UsedRange.Column + ws.UsedRange.Columns.Count - 1 Then
+                        本数 = 本数 + 1
+                        ReDim Preserve 列々(1 To 本数): ReDim Preserve 上々(1 To 本数): ReDim Preserve 下々(1 To 本数)
+                        列々(本数) = c: 上々(本数) = hdr + 1: 下々(本数) = k
+                    End If
+                Next c
+            End If
+        Next 領
+    End If
+    If 本数 = 0 Then Call 先撃ちに断る("ひらがなにする列が決まりません。列を選ぶか、頼みに見出しの語を書いてください。"): Exit Sub
+
+    oldScreen = Application.ScreenUpdating
+    oldEvents = Application.EnableEvents
+    On Error GoTo 後始末
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    For k = 1 To 本数
+        行数 = 下々(k) - 上々(k) + 1
+        If 行数 >= 1 Then
+            値 = 二次元にする(ws.Range(ws.Cells(上々(k), 列々(k)), ws.Cells(下々(k), 列々(k))).Value2)
+            ReDim 変(1 To 行数, 1 To 1)
+            列で = False
+            For r = 1 To 行数
+                If VarType(値(r, 1)) = vbString Then
+                    s = CStr(値(r, 1))
+                    If カナを含むか(s) Then
+                        ' 数式のセルは触らない
+                        If Not ws.Cells(上々(k) + r - 1, 列々(k)).HasFormula Then
+                            新 = カナの字をそろえる(s, "ひら")
+                            If 新 <> s Then
+                                値(r, 1) = 新
+                                変(r, 1) = True
+                                変えた = 変えた + 1
+                                列で = True
+                            End If
+                        End If
+                    End If
+                End If
+            Next r
+            If 列で Then
+                Call 表の整理_下請け.変えたセルだけ書く(ws.Cells(上々(k), 列々(k)), 値, 変, False, "")
+                変えた列 = 変えた列 + 1
+                If 変えた列 <= 4 Then 名々 = 名々 & IIf(Len(名々) > 0, "・", "") & Split(ws.Cells(1, 列々(k)).Address(True, False), "$")(0) & "列"
+            End If
+        End If
+    Next k
+    If 変えた = 0 Then
+        Call 先撃ちに断る("ひらがなにするカナはありませんでした。")
+    Else
+        Application.StatusBar = "カナをひらがなにしました: " & 変えた & " セル（" & 名々 & IIf(変えた列 > 4, " ほか", "") & "）。漢字・英数・数式は触っていません"
+    End If
+
+後始末:
+    Application.ScreenUpdating = oldScreen
+    Application.EnableEvents = oldEvents
+    If Err.Number <> 0 Then Err.Raise Err.Number
 End Sub

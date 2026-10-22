@@ -4709,6 +4709,44 @@ def test_seiri_request_plan_splits_requests_20260924():
     assert vw._seiri_request_plan("", entries) == []
 
 
+def test_cf_shelf_is_the_only_one_for_conditional_format_requests_20261022():
+    """指示書044: 条件付き書式を付ける頼みは AI の役目のまま、頭に「' 条件付き書式: はい」と書いた棚だけが当たる。
+    VBA の 先撃ち判定 と同じ決まり（shelf_pick と check_doubt の両方）。"""
+    import vbam_prefire as vp
+    text = ("Sub 基準を下回る行に印と色を付ける()\r\n    ' 依頼の組: 下回+と出,赤,背景\r\n    ' 条件付き書式: はい\r\nEnd Sub\r\n"
+            "Sub 入力規則などの仕掛けを一覧にする()\r\n    ' 依頼の語: 条件付き書式\r\nEnd Sub\r\n"
+            "Sub 見出しを赤にする()\r\n    ' 依頼の語: 赤にして\r\nEnd Sub\r\n")
+    entries = vp.shelf_entries_from_text(text)
+    assert [e['cf_ok'] for e in entries] == [True, False, False]
+    # 条件付き書式の頼み: 印の棚だけ。語が他の棚に当たっても外す
+    assert vp.shelf_pick('在庫が発注点を下回る行を条件付き書式で赤くして', entries) == '基準を下回る行に印と色を付ける'
+    assert vp.shelf_pick('条件付き書式で見出しを赤にして', entries) == ''
+    # 調べる・一覧の語があれば今までどおり（印のない棚も当たる）
+    assert vp.shelf_pick('このシートの条件付き書式を調べて', entries) == '入力規則などの仕掛けを一覧にする'
+    # 迷いの判定も同じ（印のない棚は数えない）
+    assert vp.check_doubt('条件付き書式で見出しを赤にして', entries)[0] is False
+    # 印の行は本文の説明の行（「' 条件付き書式: 判定が…」）で打ち消されない
+    again = vp.shelf_entries_from_text(text.replace("End Sub\r\nSub 入力規則", "    ' 条件付き書式: 判定が空でない行を塗る\r\nEnd Sub\r\nSub 入力規則", 1))
+    assert again[0]['cf_ok'] is True
+
+
+def test_seiri_request_plan_uses_whole_request_when_pieces_only_list_20261022():
+    """指示書044: 「#DIV/0! エラーを直して」は空白で分けると「#DIV/0!」だけが一覧の棚に当たっていた。節がどれも一覧にするだけの棚
+    （か何にも当たらない）ときは、依頼の文を丸ごと見た判定を使う。ふつうの複数の頼みは今までどおり節ごと。"""
+    import vbam_prefire as vp
+    import vbam_view as vw
+    text = ("Sub エラー値のセルを一覧にする()\r\n    ' 依頼の語: DIV/0\r\nEnd Sub\r\n"
+            "Sub ゼロで割るエラーの式を直す()\r\n    ' 依頼の組: DIV/0+エラー+直\r\n    ' 変えてよい: 数式\r\nEnd Sub\r\n"
+            "Sub 全列が同じ重複行を削除する()\r\n    ' 依頼の語: 重複行\r\nEnd Sub\r\n"
+            "Sub 表の下に合計行を足す()\r\n    ' 依頼の語: 合計行\r\nEnd Sub\r\n")
+    entries = vp.shelf_entries_from_text(text)
+    assert vw._seiri_request_plan('#DIV/0! エラーを直して 製造原価と単価を正しく計算して', entries) == ['ゼロで割るエラーの式を直す']
+    # 一覧の頼みはそのまま（丸ごとでも一覧）
+    assert vw._seiri_request_plan('#DIV/0! のセルを 一覧にして', entries) == ['エラー値のセルを一覧にする']
+    # ふつうの複数の頼みは節ごと
+    assert vw._seiri_request_plan('重複行を消して 合計行を足して', entries) == ['全列が同じ重複行を削除する', '表の下に合計行を足す']
+
+
 def _shelf_entries_from_exported_bas():
     """配っている棚の書き出し（手元は publish\\addin\\macros、公開リポは 作業ファイル\\project\\macros）→ 棚の並び。無ければ None"""
     import vbam_prefire as vp
@@ -4752,7 +4790,9 @@ def test_conditional_format_requests_go_to_ai_unless_survey_20261014():
     entries = _shelf_entries_from_exported_bas()
     if entries is None:
         pytest.skip('棚の書き出しが無い')
-    assert vp.shelf_pick('在庫が発注点を下回る行を条件付き書式で赤くして', entries) == ''
+    # 2026-10-22 指示書044: 条件付き書式を付ける棚（' 条件付き書式: はい）ができた。書き出しが古ければ AI へ、新しければその棚へ。
+    # 「入力規則などの仕掛けを一覧にする」には当たらない（条件付き書式を付ける頼みで当たるのは、その印の棚だけ）
+    assert vp.shelf_pick('在庫が発注点を下回る行を条件付き書式で赤くして', entries) in ('', '基準を下回る行に印と色を付ける')
     assert vp.shelf_pick('このシートの仕掛け（入力規則・条件付き書式・結合セル）を調べて', entries) == '入力規則などの仕掛けを一覧にする'
     assert vp.shelf_pick('この表を見やすく整えるには何を直せばいいか教えて', entries) == ''
 
@@ -5774,3 +5814,228 @@ def test_form_click_refuses_on_form_owner_book_20261022(monkeypatch, tmp_path, c
     assert "押しません" in capsys.readouterr().out
     a2 = vm.build_parser().parse_args(["form-click", "ワークシート一覧", "CommandButton12", "--here"])
     assert a2.here_flag is True
+
+
+def test_shelf_misses_aggregate_and_filters_test_books_20261022(tmp_path):
+    """外れた依頼の集計: 3列・4列混在、試験のブック除外、つなぎ語のまとめ、2回以上の抽出（2026-10-22 指示書034）。"""
+    import vbam_prefire as vp
+    import datetime
+
+    csv_file = tmp_path / "外れた依頼.csv"
+    now = datetime.datetime(2026, 10, 22, 12, 0, 0)
+    lines = [
+        "日時,棚の候補,依頼文,ブック\n",
+        '2026/10/20 10:00:00,なし,"ええ、リッチなワインにしてください",受注一覧.xlsx\n',
+        '2026/10/21 10:00:00,なし,"リッチなワインにしてください",売上表.xlsx\n',
+        '2026/10/18 10:00:00,なし,"#DIV/0! エラーを直して"\n',
+        '2026/10/19 10:00:00,なし,"えっと、#DIV/0! エラーを直して"\n',
+        '2026/10/20 11:00:00,なし,"D列に要発注と出す",テスト_売上.xlsx\n',
+        '2026/10/20 11:05:00,なし,"D列に要発注と出す",dummy.xlsx\n',
+        '2026/10/20 11:10:00,なし,"D列に要発注と出す",Book1.xlsx\n',
+        '2026/10/22 09:00:00,なし,"1回だけの頼み",本番.xlsx\n',
+    ]
+    csv_file.write_bytes("".join(lines).encode('cp932'))
+
+    entries = [
+        {'name': '表の書き方と罫線と列幅をそろえる', 'ask': '表を整え|表記を統一', 'combo': None, 'tier': ''}
+    ]
+
+    not_hit, hit = vp.shelf_misses(path=str(csv_file), days=14, now=now, entries=entries)
+
+    patterns = [r['pattern'] for r in not_hit + hit]
+    assert "D列に要発注と出す" not in patterns
+    assert "1回だけの頼み" not in patterns
+    assert "リッチなワインにしてください" in patterns
+    assert "#DIV/0! エラーを直して" in patterns
+
+    wine = next(r for r in not_hit + hit if r['pattern'] == "リッチなワインにしてください")
+    assert wine['count'] == 2
+    assert wine['latest_dt'] == '2026/10/21 10:00:00'
+
+    div = next(r for r in not_hit + hit if r['pattern'] == "#DIV/0! エラーを直して")
+    assert div['count'] == 2
+
+    reqs = vp.missed_requests(path=str(csv_file), include_test=False)
+    assert "D列に要発注と出す" not in reqs
+    assert "リッチなワインにしてください" in reqs
+
+
+def test_request_normalize_and_shelf_pick_spoken_20261022():
+    """話し言葉の下ごしらえ: つなぎ語・票→表・色の言い換え、伝票/投票の保護（2026-10-22 指示書035）。"""
+    import vbam_prefire as vp
+
+    # 1. つなぎ語の除去
+    assert vp.request_normalize("ええ、表を整えて") == "表を整えて"
+    assert vp.request_normalize("あの、 表を整えて") == "表を整えて"
+    assert vp.request_normalize("えっと、 表を整えて") == "表を整えて"
+    assert vp.request_normalize("それでは、 表を整えて") == "表を整えて"
+    assert vp.request_normalize("はい、 表を整えて") == "表を整えて"
+
+    # 2. 聞き違い「票→表」、伝票/投票/帳票の保護
+    assert vp.request_normalize("票の色を変えて") == "表の色を変えて"
+    assert vp.request_normalize("伝票の一覧を整えて") == "伝票の一覧を整えて"
+    assert vp.request_normalize("投票結果を集計して") == "投票結果を集計して"
+    assert vp.request_normalize("帳票形式を右に1行1件にして") == "帳票形式を右に1行1件にして"
+
+    # 3. 色の言い換え（デザイン棚の依頼の語へ・指示書038でノーブルボルドー等の正式名へ）
+    assert "ノーブルボルドー" in vp.request_normalize("ええ、表をリッチなワインにしてください")
+    assert "モダンエメラルド" in vp.request_normalize("表をリッチなグリーンにしてください")
+    assert "ノーブルボルドー" in vp.request_normalize("表をワインにしてください")
+
+    # 4. shelf_pick で実際に当たるか
+    entries = [
+        {'name': '表のデザインを美化する', 'ask': '表のデザインを美化|ノーブルボルドー|モダンエメラルド', 'combo': None, 'tier': '作り替え'},
+        {'name': '表の書き方と罫線と列幅をそろえる', 'ask': '表を整え|整ってない|表記を統一', 'combo': None, 'tier': ''},
+    ]
+    assert vp.shelf_pick("ええ、表をリッチなワインにしてください", entries) == '表のデザインを美化する'
+    assert vp.shelf_pick("票が整ってないですね", entries) == '表の書き方と罫線と列幅をそろえる'
+    # 伝票は「表」に化けないので「表を整え」には当たらない（AIへ回る）
+    assert vp.shelf_pick("伝票を整えて", entries) == ''
+
+
+def test_fire_with_request_promise_check_20261022(monkeypatch):
+    """棚を撃った後の約束答え合わせ: 約束違反なら戻して報告に出す・空なら今までどおり（2026-10-22 指示書036）。"""
+    import vbam_prefire as vp
+
+    calls = []
+
+    class DummyRange:
+        def Select(self):
+            pass
+
+    class DummyParent:
+        pass
+
+    class DummyWs:
+        def __init__(self):
+            self.Parent = DummyParent()
+
+        def Range(self, addr):
+            return DummyRange()
+
+    class DummyXl:
+        def __init__(self, violation=""):
+            self.violation = violation
+            self.StatusBar = False
+
+        def Run(self, macro, *args):
+            calls.append((macro, args))
+            if "約束を破ったか" in macro:
+                return self.violation
+            if "棚の断りを返す" in macro:
+                return ""
+            return ""
+
+    monkeypatch.setattr("vbam_vba.run_book_macro", lambda xl, owner, name: calls.append(('run_macro', (owner, name))))
+    monkeypatch.setattr("vbam_prefire._table_anchor", lambda ws: "A1")
+
+    # 1. 約束違反ありのケース
+    calls.clear()
+    xl_viol = DummyXl(violation="C3: 100→999")
+    ws = DummyWs()
+    res = vp.fire_with_request(xl_viol, "秀コンボ.xlsm", ws, "表の空行を削除", "表の空行を削除して")
+    assert "約束違反で戻しました: 表の空行を削除（C3: 100→999）" in res
+    assert any("原本から元に戻す" in c[0] for c in calls)
+    assert not any(c[0].endswith("撃った棚を控える") for c in calls)
+
+    # 2. 約束違反なし（正常）のケース
+    calls.clear()
+    xl_ok = DummyXl(violation="")
+    res_ok = vp.fire_with_request(xl_ok, "秀コンボ.xlsm", ws, "表の空行を削除", "表の空行を削除して")
+    assert res_ok == ""
+    assert not any("原本から元に戻す" in c[0] for c in calls)
+    assert any(c[0].endswith("撃った棚を控える") for c in calls)
+
+
+def test_request_normalize_color_context_only_20261022():
+    """色の言い換えは色を頼んでいる文のときだけ（2026-10-22 指示書038）。ワイン売上・在庫・グリーン車の誤爆防止。"""
+    import vbam_prefire as vp
+
+    # 1. 誤爆防止（色文脈や助詞が一致しない場合は置き換えない）
+    assert vp.request_normalize("ワインの売上を月別に集計して") == "ワインの売上を月別に集計して"
+    assert vp.request_normalize("ワインの在庫一覧の空行を詰めて") == "ワインの在庫一覧の空行を詰めて"
+    assert vp.request_normalize("グリーン車の利用者を部署ごとに集計して") == "グリーン車の利用者を部署ごとに集計して"
+    assert vp.request_normalize("緑の列を削除して") == "緑の列を削除して"
+
+    # 2. 色指定の文（表・色・デザイン・配色・リッチな + 色名 + に/色に/で/の色）は置き換える
+    assert vp.request_normalize("ええ、表をリッチなワインにしてください") == "表をノーブルボルドーにしてください"
+    assert vp.request_normalize("ワイン色にして") == "ノーブルボルドー色にして"
+    assert vp.request_normalize("表をワイン色にして") == "表をノーブルボルドー色にして"
+    assert vp.request_normalize("ええ、表をリッチなグリーンにしてください") == "表をモダンエメラルドにしてください"
+    assert vp.request_normalize("表をリッチなグレーにしてください") == "表をシックチャコールにしてください"
+
+
+
+
+
+
+def test_shelf_doubt_and_record_ai_choice_20261022(tmp_path):
+    """迷った→候補が返る→shelf-run で記録される・--chose --none で空が記録される（2026-10-22 指示書040 2b）。"""
+    import vbam_prefire as vp
+
+    # 1. check_doubt で迷い判定（1位が2位の1.5倍未満）
+    entries = [
+        {'name': '棚A', 'combo': '月別+集計', 'ask': None},
+        {'name': '棚B', 'ask': '集計をして'},
+    ]
+    is_d, cands, guide = vp.check_doubt('月別の集計をして', entries, ratio=1.5)
+    assert is_d is True
+    assert '棚A' in cands and '棚B' in cands
+    assert '迷ったので撃っていません' in guide
+
+    # 2. remember_doubt & save_ai_choice
+    recorded = []
+
+    class DummyXL:
+        def Run(self, proc, book, req, cands, ans):
+            recorded.append((book, req, cands, ans))
+
+    xl = DummyXL()
+    vp.remember_doubt('月別の集計をして', cands, '売上.xlsx')
+    d = vp.get_last_doubt()
+    assert d['request'] == '月別の集計をして'
+
+    # shelf-run で棚Aを選んだ記録
+    ok = vp.save_ai_choice(xl, '秀コンボ.xlam', '棚A', '売上.xlsx')
+    assert ok is True
+    assert len(recorded) == 1
+    assert recorded[0] == ('売上.xlsx', '月別の集計をして', cands, '棚A')
+    assert vp.get_last_doubt() is None
+
+    # 3. 再び迷って --chose --none で空が記録される
+    vp.remember_doubt('別の頼み', '1. 候補A 2. 候補B', '売上.xlsx')
+    ok_none = vp.save_ai_choice(xl, '秀コンボ.xlam', '', '売上.xlsx')
+    assert ok_none is True
+    assert len(recorded) == 2
+    assert recorded[1] == ('売上.xlsx', '別の頼み', '1. 候補A 2. 候補B', '')
+
+
+def test_hardcoded_shelf_names_eliminated():
+    """2026-10-22 指示書041: 判定コードの中に棚名の決め打ちが0件であることの検証。"""
+    import vbam_prefire as vp
+    fake_shelf_text = """
+Sub 帳票を右に1行1件の一覧にする()
+    ' 直す頼みにも当てる: はい
+    ' 依頼の語: 帳票
+End Sub
+
+Sub 住所と郵便番号の形をそろえる()
+    ' 並びの代わり: 表の書き方と罫線と列幅をそろえる
+    ' 依頼の語: 住所
+End Sub
+
+Sub 選んだ列の式を値にする()
+    ' 変えてよい: 数式
+    ' 依頼の語: 式
+End Sub
+"""
+    entries = vp.shelf_entries_from_text(fake_shelf_text)
+    assert len(entries) == 3
+    e_map = {e['name']: e for e in entries}
+    assert e_map['帳票を右に1行1件の一覧にする']['allow_fix'] is True
+    assert e_map['住所と郵便番号の形をそろえる']['plan_substitute'] == '表の書き方と罫線と列幅をそろえる'
+    assert e_map['選んだ列の式を値にする']['allow_change'] == '数式'
+
+    # 判定コード内に決め打ちが無いことの検査
+    stops = vp.check_hardcoded_shelf_names(None, None, fake_shelf_text)
+    assert len(stops) == 0, f"ハードコードされた棚名が見つかりました: {stops}"

@@ -2,6 +2,7 @@ Attribute VB_Name = "表の整理_作る"
 ' 表の整理_作る - 棚（言葉で頼んで撃つマクロ）の作る（集計・グラフ・転記・書き出し）（2026-09-23 表の整理から分けた）
 
 Sub 帳票を右に1行1件の一覧にする()
+    ' 直す頼みにも当てる: はい
     ' 依頼の語: 帳票を一覧|1行1件|１行１件|データの一覧に|レイアウトの表|結合セルの帳票|受付簿をリスト|様式の帳票を一覧|1件複数行の帳票|帳票から一覧|一覧に直|受付簿|一覧化|帳票形式|結合セルのレイアウト表|レイアウト表を一覧表|一覧表に直|この帳票を1行1件の一覧表に直|1行1件の一覧表に直
     ' 依頼の組: 帳票,様式,申請書,レイアウト,結合+一覧,リスト,データベース,1行1件+-差し込,ひな形,転記,解除,調べ,仕掛け
     ' 扱う: 帳票変換 一覧化
@@ -7532,7 +7533,7 @@ End Sub
 
 Sub 選んだ2列の増減額と増減率を足す()
     ' 選んでいる2つの数値列（前期・当期など）の右に、差額（増減額）と伸び率（増減率 %）の計算列を追加する。
-    ' 依頼の語: 増減の列|増減率を出|増減率の列|増減額と増減率の列|増減率を列|差額と伸び率|前年と今年の増減|選んだ2列で増減|差と伸び率の列|増減額の列
+    ' 依頼の語: 増減の列|増減率を出|増減率の列|増減額と増減率の列|増減率を列|差額と伸び率|前年と今年の増減|選んだ2列で増減|差と伸び率の列|増減額の列|増減額と増減率を出して|増減額と増減率を出す
     ' 依頼の組: 増減,差,伸び率,前年+率,額,列+-シート,グラフ,要因,滝,ウォーター,比較表
     ' 扱う: 増減額 増減率 合計
     ' 見出し: なし
@@ -8356,7 +8357,7 @@ Sub 区分の切れ目に小計行を挿入する()
 End Sub
 
 Sub 選んだ列の右に順位列を足す()
-    ' 依頼の語: 順位|ランキング|何位|番付|RANK
+    ' 依頼の語: 順位|ランキング|何位|番付|RANK|何位か出して|何位か出す
     ' 依頼の組: 順位,ランキング,何位,RANK+-ピボット
     ' 扱う: 順位 ランキング 合計
     ' 見出し: なし
@@ -10304,7 +10305,7 @@ End Sub
 Sub 選んだ列をクエリで区切って分ける(Optional ByVal 勇退 As Boolean = True)
     ' パワークエリを使用して、指定した列の文字列を区切り文字（カンマやスペース等）で複数列に分割する。
     ' 依頼の語: 列を区切|列を分|課と係|姓と名
-    ' 依頼の組: 姓と名,分割,区切り,区切っ,分けて+-シート,住所の表記
+    ' 依頼の組: 姓と名,分割,区切り,区切っ,分けて+-シート,住所の表記,桁ごと,桁区切,3桁,三桁,カンマ区切りを入れ,カンマを付け
     ' 扱う: パワークエリ列分割
     ' 見出し: なし
     ' 選ぶ列: 1
@@ -12217,6 +12218,7 @@ CatchError:
 End Sub
 
 Sub 表の上にKPIサマリーカードを作る(Optional ByVal 勇退 As Boolean = True)
+    ' 変えてよい: 上に6行
     ' 依頼の語: KPIカード|サマリーカード|KPI|指標カード|上部にサマリー|要約カード|ダッシュボードカード|KPIを作成|サマリーカードを作成
     ' 階級: 作り替え
     ' 扱う: KPI サマリー カード ダッシュボード 集計 指標
@@ -13088,7 +13090,7 @@ CleanUp:
 End Sub
 
 Sub 表のデザインを美化する()
-    ' 依頼の語: 表のデザインを美化|デザイン美化|系デザイン|エグゼクティブデザイン|ネイビーデザイン|濃紺デザイン|モダンエメラルド|エメラルドデザイン|グリーンデザイン|緑デザイン|深緑デザイン|シックチャコール|チャコールデザイン|グレーデザイン|モノトーンデザイン|ノーブルボルドー|ボルドーデザイン|ワインデザイン|赤デザイン|ウォームアンバー|アンバーデザイン|琥珀デザイン|茶色デザイン|クラシックインディゴ|インディゴデザイン|藍色デザイン|青デザイン
+    ' 依頼の語: 表のデザインを美化|デザイン美化|系デザイン|エグゼクティブデザイン|ネイビーデザイン|濃紺デザイン|モダンエメラルド|エメラルドデザイン|グリーンデザイン|緑デザイン|深緑デザイン|シックチャコール|チャコールデザイン|グレーデザイン|モノトーンデザイン|ノーブルボルドー|ボルドーデザイン|ワインデザイン|赤デザイン|ウォームアンバー|アンバーデザイン|琥珀デザイン|茶色デザイン|クラシックインディゴ|インディゴデザイン|藍色デザイン|青デザイン|リッチなグレー
     ' 依頼の語限定（誤爆防止のため組なし）
     ' 階級: 作り替え
     ' 扱う: デザイン 書式 美化 配色 罫線 エグゼクティブ エメラルド チャコール ボルドー アンバー インディゴ
@@ -13242,3 +13244,316 @@ Private Function ConvertVlookupToXlookup(ByVal f As String) As String
 
     ConvertVlookupToXlookup = Left$(f, pos - 1) & xlookStr & Mid$(f, endPos + 1)
 End Function
+
+Sub 基準を下回る行に印と色を付ける()
+    ' 値の列が基準の列を下回る行に、右の列「判定」で印（頼みの『』「」の語・無ければ「要確認」）を出し、その行に薄い赤を塗る（条件付き書式）。値と基準の列は頼みの文の見出しの語で決める。元の列は変えない（2026-10-22）
+    ' 依頼の語: を下回る行に印|を下回る行を赤|を下回る行に色|を下回る行の背景|を下回る行に警告|を下回っている行に印|を下回っている行を赤|を下回っている行に色|を下回っている行の背景|未満の行に印|未満の行を赤|未満の行に色|未満の行の背景|を上回る行に印|を上回る行を赤|を上回っている行に印|を上回っている行を赤|を超えている行に印|を超えている行を赤|を超えている行に色
+    ' 依頼の組: 下回,上回,未満,超え,足りな,不足,少な+と出,と表示,印,マーク,判定,警告,フラグ,ハイライト,目立,色,赤,背景,塗+-抽出,抜き出,フィルタ,絞り込,削除,消して,並べ,順位,グラフ,ピボット
+    ' 扱う: 判定 要確認 下回る 未満 条件付き書式 色
+    ' 見出し: なし
+    ' 列は頼みから: 値 基準
+    ' 変えてよい: 空欄 右に1列
+    ' 条件付き書式: はい
+
+    Dim ws As Worksheet, 表 As Range, why As String, 頼 As String, 生頼 As String
+    Dim n As Long, 列s() As Long, 位置s() As Long, 候補 As String, 唯一 As Long
+    Dim 値列 As Long, 基準列 As Long, 基準の数 As Double, 数の使用 As Boolean, 数の位置 As Long
+    Dim 比べ As String, 動位置 As Long, i As Long, 入替 As Long
+    Dim hdr As Long, c1 As Long, c2 As Long, 最終 As Long, 判定列 As Long, r As Long, c As Long
+    Dim 印 As String, 式々() As Variant, 空行 As Boolean, 判定の語 As String
+    Dim 本体 As Range, 判定体 As Range, 対象 As Range, fc As Object, 色 As Long, 列文字 As String
+    Dim 旗 As Long, 値 As Variant, 数 As Long, 件数 As Long, 古 As Long, 行 As Long
+    Dim oldScreen As Boolean, oldEvents As Boolean, 見 As String, 括 As Variant, p1 As Long, p2 As Long, 括の中 As String
+    Dim 選 As Range, 全 As Variant, 和 As Boolean, 古い As Variant, 値文字 As String, 基準文字 As String
+    Dim 新 As Object, 印行 As Long, 無印行 As Long, 正しい As Boolean
+
+    Set ws = ActiveSheet
+    生頼 = 先撃ちの頼みの文()
+    頼 = ピボットの語ならし(生頼)
+    Set 表 = 明細の表の範囲(ws, why)
+    If 表 Is Nothing Then Call 先撃ちに断る(why): Exit Sub
+    hdr = 表.row
+    c1 = 表.Column
+    c2 = 表.Column + 表.Columns.Count - 1
+    最終 = 表.row + 表.rows.Count - 1
+    If 最終 <= hdr Then Call 先撃ちに断る("見出しの下に明細の行がありません。"): Exit Sub
+
+    ' 値の列と基準の列を決める（頼みの文の見出しの語。頼みが無ければ選んだ 2 列を左から 値・基準）
+    n = 組み合わせの数の列(ws, 表, 頼, 列s, 位置s, 候補, 唯一)
+    比べ = 比べ方(頼, 動位置)
+    If Len(頼) > 0 And n = 2 Then
+        If 位置s(2) < 位置s(1) Then 入替 = 位置s(1): 位置s(1) = 位置s(2): 位置s(2) = 入替: 入替 = 列s(1): 列s(1) = 列s(2): 列s(2) = 入替
+        値列 = 列s(1): 基準列 = 列s(2)
+        ' 「値が基準を下回る」の基準は動詞のすぐ手前の見出し。「基準を下回っている値」なら入れ替える
+        If 動位置 > 0 Then
+            If 位置s(1) < 動位置 And 位置s(2) > 動位置 Then
+                入替 = 値列: 値列 = 基準列: 基準列 = 入替
+            End If
+        End If
+    ElseIf Len(頼) > 0 And n = 1 Then
+        基準の数 = 頼みの数(頼, 数の位置)
+        If 基準の数 < 0 Then Call 先撃ちに断る("基準の列（または基準の数）が決まりません。見出しの語を 2 つ（例:「在庫数が発注点を下回ったら」）書いてください（数の列: " & 候補 & "）"): Exit Sub
+        値列 = 列s(1): 数の使用 = True
+    Else
+        ' 選んでいる 2 列（頼みの文が無いとき）
+        If Selection.Areas.Count >= 2 Then
+            Set 選 = Selection
+            値列 = 選.Areas(1).Column: 基準列 = 選.Areas(2).Column
+        ElseIf Selection.Areas(1).Columns.Count = 2 Then
+            値列 = Selection.Areas(1).Column: 基準列 = 値列 + 1
+        End If
+        If 値列 = 0 Or 基準列 = 0 Or 値列 = 基準列 Then
+            Call 先撃ちに断る("値の列と基準の列が決まりません。頼みに見出しの語を 2 つ書くか、2 列を選んでください（数の列: " & 候補 & "）")
+            Exit Sub
+        End If
+    End If
+    If 値列 < c1 Or 値列 > c2 Or (Not 数の使用 And (基準列 < c1 Or 基準列 > c2)) Then
+        Call 先撃ちに断る("値の列・基準の列が表の外です。表の中の列を選んでください。")
+        Exit Sub
+    End If
+
+    ' 印の字: 頼みの『』か「」の語（見出しの名前は除く）。無ければ 要確認
+    印 = "要確認"
+    For Each 括 In Array("『", "「")
+        p1 = InStr(生頼, CStr(括))
+        Do While p1 > 0
+            p2 = InStr(p1 + 1, 生頼, IIf(CStr(括) = "『", "』", "」"))
+            If p2 = 0 Then Exit Do
+            括の中 = Trim$(Mid$(生頼, p1 + 1, p2 - p1 - 1))
+            If Len(括の中) > 0 And Len(括の中) <= 12 Then
+                判定の語 = ""
+                For c = c1 To c2
+                    If 見出しの字(ws.Cells(hdr, c)) = 括の中 Then 判定の語 = "見出し": Exit For
+                Next c
+                If 判定の語 = "" Then 印 = 括の中: GoTo 印が決まった
+            End If
+            p1 = InStr(p2 + 1, 生頼, CStr(括))
+        Loop
+    Next 括
+印が決まった:
+
+    ' 判定の列: 前に撃った「判定」の列があればそこ。無ければ頼みの「D列に」の空の列、それも無ければ表の右の空いた列
+    判定列 = 0
+    For c = c1 To c2 + 1
+        If 見出しの字(ws.Cells(hdr, c)) = "判定" Then 判定列 = c: Exit For
+    Next c
+    If 判定列 = 0 Then
+        判定列 = 右の出し先(ws, hdr, c2 + 1, 1, "判定", c2 + 1)
+        ' 頼みに「D列に」とあり、その列の見出しから最後の明細の行までが空ならそこへ（元の列は使わない）
+        For i = 1 To Len(生頼) - 1
+            If Mid$(生頼, i, 1) = "列" And i >= 2 Then
+                If Mid$(生頼, i + 1, 1) = "に" Or Mid$(生頼, i + 1, 1) = "へ" Then
+                    列文字 = StrConv(Mid$(生頼, i - 1, 1), vbNarrow)
+                    If 列文字 Like "[A-Za-z]" Then
+                        行 = ws.Range(UCase$(列文字) & "1").Column
+                        If 行 >= c1 And 行 <= c2 + 1 Then
+                            If Application.WorksheetFunction.CountA(ws.Range(ws.Cells(hdr, 行), ws.Cells(最終, 行))) = 0 Then 判定列 = 行
+                        End If
+                    End If
+                End If
+            End If
+        Next i
+    End If
+    ' 見出しが「判定」の列が決まったら、前に撃った自分の列（空か、この棚の式）だけ使う。人の「判定」の列は上書きしない
+    If 見出しの字(ws.Cells(hdr, 判定列)) = "判定" Then
+        古い = ws.Range(ws.Cells(hdr + 1, 判定列), ws.Cells(最終, 判定列)).Formula
+        If Not IsArray(古い) Then
+            If CStr(古い) <> "" And Left$(CStr(古い), 17) <> "=IF(AND(ISNUMBER(" Then 和 = True
+        Else
+            For r = 1 To UBound(古い, 1)
+                If CStr(古い(r, 1)) <> "" And Left$(CStr(古い(r, 1)), 17) <> "=IF(AND(ISNUMBER(" Then 和 = True: Exit For
+            Next r
+        End If
+        If 和 Then
+            Call 先撃ちに断る("表にもとから「判定」の列があります（" & ws.Cells(hdr, 判定列).Address(False, False) & "）。上書きしないので、見出しを変えてから撃ってください。")
+            Exit Sub
+        End If
+    ElseIf 見出しの字(ws.Cells(hdr, 判定列)) <> "" Then
+        Call 先撃ちに断る("判定を出す列（" & ws.Cells(hdr, 判定列).Address(False, False) & "）にもう見出しがあります。")
+        Exit Sub
+    End If
+
+    oldScreen = Application.ScreenUpdating
+    oldEvents = Application.EnableEvents
+    On Error GoTo 後始末
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+
+    ' 判定の式（空行・集計の行は空に）
+    ws.Cells(hdr, 判定列).Value = "判定"
+    ReDim 式々(1 To 最終 - hdr, 1 To 1)
+    全 = 表.Value2
+    値文字 = "$" & Split(ws.Cells(1, 値列).Address(True, False), "$")(0)
+    基準文字 = "$" & Split(ws.Cells(1, IIf(数の使用, 値列, 基準列)).Address(True, False), "$")(0)
+    For r = hdr + 1 To 最終
+        空行 = True: 和 = False
+        For c = 1 To UBound(全, 2)
+            If Not isEmpty(全(r - hdr + 1, c)) Then
+                If セルの字(全(r - hdr + 1, c)) <> "" Then 空行 = False
+            End If
+            If VarType(全(r - hdr + 1, c)) = vbString Then
+                If 集計の語か(全(r - hdr + 1, c)) Then 和 = True
+            End If
+        Next c
+        If 空行 Or 和 Then
+            式々(r - hdr, 1) = ""
+        ElseIf 数の使用 Then
+            式々(r - hdr, 1) = "=IF(AND(ISNUMBER(" & 値文字 & r & ")," & 値文字 & r & 比べ & Replace(CStr(基準の数), ",", ".") & "),""" & Replace(印, """", """""") & ""","""")"
+        Else
+            式々(r - hdr, 1) = "=IF(AND(ISNUMBER(" & 値文字 & r & "),ISNUMBER(" & 基準文字 & r & ")," & _
+                値文字 & r & 比べ & 基準文字 & r & "),""" & Replace(印, """", """""") & ""","""")"
+        End If
+    Next r
+    ws.Range(ws.Cells(hdr + 1, 判定列), ws.Cells(最終, 判定列)).Formula = 式々 ' 書き戻し: 新しい所
+
+    ' 足した列の見た目は共通の下請けに任せる（見出しは元の表の見出しをまねる）
+    Set m仕上げ手本 = ws.Cells(hdr, c2)
+    Set m仕上げ範囲 = ws.Range(ws.Cells(hdr, 判定列), ws.Cells(最終, 判定列))
+    Call 表の仕上げ
+
+    ' 判定が空でない行（表と判定の列）を薄い赤にする条件付き書式。前に撃った同じ書式は作り直し、人の書式は消さない
+    列文字 = Split(ws.Cells(1, 判定列).Address(True, False), "$")(0)
+    色 = RGB(255, 199, 206)
+    Set 本体 = ws.Range(ws.Cells(hdr + 1, c1), ws.Cells(最終, c2))
+    Set 判定体 = ws.Range(ws.Cells(hdr + 1, 判定列), ws.Cells(最終, 判定列))
+    If 判定列 = c2 + 1 Then
+        Set 対象 = ws.Range(ws.Cells(hdr + 1, c1), ws.Cells(最終, 判定列))
+    Else
+        Set 対象 = Union(本体, 判定体)
+    End If
+    On Error Resume Next
+    For 古 = ws.Cells.FormatConditions.Count To 1 Step -1
+        Set fc = ws.Cells.FormatConditions(古)
+        If fc.Type = xlExpression Then
+            If fc.Interior.Color = 色 And InStr(fc.Formula1, "$" & 列文字) > 0 And InStr(fc.Formula1, "<>""""") > 0 Then fc.Delete
+        End If
+    Next 古
+    On Error GoTo 後始末
+    ' 印を付けた行の数（と、印のある最初の行・無い最初の行）
+    値 = 判定体.Value2
+    For r = 1 To UBound(値, 1)
+        If Len(CStr(値(r, 1))) > 0 Then
+            件数 = 件数 + 1
+            If 印行 = 0 Then 印行 = r
+        ElseIf 無印行 = 0 Then
+            無印行 = r
+        End If
+    Next r
+    ' 式の行は、範囲の左上のセルを基準に書く。環境で読み方が違う（撃つ時のアクティブセルの行が基準）ときは、色を確かめて書き直す
+    旗 = hdr + 1
+    Set 新 = 対象.FormatConditions.Add(Type:=xlExpression, Formula1:="=$" & 列文字 & 旗 & "<>""""")
+    新.Interior.Color = 色
+    新.StopIfTrue = False
+    If 印行 > 0 Then
+        正しい = (CLng(ws.Cells(hdr + 印行, 判定列).DisplayFormat.Interior.Color) = 色)
+        If 正しい And 無印行 > 0 Then 正しい = (CLng(ws.Cells(hdr + 無印行, 判定列).DisplayFormat.Interior.Color) <> 色)
+        If Not 正しい Then
+            新.Delete
+            旗 = ActiveCell.row
+            Set 新 = 対象.FormatConditions.Add(Type:=xlExpression, Formula1:="=$" & 列文字 & 旗 & "<>""""")
+            新.Interior.Color = 色
+            新.StopIfTrue = False
+        End If
+    End If
+    Application.StatusBar = "「" & 印 & "」を " & 件数 & " 行に付け、その行を薄い赤にしました（" & ws.Cells(hdr, 判定列).Address(False, False) & " の列「判定」・条件付き書式）"
+
+後始末:
+    Application.ScreenUpdating = oldScreen
+    Application.EnableEvents = oldEvents
+    If Err.Number <> 0 Then Err.Raise Err.Number
+End Sub
+
+' 頼みの文の比べ方（< <= > >=）と、その言葉の位置。無ければ < と 0（2026-10-22）
+Function 比べ方(ByVal 頼 As String, ByRef 位置 As Long) As String
+    Dim 語々 As Variant, 型々 As Variant, k As Long, p As Long
+    語々 = Array("以下", "以上", "未満", "下回", "を切っ", "足りな", "不足", "少な", "より小さ", "上回", "超え", "超過", "オーバー")
+    型々 = Array("<=", ">=", "<", "<", "<", "<", "<", "<", "<", ">", ">", ">", ">")
+    比べ方 = "<"
+    位置 = 0
+    For k = 0 To UBound(語々)
+        p = InStr(頼, CStr(語々(k)))
+        If p > 0 Then
+            If 位置 = 0 Or p < 位置 Then 位置 = p: 比べ方 = CStr(型々(k))
+        End If
+    Next k
+End Function
+
+Sub ゼロで割るエラーの式を直す()
+    ' 0 で割って #DIV/0! になっている式を =IFERROR(元の式,"") で包む。式のまま直す（値にしない）。既に IFERROR の式・配列数式・ほかのエラーは触らない（2026-10-22）
+    ' 依頼の語: DIV/0エラーを直|DIV/0!エラーを直|DIV/0を直|DIV/0!を直|DIV/0エラーを消|DIV/0!エラーを消|DIV/0を消|DIV/0!を消|ゼロ除算エラーを直|ゼロ除算の式を直|0で割るエラーを直|0で割ったエラーを直|0除算エラーを直
+    ' 依頼の組: DIV/0,0除算,ゼロ除算,ゼロで割,0で割,割り算,割算+エラー,#,IFERROR+直,修正,消,出さ,出な,非表示,空白,隠,処理,対処,IFERROR,包+-一覧,リスト,洗い出,数えて
+    ' 扱う: DIV/0 IFERROR ゼロ除算 エラー
+    ' 見出し: なし
+    ' 変えてよい: 数式
+
+    Dim ws As Worksheet, 誤り As Range, cel As Range, f As String
+    Dim 対象() As Range, 本数 As Long, k As Long
+    Dim 直した As Long, 配列 As Long, 包み済み As Long, 別の誤り As Long, 失敗 As Long
+    Dim 番地 As String, 付記 As String
+    Dim oldScreen As Boolean, oldEvents As Boolean
+
+    Set ws = ActiveSheet
+    On Error Resume Next
+    Set 誤り = ws.UsedRange.SpecialCells(xlCellTypeFormulas, xlErrors)
+    On Error GoTo 0
+    If 誤り Is Nothing Then
+        Call 先撃ちに断る("エラーになっている式がありません（0 で割るエラーの式は見つかりませんでした）。")
+        Exit Sub
+    End If
+
+    oldScreen = Application.ScreenUpdating
+    oldEvents = Application.EnableEvents
+    On Error GoTo 後始末
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+
+    ' 1 回目: 今 #DIV/0! の式を先に全部拾う（包むと、それを使っている式のエラーが別のエラーに変わるので、拾ってから包む）
+    ReDim 対象(1 To 誤り.Cells.Count)
+    For Each cel In 誤り.Cells
+        If Not IsError(cel.Value2) Then
+            別の誤り = 別の誤り + 1
+        ElseIf cel.Value2 <> CVErr(xlErrDiv0) Then
+            別の誤り = 別の誤り + 1
+        ElseIf cel.HasArray Then
+            配列 = 配列 + 1
+        ElseIf UCase$(Left$(cel.Formula, 9)) = "=IFERROR(" Then
+            包み済み = 包み済み + 1
+        ElseIf Len(cel.Formula) > 8000 Then
+            失敗 = 失敗 + 1
+        Else
+            本数 = 本数 + 1
+            Set 対象(本数) = cel
+        End If
+    Next cel
+
+    ' 2 回目: 拾った式を包む
+    For k = 1 To 本数
+        Set cel = 対象(k)
+        f = cel.Formula
+        On Error Resume Next
+        cel.Formula = "=IFERROR(" & Mid$(f, 2) & ","""")"
+        If Err.Number <> 0 Then
+            失敗 = 失敗 + 1
+            Err.Clear
+        Else
+            直した = 直した + 1
+            If 直した <= 6 Then 番地 = 番地 & IIf(Len(番地) > 0, "・", "") & cel.Address(False, False)
+        End If
+        On Error GoTo 後始末
+    Next k
+
+    If 別の誤り > 0 Then 付記 = 付記 & "　ほかのエラー " & 別の誤り & " 件は触っていません"
+    If 配列 > 0 Then 付記 = 付記 & "　配列数式 " & 配列 & " 件は触っていません"
+    If 失敗 > 0 Then 付記 = 付記 & "　包めなかった式 " & 失敗 & " 件"
+    If 直した = 0 Then
+        Call 先撃ちに断る("包む 0 で割るエラーの式がありませんでした。" & 付記)
+    Else
+        Application.StatusBar = "0 で割るエラーの式 " & 直した & " 件を IFERROR で包みました（" & 番地 & IIf(直した > 6, " ほか", "") & "）。エラーだった所は空白になります。" & 付記
+    End If
+
+後始末:
+    Application.ScreenUpdating = oldScreen
+    Application.EnableEvents = oldEvents
+    If Err.Number <> 0 Then Err.Raise Err.Number
+End Sub
+

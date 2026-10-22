@@ -15,7 +15,9 @@ agent（Sonnet）は 1 題平均 22 秒だった。shu と決めた形: 入口�
 から外す。登録簿は .bas そのもの（別の台帳を持たない＝データはファイル自身）。
 """
 import contextlib
+import os
 import re
+import tempfile
 import time
 from vbam_core import _col_letter, shelf_text, shelf_texts, shelf_module_of
 
@@ -115,19 +117,36 @@ def shelf_entries_from_text(text):
         m = _REG_SUB_RE.match(ln)
         if m:
             name = m.group(1)
-            out.append({'name': name, 'ask': None, 'combo': None, 'tier': ''})
+            out.append({'name': name, 'ask': None, 'combo': None, 'tier': '', 'allow_fix': False, 'plan_substitute': '', 'allow_change': '', 'look_only': False, 'cf_ok': False})
             continue
         if not out:
             continue
         a = _REG_ASK_RE.match(ln)
         g = _REG_COMBO_RE.match(ln)
         t = _REG_TIER_RE.match(ln)
+        f = _REG_ALLOW_FIX_RE.match(ln)
+        s = _REG_PLAN_SUB_RE.match(ln)
+        c = _REG_ALLOW_CHG_RE.match(ln)
+        lk = _REG_LOOK_ONLY_TAG_RE.match(ln)
+        cf = _REG_CF_OK_RE.match(ln)
         if a:
             out[-1]['ask'] = a.group(1)
         elif g:
             out[-1]['combo'] = g.group(1)
         elif t:
             out[-1]['tier'] = t.group(1)
+        elif f:
+            out[-1]['allow_fix'] = (f.group(1).strip() in ('はい', '当てる', 'true', 'True', '1'))
+        elif s:
+            out[-1]['plan_substitute'] = s.group(1).strip()
+        elif c:
+            out[-1]['allow_change'] = c.group(1).strip()
+        elif lk:
+            out[-1]['look_only'] = (lk.group(1).strip() in ('はい', 'true', 'True', '1'))
+        elif cf:
+            # ' 条件付き書式: はい ＝条件付き書式を付ける棚。条件付き書式を付ける頼みは AI の役目だが、この印の棚だけは当てる（2026-10-22 指示書044）
+            if cf.group(1).strip() == 'はい':
+                out[-1]['cf_ok'] = True
     return out
 
 
@@ -135,6 +154,11 @@ def shelf_entries_from_text(text):
 # 10/14 の誤爆は、どれも棚を 1 本足したときの語が日常の言い方を横取りしたもの（見出しを青にして→インディゴ・この列を太字にして→
 # グラフの種類を変える・この行を消して→ピボットの手直し）。問題集に無い言い方はすり抜けるので、語そのものを形で検査する（ゴンちゃん案）。
 _REG_TIER_RE = re.compile(r"^\s*'\s*階級\s*[:：]\s*(\S+)")
+_REG_ALLOW_FIX_RE = re.compile(r"^\s*'\s*直す頼みにも当てる\s*[:：]\s*(\S+)")
+_REG_LOOK_ONLY_TAG_RE = re.compile(r"^\s*'\s*調べるだけ\s*[:：]\s*(\S+)")
+_REG_CF_OK_RE = re.compile(r"^\s*'\s*条件付き書式\s*[:：]\s*(\S+)")
+_REG_PLAN_SUB_RE = re.compile(r"^\s*'\s*並びの代わり\s*[:：]\s*(\S+)")
+_REG_ALLOW_CHG_RE = re.compile(r"^\s*'\s*変えてよい\s*[:：]\s*(.+)")
 SHELF_TIERS = ('基本', '集計', '作り替え')
 # 一般の語＝どの棚の仕事にも出てくる日常の言い方。どの棚も、これ 1 つだけで点を取れない。
 # 組の全部をこれだけで満たせるのは「基本」の階級の棚の決まり文句（表＋整え・重複＋消）だけ
@@ -169,7 +193,8 @@ _BULK_WRITE_PAT = re.compile(
 )
 _BULK_EXCLUDE_LHS = re.compile(
     r'(?:^|[\s\.])Cells\s*\([^()]*(?:\([^()]*\)[^()]*)*\)$'
-    r'|^(?:c|cel|cell|mc|newCel|tgt)$',
+    r'|^(?:c|cel|cell|mc|newCel|tgt)$'
+    r'|^(?:組|[A-Za-z0-9_一-龠ぁ-んァ-ヶ]+)\s*\(\s*\d+\s*\)$',
     re.IGNORECASE
 )
 _BULK_SINGLE_RANGE = re.compile(
@@ -621,9 +646,18 @@ def fire_with_request(xl, owner, ws, name, request):
             pass
         shelf_refusal(xl, owner, clear=True)       # 前の棚の断りが残っていると、撃てた棚まで断ったと読む（2026-10-14）
         note_shot(xl, owner, None)
+        with contextlib.suppress(Exception):
+            xl.Run(f"'{q}'!コンボ道具.姿を控える", ws.Parent, ws, str(name))
         run_book_macro(xl, owner, name)
         why = shelf_refusal(xl, owner)
         if not why:
+            violation = ''
+            with contextlib.suppress(Exception):
+                violation = str(xl.Run(f"'{q}'!コンボ道具.約束を破ったか", str(name)) or '')
+            if violation:
+                with contextlib.suppress(Exception):
+                    xl.Run(f"'{q}'!表の整理.原本から元に戻す", ws, True)
+                return f"約束違反で戻しました: {name}（{violation}）"
             note_shot(xl, owner, name, request)
         return why
     finally:
@@ -642,6 +676,115 @@ def note_shot(xl, owner, name, request=''):
             xl.Run(f"'{q}'!コンボ道具.棚を撃つ前")
         else:
             xl.Run(f"'{q}'!コンボ道具.撃った棚を控える", str(name), str(request or ''))
+
+
+_DOUBT_FILE = os.path.join(tempfile.gettempdir(), 'vbam_last_doubt.json')
+
+
+def remember_doubt(request, candidates, book_name):
+    """最後に迷った頼み（頼みの文・候補・ブック名）を一時ファイルに覚える（2026-10-22 指示書040）。"""
+    try:
+        import json
+        with open(_DOUBT_FILE, 'w', encoding='utf-8') as f:
+            json.dump({'request': str(request or ''), 'candidates': str(candidates or ''), 'book': str(book_name or '')}, f, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+def get_last_doubt():
+    """最後に迷った頼みを取得する。無ければ None。"""
+    try:
+        import json
+        if os.path.isfile(_DOUBT_FILE):
+            with open(_DOUBT_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return None
+
+
+def clear_last_doubt():
+    """最後に迷った頼みを消す。"""
+    with contextlib.suppress(Exception):
+        if os.path.isfile(_DOUBT_FILE):
+            os.remove(_DOUBT_FILE)
+
+
+def save_ai_choice(xl, owner, chosen_name, book_name=None):
+    """最後に迷った頼みがあれば、VBA の AIの選んだ答えを残す を呼んで記録する（2026-10-22 指示書040）。"""
+    d = get_last_doubt()
+    if not d:
+        return False
+    q = str(owner).replace("'", "''")
+    b = str(book_name or d.get('book') or '')
+    req = str(d.get('request') or '')
+    cands = str(d.get('candidates') or '')
+    ans = str(chosen_name or '')
+    try:
+        xl.Run(f"'{q}'!コンボ道具.AIの選んだ答えを残す", b, req, cands, ans)
+        clear_last_doubt()
+        return True
+    except Exception:
+        return False
+
+
+def check_doubt(request, entries=(), ratio=1.2):
+    """依頼文から迷い判定を行う（2026-10-22 指示書040）。
+    迷った場合: (True, 候補文字列, 案内文)
+    迷わない場合: (False, '', '')
+    """
+    req = request_normalize(request)
+    if not req:
+        return False, '', ''
+    low = req.lower()
+    cf_block = '条件付き書式' in req and not any(w in req for w in _SHELF_CF_LOOK)
+    points, details, order = {}, {}, []
+    for e in entries or ():
+        name = e.get('name')
+        if not name:
+            continue
+        if cf_block and not e.get('cf_ok'):
+            continue                      # 条件付き書式を付ける頼みで当たるのは、その印の棚だけ（shelf_pick と同じ）
+        c_pt, c_ban = combo_score(e.get('combo'), req)
+        a_pt = _ask_points(e.get('ask'), req)
+        if not c_ban and (c_pt + a_pt) > 0:
+            if name not in points:
+                order.append(name)
+            points[name] = points.get(name, 0) + c_pt + a_pt
+            words = []
+            if c_pt > 0:
+                words.append(f"組({c_pt}点)")
+            if a_pt > 0:
+                for w in str(e.get('ask') or '').split('|'):
+                    w = w.strip()
+                    if w and w in req:
+                        words.append(w)
+            details[name] = '・'.join(words) if words else ''
+
+    if not points:
+        return False, '', ''
+    sorted_pts = sorted([(nm, points[nm]) for nm in order], key=lambda x: x[1], reverse=True)
+    top_name, top_pt = sorted_pts[0]
+    sec_name, sec_pt = sorted_pts[1] if len(sorted_pts) > 1 else ('', 0)
+
+    # 例外: マクロの名前そのものを言った頼み
+    if '【手順書：' in req or (len(top_name) >= 4 and top_name.lower() in low):
+        return False, '', ''
+
+    is_doubt = False
+    if sec_pt > 0 and top_pt < sec_pt * ratio:
+        is_doubt = True
+
+    if not is_doubt:
+        return False, '', ''
+
+    cands = []
+    for i, (nm, pt) in enumerate(sorted_pts[:3], start=1):
+        dt = details.get(nm, '')
+        cands.append(f"{i}. {nm}（{pt}点・{dt}）" if dt else f"{i}. {nm}（{pt}点）")
+    cands_str = " ".join(cands)
+    guide = f"迷ったので撃っていません: 候補 {cands_str}（上位 {len(cands)} 本）\n→ 合う棚があれば shelf-run その名前／どれも合わなければ手で直し、shelf --chose --none"
+    return True, cands_str, guide
 
 
 def shelf_refusal(xl, owner, clear=False):
@@ -669,70 +812,62 @@ def select_columns(ws, cols):
         return False
 
 
-def plan_full(request, registry=(), words=None, shape=None):
+def plan_full(request, registry=(), words=None, shape=None, pick=None, entries=None):
     """依頼文＋登録簿（＋シートの見出しの語）→ {'fire','dedupe','other','extras','left','skipped'}（純 Python）。
-    fire    … 先撃ちするか（整理の語があるか、登録簿の依頼の語が当たるか）
-    dedupe  … 重複行を消すも撃つか
-    extras  … 登録簿から撃つ Sub（順は登録簿の順）
-    left    … 依頼にあるマクロの扱わない仕事の語のうち、撃つ Sub の「扱う」で片づかないもの
-    other   … left が空でないか（＝AI の往復へ回す）
-    skipped … 依頼の語は当たったが、シートに要る見出し（words）か表の形（shape）が無くて撃たない Sub
+    2026-10-22 指示書039: 棚を選ぶのは Excelコンボと同じ判定（VBA の先撃ち判定／shelf_plan／shelf_pick）1つにする。
+    見出し（words）と表の形（shape）は、選ばれた棚の「撃たない理由（skipped）」として残す。
     """
     req = str(request or '')
+    reg_by_name = {e['name']: e for e in registry or ()}
+
+    # 判定対象のエントリ（entries が無ければ registry を使う）
+    ent = entries if entries is not None else registry
+
+    # 1. Excelコンボと同じ判定で棚を選ぶ（複数なら shelf_plan、単一なら pick/shelf_pick）
+    planned = shelf_plan(req, ent, pick=pick)
+    if planned:
+        chosen_names = planned
+    else:
+        one = pick(req) if pick else shelf_pick(req, ent)
+        chosen_names = [one] if one else []
+
+    # 指示書: tidy（表を整える）・dedupe（重複行）の決め方は今のまま
     tidy = bool(_ASK_TIDY_RE.search(req))
     dedupe = bool(tidy and _DUP_WORD_RE.search(req) and va._has_approval(req) and not _NO_DELETE_RE.search(req))
+
     extras, skipped = [], []
-    for e in registry or ():
-        # 依頼の組（VBA の先撃ちだけが読んでいた）もここで採る。除外の語が当たったら撃たない（2026-09-23）
-        combo_pt, combo_ban = combo_score(e.get('combo'), req)
-        if combo_ban:
+    for nm in chosen_names:
+        if nm in (_MACRO_TIDY, _MACRO_DEDUPE):
             continue
-        strength = max(_ask_strength(e['ask'], req), combo_pt)
-        if not strength:
-            continue
-        # 要る見出しがシートに無い表には撃たない（「集計」の語だけで別の表に撃ち、集計を AI に回さなくなる誤爆を防ぐ）
+        e = reg_by_name.get(nm)
+        if not e:
+            e = {'name': nm, 'ask': '', 'handles': [], 'headers': [], 'shape': []}
+        # 要る見出しがシートに無い表には撃たない
         if words is not None and e.get('headers') and not all(head_in(h, words) for h in e['headers']):
-            skipped.append(dict(e, strength=strength))
+            skipped.append(dict(e, strength=1))
             continue
-        # 表の形（' 形:）がそろわない表には撃たない（2026-09-18 朝: 語のかすり当たりで別マクロが撃たれるのを形で先に絞る）
+        # 表の形（' 形:）がそろわない表には撃たない
         if shape is not None and e.get('shape') and not set(e['shape']) <= set(shape):
-            skipped.append(dict(e, strength=strength, why_shape=[w for w in e['shape'] if w not in shape]))
+            skipped.append(dict(e, strength=1, why_shape=[w for w in e['shape'] if w not in shape]))
             continue
-        extras.append(dict(e, strength=strength))
-    # 依頼が名指ししている仕事は、より長い語で当たった方（2026-09-17 夕: 振り直しの依頼の「集計」が集約のマクロに当たり、
-    # 集約のブックでは見出しもそろうので撃たれた。依頼は「決算統計」で振り直しを名指ししていた）。
-    # 見出しがそろわず撃たなかった仕事の語の方が長ければ、短い語で当たったマクロは撃たない＝AI に回す
-    # 同じ長さなら、どちらを名指ししたか決められない＝撃たない（AI に回す＝安全側）
-    # ただし「合計」「集計」のような作業の一般語で当たっただけの仕事は、名指しに数えない
-    # （2026-09-17 夜: 「各課シートの事業を集めて合計も出して」が、見出しの無い合計行を足すの「合計」と引き分けて集約を撃たなかった）
-    top_skipped = max((e['strength'] for e in skipped if not _ASK_OTHER_RE.fullmatch(_ask_best_word(e['ask'], req))),
-                      default=0)
-    # 同じ長さなら、見出しがそろっている方（extras）を撃つ（2026-09-18 未明: 「振り直して、区分ごとの円グラフも」で、見出しの無い
-    # 円グラフの「円グラフ」と振り直しの「決算統計」が同じ 4 字で引き分け、どちらも撃たなかった）。長い語で名指しされた別の仕事は従来どおり
-    shadowed = [e for e in extras if top_skipped and e['strength'] < top_skipped]
-    extras = [e for e in extras if not (top_skipped and e['strength'] < top_skipped)]
+        extras.append(dict(e, strength=1))
+
+    shadowed = []
     others = sorted({m.group(0) for m in _ASK_OTHER_RE.finditer(req)})
     covered = [h for e in extras for h in (e.get('handles') or [])]
-    # 同じ節（。、,で区切った一区切り）に「扱う」の語があれば、その節の仕事は登録済みの Sub のもの
-    # （「合計の行を足して」の「行を足」を、合計を扱う Sub と別の仕事に数えない・2026-09-17）
     clauses = [c for c in re.split(r'[。、,，\n]', req) if c]
-
-    asks = [e['ask'] for e in extras]
+    asks = [e.get('ask') or '' for e in extras]
 
     def _covered(w):
         if any(h in w or w in h for h in covered):
             return True
         if _STRONG_OTHER_RE.fullmatch(w):
-            # グラフ・並べ替え・印刷・色付け・抽出は、同じ節に「扱う」の語があっても別の操作（2026-09-17 深夜:
-            # 「振り直して、区分ごとの円グラフも」の「区分」でグラフを振り直しの仕事と見なし、グラフを AI に回さず終えていた）
             return False
-        # 同じ節に「扱う」の語か、撃つマクロの「依頼の語」があれば、その節の仕事はそのマクロのもの
-        # （2026-09-17 夕: 突合の依頼の「件数」「照合」「突き合わせ」が AI に回る仕事に数えられ、突合を撃った後も AI へ回った）
-        return any(w in c and (any(h in c for h in covered) or any(_ask_strength(a, c) for a in asks)) for c in clauses)
+        return any(w in c and (any(h in c for h in covered) or any(_ask_strength(a, c) for a in asks if a)) for c in clauses)
+
     left = [w for w in others if not _covered(w)]
-    left += [w for e in shadowed for w in (e.get('handles') or [])[:1] if w not in left]   # 撃たなかった仕事は AI に
-    return {'fire': bool(tidy or extras), 'tidy': tidy, 'dedupe': dedupe, 'extras': extras,
-            'left': left, 'other': bool(left), 'skipped': skipped, 'shadowed': shadowed}
+    return {'fire': bool(tidy or dedupe or extras), 'tidy': tidy, 'dedupe': dedupe, 'extras': extras,
+            'left': left, 'other': bool(left), 'skipped': skipped, 'shadowed': shadowed, 'chosen': chosen_names}
 
 
 def _ask_strength(ask, req):
@@ -803,6 +938,56 @@ def combo_score(combo, req):
     return (total if ok else 0), banned
 
 
+_FILLER_PREFIX_PAT = re.compile(r'^(?:(?:ええ|えー|えーと|えっと|あの|あのー|じゃあ|では|それでは|はい)[、,\s]+)+')
+
+# 言い方の言い換え（デザインの棚の色名へ寄せる。外れた依頼: 2026-10-18〜10-19・2026-10-22 指示書035・038）
+_COLOR_CONTEXT_RE = re.compile(r'表|色|デザイン|配色|リッチな')
+_COLOR_MAP = {
+    'リッチなワイン': 'ノーブルボルドー',
+    'リッチなボルドー': 'ノーブルボルドー',
+    'リッチなグリーン': 'モダンエメラルド',
+    'リッチな緑': 'モダンエメラルド',
+    'リッチなエメラルド': 'モダンエメラルド',
+    'リッチなネイビー': 'エグゼクティブネイビー',
+    'リッチな濃紺': 'エグゼクティブネイビー',
+    'リッチなチャコール': 'シックチャコール',
+    'リッチなグレー': 'シックチャコール',
+    'リッチなアンバー': 'ウォームアンバー',
+    'リッチな琥珀': 'ウォームアンバー',
+    'リッチなインディゴ': 'クラシックインディゴ',
+    'リッチな藍': 'クラシックインディゴ',
+    'ワイン': 'ノーブルボルドー',
+    'ボルドー': 'ノーブルボルドー',
+    'エメラルド': 'モダンエメラルド',
+    'グリーン': 'モダンエメラルド',
+    'チャコール': 'シックチャコール',
+    'アンバー': 'ウォームアンバー',
+    'インディゴ': 'クラシックインディゴ',
+}
+_COLOR_PATTERN = re.compile(
+    r'(' + '|'.join(re.escape(k) for k in _COLOR_MAP.keys()) + r')(?=色に|に|で|の色)'
+)
+_PHRASE_REPLACEMENTS = list(_COLOR_MAP.items())
+
+
+def request_normalize(req):
+    """頼みの文の下ごしらえ（純 Python・2026-10-22 指示書035・038）。
+    1. 頭のつなぎ語を落とす（ええ、あの、など＋「、」か空白）
+    2. 聞き違いの言い換え（票→表。伝票・投票・得票・帳票・開票は残す）
+    3. 色の言い換え（色を頼んでいる文のときだけ・指示書038）
+    VBA の コンボ道具.頼みの下ごしらえ と同じ答え。
+    """
+    s = str(req or '').strip()
+    if not s:
+        return ''
+    s = _FILLER_PREFIX_PAT.sub('', s).strip()
+    s = re.sub(r'(?<![伝投得帳開])票', '表', s)
+    s = re.sub(r'産業ごと(?=(?:に|の)?\s*(?:気切|区切))', '3桁ごと', s)
+    if _COLOR_CONTEXT_RE.search(s):
+        s = _COLOR_PATTERN.sub(lambda m: _COLOR_MAP[m.group(1)], s)
+    return s
+
+
 def shelf_pick(request, entries=()):
     """依頼文 → 棚のマクロ名（当たらなければ ''＝AI に回す）。VBA の コンボ道具.先撃ち候補 の Python 版。
 
@@ -810,11 +995,9 @@ def shelf_pick(request, entries=()):
     点＝依頼の語（当たった語の長さの合計）＋依頼の組（各組の最長の語の長さの和）。
     マクロ名そのものを言った依頼（4 字以上）は名前の長さの 2 倍で当てる（手順書の依頼文は除く）。
     """
-    req = str(request or '').strip()
+    req = request_normalize(request)
     if not req:
         return ''
-    # 音声の聞き違いをならす・手順書は名前で撃ち、本文の語では採点しない（2026-09-24・VBA の 先撃ち候補 と同じ）
-    req = re.sub(r'(?<![伝投得帳開])票', '表', req)          # 伝票・投票・得票・帳票・開票は残す
     p = req.find('【手順書：')
     if p >= 0:
         m = re.match(r'【手順書：([^】]*)】', req[p:])
@@ -827,14 +1010,16 @@ def shelf_pick(request, entries=()):
     low = req.lower()
     if any(w in req for w in _SHELF_NOT_WORK) or (any(w.lower() in low for w in _SHELF_QUESTION) and not any(e.lower() in low for e in _SHELF_QUESTION_EXCEPT)):
         return ''
-    if '条件付き書式' in req and not any(w in req for w in _SHELF_CF_LOOK):
-        return ''
+    # 条件付き書式を付ける頼みは、頭に「' 条件付き書式: はい」と書いた棚だけが当たる（無ければ AI の役目・2026-10-22 指示書044）
+    cf_block = '条件付き書式' in req and not any(w in req for w in _SHELF_CF_LOOK)
     if any(w.lower() in low for w in _SHELF_ERROR_MARK) and any(w in req for w in _SHELF_WHY):
         return ''
     points, banned, order = {}, set(), []
     for e in entries or ():
         name = e.get('name')
         if not name:
+            continue
+        if cf_block and not e.get('cf_ok'):
             continue
         pt, ban = combo_score(e.get('combo'), req)
         pt += _ask_points(e.get('ask'), req)
@@ -851,14 +1036,41 @@ def shelf_pick(request, entries=()):
     if '【手順書：' not in req:
         for e in entries or ():
             n = str(e.get('name') or '')
+            if cf_block and not e.get('cf_ok'):
+                continue
             if len(n) >= 4 and n.lower() in low and len(n) * 2 > top:
                 top, best = len(n) * 2, n
     # 「直して」の頼みに、調べて一覧にするだけの棚は当てない（2026-09-24・エラーの原因を探して直して→ エラー値のセルを一覧にする だった）
     # （「直すとどこまで影響する」は調べる頼み＝「直して」「修正して」と頼んだときだけ）
-    # （帳票を右に1行1件の一覧にする は「一覧に直して」で頼む本体＝VBA の 調べるだけの棚か と同じく例外・2026-10-01）
-    if best and best != '帳票を右に1行1件の一覧にする' and _LOOK_ONLY_RE.search(best) \
-            and any(w in req for w in ('直して', '修正して')):
-        best = ''
+    # 「直して」の頼みにも当てる棚（' 直す頼みにも当てる: はい）は除外しない（2026-10-22 指示書041）
+    if best and _LOOK_ONLY_RE.search(best) and any(w in req for w in ('直して', '修正して')):
+        allow_fix = False
+        for e in entries or ():
+            if e.get('name') == best:
+                allow_fix = bool(e.get('allow_fix'))
+                break
+        if not allow_fix:
+            best = ''
+    # 調べるだけの棚は、調べる頼みのときだけ撃つ（2026-10-22 指示書042）
+    if best:
+        is_look_only = False
+        for e in entries or ():
+            if e.get('name') == best:
+                is_look_only = bool(e.get('look_only'))
+                break
+        if is_look_only and not any(w in req for w in ('一覧', '調べ', '確認', 'どこ', '探', 'チェック', '点検', '洗い出', 'リスト', '教えて', '何ページ', '何枚', '何件', '何行', '何列', '何個', '何人', 'いくつ', 'どれだけ', 'どのくらい', 'どれくらい')):
+            best = ''
+    # 迷いの判定（2026-10-22 指示書042: 倍率1.2）
+    if best and '【手順書：' not in req:
+        is_name_match = any(len(str(e.get('name') or '')) >= 4 and str(e.get('name') or '').lower() in low for e in entries or ())
+        if not is_name_match:
+            sec_pt = 0
+            for name in order:
+                if name not in banned and name != best:
+                    if points[name] > sec_pt:
+                        sec_pt = points[name]
+            if sec_pt > 0 and top < sec_pt * 1.2:
+                best = ''
     return best
 
 
@@ -886,8 +1098,11 @@ def shelf_plan(request, entries=(), pick=None):
         n = pick(x)
         if not n:
             return []
-        if n == '住所と郵便番号の形をそろえる':       # 並びの中では 表の書き方と罫線と列幅をそろえる に任せる（罫線・列幅まで仕上げる・2026-09-24）
-            n = '表の書き方と罫線と列幅をそろえる'
+        # 並びの中の代わりがあれば差し替える（' 並びの代わり: ...・2026-10-22 指示書041）
+        for e in entries or ():
+            if e.get('name') == n and e.get('plan_substitute'):
+                n = e.get('plan_substitute')
+                break
         if n == '表の書き方と罫線と列幅をそろえる':
             tidy = True
         elif n not in out:
@@ -991,8 +1206,28 @@ def write_vba_snapshot(questions, answers, dirpath=None, path=None):
             f.write(f"{q}\t{a}\n")
 
 
-def missed_requests(path=None):
-    """Excelコンボが棚に当てられなかった頼み（%APPDATA%\\秀コンボ\\外れた依頼.csv・CP932）→ 頼みの文の並び（同じ文は 1 回）。"""
+_FILLER_PREFIX_RE = re.compile(r'^(?:(?:ええ|あの|えっと|その|まあ|はい)[、,\s]*)+')
+
+
+def normalize_miss_query(q):
+    """頭の「ええ、」などのつなぎ語と空白を落として頼みの型にする（2026-10-22）。"""
+    s = str(q or '').strip()
+    s = _FILLER_PREFIX_RE.sub('', s).strip()
+    return ' '.join(s.split())
+
+
+def is_test_book(name):
+    """ブック名が試験の撃ち（テスト・test・book・捨て・比較・dummy を含む）か判定する（2026-10-22）。"""
+    if not name:
+        return False
+    low = str(name).lower()
+    return any(k in low for k in ['テスト', 'test', 'book', '捨て', '比較', 'dummy'])
+
+
+def missed_requests(path=None, include_test=False):
+    """Excelコンボが棚に当てられなかった頼み（%APPDATA%\\秀コンボ\\外れた依頼.csv・CP932）→ 頼みの文の並び（同じ文は 1 回）。
+    4 列目のブック名がある場合、include_test=False なら試験の撃ちを除く。3 列の古い行でも読める（2026-10-22）。
+    """
     import csv
     import io
     import os
@@ -1003,11 +1238,242 @@ def missed_requests(path=None):
     for row in csv.reader(io.open(p, encoding='cp932', errors='replace', newline='')):
         if len(row) < 3 or row[0] == '日時':
             continue
+        book = row[3].strip() if len(row) >= 4 else ""
+        if not include_test and is_test_book(book):
+            continue
         q = ' '.join(row[2].split())
         if q and q not in seen:
             seen.add(q)
             out.append(q)
     return out
+
+
+def _parse_miss_dt(s):
+    import datetime
+    s = str(s or '').strip()
+    for fmt in ('%Y/%m/%d %H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y/%m/%d %H:%M', '%Y-%m-%d %H:%M'):
+        try:
+            return datetime.datetime.strptime(s, fmt)
+        except ValueError:
+            pass
+    return None
+
+
+def shelf_misses(path=None, days=14, all_days=False, text=None, now=None, entries=None):
+    """外れた依頼.csv から 2 回以上外れた頼みの型を集計する（2026-10-22）。
+    戻り値: (not_hit_list, hit_list)
+      各リストの要素: {'pattern': str, 'count': int, 'latest_dt': str, 'candidate': str, 'hit_shelf': str}
+    """
+    import csv
+    import datetime
+    import io
+    import os
+    p = path or os.path.join(os.environ.get('APPDATA', ''), '秀コンボ', '外れた依頼.csv')
+    if not os.path.isfile(p):
+        return [], []
+
+    ref_now = now or datetime.datetime.now()
+    cutoff = None if all_days else (ref_now - datetime.timedelta(days=days))
+
+    # 棚エントリの準備
+    if entries is None:
+        if text:
+            entries = shelf_entries_from_text(text)
+        else:
+            try:
+                from vbam_core import get_workbook, shelf_text
+                _xl, wb = get_workbook(None)
+                if wb:
+                    txt = shelf_text(wb.VBProject)
+                    if txt:
+                        entries = shelf_entries_from_text(txt)
+            except Exception:
+                entries = ()
+    entries = entries or ()
+
+    groups = {}
+    for row in csv.reader(io.open(p, encoding='cp932', errors='replace', newline='')):
+        if len(row) < 3 or row[0] == '日時':
+            continue
+        book = row[3].strip() if len(row) >= 4 else ""
+        if is_test_book(book):
+            continue
+        dt_str = row[0].strip()
+        dt = _parse_miss_dt(dt_str)
+        if cutoff and dt and dt < cutoff:
+            continue
+        cand = row[1].strip()
+        raw_q = row[2].strip()
+        pat = normalize_miss_query(raw_q)
+        if not pat:
+            continue
+        if pat not in groups:
+            groups[pat] = {
+                'pattern': pat,
+                'count': 0,
+                'latest_dt': dt_str,
+                'latest_dt_obj': dt,
+                'candidate': cand,
+                'samples': []
+            }
+        g = groups[pat]
+        g['count'] += 1
+        if raw_q not in g['samples']:
+            g['samples'].append(raw_q)
+        if not g['latest_dt_obj'] or (dt and dt > g['latest_dt_obj']):
+            g['latest_dt'] = dt_str
+            g['latest_dt_obj'] = dt
+            g['candidate'] = cand
+
+    # 2回以上のものを抽出
+    multi = [g for g in groups.values() if g['count'] >= 2]
+    # 多い順、最後の日時の新しい順
+    multi.sort(key=lambda x: (-x['count'], x['latest_dt']), reverse=False)
+
+    not_hit = []
+    hit = []
+    for g in multi:
+        hit_name = ''
+        if entries:
+            hit_name = shelf_pick(g['pattern'], entries)
+            if not hit_name:
+                for s in g['samples']:
+                    hit_name = shelf_pick(s, entries)
+                    if hit_name:
+                        break
+        g['hit_shelf'] = hit_name
+        if hit_name:
+            hit.append(g)
+        else:
+            not_hit.append(g)
+
+    return not_hit, hit
+
+
+def cmd_shelf_misses(args):
+    """`shelf --misses [--days N] [--all]`: 外れた依頼の集計（2026-10-22）。"""
+    days = getattr(args, 'days', 14)
+    all_days = getattr(args, 'all_days', False)
+    target_file = getattr(args, 'posargs', [None])[0] if getattr(args, 'posargs', None) else None
+
+    # 棚のソース
+    entries = None
+    try:
+        from vbam_core import get_workbook, shelf_text
+        xl, wb = get_workbook(target_file)
+        if wb:
+            t = shelf_text(wb.VBProject)
+            if t:
+                entries = shelf_entries_from_text(t)
+    except Exception:
+        pass
+
+    not_hit, hit = shelf_misses(days=days, all_days=all_days, entries=entries)
+
+    scope = "全期間" if all_days else f"直近 {days} 日"
+    print(f"外れた依頼の集計（{scope}・試験のブックを除く）")
+    print("-" * 60)
+    print(f"マクロにする候補（2回以上・まだ棚に当たらない物）: {len(not_hit)} 件")
+    if not_hit:
+        for r in not_hit:
+            cand = f"  [{r['candidate']}]" if r['candidate'] else ""
+            print(f"  {r['count']:2d} 回  {r['latest_dt']}  {r['pattern']}{cand}")
+    else:
+        print("  （該当なし）")
+
+    print("-" * 60)
+    print(f"今は棚に当たる物: {len(hit)} 件")
+    if hit:
+        for r in hit:
+            print(f"  {r['count']:2d} 回  {r['latest_dt']}  {r['pattern']}  → 『{r['hit_shelf']}』")
+    else:
+        print("  （該当なし）")
+
+    # AI の選んだ答えの集計（2026-10-22 指示書040 2b）
+    print("-" * 60)
+    ai_tsv = os.path.join(os.environ.get('APPDATA', ''), '秀コンボ', 'AIの選んだ答え.tsv')
+    ai_cands, ai_words = [], []
+    if os.path.isfile(ai_tsv):
+        import csv
+        ai_groups = {}
+        for row in csv.reader(open(ai_tsv, encoding='cp932', errors='replace'), delimiter='\t'):
+            if len(row) < 5 or row[0] == '日時':
+                continue
+            book = row[1].strip()
+            if is_test_book(book):
+                continue
+            req = row[2].strip()
+            chosen = row[4].strip()
+            k = (req, chosen)
+            ai_groups[k] = ai_groups.get(k, 0) + 1
+        for (req, chosen), cnt in ai_groups.items():
+            if cnt >= 2:
+                if not chosen:
+                    ai_cands.append((req, cnt))
+                else:
+                    ai_words.append((req, chosen, cnt))
+    print(f"AI の選んだ答え（2回以上・試験のブックを除く）: {len(ai_words) + len(ai_cands)} 件")
+    if ai_words or ai_cands:
+        for req, chosen, cnt in ai_words:
+            print(f"  棚の語と問題集に足す候補: 「{req}」 → {chosen}（{cnt} 回）")
+        for req, cnt in ai_cands:
+            print(f"  棚の候補（どれでもない）: 「{req}」（{cnt} 回）")
+    else:
+        print("  （該当なし）")
+    return True
+
+
+
+
+
+
+def check_hardcoded_shelf_names(xl, owner, text):
+    """判定コード（Pythonのshelf_pick/shelf_plan、VBAの判定関数）の中に棚名がハードコードされていないか検査（指示書041）。"""
+    stops = []
+    entries = shelf_entries_from_text(text)
+    shelf_names = {e['name'] for e in entries if len(e['name']) >= 4}
+    # 基本の整え棚（tidy先頭配置）など共通基盤で許容される棚名
+    allowed_names = {'表の書き方と罫線と列幅をそろえる'}
+
+    # 1. Python 側の shelf_pick / shelf_plan のソース検査
+    import inspect
+    for fn in (shelf_pick, shelf_plan):
+        try:
+            fn_src = inspect.getsource(fn)
+            # コメント行を除外して検査
+            code_lines = [ln.split('#')[0] for ln in fn_src.splitlines()]
+            code_body = '\n'.join(code_lines)
+            for name in shelf_names - allowed_names:
+                if f"'{name}'" in code_body or f'"{name}"' in code_body:
+                    stops.append(('止める', fn.__name__, f"判定コードの中に棚名「{name}」の決め打ちがあります"))
+        except Exception:
+            pass
+
+    # 2. VBA 側のコンボ道具の判定関数検査
+    if xl and owner:
+        try:
+            wb = xl.Workbooks(owner)
+            cm = wb.VBProject.VBComponents('コンボ道具').CodeModule
+            vba_procs = ['調べるだけの棚か', '先撃ちの並び', '棚の約束の例外', '約束を破ったか']
+            for proc in vba_procs:
+                try:
+                    s = cm.ProcStartLine(proc, 0)
+                    cnt = cm.ProcCountLines(proc, 0)
+                    proc_lines = [cm.Lines(i, 1) for i in range(s, s + cnt)]
+                    # コメント行を除去
+                    clean_lines = []
+                    for ln in proc_lines:
+                        c_idx = ln.find("'")
+                        clean_lines.append(ln[:c_idx] if c_idx >= 0 else ln)
+                    code_body = '\n'.join(clean_lines)
+                    for name in shelf_names - allowed_names:
+                        if f'"{name}"' in code_body:
+                            stops.append(('止める', f"コンボ道具.{proc}", f"判定コードの中に棚名「{name}」の決め打ちがあります"))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    return stops
 
 
 def shelf_check(xl, owner, text, write_snapshot=False):
@@ -1020,7 +1486,9 @@ def shelf_check(xl, owner, text, write_snapshot=False):
     import time as _t
     t0 = _t.time()
     lines, ok = [], True
-    stops = [x for x in shelf_lint(text) if x[0] == '止める']
+    # 2026-10-22 指示書041: 判定コードの中の棚名決め打ち検査
+    hardcoded_stops = check_hardcoded_shelf_names(xl, owner, text)
+    stops = [x for x in shelf_lint(text) if x[0] == '止める'] + hardcoded_stops
     notes = [x for x in shelf_lint(text) if x[0] == '注意']
     if stops:
         ok = False
@@ -1049,7 +1517,21 @@ def shelf_check(xl, owner, text, write_snapshot=False):
                     why = vba_peek(xl, owner, q).split('\n')[1:2]
                     lines.append(f"  「{q}」 期待={e or '(AIへ)'}  今={a or '(AIへ)'}" + (f"  ← {why[0].strip()}" if why and why[0].strip() else ''))
             if not diffs and not miss:
-                lines.append(f"問題集: {len(qs)} 問で VBA と写しが一致・全部が期待どおり")
+                # 2026-10-22 指示書039: 入口の照合（Excelコンボ判定 vs seiri判定 plan_full）
+                reg = registry_from_text(text)
+                entries = shelf_entries_from_text(text)
+                entry_diffs = []
+                for q, v_ans in zip(qs, ans):
+                    pf = plan_full(q, reg, entries=entries)
+                    s_ans = pf.get('chosen', [''])[0] if pf.get('chosen') else ""
+                    if v_ans != s_ans:
+                        entry_diffs.append((q, v_ans, s_ans))
+                if entry_diffs:
+                    ok = False
+                    lines.append(f"入口の照合（Excelコンボ vs seiri）の食い違い: {len(entry_diffs)} 問（{len(qs)} 問中）")
+                    lines += [f"  「{q}」 Excelコンボ={v or '(AIへ)'}  seiri={s or '(AIへ)'}" for q, v, s in entry_diffs[:12]]
+                else:
+                    lines.append(f"問題集: {len(qs)} 問で VBA・写し・seiri の入口がすべて一致・全部が期待どおり")
     misses = missed_requests()
     miss_ans = vba_answers(xl, owner, misses) if misses else None
     snap_miss = vba_snapshot_path().replace('vba_answers.tsv', 'vba_answers_miss.tsv')
@@ -1374,7 +1856,21 @@ def macro_first(request, sheet, wb, max_turns, run_id):
       {'result': None, 'ran': True…} … 撃ったが残りがある／ほかの仕事がある＝Sonnet の往復へ（控えを引き継ぐ）
     """
     xl = wb.Application
-    registry = registry_of(xl)                       # 鍛えたマクロの登録簿（.bas の頭 2 行・2026-09-17）
+    # 迷ったら撃たずに候補を AI に返す（2026-10-22 指示書040 2b）
+    all_ent = None
+    try:
+        from vbam_core import shelf_text
+        _txt = shelf_text(wb.VBProject) if hasattr(wb, 'VBProject') else ''
+        if _txt:
+            all_ent = shelf_entries_from_text(_txt)
+    except Exception:
+        pass
+    registry = registry_of(xl)
+    is_d, cands_str, guide = check_doubt(request, all_ent or registry)
+    if is_d:
+        remember_doubt(request, cands_str, wb.Name)
+        print(f'（{guide}）')
+        return None                       # 鍛えたマクロの登録簿（.bas の頭 2 行・2026-09-17）
     words = None
     if any(e.get('headers') for e in registry):
         try:

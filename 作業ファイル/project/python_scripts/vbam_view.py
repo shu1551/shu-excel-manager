@@ -1920,6 +1920,14 @@ def _seiri_request_plan(request, entries, pick=None):
             if n.endswith('報告する') and not _SEIRI_REPORT_WORDS_RE.search(p):
                 continue
             plan.append(n)
+    # 空白で分けた節が、どれも「一覧にするだけの棚」にしか当たらない（語が節をまたぐ）のに、依頼の文を丸ごと見れば撃つ棚に当たるときは、
+    # 丸ごとの判定を使う。「#DIV/0! エラーを直して」は「#DIV/0!」だけだと一覧の棚に、「エラーを直して」だけだと何にも当たらなかった
+    # （2026-10-22 指示書044・MCP は二重の空白を 1 つにして渡すので、頼みの境目は空白で見分けられない）
+    if len(parts) >= 2 and all(vp._LOOK_ONLY_RE.search(n) for n in plan):
+        whole = " ".join(parts)
+        n = pick(whole) if pick else vp.shelf_pick(whole, entries)
+        if n and n not in _SEIRI_COVERED and not vp._LOOK_ONLY_RE.search(n):
+            plan = [n]
     plan.sort(key=_shelf_priority)
     return plan
 
@@ -2017,6 +2025,12 @@ def _seiri_fire_request(xl, wb, ws, request, before_snap):
         print(f"{out}（{time.time() - t0:.2f} 秒）")
         return [f"レシピ：{recipe}"]
     entries = vp.shelf_entries_from_text("\n".join(lines))
+    # 迷ったら撃たずに候補を AI に返す（2026-10-22 指示書040 2b）
+    is_d, cands_str, guide = vp.check_doubt(request, entries)
+    if is_d:
+        vp.remember_doubt(request, cands_str, wb.Name)
+        print(guide)
+        return []
     plan = _seiri_request_plan(request, entries, vp.vba_picker(xl, src, entries))
     if not plan:
         print(f"依頼の文に当たる棚: なし（表を整えるで済むか、棚に無い仕事＝下の「残り」として直す）")
@@ -2736,6 +2750,17 @@ def cmd_shelf(args):
         print(f"棚（モジュール「{_SEIRI_MODULE}」）が開いているブック・アドインに見つかりません")
         return False
     rows = _parse_shelf_catalog(lines)
+    chose = getattr(args, 'chose', None)
+    chose_none = getattr(args, 'chose_none', False)
+    if chose is not None or chose_none:
+        import vbam_prefire as vp
+        val = "" if chose_none or chose in ("none", "--none", "") else chose
+        ok = vp.save_ai_choice(xl, owner, val, wb.Name)
+        if ok:
+            print(f"AIの選んだ答えを記録しました: {'どれでもない（空）' if not val else val}")
+        else:
+            print("記録する迷った頼みがありませんでした（直前に迷った頼みがないか、記録済みです）")
+        return True
     if getattr(args, 'check', False):
         return _shelf_check(xl, wb, owner, lines)
     ask = (getattr(args, 'ask', None) or '').strip()
@@ -3233,6 +3258,7 @@ def cmd_shelf_run(args):
         run_book_macro(xl, owner, name)
         if not _vp.shelf_refusal(xl, owner):
             _vp.note_shot(xl, owner, name)
+            _vp.save_ai_choice(xl, owner, name, wb.Name)
     except _VbaRuntimeError as ex:
         ok = False
         print(f"エラー: マクロが実行時エラーで止まりました: {ex}（窓は出ていません。落ちた行までの変更は下の差分に出ます）")
