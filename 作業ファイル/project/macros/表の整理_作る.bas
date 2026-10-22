@@ -877,7 +877,7 @@ End Sub
 
 Sub 棒と率の折れ線の複合グラフを作る()
     ' 依頼の語: 複合グラフ|折れ線を重ね|棒グラフに折れ線|棒と折れ線|率を第2軸|棒に率|2軸のグラフ|率の折れ線|金額は棒
-    ' 依頼の組: 棒+折れ線+-スパーク,小さ,セル
+    ' 依頼の組: 棒+折れ線+-スパーク,小さ,セル,種類,変えて,に変え,目盛り,凡例
     ' 扱う: 複合グラフ グラフ 合計
     ' 見出し: なし
     ' 形: 数の列
@@ -3817,7 +3817,7 @@ Sub 選んだ3列でピボットを作る()
     Dim v As Variant, cv As String
     Dim isTotRow As Boolean
     Dim maxRow As Long
-    Dim 頼 As String, 候補 As String, 集計 As Long, 月列 As Long, 月位置 As Long, df As PivotField, 値の名 As String
+    Dim 頼 As String, 候補 As String, 集計 As Long, 月列 As Long, 月位置 As Long, df As PivotField, 値の名 As String, 四半期 As Boolean, 期の名 As String
 
     Set ws = ActiveSheet
     Set wb = ActiveWorkbook
@@ -3874,8 +3874,9 @@ Sub 選んだ3列でピボットを作る()
     集計 = 頼みの集計(頼)
     If Len(頼) > 0 Then
         If Not 頼みからピボットの列(ws, hrow, fcol, lastC, maxRow, 頼, colRow, colCol, colVal, 候補, 集計 = xlCount) Then colRow = 0
-        月列 = 頼みの月の列(ws, hrow, fcol, lastC, maxRow, ピボットの語ならし(頼), 月位置)
+        月列 = 頼みの月の列(ws, hrow, fcol, lastC, maxRow, ピボットの語ならし(頼), 月位置, 四半期)
     End If
+    期の名 = IIf(四半期, "四半期", "月")
     If colRow = 0 Then
         If TypeName(Selection) = "Range" Then
             If Selection.Areas.Count >= 3 Then
@@ -3903,7 +3904,10 @@ Sub 選んだ3列でピボットを作る()
     End If
     fldVal = Trim(CStr(ws.Cells(hrow, colVal).Value))
     If 集計 = 0 Then 集計 = xlSum
-    If 集計 = xlCount And InStr(fldVal, "件数") > 0 And colVal <> colRow Then 集計 = xlSum   ' 「件数」という数の列を足す頼み
+    ' 「件数」「人数」「回答数」という数の列を足す頼み（数えるのでなく、その列を合計する）
+    If 集計 = xlCount And colVal <> colRow Then
+        If InStr(fldVal, "件数") > 0 Or InStr(fldVal, "人数") > 0 Or InStr(fldVal, "回答数") > 0 Then 集計 = xlSum
+    End If
     値の名 = Choose(Abs(集計 = xlCount) + 1, fldVal, "件数")
     If 集計 = xlAverage Then 値の名 = fldVal & "平均"
     If 集計 = xlMax Then 値の名 = fldVal & "最大"
@@ -3933,8 +3937,8 @@ Sub 選んだ3列でピボットを作る()
 
     ' 前に棚が作った同じ名前のシートは作り直し、人のシートは残して (2) を付ける（2026-10-09）
     ' 名前: 部門別区分別／部門別売上高／月別件数（月でまとめた列は「月」・合計以外は集計の名を付ける）
-    shName = IIf(colRow = 月列, "月", fldRow) & "別"
-    If colCol > 0 Then shName = shName & IIf(colCol = 月列, "月", fldCol) & "別"
+    shName = IIf(colRow = 月列, 期の名, fldRow) & "別"
+    If colCol > 0 Then shName = shName & IIf(colCol = 月列, 期の名, fldCol) & "別"
     If colCol = 0 Or 集計 <> xlSum Then shName = shName & 値の名
     shName = 棚のシート名(wb, shName)
 
@@ -3954,7 +3958,7 @@ Sub 選んだ3列でピボットを作る()
         End If
         ' 値: 頼みの集計で（件数は行の項目そのものを数える＝行と同じ列でも AddDataField なら行に残る）
         Set df = .AddDataField(.PivotFields(fldVal), , 集計)
-        df.NumberFormat = "#,##0"
+        df.NumberFormat = IIf(集計 = xlAverage, "#,##0.0", "#,##0")
         If 集計 <> xlSum Then
             On Error Resume Next      ' 見出しは「件数」「売上高の平均」（同じ名前のフィールドがあると付けられない＝既定の名のまま）
             df.Caption = IIf(集計 = xlCount, "件数", Replace(Replace(Replace(値の名, "平均", "の平均"), "最大", "の最大"), "最小", "の最小"))
@@ -3976,8 +3980,8 @@ Sub 選んだ3列でピボットを作る()
                           Year(.Min(ws.Range(ws.Cells(hrow + 1, 月列), ws.Cells(lastRow, 月列)))))
         End With
         pt.PivotFields(Trim(CStr(ws.Cells(hrow, 月列).Value))).dataRange.Cells(1).Group Start:=True, End:=True, _
-            Periods:=Array(False, False, False, False, True, False, 年をまたぐ)
-        If Err.Number <> 0 Then Application.StatusBar = "日付を月でまとめられませんでした（日付が文字で入っている行があります）。"
+            Periods:=Array(False, False, False, False, Not 四半期, 四半期, 年をまたぐ)
+        If Err.Number <> 0 Then Application.StatusBar = "日付を" & 期の名 & "でまとめられませんでした（日付が文字で入っている行があります）。"
         For Each 年の欄 In pt.PivotFields
             If 年の欄.Orientation = xlRowField Or 年の欄.Orientation = xlColumnField Then
                 年の欄.Subtotals = Array(False, False, False, False, False, False, False, False, False, False, False, False)
@@ -4440,8 +4444,8 @@ Sub 項目と金額の棒グラフを作る()
 End Sub
 
 Sub 選んだ3列で月別ピボットを作る(Optional ByVal 勇退 As Boolean = True)
-    ' 依頼の語: 月別ピボット|月別のピボットテーブル|月ごとのピボットテーブル|月でまとめ|いつもの月別|月ごとのピボット|月別のピボット
-    ' 依頼の組: 月+ピボット+-構成比,累計
+    ' 依頼の語: 月別ピボット|月別のピボットテーブル|月ごとのピボットテーブル|月でまとめ|いつもの月別|月ごとのピボット|月別のピボット|月別の売上|月ごとの売上|毎月の売上
+    ' 依頼の組: 月,月別,月ごと,毎月,月毎,月単位,月次,月で,四半期別,四半期ごと+ピボット,件数,回答数,人数,何件,数えて,数を数え,カウント,平均,最大,最小+-構成比,累計,推移,グラフ,クエリ,クロス,小計,按分,増減,前年,前月,割合,比率,折れ線,ダッシュボード,スライサー,集計表,値だけ
     ' 扱う: 月別ピボット
     ' 見出し: なし
     ' 選ぶ列: 3
@@ -6003,7 +6007,7 @@ End Sub
 Sub テーブルを並べ替えて0の行を隠す()
     ' テーブルの指定列で並べ替えを行い、値が0の行をオートフィルターで非表示にして絞り込む。
     ' 依頼の語: 替えて絞|テーブルを並べ替え|順に並べ替え|替えと絞|選んだ列で並|0を除いて|0の行は隠|列で並
-    ' 依頼の組: テーブル+並べ替え,並び替え,絞り込,ソート
+    ' 依頼の組: テーブル+並べ替え,並び替え,絞り込,ソート+-ピボット,ピポット
     ' 扱う: 並べ替え 絞り込み ソート フィルター
     ' 見出し: なし
     ' 選ぶ列: 2-3
@@ -6276,12 +6280,13 @@ Sub 推移の折れ線グラフを作る()
     ' 依頼の語: 推移グラフ|推移を折れ線|いつもの推移|推移のグラフ|見せ方の折れ線|グラフでお願|推移をいつも|支出の推移|折れ線グラフ
     ' 依頼の組: 推移,折れ線,移り変わり+グラフ,見せ,線+-スパーク,セル,小さ,棒,変え,替え,種類
     ' 扱う: 推移グラフ グラフ 合計
+    ' 列は頼みから: 項目 値
     ' 見出し: なし
     ' 形: 数の列
     ' 左端の文字列列を系列、右の数値列（合計列除く）を項目とするマーカー付き折れ線グラフを作る。棚が前に作ったグラフは作り直す（人のグラフは残す）。
 
     Dim ws As Worksheet
-    Set ws = ActiveSheet
+    Set ws = ActiveSheet: If Len(先撃ちの頼みの文()) > 0 Then If 頼みでグラフを作る(ws, 先撃ちの頼みの文(), "折れ線") = 1 Then Exit Sub   ' 明細の表を月でまとめた推移は頼みの文で描く（2026-10-22 指示書046）
 
     棚のグラフを消す ws      ' 人が作ったグラフは残す（全部消していた・2026-09-24 総点検）
 
@@ -6819,7 +6824,7 @@ End Sub
 
 Sub 選んだ列の項目別件数表を右に作る()
     ' 依頼の語: 項目別件数|ごとの件数|の件数を数え|COUNTIF|項目ごとに何件|項目ごとの件数|選んだ列で項目|項目別の件数|件数表を右|列で件数
-    ' 依頼の組: ごと,別,項目+件数,何件,数え+-度数,区間,金額帯,価格帯,階級,空欄,重複,上位,平均,グラフ,ピボット
+    ' 依頼の組: ごと,別,項目+件数,何件,数え+-度数,区間,金額帯,価格帯,階級,空欄,重複,上位,平均,グラフ,ピボット,月ごと,月別,毎月
     ' 扱う: 項目別件数 COUNTIF件数表 合計 行を足す
     ' 見出し: なし
     ' 選ぶ列: 1
@@ -9640,7 +9645,7 @@ End Sub
 Sub グラフの書体と凡例をそろえる()
     ' シート上にある既存のすべてのグラフについて、フォントの種類・サイズ・凡例の位置を統一して体裁を整える。
     ' 依頼の語: グラフの見せ方|グラフの見た目|グラフの見|グラフを全部|既存のグラフ|グラフのフォント|グラフの体裁|作ってあるグラフ|グラフを全部同じ
-    ' 依頼の組: グラフ+見た目,デザイン,体裁,フォント,統一,そろえ,揃え,同じ
+    ' 依頼の組: グラフ+見た目,デザイン,体裁,フォント,統一,そろえ,揃え,同じ+-色,配色
     ' 階級: 基本
     ' 扱う: グラフ体裁 グラフフォント グラフ凡例
     ' 見出し: なし
@@ -10624,7 +10629,7 @@ Sub ピボットをいつもの形にそろえる()
 
         For Each df In pt.DataFields
             On Error Resume Next
-            df.NumberFormat = "#,##0"
+            df.NumberFormat = IIf(df.Function = xlAverage, "#,##0.0", "#,##0")   ' 平均は小数 1 桁（満足度の平均が全部 3 に見えていた・2026-10-22 指示書046）
             On Error GoTo 0
         Next df
     Next pt_idx
@@ -11203,7 +11208,7 @@ End Sub
 
 Sub 頼みの文でピボットを手直しする()
     ' 依頼の語: も行に|も列に|行に足|列に足|行に追加|列に追加|に絞|だけに絞|だけ表示|だけにして|以外を|上位|下位|トップ|大きい順|多い順|小さい順|少ない順|絞り込みを解除|件数に変|平均に変|合計に変|最大に変|最小に変|行から外|列から外|を外して|以外にして|以外に絞|以外を表示|件数にして|平均にして|合計にして|最大にして|最小にして|件数で見|平均で見
-    ' 依頼の組: ピボット+足し,追加,加え,外し,消し,絞,だけ,のみ,以外,順,上位,下位,トップ,件数に,平均に,合計に,最大に,最小に,変え,解除+-グラフ,値だけ,値で貼,値貼,値に変,範囲,累計,表形式,体裁,デザイン,見た目,作って,作る,作成,テーブルに,抜き出,シート
+    ' 依頼の組: ピボット+足し,追加,加え,外し,消し,絞,だけ,のみ,以外,順,上位,下位,トップ,件数に,平均に,合計に,最大に,最小に,変え,解除+-グラフ,値だけ,値で貼,値貼,値に変,範囲,累計,表形式,体裁,デザイン,見た目,作って,作る,作成,テーブルに,抜き出,シート,出して
     ' 扱う: ピボット 絞り込 並べ替 上位 集計 平均 件数
     ' 見出し: なし
     ' 列は頼みから: 手直し
@@ -11215,7 +11220,7 @@ Sub 頼みの文でピボットを手直しする()
     Dim ws As Worksheet, pt As PivotTable, df As PivotField, pf As PivotField, pi As PivotItem, 行 As PivotField
     Dim 生 As String, 頼 As String, した As String, 当 As String, 集計 As Long, p As Long, n As Long, i As Long
     Dim 足す As Boolean, 外す As Boolean, 絞る As Boolean, 以外 As Boolean, 当たり As Long, 当て名 As String, 一覧 As String
-    Dim 語 As Variant, 後 As String
+    Dim 語 As Variant, 後 As String, 並べ先 As PivotField
 
     生 = 先撃ちの頼みの文()
     If Len(生) = 0 Then Exit Sub
@@ -11263,7 +11268,7 @@ Sub 頼みの文でピボットを手直しする()
     If 集計 <> xlSum Or InStr(頼, "合計に") > 0 Or InStr(頼, "合計で") > 0 Then
         For i = 1 To pt.DataFields.Count
             pt.DataFields(i).Function = 集計
-            pt.DataFields(i).NumberFormat = "#,##0"
+            pt.DataFields(i).NumberFormat = IIf(集計 = xlAverage, "#,##0.0", "#,##0")
             pt.DataFields(i).Caption = Choose(Abs(集計 = xlCount) + 1, IIf(集計 = xlSum, "合計 / ", "") & pt.DataFields(i).SourceName & _
                 IIf(集計 = xlAverage, "の平均", IIf(集計 = xlMax, "の最大", IIf(集計 = xlMin, "の最小", ""))), "件数")
         Next i
@@ -11327,6 +11332,16 @@ Sub 頼みの文でピボットを手直しする()
             ElseIf 含む語(頼, "小さい順|少ない順|昇順|低い順") Then
                 行.AutoSort xlAscending, df.Name
                 した = した & "・" & 行.Name & " を小さい順に"
+            ElseIf 含む語(頼, "の順|名前順|五十音順|あいうえお順|項目順") Then
+                ' 「部署の順に並べ替えて」＝値でなく項目の名前の並びで（頼みに出てくる行・列の見出しを、無ければ最初の行を）（2026-10-22 指示書046）
+                Set 並べ先 = 行
+                For Each pf In pt.VisibleFields
+                    If pf.Orientation = xlRowField Or pf.Orientation = xlColumnField Then
+                        If 見出しの語の位置(頼, pf.Name) > 0 Then Set 並べ先 = pf: Exit For
+                    End If
+                Next pf
+                並べ先.AutoSort xlAscending, 並べ先.Name
+                した = した & "・" & 並べ先.Name & " を名前の順に"
             End If
         End If
     End If

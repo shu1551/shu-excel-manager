@@ -423,3 +423,26 @@ def test_shape_signals_pivot_and_chart_words():
     v = [['課', '額'], ['a', '1'], ['b', '2']]
     assert {'ピボット', 'グラフ'} <= vp.shape_signals(v, k, has_pivot=True, has_chart=True)
     assert not ({'ピボット', 'グラフ'} & vp.shape_signals(v, k))
+
+def test_pivot_sort_and_judgement_words_20261022_046():
+    """指示書046: ピボットの並べ替えは表の並べ替えの棚に取られない（除外 ピボット・ピポット）／判断を頼む言い方は AI の役目。"""
+    text = "\n".join([
+        "Sub 選んだ列で表を並べ替える()",
+        "' 依頼の語: 大きい順に並べ",
+        "' 依頼の組: 並べ替え,ソート,並べて+表,古い順,新しい順,大きい順,コード順+-列を,列の,選んだ順,左へ,0の行,ゼロ,テーブル,何位,順位,ピボット,ピポット",
+        "End Sub",
+        "Sub 頼みの文でピボットを手直しする()",
+        "' 依頼の語: 大きい順",
+        "' 依頼の組: ピボット+足し,追加,絞,順,上位,変え,解除",
+        "End Sub",
+        "Sub ピボットをいつもの形にそろえる()",
+        "' 依頼の語: ピボットを見",
+        "End Sub",
+    ])
+    entries = vp.shelf_entries_from_text(text)
+    assert vp.shelf_pick('ピボットを金額の大きい順に並べ替えて', entries) == '頼みの文でピボットを手直しする'
+    assert vp.shelf_pick('ピポットを金額の大きい順に並べ替えて', entries) != '選んだ列で表を並べ替える'
+    assert vp.shelf_pick('金額の大きい順に並べ替えて', entries) == '選んだ列で表を並べ替える'     # ピボットの語が無ければ今までどおり
+    for q in ('どの品名を発注するべきか、ピボットを見て判断して', 'この売上は見極めが要る、ピボットを見て', 'ピボットを見て改善策を提案して',
+              '発注はどうすべきかピボットを見て', 'どれを増やすべきかピボットを見て'):
+        assert vp.shelf_pick(q, entries) == '', q
