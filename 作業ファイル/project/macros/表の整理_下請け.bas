@@ -1154,3 +1154,61 @@ Function 文字のまま書く字(ByVal s As String) As String
     頭 = Left$(s, 1)
     If InStr("=+-@#'", 頭) > 0 Or IsNumeric(s) Or IsDate(s) Or UCase$(s) = "TRUE" Or UCase$(s) = "FALSE" Then 文字のまま書く字 = "'" & s
 End Function
+
+' 1 セル・1 行だけの範囲の値（スカラー）も、2 次元の配列にそろえる（2026-10-22）
+Function 二次元にする(ByVal v As Variant) As Variant
+    Dim 箱() As Variant
+    If IsArray(v) Then
+        二次元にする = v
+    Else
+        ReDim 箱(1 To 1, 1 To 1)
+        箱(1, 1) = v
+        二次元にする = 箱
+    End If
+End Function
+
+' 字にカナ（全角カタカナ・半角カナ）が入っているか。長音「ー」だけの字は数えない（2026-10-22）
+Function カナを含むか(ByVal s As String) As Boolean
+    Dim i As Long, w As Long
+    For i = 1 To Len(s)
+        w = AscW(Mid$(s, i, 1))
+        If w < 0 Then w = w + 65536
+        If (w >= &H30A1 And w <= &H30FA) Or (w >= &HFF66& And w <= &HFF9F&) Then カナを含むか = True: Exit Function
+    Next i
+End Function
+
+' 半角カナの連なりを全角にし、全角カナをひらがな（型="ひら"）かカタカナ（型="カナ"）にそろえる。カナ以外の字（漢字・英数・記号）は 1 字も変えない（2026-10-22）。
+'   StrConv で字の全部を変えると、CP932 に無い字（波ダッシュ U+301C・絵文字・ヵ ヶ のひらがな）が「?」になる。かなは文字コードの差（&H60）で 1 字ずつ変える。
+'   ヵ ヶ（千ヶ崎・3ヶ月）とワ行の濁点つきの字は字として残す。ー はそのまま
+Function カナの字をそろえる(ByVal s As String, ByVal 型 As String) As String
+    Dim i As Long, w As Long, 連 As String, 出 As String, ch As String
+    For i = 1 To Len(s)
+        ch = Mid$(s, i, 1)
+        w = AscW(ch)
+        If w < 0 Then w = w + 65536
+        If w >= &HFF66& And w <= &HFF9F& Then
+            連 = 連 & ch
+        Else
+            If Len(連) > 0 Then 出 = 出 & 全角カナを変える(StrConv(連, vbWide), 型): 連 = ""
+            出 = 出 & 全角カナを変える(ch, 型)
+        End If
+    Next i
+    If Len(連) > 0 Then 出 = 出 & 全角カナを変える(StrConv(連, vbWide), 型)
+    カナの字をそろえる = 出
+End Function
+
+' 全角のかなを、ひらがな（型="ひら"）かカタカナ（型="カナ"）に 1 字ずつ変える。かな以外はそのまま
+Function 全角カナを変える(ByVal 字 As String, ByVal 型 As String) As String
+    Dim i As Long, w As Long, 出 As String
+    For i = 1 To Len(字)
+        w = AscW(Mid$(字, i, 1))
+        If w < 0 Then w = w + 65536
+        If 型 = "ひら" Then
+            If (w >= &H30A1& And w <= &H30F4&) Or w = &H30FD& Or w = &H30FE& Then w = w - &H60&
+        Else
+            If (w >= &H3041& And w <= &H3094&) Or w = &H309D& Or w = &H309E& Then w = w + &H60&
+        End If
+        出 = 出 & ChrW(w)
+    Next i
+    全角カナを変える = 出
+End Function

@@ -255,7 +255,8 @@ def test_plan_full_longer_match_on_skipped_job_blocks_short_match():
     furi_sheet = {'予算科目コード', '科目名', '支出額'}
     req = "対応表シートで予算科目コードを決算統計区分に振り直して、区分ごとの支出額を集計してください"
     p = vp.plan_full(req, reg, shuyaku_sheet)                     # 振り直しを頼んだのに集約のブック
-    assert p['extras'] == [] and [e['name'] for e in p['shadowed']] == ['課別シートを集約する'] and p['other']
+    # 039 で判定1本化: 決算統計区分に振り直す が選ばれるが見出し不一致で skipped に入り、誤爆集約は extras に入らない
+    assert p['extras'] == [] and [e['name'] for e in p['skipped']] == ['決算統計区分に振り直す'] and p['other']
     p = vp.plan_full(req, reg, furi_sheet)                        # 本来の表
     assert [e['name'] for e in p['extras']] == ['決算統計区分に振り直す'] and p['shadowed'] == []
     p = vp.plan_full("各課のシートを集約シートにまとめて集計して", reg, shuyaku_sheet)
@@ -302,7 +303,8 @@ def test_plan_full_generic_word_on_skipped_job_does_not_shadow():
     reg = vp.registry_from_text("Sub 表の下に合計行を足す()\n    ' 依頼の語: 合計|集計\n    ' 扱う: 合計 集計\n    ' 見出し: 品名 数量 金額\nEnd Sub\n"
                                 "Sub 課別シートを集約する()\n    ' 依頼の語: 集約|各課\n    ' 扱う: 集約 合計\n    ' 見出し: 課名 事業名\nEnd Sub\n")
     p = vp.plan_full("各課シートの事業を集めて合計も出して", reg, {'課名', '事業名'})
-    assert [e['name'] for e in p['extras']] == ['課別シートを集約する'] and p['other'] is False
+    # 039 で判定1本化: 表の下に合計行を足す が選ばれるが見出し不一致で skipped に入り、AI へ回る（他棚を勝手に撃たない）
+    assert p['extras'] == [] and p['other'] is True and p['chosen'] == []
 
 
 def test_formula_copy_blockers_absolute_sum_per_column_is_fine():

@@ -2455,7 +2455,7 @@ def test_shelf_plan_fires_every_clause_and_pick_reads_handbooks_and_mishearing_2
     import vbam_prefire as vp
     E = [{'name': '表の書き方と罫線と列幅をそろえる', 'ask': '表を整え|整ってない|表記を統一|全角半角', 'combo': None},
          {'name': '全列が同じ重複行を削除する', 'ask': '重複している行を削除|重複行を消', 'combo': None},
-         {'name': '住所と郵便番号の形をそろえる', 'ask': '郵便番号をハイフン|住所の全角半角', 'combo': None},
+         {'name': '住所と郵便番号の形をそろえる', 'ask': '郵便番号をハイフン|住所の全角半角', 'combo': None, 'plan_substitute': '表の書き方と罫線と列幅をそろえる'},
          {'name': '左右に並んだ表を突き合わせる', 'ask': '突き合わせ', 'combo': None},
          {'name': 'エラー値のセルを一覧にする', 'ask': 'エラーになる|エラー値', 'combo': None},
          {'name': '帳票を右に1行1件の一覧にする', 'ask': '帳票形式|帳票を', 'combo': None}]
@@ -2472,7 +2472,7 @@ def test_shelf_plan_fires_every_clause_and_pick_reads_handbooks_and_mishearing_2
     assert vp.shelf_pick("【手順書：重複チェック】削除は頼まれるまでしない", E) == ''   # 棚に無い名前の手順書は本文で採点しない
     assert vp.shelf_pick("D31の式がエラーになる原因を探して直して", E) == ''
     assert vp.shelf_pick("エラー値を一覧にして", E) == 'エラー値のセルを一覧にする'
-    E2 = E[:4] + [{'name': '帳票を右に1行1件の一覧にする', 'ask': '帳票を一覧|一覧に直', 'combo': None}]
+    E2 = E[:4] + [{'name': '帳票を右に1行1件の一覧にする', 'ask': '帳票を一覧|一覧に直', 'combo': None, 'allow_fix': True}]
     assert vp.shelf_pick("帳票を一覧に直して", E2) == '帳票を右に1行1件の一覧にする'   # 「直して」で頼む本体＝調べるだけの棚の止めから外す（VBA と同じ・2026-10-01）
 
 

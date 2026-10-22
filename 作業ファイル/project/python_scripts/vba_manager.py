@@ -723,6 +723,16 @@ def build_parser():
                    help="依頼文から撃つマクロを選ぶ（Excelコンボの先撃ちと同じ採点。当たらなければ「棚に無い」）")
     p.add_argument("--check", dest="check", action="store_true",
                    help="棚の当たり方の検査（一般の語・VBA と写しの照合・問題集の横取り・外れた依頼の変化）。棚を足した・語を変えたら撃つ")
+    p.add_argument("--misses", dest="misses", action="store_true",
+                   help="外れた依頼の集計（2回以上外れた型・試験のブックを除く）。棚を足す候補を見る（2026-10-22）")
+    p.add_argument("--days", dest="days", type=int, default=14,
+                   help="外れの集計の対象日数（既定 14 日）")
+    p.add_argument("--all", dest="all_days", action="store_true",
+                   help="外れの集計で全期間を対象にする")
+    p.add_argument("--chose", dest="chose", nargs="?", const="", default=None,
+                   help="迷った頼みにAIが選んだ答えを記録する（--none でどれでもない・2026-10-22 指示書040）")
+    p.add_argument("--none", dest="chose_none", action="store_true",
+                   help="どれでもない（AIが手で直した）")
     p = sub.add_parser("shelf-run",
                        help="棚のマクロを選んで撃つ：対象ブック/シートを前に出し(--sheet)、--select で選んでから"
                             "撃つ。控えを取り、差分（番地:前→後・上限30件＋件数・足された行/列/シート）を返す"
@@ -1945,6 +1955,13 @@ def _command_table():
     return {name: _logged(fn) for name, fn in _raw_command_table().items()}
 
 
+def _cmd_shelf_entry(args):
+    if getattr(args, 'misses', False):
+        import vbam_prefire as vp
+        return vp.cmd_shelf_misses(args)
+    return cmd_shelf(args)
+
+
 def _raw_command_table():
     """コマンド名→実装の対応表（包み無し）"""
     return {
@@ -2028,7 +2045,7 @@ def _raw_command_table():
         "表の整理":            cmd_seiri,
         "register-addin":    cmd_register_addin,
         "更新登録":            cmd_register_addin,
-        "shelf":             cmd_shelf,
+        "shelf":             _cmd_shelf_entry,
         "shelf-run":         cmd_shelf_run,
         "recipe-save":       cmd_recipe_save,
         "trace":             cmd_trace,
