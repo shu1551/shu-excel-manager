@@ -27,6 +27,49 @@ def pytest_addoption(parser):
 def pytest_configure(config):
     config.addinivalue_line(
         "markers", "e2e: 実機の Excel/VBE を起こすテスト（--run-e2e で有効）")
+    _start_watchdog(600 if config.getoption("--run-e2e") else _LIMIT_SEC)
+
+
+# 見張り（2026-10-24）: 全部でふだん 17 秒の pytest が、10/22 夜と 10/24 朝に返らず CPU を 10〜50 分回し続けた
+# （Antigravity から撃ったときだけ・手元では再現しない）。受け取った人のパソコンでも回りっぱなしにしないよう、
+# 時間を超えたら止まっている所（全スレッドの呼び出しの並び・いま走っている試験）を _pytest_hang.log に書いて、
+# 子プロセスごと自分で終わる。止める秒は環境変数 VBAM_PYTEST_LIMIT で変えられる。
+import faulthandler
+import os
+import subprocess
+import sys
+import threading
+import time
+
+_LIMIT_SEC = int(os.environ.get("VBAM_PYTEST_LIMIT", "45"))
+_HANG_LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_pytest_hang.log")
+_NOW = {"test": "（収集中）", "t0": time.time()}
+
+
+def _on_timeout(limit):
+    try:
+        with open(_HANG_LOG, "w", encoding="utf-8") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} pytest が {limit} 秒で終わらなかったので止めました\n")
+            f.write(f"いま走っている試験: {_NOW['test']}\n")
+            f.write(f"python {sys.version.split()[0]} / stdin tty={sys.__stdin__.isatty() if sys.__stdin__ else None} / "
+                    f"cwd={os.getcwd()}\n\n")
+            faulthandler.dump_traceback(file=f, all_threads=True)
+        sys.__stderr__.write(f"\npytest が {limit} 秒で終わらなかったので止めました（{_HANG_LOG}）\n")
+        sys.__stderr__.flush()
+    finally:
+        # 試験が起こした子プロセスも残さない
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(os.getpid())], capture_output=True)
+        os._exit(3)
+
+
+def _start_watchdog(limit):
+    t = threading.Timer(limit, _on_timeout, args=(limit,))
+    t.daemon = True
+    t.start()
+
+
+def pytest_runtest_logstart(nodeid, location):
+    _NOW["test"] = nodeid
 
 
 # 道具が自分で書く状態ファイル → テンポラリの名前。定数を持っている module 全部に当てる
