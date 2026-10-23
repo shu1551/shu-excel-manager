@@ -27,7 +27,10 @@ def pytest_addoption(parser):
 def pytest_configure(config):
     config.addinivalue_line(
         "markers", "e2e: 実機の Excel/VBE を起こすテスト（--run-e2e で有効）")
-    _start_watchdog(600 if config.getoption("--run-e2e") else _LIMIT_SEC)
+    if os.environ.get("VBAM_PYTEST_LIMIT"):
+        _start_watchdog(_LIMIT_SEC)
+    else:
+        _start_watchdog(600 if config.getoption("--run-e2e") else _LIMIT_SEC)
 
 
 # 見張り（2026-10-24）: 全部でふだん 17 秒の pytest が、10/22 夜と 10/24 朝に返らず CPU を 10〜50 分回し続けた
@@ -147,6 +150,44 @@ def _no_real_ai_in_tests(monkeypatch):
         for attr in ("_ask", "_cc_oneshot"):
             if hasattr(mod, attr):
                 monkeypatch.setattr(mod, attr, _refuse_real_ai)
+
+
+def _refuse_real_excel(*a, **_k):
+    raise RuntimeError("テストが本物の Excel に触ろうとしました（既定の pytest は Excel につながない・使うなら e2e の印を付けて --run-e2e）")
+
+
+@pytest.fixture(autouse=True)
+def _no_real_excel_in_tests(request, monkeypatch):
+    """既定の pytest から、使う人の開いている Excel に一切つながせない（2026-10-24）。
+
+    materials・write-cells・close などを通す試験 7 本が、偽のブックを渡さずに get_workbook まで行き、
+    ROT から本物の Excel（その時開いている秀コンボ）を掴んで読んでいた。Excel が別の仕事
+    （Antigravity のフラッシュ君が撃った棚・開いた窓）で塞がっているとそこで待たされ、pytest が
+    返らず CPU を回し続けた（10/22 夜 50 分・10/24 朝 10 分。手元で Excel が暇なときは 17 秒で通るので見えなかった）。
+    人のブックを試験が読む・書くこと自体が欠陥なので、つなぐ入口を全部ふさぐ。偽の COM を使う試験は
+    自分で monkeypatch するので、それが上書きになる。
+    """
+    if request.node.get_closest_marker("e2e") or request.config.getoption("--run-e2e"):
+        return
+    import pythoncom
+    import win32com.client
+    for name in ("GetActiveObject", "GetRunningObjectTable", "CoCreateInstance", "CoCreateInstanceEx"):
+        if hasattr(pythoncom, name):
+            monkeypatch.setattr(pythoncom, name, _refuse_real_excel)
+    real_dispatch = win32com.client.Dispatch
+
+    def _dispatch(obj, *a, **k):
+        if isinstance(obj, str):            # 名前（"Excel.Application" 等）で起こす・つなぐのは断る
+            _refuse_real_excel()
+        return real_dispatch(obj, *a, **k)  # 既にある偽・本物のオブジェクトを包むだけなら通す
+    monkeypatch.setattr(win32com.client, "Dispatch", _dispatch)
+    for name in ("DispatchEx", "GetActiveObject", "GetObject"):
+        monkeypatch.setattr(win32com.client, name, _refuse_real_excel)
+    try:
+        import vbam_core
+        monkeypatch.setattr(vbam_core, "_get_excel_from_oleacc", lambda *a, **k: None)
+    except Exception:
+        pass
 
 
 # 見えない Excel を DispatchEx で起こすフィクスチャ。これを使う試験は e2e 扱い（既定では走らせない）。
