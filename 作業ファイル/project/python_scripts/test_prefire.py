@@ -446,3 +446,21 @@ def test_pivot_sort_and_judgement_words_20261022_046():
     for q in ('どの品名を発注するべきか、ピボットを見て判断して', 'この売上は見極めが要る、ピボットを見て', 'ピボットを見て改善策を提案して',
               '発注はどうすべきかピボットを見て', 'どれを増やすべきかピボットを見て'):
         assert vp.shelf_pick(q, entries) == '', q
+
+
+def test_shelf_plan_shitekara_split():
+    """062修正: してから・してそのあと等の順序接続表現で最長一致分割されること"""
+    import vbam_prefire as vp
+    text = "\n".join([
+        "Sub 全列が同じ重複行を削除する()",
+        "    ' 依頼の語: 重複行を削除",
+        "    ' 階級: 基本",
+        "End Sub",
+        "Sub 表の中の空行を削除して詰める()",
+        "    ' 依頼の語: 空行を詰める",
+        "    ' 階級: 基本",
+        "End Sub",
+    ])
+    entries = vp.shelf_entries_from_text(text)
+    res = vp.shelf_plan('重複行を削除してから空行を詰める', entries)
+    assert res == ['全列が同じ重複行を削除する', '表の中の空行を削除して詰める']

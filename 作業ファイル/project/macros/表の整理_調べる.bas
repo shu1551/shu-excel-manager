@@ -2992,7 +2992,10 @@ Sub 入力規則などの仕掛けを一覧にする()
     Dim wb As Workbook, ws As Object, out As Worksheet, old As Object
     Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, nc As Long
     Dim dv As Range, ar As Range, fc As Object, c As Range, ur As Range, s As String, s2 As String, s3 As String
-    Dim n1 As Long, n2 As Long, n3 As Long, n As Long, first As String, op As String
+    Dim n1 As Long, n2 As Long, n3 As Long, n As Long, op As String
+    Dim outBuf() As Variant, maxBuf As Long, bufIdx As Long
+    Dim colIdx As Long, curCol As Range
+
     On Error GoTo 失敗
     Set wb = ActiveWorkbook
     Set ws = ActiveSheet
@@ -3020,118 +3023,143 @@ Sub 入力規則などの仕掛けを一覧にする()
     out.Name = nm
     out.Range("A1").Value = "調査：仕掛け（入力規則・条件付き書式・結合セル）　" & ws.Name
     hR = 4: nc = 5
-    out.Range("A4:E4").Value = Array("種類", "範囲", "内容1", "内容2", "内容3") ' 書き戻し: 新しい所
-    r = hR
+    out.Range("A4:E4").Value = Array("種類", "範囲", "内容1", "内容2", "内容3")
+    
+    maxBuf = 5000
+    ReDim outBuf(1 To maxBuf, 1 To nc)
+    bufIdx = 0
+
+    ' 1. 入力規則
     Set dv = Nothing
     On Error Resume Next
     Set dv = ws.Cells.SpecialCells(-4174)
     On Error GoTo 失敗
     If Not dv Is Nothing Then
         For Each ar In dv.Areas
-            r = r + 1: n1 = n1 + 1
-            out.Cells(r, 1).Value = "入力規則"
-            out.Cells(r, 2).Value = ar.Address(False, False)
-            s = "": s2 = "": s3 = "": op = ""
-            On Error Resume Next
-            Select Case ar.Cells(1, 1).Validation.Type
-                Case 1: s = "整数"
-                Case 2: s = "小数"
-                Case 3: s = "リスト"
-                Case 4: s = "日付"
-                Case 5: s = "時刻"
-                Case 6: s = "文字数"
-                Case 7: s = "ユーザー設定"
-                Case Else: s = "入力メッセージのみ"
-            End Select
-            Select Case ar.Cells(1, 1).Validation.Operator
-                Case 1: op = "間"
-                Case 2: op = "間以外"
-                Case 3: op = "等しい"
-                Case 4: op = "等しくない"
-                Case 5: op = "より大きい"
-                Case 6: op = "より小さい"
-                Case 7: op = "以上"
-                Case 8: op = "以下"
-            End Select
-            s2 = ar.Cells(1, 1).Validation.Formula1
-            s3 = ar.Cells(1, 1).Validation.Formula2
-            On Error GoTo 失敗
-            If Len(s3) > 0 Then s2 = s2 & " ? " & s3
-            If Len(op) > 0 Then s2 = op & " " & s2
-            If Left$(s2, 1) = "=" Or Left$(s2, 1) = "+" Or Left$(s2, 1) = "-" Then s2 = "'" & s2
-            out.Cells(r, 3).Value = s
-            out.Cells(r, 4).Value = s2
-            s3 = ""
-            On Error Resume Next
-            s3 = ar.Cells(1, 1).Validation.ErrorMessage
-            On Error GoTo 失敗
-            out.Cells(r, 5).Value = "'" & s3
+            If bufIdx < maxBuf Then
+                bufIdx = bufIdx + 1: n1 = n1 + 1
+                outBuf(bufIdx, 1) = "入力規則"
+                outBuf(bufIdx, 2) = ar.Address(False, False)
+                s = "": s2 = "": s3 = "": op = ""
+                On Error Resume Next
+                Select Case ar.Cells(1, 1).Validation.Type
+                    Case 0: s = "すべての値"
+                    Case 1: s = "整数"
+                    Case 2: s = "小数点数"
+                    Case 3: s = "リスト"
+                    Case 4: s = "日付"
+                    Case 5: s = "時刻"
+                    Case 6: s = "文字列（長さ）"
+                    Case 7: s = "ユーザー設定"
+                End Select
+                Select Case ar.Cells(1, 1).Validation.Operator
+                    Case 1: op = "の間"
+                    Case 2: op = "の間以外"
+                    Case 3: op = "次の値に等しい"
+                    Case 4: op = "次の値に等しくない"
+                    Case 5: op = "より大きい"
+                    Case 6: op = "より小さい"
+                    Case 7: op = "以上"
+                    Case 8: op = "以下"
+                End Select
+                s2 = ar.Cells(1, 1).Validation.Formula1
+                s3 = ar.Cells(1, 1).Validation.Formula2
+                On Error GoTo 失敗
+                If Len(s3) > 0 Then s2 = s2 & " ? " & s3
+                If Len(op) > 0 Then s2 = op & " " & s2
+                If Left$(s2, 1) = "=" Or Left$(s2, 1) = "+" Or Left$(s2, 1) = "-" Then s2 = "'" & s2
+                outBuf(bufIdx, 3) = s
+                outBuf(bufIdx, 4) = s2
+                s3 = ""
+                On Error Resume Next
+                s3 = ar.Cells(1, 1).Validation.ErrorMessage
+                On Error GoTo 失敗
+                outBuf(bufIdx, 5) = "'" & s3
+            End If
         Next ar
     End If
+
+    ' 2. 条件付き書式
     n = 0
     On Error Resume Next
     n = ws.Cells.FormatConditions.Count
     On Error GoTo 失敗
     If n > 2000 Then n = 2000
     For i = 1 To n
-        Set fc = ws.Cells.FormatConditions(i)
-        r = r + 1: n2 = n2 + 1
-        out.Cells(r, 1).Value = "条件付き書式"
-        s = "": s2 = ""
-        On Error Resume Next
-        out.Cells(r, 2).Value = fc.AppliesTo.Address(False, False)
-        Select Case fc.Type
-            Case 1: s = "セルの値"
-            Case 2: s = "数式"
-            Case 3: s = "色スケール"
-            Case 4: s = "データバー"
-            Case 5: s = "上位／下位"
-            Case 6: s = "アイコンセット"
-            Case 8: s = "重複／一意"
-            Case 9: s = "文字列"
-            Case 10: s = "空白"
-            Case 11: s = "日付"
-            Case 12: s = "平均"
-            Case 13: s = "空白以外"
-            Case 16: s = "エラー"
-            Case 17: s = "エラー以外"
-            Case Else: s = "種類 " & fc.Type
-        End Select
-        s2 = fc.Formula1
-        s3 = "優先順位 " & fc.Priority
-        On Error GoTo 失敗
-        If Left$(s2, 1) = "=" Or Left$(s2, 1) = "+" Or Left$(s2, 1) = "-" Then s2 = "'" & s2
-        out.Cells(r, 3).Value = s
-        out.Cells(r, 4).Value = s2
-        out.Cells(r, 5).Value = s3
+        If bufIdx < maxBuf Then
+            Set fc = ws.Cells.FormatConditions(i)
+            bufIdx = bufIdx + 1: n2 = n2 + 1
+            outBuf(bufIdx, 1) = "条件付き書式"
+            s = "": s2 = ""
+            On Error Resume Next
+            outBuf(bufIdx, 2) = fc.AppliesTo.Address(False, False)
+            Select Case fc.Type
+                Case 1: s = "セルの値"
+                Case 2: s = "数式"
+                Case 3: s = "色スケール"
+                Case 4: s = "データバー"
+                Case 5: s = "上位／下位"
+                Case 6: s = "アイコンセット"
+                Case 8: s = "重複／一意"
+                Case 9: s = "文字列"
+                Case 10: s = "空白"
+                Case 11: s = "日付"
+                Case 12: s = "平均"
+                Case 13: s = "空白以外"
+                Case 16: s = "エラー"
+                Case 17: s = "エラー以外"
+                Case Else: s = "種類 " & fc.Type
+            End Select
+            s2 = fc.Formula1
+            s3 = "優先順位 " & fc.Priority
+            On Error GoTo 失敗
+            If Left$(s2, 1) = "=" Or Left$(s2, 1) = "+" Or Left$(s2, 1) = "-" Then s2 = "'" & s2
+            outBuf(bufIdx, 3) = s
+            outBuf(bufIdx, 4) = s2
+            outBuf(bufIdx, 5) = s3
+        End If
     Next i
-    ' 結合セル: 使用範囲のセルを順に見る（書式で探す Find の続き FindNext は書式の条件を引き継がず、
-    ' 表題の結合セルがあると空のセルを巡り続けて固まった。2026-09-22）。20 万セル・1000 件で打ち切る
+
+    ' 3. 結合セル（列単位高速フィルタリング）
     Set ur = ws.UsedRange
     If Not IsNull(ur.MergeCells) Then
         If ur.MergeCells = False Then GoTo 結合おわり
     End If
-    If ur.Cells.CountLarge > 200000 Then GoTo 結合おわり
-    For Each c In ur.Cells
-        If c.MergeCells Then
-            If c.Address = c.MergeArea.Cells(1, 1).Address Then
-                r = r + 1: n3 = n3 + 1
-                out.Cells(r, 1).Value = "結合セル"
-                out.Cells(r, 2).Value = c.MergeArea.Address(False, False)
-                s = ""
-                On Error Resume Next
-                s = CStr(c.text)
-                On Error GoTo 失敗
-                out.Cells(r, 4).Value = "'" & Left$(s, 30)
-                If n3 >= 1000 Then Exit For
+    If ur.Cells.CountLarge <= 200000 Then
+        For colIdx = 1 To ur.Columns.Count
+            Set curCol = ur.Columns(colIdx)
+            If IsNull(curCol.MergeCells) Or curCol.MergeCells = True Then
+                For Each c In curCol.Cells
+                    If c.MergeCells Then
+                        If c.Address = c.MergeArea.Cells(1, 1).Address Then
+                            If bufIdx < maxBuf Then
+                                bufIdx = bufIdx + 1: n3 = n3 + 1
+                                outBuf(bufIdx, 1) = "結合セル"
+                                outBuf(bufIdx, 2) = c.MergeArea.Address(False, False)
+                                s = ""
+                                On Error Resume Next
+                                s = CStr(c.text)
+                                On Error GoTo 失敗
+                                outBuf(bufIdx, 4) = "'" & Left$(s, 30)
+                                If n3 >= 1000 Then Exit For
+                            End If
+                        End If
+                    End If
+                Next c
             End If
-        End If
-    Next c
+            If n3 >= 1000 Then Exit For
+        Next colIdx
+    End If
+
 結合おわり:
-    If r = hR Then
-        r = r + 1
+    If bufIdx > 0 Then
+        out.Range(out.Cells(hR + 1, 1), out.Cells(hR + bufIdx, nc)).Value = outBuf
+        r = hR + bufIdx
+    Else
+        r = hR + 1
         out.Cells(r, 1).Value = "仕掛けは見つかりませんでした"
     End If
+
     rt = r
     out.Range("A2").Value = "入力規則 " & n1 & " 件・条件付き書式 " & n2 & " 件・結合セル " & n3 & " 件"
     With out
@@ -3165,7 +3193,6 @@ Sub 入力規則などの仕掛けを一覧にする()
 失敗:
     Application.ScreenUpdating = True
     Application.DisplayAlerts = True
-    Application.FindFormat.Clear
     Application.StatusBar = "仕掛け: 調べられませんでした（" & Err.Description & "）"
 End Sub
 

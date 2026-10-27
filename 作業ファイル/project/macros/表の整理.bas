@@ -12,7 +12,8 @@ Attribute VB_Name = "表の整理"
 '   表の範囲 … 見出しの下から、空行が 2 行続く手前まで（途中の空行 1 行は表の続き）
 
 Sub 表の書き方と罫線と列幅をそろえる()
-    ' 依頼の語: 表を修正|表の修正|表を修復|表の修復|表を直して|表を直す|表の直し|表を整え|表記を統一|全角と半角|書き方をそろえ|書き方を揃え|入力の書き方|見やすく整理|表を整理|表をきれいに|表記をそろえ|表記を揃え|表記ゆれ|表記揺れ|表記の揺れ|全角半角|表の書式をそろえ|表の書式を整え|表の見た目を整え|表の体裁を整え|表全体を整え|整ってない|整っていない|表記ゆれを直して|表記ゆれを直す
+    ' 変えてよい: 文字日付 文字数字
+    ' 依頼の語: 表を修正|表の修正|表を修復|表の修復|表を直して|表を直す|表の直し|表を整え|表記を統一|全角と半角|書き方をそろえ|書き方を揃え|入力の書き方|見やすく整理|表を整理|表をきれいに|表記をそろえ|表記を揃え|表記ゆれ|表記揺れ|表記の揺れ|全角半角|表の書式をそろえ|表の書式を整え|表の見た目を整え|表の体裁を整え|表全体を整え|整ってない|整っていない|表記ゆれを直して|表記ゆれを直す|お任せしますので良いように|おまかせしますので良いように|お任せしますのでよいように|おまかせしますのでよいように
     ' 階級: 基本
     ' 依頼の組: 表,表の,表記,書き方,全角,半角,ばらばら,バラバラ,ごちゃごちゃ,ひらがな,カタカナ,混ざ,(株),株式会社,形式,書式,罫線+修正,修復,そろえ,揃え,統一,整え,整理,直,引き直+-住所,番地,郵便,グラフ,シート,名前の揺,列幅,ピボット,データ,洗い出,一覧,探,調べ
     ' 値の意味は変えずに書き方をそろえる（行は消さない・数式のセルは触らない）: 前後の空白・全角英数→半角・半角カナ→全角・
@@ -674,6 +675,10 @@ Sub 表の書き方と罫線と列幅をそろえる()
         Case "phone"
             If VarType(v) = vbString Then
                 s = v: GoSub 電話を直す: nv = s
+            ElseIf VarType(v) = vbDouble Or VarType(v) = vbLong Or VarType(v) = vbInteger Then
+                If v >= 10000000 And v < 10000000000# And v = Int(v) Then
+                    s = Format(v, "0"): GoSub 電話を直す: nv = s
+                End If
             End If
         Case "postal"
             If VarType(v) = vbString Then
@@ -935,7 +940,9 @@ Sub 表の書き方と罫線と列幅をそろえる()
         digits = Replace(digits, x, "")
     Next
     If Left(digits, 3) = "+81" Then digits = "0" & Mid(digits, 4)
-    If Len(digits) = 0 Or digits Like "*[!0-9]*" Or Left(digits, 1) <> "0" Then Return
+    If Len(digits) = 0 Or digits Like "*[!0-9]*" Then Return
+    If Len(digits) = 9 And Left(digits, 1) <> "0" Then digits = "0" & digits
+    If Left(digits, 1) <> "0" Then Return
     If Len(digits) = 11 Then
         Select Case Left(digits, 3)
             Case "090", "080", "070", "060", "050"
@@ -1094,6 +1101,7 @@ Sub 表の書き方と罫線と列幅をそろえる()
 End Sub
 
 Sub 全列が同じ重複行を削除する()
+    ' 変えてよい: 行移動
     ' 依頼の語: 重複行を消|同じ行が二つ|同じ行が2つ|ダブっている行|ダブった行|重複データ|重複した行を1つ|重複した行をひとつ|二重に入っている行|重複行を削除|重複を消|重複を削除|重複を取り除|重複を除|重複データを消|重複をなくし|重複を無くし|ダブりを消|同じ行を消|同じ行を削除|重複している行を消|重複している行を削除|重複した行を消|重複した行を削除|重複行を取
     ' 依頼の組: 重複,ダブ,二重,かぶ,同じデータ,同じ行+消,削除,除,取り,なくし,無くし,1つに,ひとつに+-番号,キー,伝票,一覧にし,洗い出,マクロ,二重計上,二重払
     Dim ws As Worksheet, ur As Range, seen As Object
@@ -1377,6 +1385,7 @@ CleanUp:
 End Sub
 
 Sub 表の下に合計行を足す()
+    ' 変えてよい: 空欄
     ' 依頼の語: 合計行を足|下に合計|合計の行を追加|最終行に合計|合計の行を足|合計行を入|合計行を作|合計行を付|合計行を追加|列ごとの合計|縦計を|合計の行を入|合計の行をお願|最終行の下に列|下に出
     ' 依頼の組: 合計,縦計,総計+下,最終行,最後,末尾,縦の,行,欄+足,入れ,出,追加,付け,作,お願,ほし,欲し+-検算,正しい,合って,合うか,小計,区分,項目,月,ピボット,テーブル,右,した表,できない,凡例,グラフ
     ' 扱う: 合計 集計
@@ -2135,7 +2144,7 @@ Sub 選んだ列の空白を上の値で埋める()
                     If r >= urTop And r <= maxRow Then
                         If Not 行スキップ(r) Then
                             ' 上の値がエラー値なら埋めない（比べると「型が一致しません」で止まった・2026-09-24 総点検）
-                            If セルの字(列値(idx, 1)) = "" Then
+                            If セルの字(列値(idx, 1)) = "" And Not ws.Cells(r, c).MergeCells Then
                                 If Not isEmpty(lastVal) Then
                                     If Not IsError(lastVal) Then
                                         If セルの字(lastVal) <> "" Then
@@ -2300,7 +2309,7 @@ End Sub
 Sub 選んだ列の文字の数字を数にする()
     ' 変えてよい: 文字数字
     ' 選んでいる列の文字列として保存されている数字（カンマや空白付き含む）を計算可能な数値に変換する。先頭ゼロのコード列は触らない。
-    ' 依頼の語: 数値に直|文字列の数字|数値に変換|金額が文字列|文字の数字を数値|計算できる数値|数に直|数値に変|文字を数値|カンマ付
+    ' 依頼の語: 数値に直|文字列の数字|数値に変換|金額が文字列|文字の数字を数値|計算できる数値|数に直|数値に変|文字を数値|カンマ付|数値をカンマ区切り|数値のカンマ区切り
     ' 依頼の組: 数字,数値,金額+文字+-日付,CSV
     ' 扱う: 文字数字変換 数値変換
     ' 見出し: なし
@@ -2353,6 +2362,16 @@ Sub 選んだ列の文字の数字を数にする()
         End If
 
         If lastR > headerRow Then
+            Dim headerText As String
+            headerText = CStr(ws.Cells(headerRow, colIdx).Value)
+            If InStr(headerText, "コード") > 0 Or InStr(headerText, "番号") > 0 Or _
+               InStr(headerText, "TEL") > 0 Or InStr(headerText, "tel") > 0 Or _
+               InStr(headerText, "電話") > 0 Or InStr(headerText, "ZIP") > 0 Or _
+               InStr(headerText, "郵便") > 0 Then
+                ' コード列・電話番号列は数値化しない（先頭ゼロ保護・055）
+                GoTo NextCol
+            End If
+
             nRows = lastR - headerRow
             Set colRange = ws.Range(ws.Cells(headerRow + 1, colIdx), ws.Cells(lastR, colIdx))
             If nRows = 1 Then
@@ -2426,6 +2445,7 @@ NextRow:
             ' 数にしたセルだけ書く（列ごと書き戻すと、数式が値に潰れ、先頭ゼロの文字 "00123" が数に化けた・2026-10-22）
             If colChanged Then 変えたセルだけ書く colRange.Cells(1, 1), arr, 変えた, False, fc
         End If
+NextCol:
       Next colIdx
     Next area
 
@@ -2469,8 +2489,9 @@ CleanUp:
 End Sub
 
 Sub 表の中の空行を削除して詰める()
-    ' 依頼の語: 空行を消|空白行を消|空白行を削除|空白の行を|明細の間の空|行の抜けを詰め|空行を取り除|空行が無ければ|空行を詰|空白行を詰|空いた行を詰|空行を削除|空白の行を詰
-    ' 依頼の組: 空行,空白行,空白の行,空いた行,空の行+削除,消,詰,除+-列
+    ' 変えてよい: 行移動
+    ' 依頼の語: 空行を消|空白行を消|空白行を削除|空白の行を|明細の間の空|行の抜けを詰め|空行を取り除|空行が無ければ|空行を詰|空白行を詰|空いた行を詰|空行を削除|空白の行を詰|詰めて|詰める
+    ' 依頼の組: 空行,空白行,空白の行,空いた行,空の行+削除,消,詰,除+-列,番号,連番
     ' 扱う: 空行削除 空行詰め 合計
     ' 見出し: なし
     ' 形: 数の列
@@ -2573,6 +2594,29 @@ Sub 表の中の空行を削除して詰める()
     ' 二次元配列でメモリ走査し空行を判定
     Dim tblRange As Range, tblVal As Variant
     Set tblRange = ws.Range(ws.Cells(hdrRow + 1, colLeft), ws.Cells(urBottom, colRight))
+
+    ' 057: 帳票構造（データ行の縦結合）の検知・安全停止ガード
+    Dim hasVerticalMerge As Boolean, chkR As Long, chkC As Long
+    hasVerticalMerge = False
+    For chkR = hdrRow + 1 To urBottom
+        For chkC = colLeft To colRight
+            If ws.Cells(chkR, chkC).MergeCells Then
+                If ws.Cells(chkR, chkC).MergeArea.rows.Count > 1 Then
+                    hasVerticalMerge = True
+                    Exit For
+                End If
+            End If
+        Next chkC
+        If hasVerticalMerge Then Exit For
+    Next chkR
+
+    If hasVerticalMerge Then
+        Call 表の整理_下請け.帳票安全停止フラグ(True)
+        Application.StatusBar = "表の中の空行を削除して詰める: 帳票構造（縦結合）を検知したため、空行削除を安全停止しました。"
+        Exit Sub
+    Else
+        Call 表の整理_下請け.帳票安全停止フラグ(False)
+    End If
     Dim nRows As Long, nCols As Long
     nRows = urBottom - hdrRow
     nCols = colRight - colLeft + 1
@@ -3091,12 +3135,13 @@ End Sub
 
 Sub 選んだ列の途切れた式を戻す()
     ' 選んでいる列で途中のセルが値で上書きされたり消えている数式を、上下のセルと同じ計算式で復元・統一する。
-    ' 依頼の語: 式が途切れ|式の途切れ|値で上書き|計算式が崩れ|上下と同じ式に戻|式が抜|列の数式
-    ' 依頼の組: 式,数式+消えて,途切れ,抜け,崩れ,そろえ,揃え,戻+-一覧,監査,調べ,説明,株式,形式,様式,書式,正式
+    ' 依頼の語: 式が途切れ|式の途切れ|値で上書き|計算式が崩れ|上下と同じ式に戻|式が抜|列の数式|計算式がエラーになって|数式がエラーになって|計算式のエラーを修正|数式のエラーを修正|計算式のエラーを直|数式のエラーを直|式がエラーになる原因|エラーになっている数式|計算式を修正|計算式がエラー出て|数式がエラー出て
+    ' 依頼の組: 式,数式,計算式+消えて,途切れ,抜け,崩れ,そろえ,揃え,戻+-一覧,監査,調べ,説明,株式,形式,様式,書式,正式
     ' 扱う: 式揃え 数式補完 合計
+    ' 変えてよい: 空欄 数式
     ' 見出し: なし
-    ' 選ぶ列: 1
-    ' 形: 数の列
+    ' 選ぶ列: -
+    ' 形: なし
 
     Dim ws As Worksheet
     Set ws = ActiveSheet
@@ -3104,100 +3149,176 @@ Sub 選んだ列の途切れた式を戻す()
     Dim hdrRow As Long
     hdrRow = Selection.Cells(1, 1).row
 
-    Dim col As Long
     Dim maxRow As Long
     maxRow = 表の本文の最終行(ws)
 
-    Dim area As Range
-    For Each area In Selection.Areas
-        Dim c As Long
-        For c = area.Column To area.Column + area.Columns.Count - 1
-            col = c
-            ' 本文の範囲
-            Dim lastRow As Long
-            If area.rows.Count > 1 Then ' 2026-10-15 選んだ範囲だけ（レシピの試験）
-                lastRow = area.row + area.rows.Count - 1
-                hdrRow = area.row
-                If lastRow > maxRow Then lastRow = maxRow
-            Else
-                lastRow = maxRow
+    ' 頼みの文の取得（2026-10-24 指示書069）
+    Dim 頼み As String
+    On Error Resume Next
+    頼み = コンボ道具.頼みの文を返す()
+    On Error GoTo 0
+
+    ' 対象列の自動走査フォールバック判定
+    Dim needFullScan As Boolean
+    needFullScan = False
+
+    If Selection.Cells.CountLarge = 1 Then
+        Dim selColHasFormula As Boolean
+        selColHasFormula = False
+        Dim chkR As Long
+        For chkR = hdrRow + 1 To maxRow
+            If ws.Cells(chkR, Selection.Column).HasFormula Then
+                selColHasFormula = True
+                Exit For
+            End If
+        Next chkR
+
+        If Not selColHasFormula Then
+            needFullScan = True
+        ElseIf Len(頼み) > 0 Then
+            If InStr(頼み, "エラー") > 0 Or InStr(頼み, "原因") > 0 Then
+                Dim selColHasError As Boolean
+                selColHasError = False
+                For chkR = hdrRow + 1 To maxRow
+                    If IsError(ws.Cells(chkR, Selection.Column).Value) Then
+                        selColHasError = True
+                        Exit For
+                    End If
+                Next chkR
+                If Not selColHasError Then needFullScan = True
+            End If
+        End If
+    End If
+
+    Dim targetCols() As Long, numCols As Long
+    Dim area As Range, c As Long
+
+    Dim skipAddrs As String: skipAddrs = ""
+    If needFullScan Then
+        hdrRow = ws.UsedRange.row
+        Dim uColStart As Long, uColEnd As Long
+        uColStart = ws.UsedRange.Column
+        uColEnd = uColStart + ws.UsedRange.Columns.Count - 1
+        ReDim targetCols(1 To ws.UsedRange.Columns.Count)
+        numCols = 0
+        For c = uColStart To uColEnd
+            numCols = numCols + 1
+            targetCols(numCols) = c
+        Next c
+    Else
+        ReDim targetCols(1 To Selection.CountLarge)
+        numCols = 0
+        For Each area In Selection.Areas
+            For c = area.Column To area.Column + area.Columns.Count - 1
+                numCols = numCols + 1
+                targetCols(numCols) = c
+            Next c
+        Next area
+    End If
+
+    Dim colIdx As Long, col As Long
+    For colIdx = 1 To numCols
+        col = targetCols(colIdx)
+
+        ' 本文の範囲
+        Dim lastRow As Long
+        If Not needFullScan And Selection.Areas.Count = 1 And Selection.rows.Count > 1 Then
+            lastRow = Selection.row + Selection.rows.Count - 1
+            hdrRow = Selection.row
+            If lastRow > maxRow Then lastRow = maxRow
+        Else
+            lastRow = maxRow
+        End If
+
+        ' 式の集計
+        Dim dict As Object
+        Set dict = CreateObject("Scripting.Dictionary")
+
+        Dim r As Long
+        For r = hdrRow + 1 To lastRow
+            ' 行まるごと空チェック
+            Dim rowRange As Range
+            Set rowRange = ws.rows(r)
+            If WorksheetFunction.CountA(rowRange) = 0 Then GoTo NextRow1
+
+            ' 合計行チェック
+            Dim found As Boolean
+            found = 集計の行か(ws, r, ws.UsedRange.Column, ws.UsedRange.Column + ws.UsedRange.Columns.Count - 1)
+            If found Then GoTo NextRow1
+
+            ' 式を記録（IsError のセルは多数派手本に数えない・指示書069）
+            Dim cellVal As Range
+            Set cellVal = ws.Cells(r, col)
+            If cellVal.HasFormula And Not IsError(cellVal.Value) Then
+                Dim f As String
+                f = cellVal.FormulaR1C1
+                If dict.exists(f) Then
+                    dict(f) = dict(f) + 1
+                Else
+                    dict.Add f, 1
+                End If
+            End If
+NextRow1:
+        Next r
+
+        ' 式が1つもなければスキップ
+        If dict.Count = 0 Then GoTo NextCol
+
+        ' 最多の式を探す
+        Dim bestFormula As String
+        Dim bestCount As Long
+        bestFormula = ""
+        bestCount = 0
+        Dim key As Variant
+        For Each key In dict.keys
+            If dict(key) > bestCount Then
+                bestCount = dict(key)
+                bestFormula = CStr(key)
+            End If
+        Next key
+
+        ' 式でないセル・エラーセル・異なる式に適用
+        For r = hdrRow + 1 To lastRow
+            Set rowRange = ws.rows(r)
+            If WorksheetFunction.CountA(rowRange) = 0 Then GoTo NextRow2
+
+            found = 集計の行か(ws, r, ws.UsedRange.Column, ws.UsedRange.Column + ws.UsedRange.Columns.Count - 1)
+            If found Then GoTo NextRow2
+
+            Set cellVal = ws.Cells(r, col)
+
+            ' エラーセルは手本式で修復
+            If IsError(cellVal.Value) Then
+                cellVal.FormulaR1C1 = bestFormula
+                GoTo NextRow2
             End If
 
-            ' 式の集計
-            Dim dict As Object
-            Set dict = CreateObject("Scripting.Dictionary")
-
-            Dim r As Long
-            For r = hdrRow + 1 To lastRow
-                ' 行まるごと空チェック
-                Dim rowRange As Range
-                Set rowRange = ws.rows(r)
-                If WorksheetFunction.CountA(rowRange) = 0 Then GoTo NextRow1
-
-                ' 合計行チェック
-                Dim rowUsed As Range
-                Set rowUsed = ws.UsedRange.rows(r - ws.UsedRange.row + 1)
-                Dim found As Boolean
-                ' 合計・小計の行（「総務課 小計」も）は式をそろえない（小計の SUM を明細の式で上書きしていた・2026-09-24 総点検）
-                found = 集計の行か(ws, r, ws.UsedRange.Column, ws.UsedRange.Column + ws.UsedRange.Columns.Count - 1)
-                If found Then GoTo NextRow1
-
-                ' 式を記録
-                Dim cellVal As Range
-                Set cellVal = ws.Cells(r, col)
-                If cellVal.HasFormula Then
-                    Dim f As String
-                    f = cellVal.FormulaR1C1
-                    If dict.exists(f) Then
-                        dict(f) = dict(f) + 1
-                    Else
-                        dict.Add f, 1
-                    End If
-                End If
-NextRow1:
-            Next r
-
-            ' 式が1つもなければスキップ
-            If dict.Count = 0 Then GoTo NextCol
-
-            ' 最多の式を探す
-            Dim bestFormula As String
-            Dim bestCount As Long
-            bestFormula = ""
-            bestCount = 0
-            Dim key As Variant
-            For Each key In dict.keys
-                If dict(key) > bestCount Then
-                    bestCount = dict(key)
-                    bestFormula = CStr(key)
-                End If
-            Next key
-
-            ' 式でないセルに適用
-            For r = hdrRow + 1 To lastRow
-                Set rowRange = ws.rows(r)
-                If WorksheetFunction.CountA(rowRange) = 0 Then GoTo NextRow2
-
-                Set rowUsed = ws.UsedRange.rows(r - ws.UsedRange.row + 1)
-                found = 集計の行か(ws, r, ws.UsedRange.Column, ws.UsedRange.Column + ws.UsedRange.Columns.Count - 1)
-                If found Then GoTo NextRow2
-
-                Set cellVal = ws.Cells(r, col)
-                ' 空セルは触らない
+            ' 空セルは触らない
                 If セルの字(cellVal.Value) = "" And Not cellVal.HasFormula Then GoTo NextRow2
 
                 If Not cellVal.HasFormula Then
-                    ' ★追加: 既存の値が空ではなく、かつ数値でも日付でもない（つまり文字列）なら上書きしない（見出し行の破壊防止）
                     If セルの字(cellVal.Value) <> "" And Not IsNumeric(cellVal.Value) And Not IsDate(cellVal.Value) Then GoTo NextRow2
+                    Dim origCellVal As Variant: origCellVal = cellVal.Value
                     cellVal.FormulaR1C1 = bestFormula
+                    Dim sameAns As Boolean: sameAns = False
+                    If Not IsError(cellVal.Value) Then
+                        If CStr(cellVal.Value) = CStr(origCellVal) Then sameAns = True
+                    End If
+                    If Not sameAns Then
+                        ws.Cells(r, col).Value = origCellVal
+                        If Len(skipAddrs) < 80 Then skipAddrs = skipAddrs & IIf(Len(skipAddrs) > 0, "・", "") & cellVal.Address(False, False)
+                    End If
                 ElseIf cellVal.FormulaR1C1 <> bestFormula Then
-                    cellVal.FormulaR1C1 = bestFormula
+                    If Len(skipAddrs) < 80 Then skipAddrs = skipAddrs & IIf(Len(skipAddrs) > 0, "・", "") & cellVal.Address(False, False)
                 End If
 NextRow2:
-            Next r
+        Next r
 NextCol:
-        Next c
-    Next area
+    Next colIdx
+
+    If Len(skipAddrs) > 0 Then Application.StatusBar = "手本と違う値・式はそのまま残しました: " & skipAddrs
+    ' 列の手本で直らないエラーの式はそのまま残す（seiri の残りに出る＝AI と人が直す）。見出しの語から式を作る・
+    ' 税率を決め打ちする・IFERROR で隠すは入れない（2026-10-27 番頭の点検で外した。業務の式を推し量らない＝2026-10-08 と同じ決まり）
 End Sub
 
 Sub テーブルの範囲を下と右へ広げる()
@@ -3522,6 +3643,7 @@ Sub 乱れた列を掃除し右に足す()
 End Sub
 
 Sub 貼ったCSVを使える形に整える()
+    ' 変えてよい: 文字日付 文字数字
     ' 依頼の語: CSV取り込み|CSVを取り込ん|CSVを貼り付け|システムの出力を貼|取り込んだ直後|CSVの整形|CSVを整え|貼り付けた表を整え|取り込み後の整形|CSVの後始末
     ' 依頼の組: CSV,貼り付け,取り込,貼った+整,後,使える形+-書き出,に出力,で出力,保存
     ' 扱う: 文字数字 文字日付 見出し 枠固定 列幅
@@ -4832,6 +4954,7 @@ Sub 選んだ住所の左に郵便番号を書く()
 End Sub
 
 Sub 選んだ列が空欄の行を削除する()
+    ' 変えてよい: 行移動
     ' 依頼の語: 空欄の行を削除|空欄の行を消|が空の行を|空欄の行を取り除|未入力の行を削除|未入力の行を消|空いている行を消
     ' 依頼の組: 空欄,空白,未入力,空い+行+削除,消,除+-一覧,探,調べ,チェック,詰,空行,空白行,空白の行
     ' 扱う: 行削除 空欄
@@ -4877,7 +5000,18 @@ Sub 選んだ列が空欄の行を削除する()
     For r = r2 To R1 Step -1
         Dim relRow As Long
         relRow = r - regTop + 1
-        If Trim$(CStr(regVal(relRow, relCol))) = "" And Not ws.Cells(r, col).MergeCells Then
+        Dim isMergedChild As Boolean
+        isMergedChild = False
+        For k = regLeft To regLeft + regCols - 1
+            If ws.Cells(r, k).MergeCells Then
+                If ws.Cells(r, k).MergeArea.rows.Count > 1 Then
+                    isMergedChild = True
+                    Exit For
+                End If
+            End If
+        Next k
+
+        If Trim$(CStr(regVal(relRow, relCol))) = "" And Not ws.Cells(r, col).MergeCells And Not isMergedChild Then
             sumRow = False
             For k = 1 To regCols
                 s = Replace(Trim$(CStr(regVal(relRow, k))), " ", "")
@@ -5813,6 +5947,7 @@ Sub 選んだ列の日付を和暦で表示する()
 End Sub
 
 Sub 表の合計と小計の行を消す()
+    ' 変えてよい: 行移動
     ' 依頼の語: 合計行を消|小計行を消|合計と小計を消|小計を削除|合計行を削除|合計の行を消|小計の行を消|合計行と小計行を|小計行を削除|合計小計を削除|集計行を消|集計行を削除
     ' 依頼の組: 合計,小計,総計,総合計,集計+行+消,削除,取,クリア+-足,挿入,作
     ' 扱う: 合計行削除 小計行削除 合計
@@ -5909,6 +6044,7 @@ CleanUp:
 End Sub
 
 Sub 選んだ列で表を並べ替える()
+    ' 変えてよい: 行移動
     ' 選んだ1列をキーに表全体（見出しの下から合計行の上まで）を昇順に並べ替える。頼みに「降順・大きい順・新しい順」があれば降順。合計・小計の行は動かさない。
     ' 階級: 基本
     ' 依頼の語: 表を並べ替え|表をソート|昇順に並べ替え|降順に並べ替え|表を昇順に|表を降順に|日付順に表を|新しい順に表を|古い順に表を|日付の古い順|古い順に並べ|金額の大きい順|大きい順に並べ|コード順に並べ替え|コード順に並べ|順に並べて
@@ -6112,6 +6248,7 @@ Private Sub シートの行高と列幅を写す_本体(ByVal 参照先Index As Long)
 End Sub
 
 Sub 選んだコード列の右に名称列を足す()
+    ' 変えてよい: 空欄 列移動
     ' 選んでいるコード列の右隣に1列挿入し、対応表（マスタ）を参照して名称を入力する。元のコード列は残す。
     ' 依頼の語: コードの右に名称|コードの右に名前|名称列を挿入|名称列を足|名前の列を挿入|名前の列を足|マスタから名称を足|対応表から名称を足|コードから名称列
     ' 依頼の組: コード+名称,名前+右,足す,挿入,追加,列
@@ -7095,13 +7232,23 @@ Private Sub セル空白トリム_本体(ByVal モード As Long)
                     Do While Len(t) > 0
                         If Left$(t, 1) = " " Or Left$(t, 1) = "　" Or Left$(t, 1) = vbTab Then t = Mid$(t, 2) Else Exit Do
                     Loop
-                    If t <> s Then area.Cells(1, 1).Value = IIf(area.NumberFormat = "@", t, 文字のまま書く字(t))
+                    If t <> s Then
+                        If (Left$(t, 1) = "0" And Len(t) >= 2) Or IsDate(t) Then
+                            If area.NumberFormat <> "@" Then area.NumberFormat = "@"
+                        End If
+                        area.Cells(1, 1).Value = IIf(area.NumberFormat = "@", t, 文字のまま書く字(t))
+                    End If
                 ElseIf モード = 2 Then
                     t = Replace(Replace(Replace(s, " ", ""), "　", ""), vbTab, "")
                     If Len(t) = 0 Then area.ClearContents
                 ElseIf モード = 3 Then
                     t = Trim$(Replace(s, "　", " "))
-                    If t <> s Then area.Cells(1, 1).Value = IIf(area.NumberFormat = "@", t, 文字のまま書く字(t))
+                    If t <> s Then
+                        If (Left$(t, 1) = "0" And Len(t) >= 2) Or IsDate(t) Then
+                            If area.NumberFormat <> "@" Then area.NumberFormat = "@"
+                        End If
+                        area.Cells(1, 1).Value = IIf(area.NumberFormat = "@", t, 文字のまま書く字(t))
+                    End If
                 End If
             End If
         Else
@@ -7583,8 +7730,8 @@ End Sub
 
 Sub ふりがなの空欄を埋める()
     ' 見出しが ふりがな・フリガナ・よみ・カナ の列の空欄だけを、同じ行の氏名（見出しが 氏名・名前・名称 の列）の読みで埋める（Application.GetPhonetic）。見出しやすでに入っている字のひらがな／カタカナに合わせる。埋まっている所と氏名が空の行は触らない（2026-10-22）
-    ' 依頼の語: ふりがなの空欄|ふりがなが空欄|ふりがなは空欄|ふりがなの空白|ふりがなが空白|ふりがなを埋|フリガナの空欄|フリガナが空欄|フリガナの空白|フリガナを埋|よみがなの空欄|読みがなの空欄|よみがなを埋|読みがなを埋
-    ' 依頼の組: ふりがな,フリガナ,ﾌﾘｶﾞﾅ,よみがな,ヨミガナ,読みがな+空欄,空白,空き,埋め,埋ま,未入力,抜け,入っていない+-消,削除,並べ,並び,ソート,ひらがなに,カタカナに,探,調べ,一覧,チェック,数え,件数,色,赤,塗,強調,目立,抽出,絞り込
+    ' 依頼の語: ふりがなの空欄|ふりがなが空欄|ふりがなは空欄|ふりがなの空白|ふりがなが空白|ふりがなを埋|フリガナの空欄|フリガナが空欄|フリガナの空白|フリガナを埋|よみがなの空欄|読みがなの空欄|よみがなを埋|読みがなを埋|ふりがなを修正|フリガナを修正
+    ' 依頼の組: ふりがな,フリガナ,ﾌﾘｶﾞﾅ,よみがな,ヨミガナ,読みがな+空欄,空白,空き,埋め,埋ま,未入力,抜け,入っていない,修正+-消,削除,並べ,並び,ソート,ひらがなに,カタカナに,探,調べ,一覧,チェック,数え,件数,色,赤,塗,強調,目立,抽出,絞り込
     ' 扱う: ふりがな フリガナ 読み 空欄 氏名
     ' 見出し: なし
     ' 変えてよい: 空欄

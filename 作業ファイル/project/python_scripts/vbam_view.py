@@ -817,7 +817,57 @@ def _body_look_mixed(ws, grid, r0, c0, header_idx):
     return str(rng.Address).replace('$', ''), bad
 
 
-def dirt_notes(grid, r0=1, c0=1, header_idx=None, col_formats=None, limit=12, look_mixed=None, hints=None, fmt_odd=None):
+# 主な市外局番と地域（コード内に保持）
+_AREA_CODE_MAP = {
+    "03": ("東京都", "東京"),
+    "06": ("大阪府", "大阪", "尼崎"),
+    "052": ("愛知県", "名古屋"),
+    "011": ("北海道", "札幌"),
+    "092": ("福岡県", "福岡"),
+    "045": ("神奈川県", "横浜"),
+    "075": ("京都府", "京都"),
+    "022": ("宮城県", "仙台"),
+    "082": ("広島県", "広島"),
+    "078": ("兵庫県", "神戸"),
+    "043": ("千葉県", "千葉"),
+    "048": ("埼玉県", "さいたま"),
+    "054": ("静岡県", "静岡"),
+    "025": ("新潟県", "新潟"),
+    "086": ("岡山県", "岡山"),
+    "087": ("香川県", "高松"),
+    "096": ("熊本県", "熊本"),
+    "099": ("鹿児島県", "鹿児島"),
+}
+
+# 郵便番号上2桁と都道府県
+_POSTAL_PREF = {
+    "00": "北海道", "04": "北海道", "05": "北海道", "06": "北海道", "07": "北海道", "08": "北海道", "09": "北海道",
+    "01": "秋田県", "02": "岩手県", "03": "青森県",
+    "98": "宮城県", "99": "山形県", "96": "福島県", "97": "福島県",
+    "30": "茨城県", "31": "茨城県", "32": "栃木県", "37": "群馬県",
+    "33": "埼玉県", "34": "埼玉県", "35": "埼玉県", "36": "埼玉県",
+    "26": "千葉県", "27": "千葉県", "28": "千葉県", "29": "千葉県",
+    "10": "東京都", "11": "東京都", "12": "東京都", "13": "東京都", "14": "東京都",
+    "15": "東京都", "16": "東京都", "17": "東京都", "18": "東京都", "19": "東京都", "20": "東京都",
+    "21": "神奈川県", "22": "神奈川県", "23": "神奈川県", "24": "神奈川県", "25": "神奈川県",
+    "94": "新潟県", "95": "新潟県", "93": "富山県", "92": "石川県", "91": "福井県",
+    "40": "山梨県", "38": "長野県", "39": "長野県", "50": "岐阜県",
+    "41": "静岡県", "42": "静岡県", "43": "静岡県",
+    "44": "愛知県", "45": "愛知県", "46": "愛知県", "47": "愛知県", "48": "愛知県", "49": "愛知県",
+    "51": "三重県", "52": "滋賀県",
+    "60": "京都府", "61": "京都府", "62": "京都府",
+    "53": "大阪府", "54": "大阪府", "55": "大阪府", "56": "大阪府", "57": "大阪府", "58": "大阪府", "59": "大阪府",
+    "65": "兵庫県", "66": "兵庫県", "67": "兵庫県",
+    "63": "奈良県", "64": "和歌山県",
+    "68": "鳥取県", "69": "島根県", "70": "岡山県", "71": "岡山県",
+    "72": "広島県", "73": "広島県", "74": "山口県", "75": "山口県",
+    "77": "徳島県", "76": "香川県", "79": "愛媛県", "78": "高知県",
+    "80": "福岡県", "81": "福岡県", "82": "福岡県", "83": "福岡県",
+    "84": "佐賀県", "85": "長崎県", "86": "熊本県", "87": "大分県",
+    "88": "宮崎県", "89": "鹿児島県", "90": "沖縄県"
+}
+
+def dirt_notes(grid, r0=1, c0=1, header_idx=None, col_formats=None, limit=12, look_mixed=None, hints=None, fmt_odd=None, merged_areas=None):
     """表の汚れを数えて「気づき」の行にする（純 Python。COM は呼ばない）。
 
     grid: 値の 2 次元リスト（UsedRange.Value を _grid_of_value した形）。r0/c0: 左上のシート上の行・列番号。
@@ -999,6 +1049,50 @@ def dirt_notes(grid, r0=1, c0=1, header_idx=None, col_formats=None, limit=12, lo
     if look_mixed and look_mixed[1]:
         out.append(f"  文字の書式がセルごとに違う（本文 {look_mixed[0]}）: {'・'.join(look_mixed[1])}"
                    "  → format で本文全体に font・size・color と \"plain\": true・\"bg\": \"none\"・\"unbold\": true")
+    # 帳票（縦結合）の解析
+    chohyo_bundle_h = 1
+    chohyo_merges = 0
+    chohyo_rows = set()
+    chohyo_cells = set()
+    if merged_areas:
+        for ma in merged_areas:
+            m = re.match(r'([A-Za-z]+)(\d+):([A-Za-z]+)(\d+)', str(ma))
+            if m:
+                c1_str, r1_str, c2_str, r2_str = m.groups()
+                mr1, mr2 = int(r1_str), int(r2_str)
+                h_row = r0 + h if h >= 0 else r0
+                if mr1 > h_row and mr2 > mr1:
+                    bh = mr2 - mr1 + 1
+                    chohyo_bundle_h = max(chohyo_bundle_h, bh)
+                    chohyo_merges += 1
+                    for r_abs in range(mr1, mr2 + 1):
+                        chohyo_rows.add(r_abs)
+                    for r_abs in range(mr1, mr2 + 1):
+                        chohyo_cells.add(f"{c1_str}{r_abs}")
+
+    # 意味のある空欄（未記入の段: 例 返却日・返却担当がそろって空で備考に「貸出中」など）
+    meaningful_blanks = set()
+    unfilled_stages = []
+    if h >= 0 and body:
+        for j in range(width):
+            hd = str(heads[j] or "")
+            if "返却" in hd:
+                ret_cols = [k for k in range(width) if "返却" in str(heads[k] or "")]
+                if len(ret_cols) >= 2:
+                    rows_unfilled = []
+                    for i in body:
+                        if all(_blank_cell(rows[i][k]) for k in ret_cols):
+                            row_vals = [str(rows[i][k] or "") for k in range(width)]
+                            label = next((v for v in row_vals if any(w in v for w in ("貸出中", "中", "未", "予定"))), "")
+                            rows_unfilled.append((r0 + i, label))
+                            for k in ret_cols:
+                                meaningful_blanks.add(addr(i, k))
+                    if rows_unfilled:
+                        lbl = rows_unfilled[0][1] if rows_unfilled[0][1] else ""
+                        row_nums = "・".join(str(r) for r, _ in rows_unfilled[:10])
+                        unfilled_stages.append(f"未記入の段: 返却（行 {row_nums}）{' [' + lbl + ']' if lbl else ''}")
+                break
+
     blanks = []
     if h >= 0 and body:
         # 本文の終わりまでで数える。合計・平均の行と、その後のメモの行の空きは表の中の空欄ではない
@@ -1026,22 +1120,36 @@ def dirt_notes(grid, r0=1, c0=1, header_idx=None, col_formats=None, limit=12, lo
             filled = sum(1 for _i, v in cells if not _blank_cell(v))
             if filled < 3 or filled / len(cells) < 0.6:
                 continue
-            blanks += [addr(i, j) for i, v in cells if _blank_cell(v)]
+            for i, v in cells:
+                if _blank_cell(v):
+                    a_str = addr(i, j)
+                    if a_str not in chohyo_cells and a_str not in meaningful_blanks:
+                        blanks.append(a_str)
+
+    if unfilled_stages:
+        for st in unfilled_stages:
+            out.append("  " + st)
+    if chohyo_bundle_h >= 2:
+        out.append(f"  帳票（1 件 {chohyo_bundle_h} 行・結合 {chohyo_merges} 個）＝1 行 1 件の一覧にする候補")
     if blanks:
         out.append("  表の中の空欄: " + show(blanks))
     # ---- 2026-09-23 通しの実測 2 で手で見つけていた 3 つ（空行・ゼロの消えた番号・空白の有無の揺れ）----
+    # 見出しが分からない表では空行を数えない（題・例の文と見出しの間の空行を「表の中」と言った・2026-09-23 テスト用4）
     n_head = sum(1 for v in heads if not _blank_cell(v)) if h >= 0 else width
     blank_rows = []
-    if body and h >= 0:            # 見出しが分からない表では数えない（題・例の文と見出しの間の空行を「表の中」と言った・2026-09-23 テスト用4）
+    if body and h >= 0 and chohyo_bundle_h < 2:            # 帳票の 2 行目は空行と言わない
         for i in range(body[0] + 1, body[-1]):
             if i in body:
+                continue
+            r_abs = r0 + i
+            if r_abs in chohyo_rows:
                 continue
             nxt = next((k for k in body if k > i), None)
             # 空行の下が本文の行（見出しの 6 割以上に値）なら表の中の空行。合計・メモの前の空行は数えない
             # （合計・平均の行は値が多いので本文と見ていた＝明細と合計の間の空行を「詰める」と勧めた・2026-09-23）
             if nxt is not None and not any(_is_total_label(v) for v in rows[nxt]) \
                     and sum(1 for v in rows[nxt] if not _blank_cell(v)) >= max(2, n_head * 0.6):
-                blank_rows.append(r0 + i)
+                blank_rows.append(r_abs)
     if blank_rows:
         out.append("  表の中の空行: " + " ".join(f"行{x}" for x in blank_rows[:limit]))
     zero_lost = []
@@ -1111,19 +1219,105 @@ def dirt_notes(grid, r0=1, c0=1, header_idx=None, col_formats=None, limit=12, lo
     if birth_future:
         out.append("  生年月日が今日より後（打ち間違いか・人の確認が要る）: " + show(birth_future))
     phone_len = []
+    phone_zero_lost = []
+    phone_conflict = []
+    addr_cols = [j for j in range(width) if h >= 0 and isinstance(heads[j], str)
+                 and re.search(r'住所|所在地|居所', heads[j])]
+
     for j in range(width):
         hd = heads[j] if h >= 0 else None
         if not (isinstance(hd, str) and re.search(r'電話|TEL|携帯|FAX', hd, re.I)):
             continue
         for i in body:
             v = rows[i][j]
-            s = str(int(v)) if isinstance(v, (int, float)) and not isinstance(v, bool) and float(v).is_integer() else (v if isinstance(v, str) else '')
-            if s and s.strip():
-                d = re.sub(r'\D', '', unicodedata.normalize('NFKC', s))
-                if d and len(d) not in (10, 11):        # 固定・0120 は 10 桁、携帯は 11 桁
-                    phone_len.append(f"{addr(i, j)}（{len(d)} 桁）")
+            is_num = isinstance(v, (int, float)) and not isinstance(v, bool) and float(v).is_integer()
+            s = str(int(v)) if is_num else (v if isinstance(v, str) else '')
+            if not s or not s.strip():
+                continue
+            d = re.sub(r'\D', '', unicodedata.normalize('NFKC', s))
+            if not d:
+                continue
+
+            # 数値セルで先頭0落ちの疑い（0を足すと10桁または11桁）
+            if is_num and len(d) in (9, 10):
+                d_zero = "0" + d
+                backed = False
+                matched_city = ""
+                if addr_cols:
+                    addr_val = str(rows[i][addr_cols[0]] or "")
+                    for code, cities in _AREA_CODE_MAP.items():
+                        if d_zero.startswith(code):
+                            if any(c in addr_val for c in cities):
+                                backed = True
+                                matched_city = cities[0]
+                                break
+                if backed:
+                    phone_zero_lost.append(f"{addr(i, j)}（0 を足すと {d_zero}・所在地 {matched_city} と一致・裏付けあり）")
+                else:
+                    phone_zero_lost.append(f"{addr(i, j)}（0 を足すと {d_zero}）")
+                continue
+
+            if len(d) not in (10, 11):
+                phone_len.append(f"{addr(i, j)}（{len(d)} 桁）")
+                continue
+
+            # 電話と所在地の食い違い（人の確認）
+            if addr_cols and not re.match(r'^(?:0[987]0|050|0120|0800)', d):
+                addr_val = str(rows[i][addr_cols[0]] or "")
+                for code, cities in _AREA_CODE_MAP.items():
+                    if d.startswith(code):
+                        pref = cities[0]
+                        if any(p in addr_val for p in ("都", "道", "府", "県")):
+                            if pref not in addr_val and not any(c in addr_val for c in cities[1:]):
+                                m_pref = re.search(r'([^\s]+?[都道府県])', addr_val)
+                                cur_pref = m_pref.group(1) if m_pref else addr_val[:4]
+                                city_lbl = cities[1] if len(cities) > 1 else pref
+                                phone_conflict.append(f"{addr(i, j)}（{code}＝{city_lbl}／所在地 {cur_pref}）")
+                        break
+
+    if phone_zero_lost:
+        out.append("  先頭の 0 が落ちた疑い・裏付けあり: " + show(phone_zero_lost))
     if phone_len:
         out.append("  電話の桁が合わない（10・11 桁でない＝抜けか打ち間違い・人の確認が要る）: " + show(phone_len))
+    if phone_conflict:
+        out.append("  電話と所在地が食い違う（人の確認）: " + show(phone_conflict))
+
+    # 郵便番号と所在地の食い違い（人の確認）
+    postal_cols = [j for j in range(width) if h >= 0 and isinstance(heads[j], str)
+                   and re.search(r'郵便|〒', heads[j])]
+    postal_conflict = []
+    if postal_cols and addr_cols:
+        pj = postal_cols[0]
+        aj = addr_cols[0]
+        for i in body:
+            pv = str(rows[i][pj] or "").strip()
+            av = str(rows[i][aj] or "").strip()
+            pd = re.sub(r'\D', '', pv)
+            if len(pd) >= 2:
+                pref_exp = _POSTAL_PREF.get(pd[:2])
+                if pref_exp and any(p in av for p in ("都", "道", "府", "県")):
+                    if pref_exp not in av:
+                        m_pref = re.search(r'([^\s]+?[都道府県])', av)
+                        cur_pref = m_pref.group(1) if m_pref else av[:4]
+                        postal_conflict.append(f"{addr(i, pj)}（{pd[:3]}＝{pref_exp}／所在地 {cur_pref}）")
+    if postal_conflict:
+        out.append("  郵便番号と所在地が食い違う（人の確認）: " + show(postal_conflict))
+
+    # メールの途中の空白（届かない）
+    mail_mid_space = []
+    for j in range(width):
+        hd = heads[j] if h >= 0 else None
+        cells_with_at = [i for i in body if isinstance(rows[i][j], str) and '@' in rows[i][j]]
+        is_mail = (isinstance(hd, str) and re.search(r'メール|mail|E-mail|アドレス', hd, re.I)) or (len(cells_with_at) >= max(2, len(body) * 0.5))
+        if is_mail:
+            for i in body:
+                v = rows[i][j]
+                if isinstance(v, str) and '@' in v:
+                    stripped = v.strip(' 　\t\r\n')
+                    if ' ' in stripped or '　' in stripped:
+                        mail_mid_space.append(addr(i, j))
+    if mail_mid_space:
+        out.append("  メールの途中に空白（届かない）: " + show(mail_mid_space))
     same_name = []
     for j in range(width):
         hd = heads[j] if h >= 0 else None
@@ -1144,7 +1338,7 @@ def dirt_notes(grid, r0=1, c0=1, header_idx=None, col_formats=None, limit=12, lo
     if hints is not None:
         last_row = r0 + (body[-1] if body else 0)
         first_row = r0 + h + 1
-        if blank_rows:
+        if blank_rows and chohyo_bundle_h < 2:
             hints.append((2, "表の中の空行を削除して詰める", None, "表の中の空行 " + " ".join(f"行{x}" for x in blank_rows[:6])))
         if dup_rows:
             hints.append((3, "全列が同じ重複行を削除する", None, "重複行 " + dup_rows[0].split("（")[0]))
@@ -2025,6 +2219,10 @@ def _seiri_fire_request(xl, wb, ws, request, before_snap):
         print(f"{out}（{time.time() - t0:.2f} 秒）")
         return [f"レシピ：{recipe}"]
     entries = vp.shelf_entries_from_text("\n".join(lines))
+    # 下ごしらえで頼みが変わったら、直った文を 1 行出す（AI が直った文を読めるように・2026-10-23 指示書047）
+    norm = vp.request_normalize(request, entries)
+    if norm and norm != str(request or '').strip():
+        print(f"下ごしらえ後: {norm}")
     # 迷ったら撃たずに候補を AI に返す（2026-10-22 指示書040 2b）
     is_d, cands_str, guide = vp.check_doubt(request, entries)
     if is_d:
@@ -2034,6 +2232,7 @@ def _seiri_fire_request(xl, wb, ws, request, before_snap):
     plan = _seiri_request_plan(request, entries, vp.vba_picker(xl, src, entries))
     if not plan:
         print(f"依頼の文に当たる棚: なし（表を整えるで済むか、棚に無い仕事＝下の「残り」として直す）")
+        print(vp.HEARD_HINT)
         return []
     sel_of = {r['name']: r['sel'] for r in _parse_shelf_catalog(lines)}
     by_request = vp.request_column_macros("\n".join(lines))
@@ -2580,8 +2779,13 @@ def cmd_seiri(args):
             except Exception:
                 look = None
             hints = []
+            _areas_for_dirt = None
+            try:
+                _areas_for_dirt, _ = _merged_areas_in_range(ur)
+            except Exception:
+                pass
             for ln in dirt_notes(grid, r0, c0, hidx, _date_col_formats(ws, grid, r0, c0, hidx), look_mixed=look,
-                                 hints=hints, fmt_odd=_safe_fmt_odd(ws, grid, r0, c0, hidx)):
+                                 hints=hints, fmt_odd=_safe_fmt_odd(ws, grid, r0, c0, hidx), merged_areas=_areas_for_dirt):
                 if not nv:                          # 値なし: 汚れの気づきは値を含むので出さない
                     print(ln)
             try:
@@ -2750,6 +2954,19 @@ def cmd_shelf(args):
         print(f"棚（モジュール「{_SEIRI_MODULE}」）が開いているブック・アドインに見つかりません")
         return False
     rows = _parse_shelf_catalog(lines)
+    heard = getattr(args, 'heard', None)
+    if heard:
+        # 聞き違いを学びに残す（2026-10-23 指示書047）。ファイルは VBA の 聞き違いを残す だけが書く
+        import vbam_prefire as vp
+        src = owner
+        try:
+            wb.VBProject.VBComponents('コンボ道具')
+            src = str(wb.Name)
+        except Exception:
+            pass
+        ok, msg = vp.record_heard(xl, src, heard[0], heard[1], getattr(args, 'heard_q', ''))
+        print(msg)
+        return ok
     chose = getattr(args, 'chose', None)
     chose_none = getattr(args, 'chose_none', False)
     if chose is not None or chose_none:

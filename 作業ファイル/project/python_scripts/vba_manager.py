@@ -733,6 +733,13 @@ def build_parser():
                    help="迷った頼みにAIが選んだ答えを記録する（--none でどれでもない・2026-10-22 指示書040）")
     p.add_argument("--none", dest="chose_none", action="store_true",
                    help="どれでもない（AIが手で直した）")
+    p.add_argument("--heard", dest="heard", nargs=2, metavar=("誤", "正"), default=None,
+                   help="音声入力の聞き違いを学びに残す（例: --heard 産業ごと 3桁ごと --q \"頼みの文\"）。"
+                        "違う頼みの文で 2 回以上残ると、下ごしらえが自動で直す（2026-10-23）")
+    p.add_argument("--q", dest="heard_q", default="",
+                   help="--heard に添える、そのときの頼みの文")
+    p.add_argument("--train", dest="train", action="store_true",
+                   help="棚を鍛える固定の形（new→freeze→before→sort→export→after→close。引数なしで手順を見る・2026-10-23）")
     p = sub.add_parser("shelf-run",
                        help="棚のマクロを選んで撃つ：対象ブック/シートを前に出し(--sheet)、--select で選んでから"
                             "撃つ。控えを取り、差分（番地:前→後・上限30件＋件数・足された行/列/シート）を返す"
@@ -1956,6 +1963,9 @@ def _command_table():
 
 
 def _cmd_shelf_entry(args):
+    if getattr(args, 'train', False):
+        import vbam_train
+        return vbam_train.cmd_train(args)
     if getattr(args, 'misses', False):
         import vbam_prefire as vp
         return vp.cmd_shelf_misses(args)

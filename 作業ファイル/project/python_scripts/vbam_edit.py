@@ -1960,9 +1960,22 @@ def _content_findings(values, formulas, r0, c0, formulas_r1c1=None):
                        f"（{' '.join(astext[:_CONTENT_MAX_EXAMPLES])}"
                        f"{'…' if len(astext) > _CONTENT_MAX_EXAMPLES else ''}）。"
                        "Excel は計算していません → 表示形式を標準にしてから入れ直す")
-    # 4. 表の中の空欄（同じ列の他の行は埋まっている。まばらな列＝備考などは見ない）
+    # 4. 表の中の空欄（同じ列の他の行は埋まっている。まばらな列＝備考などは見ない。未記入の段は除く）
     if body_idx:
         blanks_all = []
+        meaningful_blanks = set()
+        # 返却日・返却担当など未記入の段の検出
+        for j in range(width):
+            h_str = str(head(j) or "")
+            if "返却" in h_str:
+                ret_cols = [k for k in range(width) if "返却" in str(head(k) or "")]
+                if len(ret_cols) >= 2:
+                    for i in body_idx:
+                        if all(_is_blank_value(rows[i][k]) for k in ret_cols):
+                            for k in ret_cols:
+                                meaningful_blanks.add(addr(i, k))
+                break
+
         for j in range(width):
             h = head(j)
             if not h or any(k in h.lower() for k in _SPARSE_HEAD_KW):
@@ -1971,7 +1984,11 @@ def _content_findings(values, formulas, r0, c0, formulas_r1c1=None):
             filled = sum(1 for _i, v in cells if not _is_blank_value(v))
             if filled < 3 or filled / len(cells) < 0.6:
                 continue
-            blanks_all += [addr(i, j) for i, v in cells if _is_blank_value(v)]
+            for i, v in cells:
+                if _is_blank_value(v):
+                    a_str = addr(i, j)
+                    if a_str not in meaningful_blanks:
+                        blanks_all.append(a_str)
         if blanks_all:
             noticed.append(f"表の中の空欄が {len(blanks_all)} セル（{' '.join(blanks_all[:_CONTENT_MAX_EXAMPLES])}"
                            f"{'…' if len(blanks_all) > _CONTENT_MAX_EXAMPLES else ''}）。同じ列の他の行は埋まっています")

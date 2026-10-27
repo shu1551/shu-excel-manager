@@ -1181,7 +1181,7 @@ Public Sub 変えたセルだけ書く(ByVal 先頭 As Range, ByRef 新値 As Variant, ByRef 
     ' 数・日付に化け、数式セルが値で潰れる・2026-10-22）。縦に続く変えたセルは 1 回で書く。
     ' 先頭 = 配列の左上に当たるセル / 新値 = 1 始まりの 2 次元配列（Empty は空にする）/ 変えた = 同じ形の Boolean
     Dim nr As Long, nc As Long, r As Long, r2 As Long, c As Long, k As Long
-    Dim 書く先 As Range, 配列() As Variant, v As Variant, 形 As Variant
+    Dim 書く先 As Range, 配列() As Variant, v As Variant, 形 As Variant, s As String
     nr = UBound(新値, 1): nc = UBound(新値, 2)
     For c = 1 To nc
         r = 1
@@ -1200,19 +1200,61 @@ Public Sub 変えたセルだけ書く(ByVal 先頭 As Range, ByRef 新値 As Variant, ByRef 
                 If Not 文字書式にする And Len(書式) > 0 Then 書く先.NumberFormat = 書式
                 形 = 書く先.NumberFormat          ' 混在のときは Null
                 For k = 1 To r2 - r + 1
-                    v = 新値(r + k - 1, c)
-                    If VarType(v) = vbString Then
-                        If Len(v) > 0 Then
-                            If IsNull(形) Then
-                                If 書く先.Cells(k, 1).NumberFormat <> "@" Then v = 文字のまま書く字(CStr(v))
-                            ElseIf 形 <> "@" Then
-                                v = 文字のまま書く字(CStr(v))
+                    ' 数式セル（HasFormula）は絶対に値で潰さない（056 数式温存金型）
+                    If 書く先.Cells(k, 1).HasFormula Then
+                        配列(k, 1) = 書く先.Cells(k, 1).Formula
+                    Else
+                        v = 新値(r + k - 1, c)
+                        If VarType(v) = vbString Then
+                            s = CStr(v)
+                            If Len(s) > 0 Then
+                                ' 先頭ゼロの数字列（00123, 090...）や文字列日付の保護ガード（055）
+                                If (Left$(s, 1) = "0" And Len(s) >= 2) Or IsDate(s) Then
+                                    If 書く先.Cells(k, 1).NumberFormat <> "@" Then 書く先.Cells(k, 1).NumberFormat = "@"
+                                End If
+                                If IsNull(形) Then
+                                    If 書く先.Cells(k, 1).NumberFormat <> "@" Then v = 文字のまま書く字(s)
+                                ElseIf 形 <> "@" Then
+                                    If 書く先.Cells(k, 1).NumberFormat <> "@" Then v = 文字のまま書く字(s)
+                                End If
                             End If
                         End If
+                        配列(k, 1) = v
                     End If
-                    配列(k, 1) = v
                 Next k
-                書く先.Value = 配列
+
+                ' 結合セル安全バイパス（056 実行時エラー1004根絶）
+                Dim hasMerge As Boolean
+                hasMerge = False
+                If IsNull(書く先.MergeCells) Then
+                    hasMerge = True
+                ElseIf 書く先.MergeCells Then
+                    hasMerge = True
+                End If
+
+                If hasMerge Then
+                    ' 結合セルを含む場合は 1 セルずつ安全に代入（結合左上セルへ反映）
+                    For k = 1 To r2 - r + 1
+                        If Not 書く先.Cells(k, 1).HasFormula Then
+                            On Error Resume Next
+                            書く先.Cells(k, 1).MergeArea.Cells(1, 1).Value = 配列(k, 1)
+                            On Error GoTo 0
+                        End If
+                    Next k
+                Else
+                    On Error Resume Next
+                    書く先.Value = 配列
+                    If Err.Number <> 0 Then
+                        Err.Clear
+                        ' 万一の代入エラー時は 1 セルずつ安全代入
+                        For k = 1 To r2 - r + 1
+                            If Not 書く先.Cells(k, 1).HasFormula Then
+                                書く先.Cells(k, 1).Value = 配列(k, 1)
+                            End If
+                        Next k
+                    End If
+                    On Error GoTo 0
+                End If
                 r = r2 + 1
             End If
         Loop
@@ -1284,4 +1326,11 @@ Function 全角カナを変える(ByVal 字 As String, ByVal 型 As String) As String
         出 = 出 & ChrW(w)
     Next i
     全角カナを変える = 出
+End Function
+
+Public Function 帳票安全停止フラグ(Optional ByVal セット As Variant) As Boolean
+    ' 057: 帳票構造（縦結合等）を検知して空行削除等を安全停止したかどうかのフラグ
+    Static 状態 As Boolean
+    If Not IsMissing(セット) Then 状態 = CBool(セット)
+    帳票安全停止フラグ = 状態
 End Function
