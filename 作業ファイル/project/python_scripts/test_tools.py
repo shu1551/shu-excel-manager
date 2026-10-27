@@ -6314,3 +6314,25 @@ def test_dirt_notes_chohyo_and_unfilled_stages_20261024_048():
     notes2_text = " ".join(notes2)
     assert "未記入の段: 返却" in notes2_text
     assert "表の中の空欄" not in notes2_text
+
+
+def test_dirt_notes_phone_area_longest_code_20261027():
+    """電話と所在地の食い違い: 局番はいちばん長く合う物で当てる（0820・0827＝山口、0920＝長崎を広島・福岡と言わない）。"""
+    import vbam_view
+    grid = [
+        ["氏名", "所在地", "電話"],
+        ["甲", "山口県柳井市", "0820-22-1111"],
+        ["乙", "山口県岩国市", "0827-22-1111"],
+        ["丙", "長崎県壱岐市", "0920-47-1111"],
+        ["丁", "広島県呉市", "0823-22-1111"],
+        ["戊", "福岡県福岡市", "092-111-2222"],
+        ["己", "秋田県秋田市", "082-111-2222"],
+    ]
+    text = " ".join(vbam_view.dirt_notes(grid, r0=1, c0=1, header_idx=0))
+    assert "電話と所在地が食い違う" in text
+    assert "C7（082＝広島" in text                 # 本当の食い違いは今までどおり出す
+    for a in ("C2", "C3", "C4", "C5", "C6"):
+        assert f"{a}（" not in text, a
+    assert vbam_view._area_of("0827221111") == ("0827", ("山口県", "岩国"))
+    assert vbam_view._area_of("0823221111")[0] == "082"
+    assert vbam_view._area_of("0181234567") is None
