@@ -837,7 +837,17 @@ _AREA_CODE_MAP = {
     "087": ("香川県", "高松"),
     "096": ("熊本県", "熊本"),
     "099": ("鹿児島県", "鹿児島"),
+    # 3 桁の局番の中の、別の県の 4 桁の局番（082 の中の山口・092 の中の長崎を広島・福岡と取り違えていた・2026-10-27）
+    "0820": ("山口県", "柳井"),
+    "0827": ("山口県", "岩国"),
+    "0920": ("長崎県", "壱岐"),
 }
+
+
+def _area_of(digits):
+    """電話の数字の並び → (局番, 地域の組) か None。いちばん長く合う局番で当てる。"""
+    hit = max((c for c in _AREA_CODE_MAP if digits.startswith(c)), key=len, default=None)
+    return (hit, _AREA_CODE_MAP[hit]) if hit else None
 
 # 郵便番号上2桁と都道府県
 _POSTAL_PREF = {
@@ -1243,14 +1253,12 @@ def dirt_notes(grid, r0=1, c0=1, header_idx=None, col_formats=None, limit=12, lo
                 d_zero = "0" + d
                 backed = False
                 matched_city = ""
-                if addr_cols:
+                area = _area_of(d_zero)
+                if addr_cols and area:
                     addr_val = str(rows[i][addr_cols[0]] or "")
-                    for code, cities in _AREA_CODE_MAP.items():
-                        if d_zero.startswith(code):
-                            if any(c in addr_val for c in cities):
-                                backed = True
-                                matched_city = cities[0]
-                                break
+                    if any(c in addr_val for c in area[1]):
+                        backed = True
+                        matched_city = area[1][0]
                 if backed:
                     phone_zero_lost.append(f"{addr(i, j)}（0 を足すと {d_zero}・所在地 {matched_city} と一致・裏付けあり）")
                 else:
@@ -1264,16 +1272,16 @@ def dirt_notes(grid, r0=1, c0=1, header_idx=None, col_formats=None, limit=12, lo
             # 電話と所在地の食い違い（人の確認）
             if addr_cols and not re.match(r'^(?:0[987]0|050|0120|0800)', d):
                 addr_val = str(rows[i][addr_cols[0]] or "")
-                for code, cities in _AREA_CODE_MAP.items():
-                    if d.startswith(code):
-                        pref = cities[0]
-                        if any(p in addr_val for p in ("都", "道", "府", "県")):
-                            if pref not in addr_val and not any(c in addr_val for c in cities[1:]):
-                                m_pref = re.search(r'([^\s]+?[都道府県])', addr_val)
-                                cur_pref = m_pref.group(1) if m_pref else addr_val[:4]
-                                city_lbl = cities[1] if len(cities) > 1 else pref
-                                phone_conflict.append(f"{addr(i, j)}（{code}＝{city_lbl}／所在地 {cur_pref}）")
-                        break
+                area = _area_of(d)
+                if area:
+                    code, cities = area
+                    pref = cities[0]
+                    if any(p in addr_val for p in ("都", "道", "府", "県")):
+                        if pref not in addr_val and not any(c in addr_val for c in cities[1:]):
+                            m_pref = re.search(r'([^\s]+?[都道府県])', addr_val)
+                            cur_pref = m_pref.group(1) if m_pref else addr_val[:4]
+                            city_lbl = cities[1] if len(cities) > 1 else pref
+                            phone_conflict.append(f"{addr(i, j)}（{code}＝{city_lbl}／所在地 {cur_pref}）")
 
     if phone_zero_lost:
         out.append("  先頭の 0 が落ちた疑い・裏付けあり: " + show(phone_zero_lost))
