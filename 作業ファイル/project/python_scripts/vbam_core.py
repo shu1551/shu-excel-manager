@@ -2409,7 +2409,9 @@ _CALL_LOG_ARGS_MAX = 80        # 引数は頭だけ（セルの値をだらだ�
 # 台帳に残す選択肢（argparse の dest → 書くときの名前）。手の中身が分かるものだけ（2026-09-23）
 _CALL_LOG_OPTS = {'select': 'select', 'sheet_opt': 'sheet', 'ask': 'ask', 'grep': 'grep', 'depth': 'depth',
                   'input_text': 'input-text', 'formula_opt': 'formula', 'number_format': 'number-format', 'bg': 'bg',
-                  'dedupe': 'dedupe'}
+                  'dedupe': 'dedupe',
+                  # 検査を外して焼いた形跡を後から見つけられるように（shelf --train close が読む・2026-10-23）
+                  'no_check': 'no-check', 'no_test': 'no-test'}
 _CALL_GAP_MAX = 600            # 「間」に数える上限（秒）。これより空いたら別の仕事
 
 # ---- コマンドの進み具合（2026-09-16）----
@@ -2970,8 +2972,28 @@ def shelf_texts(vbproject, helpers=True):
     return out
 
 
+# 棚の辞書（言い方の台帳・2026-10-23 指示書047）＝コメント行だけの標準モジュール「棚の辞書」。VBA（コンボ道具.頼みの下ごしらえ）と
+# Python（vbam_prefire.request_normalize）が同じ行を読む。棚の本文と同じ取り方で、棚を読むついでに開いているブックの台帳を覚える
+# （shelf_text を通る所＝shelf --check・seiri・train・misses のどれでも、いま開いている台帳で下ごしらえする）。
+DICT_MODULE = '棚の辞書'
+DICT_LIVE = {'text': None}
+
+
+def dict_text(vbproject):
+    """その VBProject の「棚の辞書」の本文。モジュールが無ければ None。"""
+    try:
+        cm = vbproject.VBComponents(DICT_MODULE).CodeModule
+        n = int(cm.CountOfLines)
+        return cm.Lines(1, n) if n else ''
+    except Exception:
+        return None
+
+
 def shelf_text(vbproject):
-    """棚のコードを 1 本の文字にしてつなぐ（依頼の語・目録を読む側向け。下請けは入れない。行番号は使わない）。"""
+    """棚のコードを 1 本の文字にしてつなぐ（依頼の語・目録を読む側向け。下請けは入れない。行番号は使わない）。
+    ついでに、同じ VBProject の「棚の辞書」（台帳）を覚える（無ければ None＝同梱の写しで読む）。"""
+    live = dict_text(vbproject)
+    DICT_LIVE['text'] = live          # 無ければ None（古いアドイン）＝前の物を持ち越さない
     return '\r\n'.join(t for _n, t in shelf_texts(vbproject, helpers=False))
 
 
@@ -3355,6 +3377,7 @@ __all__ = ['is_vbproject_protected',
     'shelf_components',
     'shelf_texts',
     'shelf_text',
+    'dict_text',
     'shelf_module_of',
     'BACKUP_DIR',
     'LAST_PROC_FILE',

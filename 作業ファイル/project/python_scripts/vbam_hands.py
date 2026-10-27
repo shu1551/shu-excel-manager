@@ -469,13 +469,14 @@ def _guess_header_row(ws, scan=_HEADER_SCAN_ROWS):
     return (r0 + got[0], got[1]) if got else None
 
 
-def _table_blanks(grid, r0, c0, header_idx):
+def _table_blanks(grid, r0, c0, header_idx, merged_areas=None):
     """表の中の空欄（見出しの下で、同じ列の他の行は埋まっている）→ 番地の一覧（純 Python）。
 
     2026-09-06 夕（シュウさんの初実射）: テスト用2 の C10（フリガナ）が空欄なのに、道具も AI も採点係も
     言わなかった。「空白に見えるゴミ」は文字の入ったセルしか見ておらず、本当に空のセルは誰も数えていなかった。
     見出し行の下から最後の値のある行まで、その列に値が 3 つ以上あり 6 割以上埋まっている列だけ見る
     （備考のようなまばらな列は数えない）。行全体が空の行（区切り）は飛ばす。見出しの無い列も見ない。
+    帳票（縦結合）内の空欄や未記入の段は空欄に数えない（2026-10-24 指示書048）。
     """
     rows = [list(r) for r in (grid or [])]
     if not rows:
@@ -484,6 +485,16 @@ def _table_blanks(grid, r0, c0, header_idx):
 
     def blank(v):
         return v is None or (isinstance(v, str) and v.strip(' 　 \t\r\n') == '')
+
+    chohyo_cells = set()
+    if merged_areas:
+        for ma in merged_areas:
+            m = re.match(r'([A-Za-z]+)(\d+):([A-Za-z]+)(\d+)', str(ma))
+            if m:
+                c1, r1, c2, r2 = m.groups()
+                if int(r2) > int(r1):
+                    for r_abs in range(int(r1), int(r2) + 1):
+                        chohyo_cells.add(f"{c1}{r_abs}")
 
     body = [(i, r) for i, r in enumerate(rows) if i > h and not all(blank(v) for v in r)]
     if not body:
@@ -498,7 +509,11 @@ def _table_blanks(grid, r0, c0, header_idx):
         filled = sum(1 for _i, v in cells if not blank(v))
         if filled < 3 or filled / len(cells) < 0.6:
             continue
-        out += [f"{_col_letter(c0 + j)}{r0 + i}" for i, v in cells if blank(v)]
+        for i, v in cells:
+            if blank(v):
+                a_str = f"{_col_letter(c0 + j)}{r0 + i}"
+                if a_str not in chohyo_cells:
+                    out.append(a_str)
     return sorted(out, key=lambda a: (int(re.sub(r'\D', '', a)), a))
 
 

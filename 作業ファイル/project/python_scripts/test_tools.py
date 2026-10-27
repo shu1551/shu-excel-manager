@@ -5860,6 +5860,34 @@ def test_shelf_misses_aggregate_and_filters_test_books_20261022(tmp_path):
     assert "リッチなワインにしてください" in reqs
 
 
+def test_shelf_misses_part_scores_20261023(tmp_path, monkeypatch):
+    """外れの記録に部分点を付ける: 2 つの頼みが混ざった文は 1 つずつ当て、足りない所だけが見える（2026-10-23）。"""
+    import vbam_prefire as vp
+    import datetime
+
+    fake = {"背景を赤くして": "条件付き書式の棚"}
+    monkeypatch.setattr(vp, "shelf_pick", lambda req, entries=(): fake.get(req, ""))
+
+    csv_file = tmp_path / "外れた依頼.csv"
+    now = datetime.datetime(2026, 10, 23, 12, 0, 0)
+    two = "在庫が少なければ要発注と出して 背景を赤くして"
+    one = "リッチなワインにして"
+    lines = ["日時,棚の候補,依頼文,ブック\n"]
+    for q in (two, two, one, one):
+        lines.append(f'2026/10/22 10:00:00,なし,"{q}",本番.xlsx\n')
+    csv_file.write_bytes("".join(lines).encode('cp932'))
+
+    entries = [{'name': 'ダミー', 'ask': 'ダミー', 'combo': None, 'tier': ''}]
+    not_hit, hit = vp.shelf_misses(path=str(csv_file), days=14, now=now, entries=entries)
+
+    g = next(r for r in not_hit if r['pattern'] == two)
+    assert g['parts'] == [("在庫が少なければ要発注と出して", ""), ("背景を赤くして", "条件付き書式の棚")]
+    # 分けても 1 つにしかならない文には部分点を付けない
+    g1 = next(r for r in not_hit if r['pattern'] == one)
+    assert g1['parts'] == []
+    assert vp.shelf_part_scores(two, ()) == []
+
+
 def test_request_normalize_and_shelf_pick_spoken_20261022():
     """話し言葉の下ごしらえ: つなぎ語・票→表・色の言い換え、伝票/投票の保護（2026-10-22 指示書035）。"""
     import vbam_prefire as vp
@@ -6039,3 +6067,250 @@ End Sub
     # 判定コード内に決め打ちが無いことの検査
     stops = vp.check_hardcoded_shelf_names(None, None, fake_shelf_text)
     assert len(stops) == 0, f"ハードコードされた棚名が見つかりました: {stops}"
+
+
+# ---------------------------------------------------------------------------------------------
+# 2026-10-23 指示書047: 棚の辞書（言い方の台帳）と聞き違いの学び
+# ---------------------------------------------------------------------------------------------
+@pytest.fixture
+def heard_env(tmp_path, monkeypatch):
+    """台帳は同梱の写し（ブックのは見ない）・学びのファイルは捨ての置き場（本物の %APPDATA% を読まない・書かない）。"""
+    import vbam_core
+    import vbam_prefire as vp
+    monkeypatch.setitem(vbam_core.DICT_LIVE, 'text', None)
+    path = tmp_path / '聞き違いの学び.tsv'
+    monkeypatch.setitem(vp.LEARNED_PATH_OVERRIDE, 'path', str(path))
+    return vp, path
+
+
+def _write_learned(path, rows):
+    """学びのファイルを VBA と同じ形（cp932・タブ区切り・見出し付き）で書く。rows = [(誤, 正, 頼みの文)]。"""
+    lines = ["日時\t誤\t正\t頼みの文\tブック"]
+    for i, (wrong, right, text) in enumerate(rows):
+        lines.append(f"2026/10/23 10:{i:02d}:00\t{wrong}\t{right}\t{text}\tテスト.xlsx")
+    with open(path, 'w', encoding='cp932', newline='') as f:
+        f.write("\r\n".join(lines) + "\r\n")
+
+
+def test_shelf_dictionary_ledger_parse_and_copy_agree_20261023(heard_env):
+    """台帳の読み方: つなぎ語・聞き違い（前で止める字・後ろに要る語）。説明のコメントは読まない。同梱の写しと既定は同じ中身。"""
+    vp, _path = heard_env
+    text, src = vp.ledger_text()
+    assert src in ('写し', '既定')           # 同梱の 棚の辞書.bas があれば 写し（公開の写しにはまだ届かない＝その間は 既定）
+    led = vp.parse_ledger(text)
+    for p in vp._ledger_file_candidates():   # 同梱の写しがあるなら、既定と同じ中身
+        if os.path.isfile(p):
+            assert vp.parse_ledger(open(p, 'rb').read().decode('cp932')) == vp.parse_ledger(vp._LEDGER_DEFAULT)
+    assert led['fillers'] == ['ええ', 'えー', 'えーと', 'えっと', 'あの', 'あのー', 'じゃあ', 'では', 'それでは', 'はい']
+    pairs = {p['wrong']: p for p in led['pairs']}
+    assert set(pairs) == {'票', '産業ごと', '中央ドライ', '選択制度', '見出し尿', '気切り', '洗濯', '不倫仮名'}
+    assert pairs['票']['right'] == '表' and pairs['票']['stop'] == '伝投得帳開' and pairs['票']['need'] == ''
+    assert pairs['産業ごと']['right'] == '3桁ごと' and pairs['産業ごと']['need'] == '気切,区切'
+    assert pairs['中央ドライ']['right'] == '中央揃え'
+    assert pairs['選択制度']['right'] == '選択セル'
+    assert pairs['見出し尿']['right'] == '見出し行'
+    assert pairs['気切り']['right'] == '区切り'
+    assert pairs['洗濯']['right'] == '選択'
+    assert pairs['不倫仮名']['right'] == 'ふりがな'
+    # 既定（写しが無いときの最後の砦）は台帳と同じ中身
+    assert vp.parse_ledger(vp._LEDGER_DEFAULT) == led
+    # 説明のコメントや書式の違う行は読まない
+    odd = ("' ・つなぎ語 ＝ 説明\n' 聞き違い: =>表\n' 聞き違い: 誤だけ\n' つなぎ語： a , b\nつなぎ語: 行頭が ' でない\n"
+           "' 聞き違い： 甲=>乙 ； 前で止める字=ア ； 後ろに要る語= x , y ； 出どころ=メモ")
+    got = vp.parse_ledger(odd)
+    assert got['fillers'] == ['a', 'b']
+    assert got['pairs'] == [{'wrong': '甲', 'right': '乙', 'stop': 'ア', 'need': 'x,y'}]
+
+
+def test_shelf_dictionary_ledger_fixes_like_before_20261023(heard_env):
+    """台帳に移しても答えは同じ: つなぎ語・票→表（伝票・投票は残す）・産業ごと→3桁ごと（区切りが続くときだけ）・色は今のまま。"""
+    vp, _path = heard_env
+    n = vp.request_normalize
+    assert n("ええ、表を整えて") == "表を整えて"
+    assert n("はい、ええ、表を整えて") == "表を整えて"
+    assert n("ええと、表を整えて") == "ええと、表を整えて"          # ええと は つなぎ語ではない（今までどおり）
+    assert n("票の色を変えて") == "表の色を変えて"
+    assert n("伝票・投票・得票・帳票・開票") == "伝票・投票・得票・帳票・開票"
+    assert n("ええ、票が整ってない") == "表が整ってない"
+    assert n("ええ、金額に産業ごとの区切りを入れて") == "金額に3桁ごとの区切りを入れて"
+    assert n("産業ごとに気切りして") == "3桁ごとに区切りして"
+    assert n("産業ごとの売上を集計して") == "産業ごとの売上を集計して"
+    assert n("産業別の売上") == "産業別の売上"
+    assert n("ええ、表をリッチなワインにしてください") == "表をノーブルボルドーにしてください"
+    assert n("日付を中央ドライにして") == "日付を中央揃えにして"
+    assert n("選択制度を整えて") == "選択セルを整えて"
+    assert n("見出し尿を整えて") == "見出し行を整えて"
+    assert n("カンマで気切りして") == "カンマで区切りして"
+    assert n("表を洗濯して") == "表を選択して"
+    assert n("選択しているセルの不倫仮名の空欄を埋めて") == "選択しているセルのふりがなの空欄を埋めて"
+
+
+def test_shelf_dictionary_fix_heard_window_and_stop_20261023(heard_env):
+    """後ろに要る語は誤の後ろ 6 字以内・前で止める字は誤の直前 1 字。複数あれば全部直す。"""
+    vp, _path = heard_env
+    f = vp._fix_heard
+    assert f("産業ごと1234区切", "産業ごと", "3桁ごと", '', "気切,区切") == "3桁ごと1234区切"
+    assert f("産業ごと12345区切", "産業ごと", "3桁ごと", '', "気切,区切") == "産業ごと12345区切"   # 6 字目で切れる
+    assert f("産業ごと区切 と 産業ごとの売上", "産業ごと", "3桁ごと", '', "気切,区切") == "3桁ごと区切 と 産業ごとの売上"
+    assert f("票と票", "票", "表", "伝投得帳開") == "表と表"
+    assert f("伝票と票", "票", "表", "伝投得帳開") == "伝票と表"
+    assert f("票", "票", "表", "伝投得帳開") == "表"                  # 文の先頭は直前の字が無いので直す
+    assert f("abc", "", "x") == "abc"
+
+
+def test_shelf_dictionary_learned_conditions_20261023(heard_env):
+    """学び: 違う頼みの文で 2 回以上・誤が 2 字以上・誤が棚の語に入っていない物だけ効く。同じ頼みの繰り返し・1 回・1 字・横取りは効かない。"""
+    vp, path = heard_env
+    entries = [{'name': '表の書き方と罫線と列幅をそろえる', 'ask': '表を整え|整ってない', 'combo': '重複,ダブ+消,削除'}]
+    _write_learned(path, [
+        ('右ドライ', '右揃え', 'ええ、日付の列は 右ドライにしてください'),
+        ('右ドライ', '右揃え', '見出しを 右ドライにして'),          # 違う頼みの文 → 2 件で効く
+        ('見出し便', '見出し行', 'ええ見出し便だけでよろしいです'),        # 1 件だけ → 効かない
+        ('木切り', '区切り', '木切りしてください'),
+        ('木切り', '区切り', '木切りしてください'),                       # 同じ頼みの繰り返し → 1 件のまま
+        ('消', '削除', 'これを消して'), ('消', '削除', 'あれを消して'),     # 1 字の誤 → 効かない
+        ('ダブ', '重複', 'ダブってる行'), ('ダブ', '重複', 'ダブり行を'),   # 棚の組の語に入っている → 横取りなので効かない
+    ])
+    eff = {(p['wrong'], p['right']) for p in vp.learned_pairs(entries)}
+    assert ('右ドライ', '右揃え') in eff
+    assert ('見出し便', '見出し行') not in eff
+    assert ('木切り', '区切り') not in eff
+    assert ('消', '削除') not in eff
+    assert ('ダブ', '重複') not in eff
+    assert vp.request_normalize("日付を右ドライにして", entries) == "日付を右揃えにして"
+    assert vp.request_normalize("見出し便だけ", entries) == "見出し便だけ"
+    assert vp.request_normalize("ダブってるのを消して", entries) == "ダブってるのを消して"
+    # 学びの順は台帳のあと: 台帳で 票→表 に直った文に、学びの対（表ぱん→ピボット）が効く
+    _write_learned(path, [('表ぱん', 'ピボット', '甲'), ('表ぱん', 'ピボット', '乙')])
+    assert vp.request_normalize("票ぱんを作って", entries) == "ピボットを作って"
+    # 学びのファイルが無ければ、台帳だけ
+    path.unlink()
+    assert vp.request_normalize("票ぱんを作って", entries) == "表ぱんを作って"
+
+
+def test_shelf_dictionary_shelf_pick_passes_entries_20261023(heard_env):
+    """shelf_pick は学びの横取り検査のために棚の登録を下ごしらえに渡す（棚の語に入る誤は効かない）。"""
+    vp, path = heard_env
+    entries = [{'name': 'ほげ棚を撃つ', 'ask': '右ドライ', 'combo': None}]
+    _write_learned(path, [('右ドライ', '右揃え', '甲'), ('右ドライ', '右揃え', '乙')])
+    assert vp.request_normalize("右ドライにして", entries) == "右ドライにして"   # 棚の依頼の語に入っているので効かない
+    assert vp.request_normalize("右ドライにして", []) == "右揃えにして"
+    assert vp.shelf_pick("右ドライにして", entries) == 'ほげ棚を撃つ'
+
+
+def test_shelf_dictionary_record_heard_and_report_20261023(heard_env):
+    """shelf --heard の本体: VBA の 聞き違いを残す を呼び、学びのファイルに増えたかで成否を言う。集計は対・回数・効いているか・台帳に載せる候補。"""
+    vp, path = heard_env
+
+    class FakeXl:
+        def __init__(self, writes=True):
+            self.writes = writes
+            self.calls = []
+
+        def Run(self, proc, wrong, right, text):
+            self.calls.append((proc, wrong, right, text))
+            if self.writes:
+                existing = path.exists()
+                with open(path, 'a', encoding='cp932', newline='') as f:
+                    if not existing:
+                        f.write("日時\t誤\t正\t頼みの文\tブック\r\n")
+                    f.write(f"2026/10/23 10:00:00\t{wrong}\t{right}\t{text}\tテスト.xlsx\r\n")
+
+    xl = FakeXl()
+    ok, msg = vp.record_heard(xl, "秀コンボ.xlsm", "右ドライ", "右揃え", "ええ、 日付は 右ドライにして")
+    assert ok and "1 件目" in msg and "もう 1 回" in msg
+    assert xl.calls[0][0] == "'秀コンボ.xlsm'!コンボ道具.聞き違いを残す" and xl.calls[0][3] == "ええ、 日付は 右ドライにして"
+    ok, msg = vp.record_heard(xl, "秀コンボ.xlsm", "右ドライ", "右揃え", "見出しを右ドライにして")
+    assert ok and "2 件目" in msg and "自動で直します" in msg
+    assert vp.request_normalize("日付を右ドライにして") == "日付を右揃えにして"
+    # 書かなかった（お試し・テストのブックの守り）・誤と正が同じ・頼みの文が無い
+    ok, msg = vp.record_heard(FakeXl(writes=False), "秀コンボ.xlsm", "見出し便", "見出し行", "ええ見出し便だけ")
+    assert not ok and "守り" in msg
+    assert not vp.record_heard(xl, "x", "同じ", "同じ", "頼み")[0]
+    assert not vp.record_heard(xl, "x", "誤", "正", "")[0]
+    # 集計
+    vp.record_heard(xl, "秀コンボ.xlsm", "見出し便", "見出し行", "ええ見出し便だけ")
+    rep = "\n".join(vp.learned_report([]))
+    assert "「右ドライ」→「右揃え」  2 回（違う頼みの文 2 件）  効いている  ← 台帳に載せる候補" in rep
+    assert "「見出し便」→「見出し行」  1 回（違う頼みの文 1 件）  まだ効かない" in rep and "候補" not in rep.split("見出し便")[1]
+    # 台帳に載っている対は「台帳に載っている」（候補にしない）
+    _write_learned(path, [('票', '表', '甲'), ('票', '表', '乙')])
+    rep = "\n".join(vp.learned_report([]))
+    assert "台帳に載っている" in rep and "候補" not in rep
+
+
+def test_shelf_dictionary_hint_and_live_ledger_20261023(heard_env):
+    """seiri が AI に回すとき案内に shelf --heard の 1 行が付く。開いているブックの台帳があれば、同梱の写しより優先する。"""
+    import vbam_core
+    vp, _path = heard_env
+    assert 'shelf --heard' in vp.HEARD_HINT and '産業ごと→3桁ごと' in vp.HEARD_HINT
+    entries = [{'name': '棚A', 'combo': '月別+集計', 'ask': None}, {'name': '棚B', 'ask': '集計をして'}]
+    _d, _c, guide = vp.check_doubt('月別の集計をして', entries, ratio=1.5)
+    assert vp.HEARD_HINT in guide
+
+    # shelf_text を通ると開いているブックの台帳を覚える（無ければ None に戻る＝前の物を持ち越さない）
+    class FakeComps:
+        def __init__(self, text):
+            self.text = text
+
+        def __call__(self, name):
+            if name != '棚の辞書' or self.text is None:
+                raise KeyError(name)
+            text = self.text
+
+            class CM:
+                CountOfLines = len(text.splitlines())
+
+                @staticmethod
+                def Lines(a, b):
+                    return text
+
+            class Comp:
+                CodeModule = CM()
+            return Comp()
+
+        def __iter__(self):
+            return iter([])
+
+    class FakeProj:
+        def __init__(self, text):
+            self.VBComponents = FakeComps(text)
+
+    vbam_core.shelf_text(FakeProj("' つなぎ語: ねえ\n' 聞き違い: ぴ=>ピ\n"))
+    assert vbam_core.DICT_LIVE['text'].startswith("' つなぎ語: ねえ")
+    assert vp.request_normalize("ねえ、ぴぼ") == "ピぼ"
+    assert vp.request_normalize("ええ、票") == "ええ、票"          # ブックの台帳に ええ も 票 も無い
+    vbam_core.shelf_text(FakeProj(None))
+    assert vbam_core.DICT_LIVE['text'] is None
+    assert vp.request_normalize("ええ、票") == "表"
+
+
+def test_dirt_notes_chohyo_and_unfilled_stages_20261024_048():
+    """048: 帳票（縦結合）の空行除外と未記入の段のテスト"""
+    import vbam_view
+
+    # 帳票（1件2行、A列が縦結合）
+    grid_chohyo = [
+        ["番号", "品名", "数量"],
+        ["1", "ノートPC", "1"],
+        [None, "予備バッテリー", "1"],
+        ["2", "プロジェクター", "1"],
+        [None, "ケーブル", "2"],
+    ]
+    merged = ["A2:A3", "A4:A5"]
+    notes = vbam_view.dirt_notes(grid_chohyo, r0=1, c0=1, header_idx=0, merged_areas=merged)
+    notes_text = " ".join(notes)
+    assert "表の中の空行" not in notes_text
+    assert "帳票（1 件 2 行" in notes_text
+
+    # 未記入の段（貸出簿: 返却日・返却担当が空で備考に貸出中）
+    grid_kashidashi = [
+        ["番号", "貸出日", "返却日", "返却担当", "備考"],
+        [1, "2026/01/05", "2026/01/08", "佐藤", "返却済"],
+        [2, "2026/01/06", None, None, "ノートPC（貸出中）"],
+        [3, "2026/01/07", "2026/01/10", "高橋", "返却済"],
+    ]
+    notes2 = vbam_view.dirt_notes(grid_kashidashi, r0=1, c0=1, header_idx=0)
+    notes2_text = " ".join(notes2)
+    assert "未記入の段: 返却" in notes2_text
+    assert "表の中の空欄" not in notes2_text

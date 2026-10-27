@@ -733,7 +733,7 @@ def check_doubt(request, entries=(), ratio=1.2):
     迷った場合: (True, 候補文字列, 案内文)
     迷わない場合: (False, '', '')
     """
-    req = request_normalize(request)
+    req = request_normalize(request, entries)
     if not req:
         return False, '', ''
     low = req.lower()
@@ -783,7 +783,7 @@ def check_doubt(request, entries=(), ratio=1.2):
         dt = details.get(nm, '')
         cands.append(f"{i}. {nm}（{pt}点・{dt}）" if dt else f"{i}. {nm}（{pt}点）")
     cands_str = " ".join(cands)
-    guide = f"迷ったので撃っていません: 候補 {cands_str}（上位 {len(cands)} 本）\n→ 合う棚があれば shelf-run その名前／どれも合わなければ手で直し、shelf --chose --none"
+    guide = f"迷ったので撃っていません: 候補 {cands_str}（上位 {len(cands)} 本）\n→ 合う棚があれば shelf-run その名前／どれも合わなければ手で直し、shelf --chose --none\n" + HEARD_HINT
     return True, cands_str, guide
 
 
@@ -939,7 +939,252 @@ def combo_score(combo, req):
     return (total if ok else 0), banned
 
 
-_FILLER_PREFIX_PAT = re.compile(r'^(?:(?:ええ|えー|えーと|えっと|あの|あのー|じゃあ|では|それでは|はい)[、,\s]+)+')
+# ---- 棚の辞書（言い方の台帳・2026-10-23 指示書047） ----
+# つなぎ語と聞き違い（票→表 など）は、コードに決め打ちせず、標準モジュール「棚の辞書」（コメント行だけ）に 1 行 1 件で書く。
+# VBA（コンボ道具.頼みの下ごしらえ）と同じ行を読む。使う人ごとの学び（違う頼みの文で 2 回以上残った対）は
+# %APPDATA%\秀コンボ\聞き違いの学び.tsv（VBA の 聞き違いを残す だけが書く）。読む順: 台帳 → 学び → 色（今のまま・048 で概念の辞書へ）。
+LEDGER_FILE = '棚の辞書.bas'
+# 台帳を読む元: ①いま開いているブックの「棚の辞書」（shelf_text を通ったとき vbam_core.DICT_LIVE に入る）→ ②同梱の写し（python_scripts\棚の辞書.bas・
+# 公開の写しでは macros\棚の辞書.bas）→ ③下の既定（台帳と同じ中身。写しと食い違えば試験が落ちる）
+_LEDGER_DEFAULT = """' つなぎ語: ええ,えー,えーと,えっと,あの,あのー,じゃあ,では,それでは,はい
+' 聞き違い: 票=>表 ; 前で止める字=伝投得帳開
+' 聞き違い: 産業ごと=>3桁ごと ; 後ろに要る語=気切,区切
+' 聞き違い: 中央ドライ=>中央揃え ; 出どころ=聞き違いの学び ×2
+' 聞き違い: 選択制度=>選択セル ; 出どころ=聞き違いの学び ×4
+' 聞き違い: 見出し尿=>見出し行 ; 出どころ=聞き違いの学び ×2
+' 聞き違い: 気切り=>区切り ; 出どころ=聞き違いの学び ×4
+' 聞き違い: 洗濯=>選択 ; 出どころ=聞き違いの学び ×2
+' 聞き違い: 不倫仮名=>ふりがな ; 出どころ=外れた依頼 2026-10-24
+"""
+# seiri が棚に当てられず AI に回すときの案内の 1 行（頼みの聞き違いを学びに残してもらう）
+HEARD_HINT = '→ 頼みに聞き違いがあれば（例: 産業ごと→3桁ごと）、直したうえで shelf --heard 誤 正 --q "頼みの文" で残す（違う頼みの文で 2 回以上残ると自動で直る）'
+LEARNED_MIN_TEXTS = 2           # 学びが効くのに要る、違う頼みの文の数
+LEARNED_MIN_LEN = 2             # 学びの誤の最小の長さ
+HEARD_WINDOW = 6                # 後ろに要る語を探す字数
+LEARNED_PATH_OVERRIDE = {'path': None}  # 試験が学びのファイルを差し替える（'path' に置き場を入れる）
+_LEDGER_CACHE = {}
+
+
+def parse_ledger(text):
+    """台帳の本文 → {'fillers': [語], 'pairs': [{'wrong','right','stop','need'}]}（純 Python。VBA の コンボ道具.辞書を読む と同じ読み方）。
+    読むのは「' つなぎ語:」「' 聞き違い:」の行だけ（全角の：；も可）。聞き違いは「誤=>正 ; 前で止める字=… ; 後ろに要る語=カンマ区切り ; 出どころ=…」。"""
+    fillers, pairs = [], []
+    for ln in str(text or '').replace('\r', '').split('\n'):
+        s = ln.strip()
+        if not s.startswith("'"):
+            continue
+        body = s[1:].strip().replace('：', ':').replace('；', ';')
+        key, sep, rest = body.partition(':')
+        if not sep:
+            continue
+        if body.startswith('つなぎ語'):
+            fillers += [w.strip() for w in rest.split(',') if w.strip()]
+        elif body.startswith('聞き違い'):
+            fields = rest.split(';')
+            head = fields[0]
+            if '=>' not in head:
+                continue
+            wrong, right = (x.strip() for x in head.split('=>', 1))
+            stop = need = ''
+            for f in fields[1:]:
+                k, eq, v = f.partition('=')
+                if not eq:
+                    continue
+                k, v = k.strip(), v.strip()
+                if k == '前で止める字':
+                    stop = v
+                elif k == '後ろに要る語':
+                    need = ','.join(w.strip() for w in v.split(',') if w.strip())
+            if wrong and right:
+                pairs.append({'wrong': wrong, 'right': right, 'stop': stop, 'need': need})
+    return {'fillers': fillers, 'pairs': pairs}
+
+
+def _ledger_file_candidates():
+    here = os.path.dirname(os.path.abspath(__file__))
+    return [os.path.join(here, LEDGER_FILE), os.path.join(here, '..', 'macros', LEDGER_FILE)]
+
+
+def ledger_text():
+    """いま使う台帳の本文と出どころ → (本文, 'ブック'|'写し'|'既定')。"""
+    try:
+        import vbam_core
+        live = vbam_core.DICT_LIVE.get('text')
+    except Exception:
+        live = None
+    if live is not None:
+        return live, 'ブック'
+    for p in _ledger_file_candidates():
+        try:
+            st = os.stat(p)
+        except OSError:
+            continue
+        key = (p, st.st_mtime_ns, st.st_size)
+        if _LEDGER_CACHE.get('file_key') != key:
+            raw = open(p, 'rb').read()
+            try:
+                txt = raw.decode('cp932')
+            except UnicodeDecodeError:
+                txt = raw.decode('utf-8', errors='replace')
+            _LEDGER_CACHE['file_key'], _LEDGER_CACHE['file_text'] = key, txt
+        return _LEDGER_CACHE['file_text'], '写し'
+    return _LEDGER_DEFAULT, '既定'
+
+
+def current_ledger():
+    """いま使う台帳（parse_ledger の結果。本文が同じなら読み直さない）。"""
+    text, _src = ledger_text()
+    if _LEDGER_CACHE.get('parsed_text') != text:
+        led = parse_ledger(text)
+        _LEDGER_CACHE['parsed_text'] = text
+        _LEDGER_CACHE['parsed'] = led
+        if led['fillers']:
+            _LEDGER_CACHE['filler_re'] = re.compile(
+                r'^(?:(?:' + '|'.join(re.escape(w) for w in led['fillers']) + r')[、,\s]+)+')
+        else:
+            _LEDGER_CACHE['filler_re'] = None
+    return _LEDGER_CACHE['parsed']
+
+
+def learned_path():
+    """学びのファイル（VBA だけが書く）。"""
+    return LEARNED_PATH_OVERRIDE.get('path') or os.path.join(os.environ.get('APPDATA', ''), '秀コンボ', '聞き違いの学び.tsv')
+
+
+def read_learned(path=None):
+    """学びのファイル → {(誤, 正): [違う頼みの文の並び]}（挿入順。cp932・タブ区切り・見出し行は読まない）。無ければ {}。"""
+    p = path or learned_path()
+    try:
+        st = os.stat(p)
+    except OSError:
+        return {}
+    key = (p, st.st_mtime_ns, st.st_size)
+    if _LEDGER_CACHE.get('learned_key') == key:
+        return _LEDGER_CACHE['learned']
+    import io
+    out = {}
+    for ln in io.open(p, encoding='cp932', errors='replace'):
+        f = ln.rstrip('\r\n').split('\t')
+        if len(f) < 4 or f[0] == '日時':
+            continue
+        wrong, right, text = f[1].strip(), f[2].strip(), ' '.join(f[3].replace('　', ' ').split())
+        if not (wrong and right and text):
+            continue
+        texts = out.setdefault((wrong, right), [])
+        if text not in texts:
+            texts.append(text)
+    _LEDGER_CACHE['learned_key'], _LEDGER_CACHE['learned'] = key, out
+    return out
+
+
+def heard_steals_shelf(wrong, entries):
+    """学びの誤が、棚の名前・依頼の語・依頼の組のどれかに入っているか（横取りの検査。VBA の 誤が棚の語か と同じ）。"""
+    for e in entries or ():
+        for fld in (e.get('name'), e.get('ask'), e.get('combo')):
+            if fld and wrong in str(fld):
+                return True
+    return False
+
+
+def learned_pairs(entries=None):
+    """効いている学びの対 [{'wrong','right','stop','need'}]。違う頼みの文で LEARNED_MIN_TEXTS 回以上・誤が 2 字以上・棚の語に入っていない物だけ。"""
+    out = []
+    for (wrong, right), texts in read_learned().items():
+        if len(texts) >= LEARNED_MIN_TEXTS and len(wrong) >= LEARNED_MIN_LEN and wrong != right \
+                and not heard_steals_shelf(wrong, entries):
+            out.append({'wrong': wrong, 'right': right, 'stop': '', 'need': ''})
+    return out
+
+
+def _learned_row_count(path=None):
+    """学びのファイルの行数（見出しを除く）。無ければ 0。"""
+    import io
+    p = path or learned_path()
+    if not os.path.isfile(p):
+        return 0
+    return sum(1 for ln in io.open(p, encoding='cp932', errors='replace')
+               if ln.strip() and not ln.startswith('日時\t'))
+
+
+def record_heard(xl, owner, wrong, right, text):
+    """聞き違いを学びに残す（VBA の コンボ道具.聞き違いを残す を呼ぶ＝ファイルは VBA だけが書く）→ (残せたか, 説明)。"""
+    wrong, right, text = str(wrong or '').strip(), str(right or '').strip(), ' '.join(str(text or '').split())
+    if not wrong or not right or wrong == right:
+        return False, "誤と正を別々に渡してください（例: shelf --heard 産業ごと 3桁ごと --q \"頼みの文\"）"
+    if not text:
+        return False, "頼みの文が要ります（--q \"そのときの頼みの文\"）。違う頼みの文で 2 回以上残ると効きます"
+    q = str(owner).replace("'", "''")
+    before = _learned_row_count()
+    try:
+        xl.Run(f"'{q}'!コンボ道具.聞き違いを残す", wrong, right, text)
+    except Exception as e:
+        return False, f"残せませんでした（古い秀コンボで 聞き違いを残す が無い？）: {e}"
+    if _learned_row_count() <= before:
+        return False, "残していません（お試し・テスト・隔離のブックは書かない守りです）"
+    texts = read_learned().get((wrong, right), [])
+    msg = f"聞き違いを残しました: 「{wrong}」→「{right}」（この対は違う頼みの文で {len(texts)} 件目）"
+    if len(texts) < LEARNED_MIN_TEXTS:
+        msg += f"。違う頼みの文でもう {LEARNED_MIN_TEXTS - len(texts)} 回残ると下ごしらえが自動で直します"
+    else:
+        msg += "。下ごしらえが自動で直します（棚の語に入っている誤・1 字の誤は除く）"
+    return True, msg
+
+
+def learned_report(entries=None):
+    """聞き違いの学びの集計 → 行の並び（shelf --misses の終わりに出す）。対・回数・効いているか・台帳に載せる候補（違う頼みの文で 2 回以上）。"""
+    import io
+    p = learned_path()
+    counts = {}
+    if os.path.isfile(p):
+        for ln in io.open(p, encoding='cp932', errors='replace'):
+            f = ln.rstrip('\r\n').split('\t')
+            if len(f) >= 4 and f[0] != '日時' and f[1].strip() and f[2].strip():
+                k = (f[1].strip(), f[2].strip())
+                counts[k] = counts.get(k, 0) + 1
+    learned = read_learned()
+    ledger_pairs = {(x['wrong'], x['right']) for x in current_ledger()['pairs']}
+    lines = []
+    for (wrong, right), rows in counts.items():
+        texts = len(learned.get((wrong, right), []))
+        if (wrong, right) in ledger_pairs:
+            state = "台帳に載っている"
+        elif texts < LEARNED_MIN_TEXTS:
+            state = f"まだ効かない（違う頼みの文があと {LEARNED_MIN_TEXTS - texts} 回）"
+        elif len(wrong) < LEARNED_MIN_LEN:
+            state = f"効かない（誤が {LEARNED_MIN_LEN} 字未満）"
+        elif heard_steals_shelf(wrong, entries):
+            state = "効かない（誤が棚の名前・依頼の語・組の語に入っている）"
+        else:
+            state = "効いている"
+        cand = "  ← 台帳に載せる候補" if texts >= LEARNED_MIN_TEXTS and (wrong, right) not in ledger_pairs else ""
+        lines.append(f"  「{wrong}」→「{right}」  {rows} 回（違う頼みの文 {texts} 件）  {state}{cand}")
+    return lines
+
+
+def _fix_heard(s, wrong, right, stop='', need=''):
+    """聞き違い 1 件を直す（VBA の コンボ道具.聞き違いを直す と同じ答え）。
+    stop: 誤の直前の字がこの中にあれば直さない／need: カンマ区切り。誤の後ろ HEARD_WINDOW 字以内にどれかがあるときだけ直す。"""
+    n = len(wrong)
+    if not n:
+        return s
+    needs = [w for w in str(need or '').split(',') if w]
+    out, i = [], 0
+    while i < len(s):
+        if s.startswith(wrong, i):
+            ok = True
+            if stop and i > 0 and s[i - 1] in stop:
+                ok = False
+            if ok and needs:
+                win = s[i + n:i + n + HEARD_WINDOW]
+                ok = any(w in win for w in needs)
+            if ok:
+                out.append(right)
+                i += n
+                continue
+        out.append(s[i])
+        i += 1
+    return ''.join(out)
+
 
 # 言い方の言い換え（デザインの棚の色名へ寄せる。外れた依頼: 2026-10-18〜10-19・2026-10-22 指示書035・038）
 _COLOR_CONTEXT_RE = re.compile(r'表|色|デザイン|配色|リッチな')
@@ -971,19 +1216,22 @@ _COLOR_PATTERN = re.compile(
 _PHRASE_REPLACEMENTS = list(_COLOR_MAP.items())
 
 
-def request_normalize(req):
-    """頼みの文の下ごしらえ（純 Python・2026-10-22 指示書035・038）。
-    1. 頭のつなぎ語を落とす（ええ、あの、など＋「、」か空白）
-    2. 聞き違いの言い換え（票→表。伝票・投票・得票・帳票・開票は残す）
-    3. 色の言い換え（色を頼んでいる文のときだけ・指示書038）
+def request_normalize(req, entries=None):
+    """頼みの文の下ごしらえ（純 Python・2026-10-22 指示書035・038／2026-10-23 指示書047で台帳へ）。
+    1. 頭のつなぎ語を落とす（台帳「棚の辞書」の つなぎ語 ＋「、」か空白）
+    2. 聞き違いの言い換え（台帳の聞き違いを書いた順 → 学び＝違う頼みの文で 2 回以上残った対。票→表・産業ごと→3桁ごと など）
+    3. 色の言い換え（色を頼んでいる文のときだけ・指示書038。048 で概念の辞書へ）
+    entries（棚の登録）を渡すと、学びの誤が棚の語に入っていないかも見る（VBA は棚を読んで持っている）。
     VBA の コンボ道具.頼みの下ごしらえ と同じ答え。
     """
     s = str(req or '').strip()
     if not s:
         return ''
-    s = _FILLER_PREFIX_PAT.sub('', s).strip()
-    s = re.sub(r'(?<![伝投得帳開])票', '表', s)
-    s = re.sub(r'産業ごと(?=(?:に|の)?\s*(?:気切|区切))', '3桁ごと', s)
+    led = current_ledger()
+    if _LEDGER_CACHE.get('filler_re') is not None:
+        s = _LEDGER_CACHE['filler_re'].sub('', s).strip()
+    for p in led['pairs'] + learned_pairs(entries):
+        s = _fix_heard(s, p['wrong'], p['right'], p['stop'], p['need'])
     if _COLOR_CONTEXT_RE.search(s):
         s = _COLOR_PATTERN.sub(lambda m: _COLOR_MAP[m.group(1)], s)
     return s
@@ -996,7 +1244,7 @@ def shelf_pick(request, entries=()):
     点＝依頼の語（当たった語の長さの合計）＋依頼の組（各組の最長の語の長さの和）。
     マクロ名そのものを言った依頼（4 字以上）は名前の長さの 2 倍で当てる（手順書の依頼文は除く）。
     """
-    req = request_normalize(request)
+    req = request_normalize(request, entries)
     if not req:
         return ''
     p = req.find('【手順書：')
@@ -1008,12 +1256,15 @@ def shelf_pick(request, entries=()):
         req = req[:p].strip()
         if not req:
             return ''
+    # マクロの解説・書き直し・高速化は AI の役目＝棚に当てない（指示書064。棚の名前でない答えは返さない・2026-10-27）
+    if 'マクロ' in req and any(w in req for w in ('説明', '書き直', '高速化', '解説')):
+        return ''
     low = req.lower()
     if any(w in req for w in _SHELF_NOT_WORK) or (any(w.lower() in low for w in _SHELF_QUESTION) and not any(e.lower() in low for e in _SHELF_QUESTION_EXCEPT)):
         return ''
     # 条件付き書式を付ける頼みは、頭に「' 条件付き書式: はい」と書いた棚だけが当たる（無ければ AI の役目・2026-10-22 指示書044）
     cf_block = '条件付き書式' in req and not any(w in req for w in _SHELF_CF_LOOK)
-    if any(w.lower() in low for w in _SHELF_ERROR_MARK) and any(w in req for w in _SHELF_WHY):
+    if not any(w in req for w in ("直して", "直す", "修正")) and any(w.lower() in low for w in _SHELF_ERROR_MARK) and any(w in req for w in _SHELF_WHY):
         return ''
     points, banned, order = {}, set(), []
     for e in entries or ():
@@ -1091,12 +1342,34 @@ def shelf_plan(request, entries=(), pick=None):
     s = str(request or '').replace('\r\n', '\n').replace('\r', '\n').replace('。', '\n').replace('　', ' ')
     while '  ' in s:
         s = s.replace('  ', '\n')
+    s = s.replace('して ', 'して\n').replace('て ', 'て\n')
     parts = [x.strip(' ') for x in s.split('\n') if x.strip(' ')]
     if len(parts) < 2:
-        return []
+        # 062: 明確な順序接続表現による分割（判定の正本 VBA と完全に一致・最長一致順）
+        s2 = s
+        for conj in (
+            'してそのあと', 'てそのあと', 'してさらに', 'てさらに',
+            'してから', 'てから', 'たうえで', 'た上で',
+            'の後に', 'のあと', 'たあと', 'た後',
+            '、さらに', '、そして', 'して、'
+        ):
+            if conj in s2:
+                s2 = s2.replace(conj, '\n')
+        parts = [x.strip(' ') for x in s2.split('\n') if x.strip(' ')]
+        if len(parts) < 2:
+            return []
+        # 手段補足句（「〜で」で終わり動詞を含まない、ピボットで・グラフで・テーブルで等）による分割は除外（指示書065）
+        _MEANS_RE = re.compile(r'^(?:ピボット|ピボットテーブル|グラフ|棒グラフ|円グラフ|折れ線グラフ|テーブル)で$')
+        if any(_MEANS_RE.match(x) for x in parts[1:]):
+            return []
     out, tidy = [], False
     for x in parts:
         n = pick(x)
+        if not n:
+            if x.endswith('して'):
+                n = pick(x[:-2])
+            elif x.endswith('て'):
+                n = pick(x[:-1])
         if not n:
             return []
         # 並びの中の代わりがあれば差し替える（' 並びの代わり: ...・2026-10-22 指示書041）
@@ -1260,6 +1533,17 @@ def _parse_miss_dt(s):
     return None
 
 
+def shelf_part_scores(pattern, entries=()):
+    """頼みの文を空白・「。」で分け、1 つずつ棚に当てる＝部分点（2026-10-23）。
+    戻り値: [(頼みの 1 つ, 当たった棚の名前 or ''), ...]。分けても 1 つにしかならない文は空のリスト（部分点は付けない）。
+    外れの記録が「全部当たるか・全部外れるか」の 2 択だと、2 つの頼みが混ざった文は
+    どちらが足りないのか見えない。足りない部分だけがマクロにする候補になる。"""
+    parts = [p for p in re.split(r'[\s　。]+', str(pattern or '')) if p]
+    if len(parts) < 2 or not entries:
+        return []
+    return [(p, shelf_pick(p, entries)) for p in parts]
+
+
 def shelf_misses(path=None, days=14, all_days=False, text=None, now=None, entries=None):
     """外れた依頼.csv から 2 回以上外れた頼みの型を集計する（2026-10-22）。
     戻り値: (not_hit_list, hit_list)
@@ -1343,6 +1627,7 @@ def shelf_misses(path=None, days=14, all_days=False, text=None, now=None, entrie
                     if hit_name:
                         break
         g['hit_shelf'] = hit_name
+        g['parts'] = shelf_part_scores(g['pattern'], entries)
         if hit_name:
             hit.append(g)
         else:
@@ -1373,12 +1658,21 @@ def cmd_shelf_misses(args):
 
     scope = "全期間" if all_days else f"直近 {days} 日"
     print(f"外れた依頼の集計（{scope}・試験のブックを除く）")
+    if not entries:
+        # 棚を読めない（Excel が起動していない・秀コンボが開いていない）と全部が「当たらない」に見える（2026-10-23: 解決済みの 6 件が候補に出た）
+        print("★ 棚を読めていません（Excel に秀コンボが開いていない）。下の「候補」は当たり判定をしていない一覧です。")
     print("-" * 60)
     print(f"マクロにする候補（2回以上・まだ棚に当たらない物）: {len(not_hit)} 件")
     if not_hit:
         for r in not_hit:
             cand = f"  [{r['candidate']}]" if r['candidate'] else ""
             print(f"  {r['count']:2d} 回  {r['latest_dt']}  {r['pattern']}{cand}")
+            parts = r.get('parts') or []
+            if parts:
+                got = sum(1 for _p, n in parts if n)
+                print(f"        部分点 {got}/{len(parts)}（頼みを分けて 1 つずつ当てた）")
+                for p, n in parts:
+                    print(f"          {'○' if n else '×'} {p}" + (f" → 『{n}』" if n else "  ← 棚が足りない所"))
     else:
         print("  （該当なし）")
 
@@ -1421,6 +1715,16 @@ def cmd_shelf_misses(args):
             print(f"  棚の候補（どれでもない）: 「{req}」（{cnt} 回）")
     else:
         print("  （該当なし）")
+
+    # 聞き違いの学び（2026-10-23 指示書047）: 違う頼みの文で 2 回以上残った対は自動で直る。台帳に載せる候補も出す
+    print("-" * 60)
+    heard = learned_report(entries)
+    print(f"聞き違いの学び（shelf --heard 誤 正 --q \"頼みの文\" で残した物）: {len(heard)} 対")
+    if heard:
+        for ln in heard:
+            print(ln)
+    else:
+        print("  （まだありません）")
     return True
 
 
