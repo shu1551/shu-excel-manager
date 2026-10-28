@@ -3756,6 +3756,48 @@ def test_the_gate_counts_only_the_cells_write_grid_will_actually_write():
     assert va._overwrite_hits(dict(act, overwrite=True), "名簿", wb) == []
 
 
+def test_cont_answer_is_read_by_itself_not_from_the_head_of_the_request():
+    """--cont の返事は返事だけで読む（2026-10-28 点検）。依頼文とつないだ文の先頭で読んでいたので、
+    「はい」が承認にならず、依頼文が「全部」「お願い」で始まると「やめて」も承認になっていた。"""
+    import vbam_agent as va
+    old = dict(va._APPROVAL_CTX)
+    try:
+        for req, ans, want in (("B列の重複を整理したい", "はい", True),
+                               ("B列の重複を整理したい", "お願いします", True),
+                               ("全部のシートの重複を見て", "やめて", False),
+                               ("お願い、B列の重複を見て", "消さないで", False),
+                               ("B列の重複を整理したい", "", False)):
+            va._approval_set(va._approval_scope(req) + ' ' + ans, ans)
+            assert va._approved() is want, (req, ans)
+        va._approval_set("はい", True)                  # True は文全体が返事（古い呼び方）
+        assert va._approved()
+    finally:
+        va._APPROVAL_CTX.clear()
+        va._APPROVAL_CTX.update(old)
+
+
+def test_copy_range_is_refused_when_it_would_overwrite_someone_elses_value():
+    """copy_range もコピー先に人の値があれば実行前に止める（2026-10-28 点検・門が write_cells／write_grid にしか無かった）。"""
+    import vbam_agent as va
+
+    class WS:
+        cells = {'A1': '元1', 'A2': '元2', 'D1': '', 'D2': '人の値', 'F1': '元1', 'F2': '元2'}
+
+        def Range(self, box):
+            (c1, r1), (c2, r2) = [(p[0], int(p[1:])) for p in box.split(':')]
+            return type("R", (), {"Formula": tuple((self.cells.get(f"{c1}{r}", ''),) for r in range(r1, r2 + 1))})()
+
+    wb = _GateWB(WS())
+    va._own_reset()
+    act = {"op": "copy_range", "src": "A1:A2", "dst": "D1"}
+    assert va._overwrite_hits(act, "名簿", wb) == ['D2']
+    assert va._overwrite_hits(dict(act, overwrite=True), "名簿", wb) == []
+    assert va._overwrite_hits(dict(act, dst="F1"), "名簿", wb) == []       # 同じ値の書き直しは破壊ではない
+    va._approval_set("")
+    res = va._execute([act], "名簿", wb)
+    assert res[0][1] is False and 'もとからある値が 1 セル' in res[0][2]
+
+
 def test_plan_can_hold_a_question_for_the_human_without_blocking_done():
     """②: 「要判断」＝人に聞かないと決められない項目。安全側で仮処理して done は塞がない（2026-09-06）。
 
@@ -4016,6 +4058,17 @@ def test_approval_words_are_checked_by_the_tool():
     # --cont の答えは「はい」「お願いします」も承認（道具が聞いた問いへの返事）
     assert va._has_approval("はい、消してください", answer_mode=True)
     assert va._has_approval("お願いします", answer_mode=True) and not va._has_approval("お願いします")
+    assert va._has_approval("問題ないです", answer_mode=True)
+    # 人が聞いている形は承認ではない（2026-10-28 点検）
+    assert not ok("重複行って消してもいいのかな？見て判断して")
+    assert not ok("この列、削除していいか教えて")
+    assert not ok("上書きしてよいかどうか確認してから進めて")
+    assert not ok("消しても大丈夫ですか")
+    assert ok("消してもいいから、重複を整理して")
+    assert ok("消していいのか迷ったけど、重複は消してよい")
+    # 返事の中の断りは承認ではない（2026-10-28 点検）
+    for no in ("それでは困る", "全部消さないで", "大丈夫じゃない、やめて", "うん、でも消さないで", "進めてはだめ"):
+        assert not va._has_approval(no, answer_mode=True), no
     # 手順書は補足だけを見る（本文の説明に「置き換えてよい」が出ても承認ではない）
     body = "手順書「値を直す」\n承認: 補足に「置き換えてよい」があるときだけ\n補足: なし"
     assert not ok(va._approval_scope(body))
