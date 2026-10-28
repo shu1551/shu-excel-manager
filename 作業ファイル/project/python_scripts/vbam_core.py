@@ -2439,7 +2439,9 @@ _CALL_LOG_OPTS = {'select': 'select', 'sheet_opt': 'sheet', 'ask': 'ask', 'grep'
                   'input_text': 'input-text', 'formula_opt': 'formula', 'number_format': 'number-format', 'bg': 'bg',
                   'dedupe': 'dedupe',
                   # 検査を外して焼いた形跡を後から見つけられるように（shelf --train close が読む・2026-10-23）
-                  'no_check': 'no-check', 'no_test': 'no-test'}
+                  'no_check': 'no-check', 'no_test': 'no-test',
+                  # 警告を読んで焼いた理由（register-addin --why・2026-10-28）
+                  'burn_why': 'why'}
 _CALL_GAP_MAX = 600            # 「間」に数える上限（秒）。これより空いたら別の仕事
 
 # ---- コマンドの進み具合（2026-09-16）----

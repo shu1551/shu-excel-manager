@@ -7560,7 +7560,7 @@ def _addin_buttons_restore(xl, buttons, addin_file):
     return n
 
 
-def _shelf_parity_gate(xl, wb):
+def _shelf_parity_gate(xl, wb, why=None):
     """焼く前の関所（2026-10-14 段 1・段 2）: 問題集を VBA の先撃ち（正本）と Python の写し（shelf_pick）の両方に撃ち、
     食い違いが 1 件でもあれば焼かない（10/12 に条件付き書式の決まりが片方にだけ入り、誰も気づかなかった）。
     段 2 から、一般の語の検査（1 語で当たる組など）と問題集の横取りでも止める。
@@ -7576,7 +7576,8 @@ def _shelf_parity_gate(xl, wb):
     if not text:
         return True
     # 段 2（2026-10-14）: 語の検査・問題集の横取り・外れた依頼の当たり先の変化も同じ関所で（vbam_prefire.shelf_check）
-    ok, lines = vp.shelf_check(xl, str(wb.Name), text, write_snapshot=True)
+    warn = []
+    ok, lines = vp.shelf_check(xl, str(wb.Name), text, write_snapshot=True, warn=warn, hold_changed=not why)
     if not ok:
         print("エラー: 棚の当たり方の検査で止まりました。焼きません")
         print("\n".join("  " + ln for ln in lines))
@@ -7584,6 +7585,24 @@ def _shelf_parity_gate(xl, wb):
         return False
     print("棚の当たり方の検査: 通りました")
     print("\n".join("  " + ln for ln in lines))
+    # 警告を読まずに焼かない（2026-10-28 番頭点検）: 前に焼いた後の shelf --train の after に誤爆がある／当たり先が変わった
+    # ＝止まりはしないが人が読むべき知らせ。--why "理由" が無ければ焼かない（理由は台帳 _calls.jsonl に残る）
+    try:
+        import vbam_train as vt
+        stem = os.path.splitext(str(wb.Name))[0]
+        addin_path = os.path.join(os.environ.get('AppData', ''), 'Microsoft', 'AddIns', f"{stem}.xlam")
+        since = os.path.getmtime(addin_path) if os.path.isfile(addin_path) else 0
+        warn += [f"shelf --train「{n}」の after に誤爆 {w} 件（前に焼いた後に撃った物）" for n, w in vt.wrong_afters_since(since)]
+    except Exception:
+        pass
+    if warn and not why:
+        print("エラー: 読むべき警告があります。焼きません")
+        print("\n".join("  - " + w for w in warn))
+        print("  読んで、分かって焼くなら --why \"理由\"（理由は台帳に残ります）")
+        return False
+    if warn:
+        print(f"警告を読んで焼きます（理由: {why}）")
+        print("\n".join("  - " + w for w in warn))
     return True
 
 
@@ -7707,7 +7726,7 @@ def cmd_register_addin(args):
         cmd_close_form(argparse.Namespace(posargs=[], list_flag=False))
     if not getattr(args, 'no_check', False) and not _addin_shape_gate(wb):
         return False
-    if not getattr(args, 'no_check', False) and not _shelf_parity_gate(xl, wb):
+    if not getattr(args, 'no_check', False) and not _shelf_parity_gate(xl, wb, why=getattr(args, 'burn_why', None)):
         return False
     if not getattr(args, 'no_test', False) and not _test_gate_before_burn(wb):
         return False
