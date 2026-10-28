@@ -16,6 +16,7 @@ import pythoncom
 import pywintypes
 import win32com.client
 import win32com.client.dynamic
+from typing import Optional
 
 from vbam_core import *  # noqa: F401,F403
 from vbam_vba import *  # noqa: F401,F403
