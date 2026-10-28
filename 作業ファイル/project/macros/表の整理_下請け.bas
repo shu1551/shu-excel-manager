@@ -1270,6 +1270,35 @@ Function 文字のまま書く字(ByVal s As String) As String
     If InStr("=+-@#'", 頭) > 0 Or IsNumeric(s) Or IsDate(s) Or UCase$(s) = "TRUE" Or UCase$(s) = "FALSE" Then 文字のまま書く字 = "'" & s
 End Function
 
+' セルが動的配列の式（スピル）の元なら、広がった範囲を返す。スピルでない・広がった側のセル・古い Excel（HasSpill が無い）は Nothing（2026-10-28）
+Function スピルの元なら範囲(ByVal c As Range) As Range
+    Dim 広がる As Boolean
+    On Error Resume Next
+    広がる = c.HasSpill
+    If Err.Number <> 0 Or Not 広がる Then Exit Function
+    If c.SpillParent.Address <> c.Address Then Exit Function
+    Set スピルの元なら範囲 = c.SpillingToRange
+End Function
+
+' 値の並び（範囲の .Value）を、文字は文字のまま（数・日付に化ける字には ' を付けて）書き戻す（2026-10-28）。
+' スピルの範囲を値にするとき、元のセルを書いた時点で広がった側が消えるので、値は先に控えたものを渡す
+Sub 値を書き戻す(ByVal rng As Range, ByVal v As Variant)
+    Dim i As Long, j As Long
+    If Not IsArray(v) Then
+        If VarType(v) = vbString Then rng.Cells(1, 1).Value = 文字のまま書く字(CStr(v)) Else rng.Cells(1, 1).Value = v
+        Exit Sub
+    End If
+    For i = LBound(v, 1) To UBound(v, 1)
+        For j = LBound(v, 2) To UBound(v, 2)
+            If VarType(v(i, j)) = vbString Then
+                rng.Cells(i - LBound(v, 1) + 1, j - LBound(v, 2) + 1).Value = 文字のまま書く字(CStr(v(i, j)))
+            Else
+                rng.Cells(i - LBound(v, 1) + 1, j - LBound(v, 2) + 1).Value = v(i, j)
+            End If
+        Next j
+    Next i
+End Sub
+
 ' 1 セル・1 行だけの範囲の値（スカラー）も、2 次元の配列にそろえる（2026-10-22）
 Function 二次元にする(ByVal v As Variant) As Variant
     Dim 箱() As Variant

@@ -6208,6 +6208,7 @@ Sub 選んだ列の式を値にする()
     If formulaRng Is Nothing Then Exit Sub
 
     Dim cell As Range, errCount As Long, convertedCount As Long
+    Dim spillRng As Range
     errCount = 0
     convertedCount = 0
 
@@ -6215,7 +6216,11 @@ Sub 選んだ列の式を値にする()
             If IsError(cell.Value) Then
                 errCount = errCount + 1
             Else
-                If VarType(cell.Value) = vbString Then
+                Set spillRng = 表の整理_下請け.スピルの元なら範囲(cell)
+                If Not spillRng Is Nothing Then
+                    ' 動的配列の式（スピル）は広がった範囲ごと値にする。元のセルだけ値にすると、広がった側の値が消えていた（2026-10-28 点検）
+                    表の整理_下請け.値を書き戻す spillRng, spillRng.Value
+                ElseIf VarType(cell.Value) = vbString Then
                     cell.Value = 表の整理_下請け.文字のまま書く字(CStr(cell.Value))
                 Else
                     cell.Value = cell.Value
@@ -7537,6 +7542,7 @@ Public Sub ブックの式を全部値にする()
     Dim wb As Workbook, 対象シート As Worksheet, 式域 As Range
     Dim 控え As String, 処理シート数 As Long, 式の数 As Long
     Dim 一区 As Range, 一つ As Range, 文字の式 As Collection, 組 As Variant
+    Dim スピル As Collection, 広がり As Range
 
     Set wb = ActiveWorkbook
     If wb.path = "" Then
@@ -7567,14 +7573,21 @@ Public Sub ブックの式を全部値にする()
             ' 式のセルだけを値にする（使用範囲を丸ごと書き戻すと、式でない 00123 や文字の日付まで数・日付に化けた・2026-10-22）。
             ' 式の結果が文字のセルは、数や日付に化けないよう文字のまま書き直す
             Set 文字の式 = New Collection
+            Set スピル = New Collection
             For Each 一つ In 式域.Cells
                 If VarType(一つ.Value) = vbString Then 文字の式.Add Array(一つ, CStr(一つ.Value))
+                ' 動的配列の式（スピル）は広がった範囲と値を先に控える。式のセルだけ値にすると、広がった側の値が消えていた（2026-10-28 点検）
+                Set 広がり = 表の整理_下請け.スピルの元なら範囲(一つ)
+                If Not 広がり Is Nothing Then スピル.Add Array(広がり, 広がり.Value)
             Next 一つ
             For Each 一区 In 式域.Areas
                 一区.Value = 一区.Value ' 書き戻し: 新しい所（式のセルだけ）
             Next 一区
             For Each 組 In 文字の式
                 組(0).Value = "'" & 組(1)
+            Next 組
+            For Each 組 In スピル
+                表の整理_下請け.値を書き戻す 組(0), 組(1)
             Next 組
             処理シート数 = 処理シート数 + 1
         End If
