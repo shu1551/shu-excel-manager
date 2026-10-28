@@ -508,8 +508,10 @@ def load_excel_addins_and_personal(xl):
     import os
     import time
 
-    # 警告を非表示にする
+    # 警告を非表示にする（終わりに前の値へ戻す）
+    prev_alerts = True
     try:
+        prev_alerts = bool(xl.DisplayAlerts)
         xl.DisplayAlerts = False
     except Exception:
         pass
@@ -561,7 +563,7 @@ def load_excel_addins_and_personal(xl):
         time.sleep(1.0)
 
     try:
-        xl.DisplayAlerts = True
+        xl.DisplayAlerts = prev_alerts  # 前の値に戻す（無条件に True へ戻すと、呼び出し元が切っていた設定まで変える＝_alerts_off と同じ・2026-10-28 点検）
     except Exception:
         pass
 

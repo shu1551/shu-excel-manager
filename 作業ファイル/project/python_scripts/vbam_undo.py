@@ -1071,22 +1071,26 @@ def _restore_formulas(ws, addr, snap):
     文字で入っていた「1,000」「0021」「4-1」が数値・日付に化けた（.Formula で読むと先頭の ' が落ちる）。
     戻すための道具が、マクロが触っていない列の合計まで変えていた。値のセルは貼り付けで正しく戻っている。
     """
-    grid = (snap or {}).get('formulas')
+    # Formula2（動的配列の書き方）で写せていればそれで読み書きする（2026-10-28 点検）。.Formula で書くと FILTER・UNIQUE・
+    # XLOOKUP などに暗黙の交差 @ が付き、広がるはずの結果が 1 セルに潰れる（_write_value と同じ理由）。無い Excel では従来どおり
+    grid2 = (snap or {}).get('formulas2')
+    grid = grid2 or (snap or {}).get('formulas')
+    prop = 'Formula2' if grid2 else 'Formula'
     if not grid:
         return None                     # 控えが大きすぎて写せなかった（_SNAPSHOT_MAX_CELLS 超）
     try:
         rng = ws.Range(addr)
         try:
-            cur = _rows_of(rng.Formula)
+            cur = _rows_of(getattr(rng, prop))
         except Exception:
             cur = None
         r0, c0 = int(rng.Row), int(rng.Column)
         for i0, j0, i1, j1 in _formula_blocks(grid, cur):
             if i0 == i1 and j0 == j1:
-                ws.Cells(r0 + i0, c0 + j0).Formula = grid[i0][j0]
+                setattr(ws.Cells(r0 + i0, c0 + j0), prop, grid[i0][j0])
             else:
-                ws.Range(ws.Cells(r0 + i0, c0 + j0), ws.Cells(r0 + i1, c0 + j1)).Formula = \
-                    tuple(tuple(grid[i][j0:j1 + 1]) for i in range(i0, i1 + 1))
+                setattr(ws.Range(ws.Cells(r0 + i0, c0 + j0), ws.Cells(r0 + i1, c0 + j1)), prop,
+                        tuple(tuple(grid[i][j0:j1 + 1]) for i in range(i0, i1 + 1)))
         return True
     except Exception as ex:
         print(f"  ⚠ 数式を控えの字面で入れ直せませんでした: {ex}")
@@ -1306,6 +1310,11 @@ def undo_agent(target_file=None, dry_run=False, force=False, which=None):
                 src_ur = src_ws.UsedRange
                 addr = _addr(src_ur)
                 src_snap = _sheet_snapshot(src_ws)      # 数式の字面もここで写す（貼り付け後に入れ直す）
+                if isinstance(src_snap, dict) and src_snap.get('formulas'):
+                    try:
+                        src_snap['formulas2'] = _rows_of(src_ur.Formula2)   # 動的配列の式を潰さずに入れ直すため
+                    except Exception:
+                        pass                                               # Formula2 の無い Excel
                 n_sheet, _ = _diff_sheet(src_snap, ws, limit=0)
                 # 大きすぎて数えられないシートは None。足し算で落ちると、作った物を消した後で戻しが止まっていた（2026-09-10 夜）
                 n_before += n_sheet or 0

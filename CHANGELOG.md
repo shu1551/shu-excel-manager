@@ -29,6 +29,12 @@
   数式も式の字で置き換えます（もとから置き換え後の字を含む式は、二重にならないよう飛ばします）。置き換えると式として成り立たないセルは元の式のまま残し、番地を知らせます
 - **シート名の大文字と小文字。** Excel のシート名は大文字と小文字を区別しないのに、`sheet add`・`sheet copy` は完全一致で重複を見ていたので、
   'Data' がある所に 'data' を足すと名前付けで落ちて「Sheet3」などの残骸が残っていました。先に断ります
+- **元に戻す（agent --undo）で、動的配列の式が 1 セルに潰れうる。** 控えから貼り戻した後、外部リンクに化けた式を入れ直すのに `.Formula` を使っていました。
+  他のシートを参照する FILTER・UNIQUE・XLOOKUP などは、そこで暗黙の交差 `@` が付いて結果が広がらなくなります。控えの式を `Formula2` で写し、`Formula2` で入れ直します（無い Excel は従来どおり）
+- **code-replace に CP932 の検査が無かった。** replace-procedure・add-procedure は、Shift_JIS で書けない文字（— ✓ 絵文字など）があると止まるのに、code-replace だけは素通しで、
+  VBE が黙って「?」に変えていました。書く前に止めます（`--force` で強行）
+- **確認ダイアログの設定を前の値に戻す。** replace-procedure・replace-module・import-module・reorder-macro・ピボット・クエリなど 10 か所で、
+  一時的に切った DisplayAlerts を、元の値に関係なく True に戻していました。前の値に戻します（人のマクロを走らせる run-macro・test は従来どおり必ず True に戻します）
 
 ## 直し（2026-10-28）— Python 3.13 以前で vba_manager.py が起動しなかった欠陥
 
