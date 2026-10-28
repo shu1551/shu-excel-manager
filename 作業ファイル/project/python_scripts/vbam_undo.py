@@ -606,12 +606,129 @@ def _agent_backup(wb, ws, sheet, request, run_id=None):
         return None
     meta = {'book': str(wb.Name), 'sheet': sheet, 'sheets': [sheet], 'path': path,
             'request': (request or '')[:300], 'time': time.strftime('%Y-%m-%d %H:%M:%S'),
-            'run_id': run_id, 'shapes': _shapes_geometry(ws)}
+            'run_id': run_id, 'shapes': _shapes_geometry(ws), 'layout': _sheet_layout(wb)}
     _save_undo_meta(meta)
     _prune_agent_backups(stem=stem)             # 同じブックの控えだけを数えて間引く（他のブックのは消さない）
     print(f"控え: {path}（書き換える前のブック全体。戻すなら py vba_manager.py agent --undo。"
           f"残っている控えの一覧は agent --backups）")
     return path
+
+
+def _sheet_layout(wb):
+    """ブックのシートの並び（コード名・名前・表示・タブの色・保護）→ [dict]。取れなければ []（2026-10-29）。
+    コード名は名前を変えても並べ替えても変わらないので、戻すときの目印にする。1 枚でもコード名が読めなければ [] ＝並びは戻さない"""
+    out = []
+    with contextlib.suppress(Exception):
+        _ = wb.VBProject.VBComponents.Count     # 新しいブックは VBE に一度触れるまでコード名が空（2026-10-29 実測）
+    try:
+        for sh in wb.Sheets:
+            code = str(getattr(sh, 'CodeName', '') or '')
+            if not code:
+                return []
+            try:
+                tab_idx, tab_color = int(sh.Tab.ColorIndex), int(sh.Tab.Color)
+            except Exception:
+                tab_idx, tab_color = -4142, 0
+            try:
+                prot = bool(sh.ProtectContents)
+            except Exception:
+                prot = False
+            out.append({'code': code, 'name': str(sh.Name), 'visible': int(sh.Visible),
+                        'tab_index': tab_idx, 'tab_color': tab_color, 'protected': prot})
+    except Exception:
+        return []
+    return out
+
+
+def _restore_layout(wb, layout):
+    """控えを取ったときのシートの並びに戻す → 報告の行（2026-10-29）。
+    072: 棚の「シート名を売上にして」「このシートをコピーして」「シートを名前順に並べて」が agent --undo で戻らなかった
+    （戻しは同じ名前のシートに中身を貼り戻すだけで、名前・並び・増えたシートは見ていなかった）。
+    名前・表示・タブの色・並びを戻し、控えの後に増えたシートは消す。後から付いた保護（パスワードなし）は外す"""
+    lines = []
+    if not layout:
+        return lines
+    with contextlib.suppress(Exception):
+        _ = wb.VBProject.VBComponents.Count     # 写したシートのコード名を付けさせる
+    by_code = {}
+    for sh in list(wb.Sheets):
+        by_code.setdefault(str(getattr(sh, 'CodeName', '') or ''), sh)
+    want = {e['code'] for e in layout}
+    if not all(e['code'] in by_code for e in layout):
+        lost = [e['name'] for e in layout if e['code'] not in by_code]
+        lines.append(f"⚠ 控えの後に消えたシートは戻りません: {'・'.join(lost)}")
+    # 増えたシート（コード名が控えに無い）を消す。見えるシートが無くならないよう、先に控えのシートを表示に戻す
+    for e in layout:
+        sh = by_code.get(e['code'])
+        if sh is not None and int(sh.Visible) != -1 and e['visible'] == -1:
+            with contextlib.suppress(Exception):
+                sh.Visible = -1
+    xl = wb.Application
+    for code, sh in list(by_code.items()):
+        if code not in want:
+            nm = str(sh.Name)
+            alerts = None
+            try:
+                alerts = bool(xl.DisplayAlerts)
+                xl.DisplayAlerts = False             # 「このシートは完全に削除されます」の窓で止まった（2026-10-29 実測）
+                sh.Delete()
+                lines.append(f"控えの後に増えたシートを消しました: {nm}")
+            except Exception as ex:
+                lines.append(f"⚠ 増えたシート {nm} を消せませんでした: {ex}")
+            finally:
+                if alerts is not None:
+                    with contextlib.suppress(Exception):
+                        xl.DisplayAlerts = alerts
+    # 名前（入れ替わりでぶつからないよう、いったん仮の名前にしてから）
+    moved = [e for e in layout if e['code'] in by_code and str(by_code[e['code']].Name) != e['name']]
+    for k, e in enumerate(moved):
+        with contextlib.suppress(Exception):
+            by_code[e['code']].Name = f"~戻し{k}"
+    for e in moved:
+        sh = by_code[e['code']]
+        try:
+            sh.Name = e['name']
+            lines.append(f"シートの名前を戻しました: 「{e['name']}」")
+        except Exception as ex:
+            lines.append(f"⚠ シートの名前を「{e['name']}」に戻せませんでした: {ex}")
+    # 並び。隠れたシートの前へ動かすと Excel が違う所に置く（2026-10-29 実測）＝並べる間だけ全部表示し、下で表示を控えのとおりに戻す
+    order = [by_code[e['code']] for e in layout if e['code'] in by_code]
+    if [str(sh.Name) for sh in order] != [str(sh.Name) for sh in wb.Sheets]:
+        for sh in order:
+            with contextlib.suppress(Exception):
+                if int(sh.Visible) != -1:
+                    sh.Visible = -1
+    changed = False
+    for i, sh in enumerate(order, 1):
+        try:
+            if int(sh.Index) != i:
+                sh.Move(Before=wb.Sheets(i))
+                changed = True
+        except Exception:
+            pass
+    if changed:
+        lines.append("シートの並びを戻しました")
+    # 表示・タブの色・保護
+    for e in layout:
+        sh = by_code.get(e['code'])
+        if sh is None:
+            continue
+        with contextlib.suppress(Exception):
+            if int(sh.Visible) != e['visible']:
+                sh.Visible = e['visible']
+                lines.append(f"シート「{e['name']}」の表示を戻しました")
+        with contextlib.suppress(Exception):
+            if int(sh.Tab.ColorIndex) != e['tab_index'] or (e['tab_index'] != -4142 and int(sh.Tab.Color) != e['tab_color']):
+                if e['tab_index'] == -4142:
+                    sh.Tab.ColorIndex = -4142
+                else:
+                    sh.Tab.Color = e['tab_color']
+                lines.append(f"シート「{e['name']}」のタブの色を戻しました")
+        with contextlib.suppress(Exception):
+            if bool(sh.ProtectContents) and not e['protected']:
+                sh.Unprotect()
+                lines.append(f"シート「{e['name']}」の保護を外しました（控えのときは保護なし）")
+    return lines
 
 
 def _backup_meta_path(path):
@@ -1262,6 +1379,10 @@ def undo_agent(target_file=None, dry_run=False, force=False, which=None):
         print(f"エラー: 控えは「{book}」のものです（いま開いているのは「{wb.Name}」）。"
               "そのブックを開いてアクティブにしてから、もう一度 --undo してください")
         return False
+    layout = meta.get('layout') or []
+    if layout and not dry_run:
+        for ln in _restore_layout(wb, layout):       # 名前・並び・増えたシートを先に戻す（同じ名前のシートに貼り戻すため）
+            print("  " + ln)
     have_sheets = [sh.Name for sh in wb.Sheets]
     missing = [s for s in sheets if s not in have_sheets]
     if missing:
@@ -1393,4 +1514,4 @@ def undo_agent(target_file=None, dry_run=False, force=False, which=None):
     return True
 
 
-__all__ = ['_AGENT_BACKUP_KEEP', '_AGENT_BACKUP_MARK', '_AGENT_BACKUP_META_EXT', '_CHANGES_HEADER', '_CHANGES_MAX_ROWS', '_CREATED_PATTERNS', '_EMPTY_SNAPSHOT', '_FORMAT_COLS_MAX', '_HEAVY_OPS', '_LAST_AGENT_CHANGES_FILE', '_LAST_AGENT_UNDO_FILE', '_NUMLIKE_RE', '_READONLY_HEAVY_ACTIONS', '_READONLY_OPS', '_REPORT_ADDR_RE', '_REPORT_DID_RE', '_REPORT_FORMULA_RE', '_REPORT_RANGE_RE', '_REPORT_SAID_BLANK_RE', '_REPORT_SAID_BLANK_WINDOW', '_SNAPSHOT_MAX_CELLS', '_XL_ALIGN', '_XL_BORDERS', '_act_sheet', '_act_writes', '_agent_backup', '_backup_meta_path', '_cell_pair', '_change_side', '_changes_of', '_changes_table', '_clip', '_created_from_results', '_delete_created', '_diff_sheet', '_drop_backup_link', '_find_listobject', '_format_changes', '_format_snapshot', '_format_table', '_formula_blocks', '_formula_rate', '_line_text', '_list_backups', '_load_undo_meta', '_mark_undo_stale', '_mixed', '_other_sheets_in', '_pick_backup', '_pick_shape', '_pivot_sheets_in', '_prune_agent_backups', '_record_created', '_report_addrs', '_report_did_section', '_restore_formulas', '_runs_after', '_same_path', '_save_undo_meta', '_shapes_geometry', '_sheet_snapshot', '_unbound_shape_names', '_undo_add_sheet', '_undo_add_sheets', '_undo_shapes', '_undo_sheets', '_will_write', '_write_changes_file', 'backups_list', 'backups_prune', 'show_changes', 'undo_agent']
+__all__ = ['_AGENT_BACKUP_KEEP', '_AGENT_BACKUP_MARK', '_AGENT_BACKUP_META_EXT', '_CHANGES_HEADER', '_CHANGES_MAX_ROWS', '_CREATED_PATTERNS', '_EMPTY_SNAPSHOT', '_FORMAT_COLS_MAX', '_HEAVY_OPS', '_LAST_AGENT_CHANGES_FILE', '_LAST_AGENT_UNDO_FILE', '_NUMLIKE_RE', '_READONLY_HEAVY_ACTIONS', '_READONLY_OPS', '_REPORT_ADDR_RE', '_REPORT_DID_RE', '_REPORT_FORMULA_RE', '_REPORT_RANGE_RE', '_REPORT_SAID_BLANK_RE', '_REPORT_SAID_BLANK_WINDOW', '_SNAPSHOT_MAX_CELLS', '_XL_ALIGN', '_XL_BORDERS', '_act_sheet', '_act_writes', '_agent_backup', '_backup_meta_path', '_cell_pair', '_change_side', '_changes_of', '_changes_table', '_clip', '_created_from_results', '_delete_created', '_diff_sheet', '_drop_backup_link', '_find_listobject', '_format_changes', '_format_snapshot', '_format_table', '_formula_blocks', '_formula_rate', '_line_text', '_list_backups', '_load_undo_meta', '_mark_undo_stale', '_mixed', '_other_sheets_in', '_pick_backup', '_pick_shape', '_pivot_sheets_in', '_prune_agent_backups', '_record_created', '_report_addrs', '_report_did_section', '_restore_formulas', '_restore_layout', '_runs_after', '_sheet_layout', '_same_path', '_save_undo_meta', '_shapes_geometry', '_sheet_snapshot', '_unbound_shape_names', '_undo_add_sheet', '_undo_add_sheets', '_undo_shapes', '_undo_sheets', '_will_write', '_write_changes_file', 'backups_list', 'backups_prune', 'show_changes', 'undo_agent']
