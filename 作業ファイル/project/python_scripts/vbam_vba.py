@@ -9054,6 +9054,9 @@ def cmd_gate(args):
     # 本体は健診モードで掴む（閉じているブックを自動で開く場合に Workbook_Open を起こさない）
     xl_src, wb_src = get_workbook(target_file, readonly=True)
     src_name = wb_src.Name
+    # 2026-10-29: 下の check／test が写しを掴むと台帳（_calls.jsonl）の book が写しの名前になった（register-addin で
+    # 秀コンボ_関所_….xlsm と残った）。呼び出しの対象のブック名を控え、写しを閉じる所で戻す
+    book_name = vbam_core._last_book_name
     # 使う人の Excel の空のブックを控える（関所の後に増えた分だけ閉じる）
     blanks_before = _blank_book_names(xl_src)
     # 抜け殻の VBA プロジェクトが残った Excel（更新登録を重ねた・落ちて立ち上がり直した）では、演習用 Excel のテストが途中で
@@ -9170,6 +9173,7 @@ def cmd_gate(args):
     except Exception as e:
         fatal = _com_error_text(e)
     finally:
+        vbam_core._last_book_name = book_name
         wd.stop()
         if wd.fired:
             timed_out = True

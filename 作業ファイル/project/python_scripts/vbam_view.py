@@ -709,6 +709,29 @@ def _table_body_rows(rows, body, n_head):
     return out
 
 
+def _head_prefix_groups(heads):
+    """見出しの頭の語が同じ列の組 → [(頭の語, [列 index…])]（純 Python・2 列以上の組だけ）。
+
+    2026-10-29: 未記入の段を「返却」の決め打ちでなく、どの表の組（承認日・承認者／支払日・支払額）でも拾うため。
+    頭の 2 文字が同じ見出しを 1 組にし、組の見出しの共通の頭（末尾の区切りは落とす）を頭の語とする。
+    数字だけの頭（2024年・2025年 の列）は組にしない。"""
+    by_head = {}
+    for j, v in enumerate(heads):
+        if not isinstance(v, str):
+            continue
+        s = unicodedata.normalize('NFKC', v).strip()
+        if len(s) >= 2:
+            by_head.setdefault(s[:2], []).append((j, s))
+    out = []
+    for items in by_head.values():
+        if len(items) < 2:
+            continue
+        key = os.path.commonprefix([s for _j, s in items]).rstrip(' _-・/／(（[［')
+        if len(key) >= 2 and any(c.isalpha() for c in key):
+            out.append((key, [j for j, _s in items]))
+    return sorted(out, key=lambda g: g[1][0])
+
+
 def _date_col_formats(ws, grid, r0, c0, header_idx):
     """日付型の列ごとに表示形式の集合を集める。列まとめての NumberFormat が None（＝混在）のときだけセル単位で拾う。"""
     out = {}
@@ -1084,27 +1107,26 @@ def dirt_notes(grid, r0=1, c0=1, header_idx=None, col_formats=None, limit=12, lo
                             chohyo_cells.add(f"{_col_letter(c_abs)}{r_abs}")
 
     # 意味のある空欄（未記入の段: 例 返却日・返却担当がそろって空で備考に「貸出中」など）
+    # 2026-10-29: 「返却」「貸出中」の決め打ち（10/24 試験の貸出簿の語）を止め、見出しの頭の語が同じ列の組
+    # （返却日・返却担当／承認日・承認者／支払日・支払額）が、ある行でそろって空・半分以上の行ではそろって埋まっている形で拾う
     meaningful_blanks = set()
     unfilled_stages = []
     if h >= 0 and body:
-        for j in range(width):
-            hd = str(heads[j] or "")
-            if "返却" in hd:
-                ret_cols = [k for k in range(width) if "返却" in str(heads[k] or "")]
-                if len(ret_cols) >= 2:
-                    rows_unfilled = []
-                    for i in body:
-                        if all(_blank_cell(rows[i][k]) for k in ret_cols):
-                            row_vals = [str(rows[i][k] or "") for k in range(width)]
-                            label = next((v for v in row_vals if any(w in v for w in ("貸出中", "中", "未", "予定"))), "")
-                            rows_unfilled.append((r0 + i, label))
-                            for k in ret_cols:
-                                meaningful_blanks.add(addr(i, k))
-                    if rows_unfilled:
-                        lbl = rows_unfilled[0][1] if rows_unfilled[0][1] else ""
-                        row_nums = "・".join(str(r) for r, _ in rows_unfilled[:10])
-                        unfilled_stages.append(f"未記入の段: 返却（行 {row_nums}）{' [' + lbl + ']' if lbl else ''}")
-                break
+        stage_rows = _table_body_rows(rows, body, sum(1 for v in heads if not _blank_cell(v)))
+        for key, cols in _head_prefix_groups(heads):
+            empty = [i for i in stage_rows if all(_blank_cell(rows[i][k]) for k in cols)]
+            full = [i for i in stage_rows if not any(_blank_cell(rows[i][k]) for k in cols)]
+            if not empty or len(full) < 2 or len(full) * 2 < len(stage_rows):
+                continue
+            for i in empty:
+                for k in cols:
+                    meaningful_blanks.add(addr(i, k))
+            # 行の札はその行の左端の値（どの表でも取れる物）
+            shown = []
+            for i in empty[:10]:
+                lbl = next((str(norm(v)) for v in rows[i] if not _blank_cell(v)), "")
+                shown.append(f"{r0 + i}" + (f" [{lbl[:20]}]" if lbl else ""))
+            unfilled_stages.append(f"未記入の段: {key}（行 {'・'.join(shown)}{'…' if len(empty) > 10 else ''}）")
 
     blanks = []
     if h >= 0 and body:
