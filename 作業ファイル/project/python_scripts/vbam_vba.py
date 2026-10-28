@@ -8333,7 +8333,11 @@ def _remove_run_harness(h):
               "手で削除してください）", file=sys.stderr)
     if h.get("was_saved"):
         try:
-            h["wb"].Saved = True
+            wb = h["wb"]
+            # 保存済みに戻すのはアドインと PERSONAL だけ。持ち主が人のブックだと、撃ったマクロがそのブックを書き換えていても
+            # 保存済みになり、閉じるときに確認なしで書き換えが消えていた（2026-10-29 総点検 1）
+            if bool(wb.IsAddin) or str(wb.Name).upper().startswith("PERSONAL."):
+                wb.Saved = True
         except Exception:
             pass
 
