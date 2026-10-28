@@ -1280,23 +1280,30 @@ Function スピルの元なら範囲(ByVal c As Range) As Range
     Set スピルの元なら範囲 = c.SpillingToRange
 End Function
 
-' 値の並び（範囲の .Value）を、文字は文字のまま（数・日付に化ける字には ' を付けて）書き戻す（2026-10-28）。
-' スピルの範囲を値にするとき、元のセルを書いた時点で広がった側が消えるので、値は先に控えたものを渡す
-Sub 値を書き戻す(ByVal rng As Range, ByVal v As Variant)
+' 範囲の .Value（配列か 1 つの値）の文字を、数・日付に化けないよう文字のまま書く字にした写し（まとめて書くとき用・2026-10-28）。
+' 配列で読んで配列で書くと、文字の 00123・1-2・16 桁の番号を Excel が数・日付に読み替える。書き先は表示形式が @ でない所
+Function 文字を守った配列(ByVal v As Variant) As Variant
     Dim i As Long, j As Long
     If Not IsArray(v) Then
-        If VarType(v) = vbString Then rng.Cells(1, 1).Value = 文字のまま書く字(CStr(v)) Else rng.Cells(1, 1).Value = v
-        Exit Sub
+        If VarType(v) = vbString Then 文字を守った配列 = 文字のまま書く字(CStr(v)) Else 文字を守った配列 = v
+        Exit Function
     End If
     For i = LBound(v, 1) To UBound(v, 1)
         For j = LBound(v, 2) To UBound(v, 2)
-            If VarType(v(i, j)) = vbString Then
-                rng.Cells(i - LBound(v, 1) + 1, j - LBound(v, 2) + 1).Value = 文字のまま書く字(CStr(v(i, j)))
-            Else
-                rng.Cells(i - LBound(v, 1) + 1, j - LBound(v, 2) + 1).Value = v(i, j)
-            End If
+            If VarType(v(i, j)) = vbString Then v(i, j) = 文字のまま書く字(CStr(v(i, j)))
         Next j
     Next i
+    文字を守った配列 = v
+End Function
+
+' 値の並び（範囲の .Value）を、文字は文字のまま書き戻す（2026-10-28）。
+' スピルの範囲を値にするとき、元のセルを書いた時点で広がった側が消えるので、値は先に控えたものを渡す
+Sub 値を書き戻す(ByVal rng As Range, ByVal v As Variant)
+    If IsArray(v) Then
+        rng.Cells(1, 1).Resize(UBound(v, 1) - LBound(v, 1) + 1, UBound(v, 2) - LBound(v, 2) + 1).Value = 文字を守った配列(v)
+    Else
+        rng.Cells(1, 1).Value = 文字を守った配列(v)
+    End If
 End Sub
 
 ' 1 セル・1 行だけの範囲の値（スカラー）も、2 次元の配列にそろえる（2026-10-22）
