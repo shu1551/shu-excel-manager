@@ -6636,3 +6636,23 @@ def test_build_sheet_ask_does_not_wipe_a_sheet_because_the_ai_said_overwrite(mon
                           "new_book": False, "sample": False, "recipe": None, "recipes": False, "ai": None, "model": None})()
     assert cmd(args) is False
     assert cleared == [] and "既に中身があります" in capsys.readouterr().out
+
+
+def test_blanks_inside_a_vertical_merge_over_two_columns_are_not_reported():
+    """帳票の縦結合が 2 列にまたがる（A2:B3）と、左端の列しか除外せず B 列を「表の中の空欄」と言っていた。
+    材料側（vbam_hands._table_blanks）は結合を渡しておらず、除外が一度も効いていなかった（2026-10-28 点検）。"""
+    import vbam_view
+    import vbam_hands as vh
+    grid = [["番号", "品名", "数量"],
+            ["1", "ノートPC", "1"],
+            [None, None, "1"],
+            ["2", "プロジェクター", "1"],
+            [None, None, "2"],
+            ["3", "マウス", "1"]]
+    merged = ["A2:B3", "A4:B5"]
+    blanks = vh._table_blanks(grid, 1, 1, 0, merged)
+    assert blanks == []
+    assert vh._table_blanks(grid, 1, 1, 0) == ["A3", "B3", "A5", "B5"]          # 結合を知らなければ数える
+    assert vh._table_blanks(grid, 1, 1, 0, ["$A$2:$B$3", "$A$4:$B$5"]) == []     # $ 付きの番地でも
+    notes = " ".join(vbam_view.dirt_notes(grid, r0=1, c0=1, header_idx=0, merged_areas=merged))
+    assert "B3" not in notes and "B5" not in notes

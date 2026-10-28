@@ -489,12 +489,14 @@ def _table_blanks(grid, r0, c0, header_idx, merged_areas=None):
     chohyo_cells = set()
     if merged_areas:
         for ma in merged_areas:
-            m = re.match(r'([A-Za-z]+)(\d+):([A-Za-z]+)(\d+)', str(ma))
+            m = re.match(r'^\$?([A-Za-z]+)\$?(\d+):\$?([A-Za-z]+)\$?(\d+)$', str(ma).split('!')[-1])
             if m:
                 c1, r1, c2, r2 = m.groups()
                 if int(r2) > int(r1):
+                    # 結合にかかる列を全部（前は左端の列だけで、B3:C4 の C 列を空欄と数えていた・2026-10-28 点検）
                     for r_abs in range(int(r1), int(r2) + 1):
-                        chohyo_cells.add(f"{c1}{r_abs}")
+                        for c_abs in range(_col_num(c1), _col_num(c2) + 1):
+                            chohyo_cells.add(f"{_col_letter(c_abs)}{r_abs}")
 
     body = [(i, r) for i, r in enumerate(rows) if i > h and not all(blank(v) for v in r)]
     if not body:
@@ -744,7 +746,14 @@ def _extra_materials(wb, ws):
                 lines.append(f"番号列の文字の数字（会員番号・コードなど＝文字のままが正常。直さない）: {len(idlike)} セル "
                              + " ".join(idlike[:12]) + ("…" if len(idlike) > 12 else ""))
             lines.append(f"日付に見える文字: {len(datelike)} セル " + " ".join(datelike[:30]) + ("…" if len(datelike) > 30 else ""))
-            blanks = _table_blanks(grid, r0, c0, (hr[0] - r0) if hr else None)
+            # 縦結合（帳票）の中は空欄に数えない。前は結合を渡しておらず、この除外が一度も効いていなかった
+            # （材料が結合の内側を「埋める空欄」と言い、AI が書くと結合が解ける・2026-10-28 点検）
+            try:
+                from vbam_view import _merged_areas_in_range
+                merged = _merged_areas_in_range(ur)[0]
+            except Exception:
+                merged = None
+            blanks = _table_blanks(grid, r0, c0, (hr[0] - r0) if hr else None, merged)
             lines.append(f"表の中の空欄（見出しの下で、同じ列の他の行は埋まっている）: {len(blanks)} セル "
                          + " ".join(blanks[:20]) + ("…" if len(blanks) > 20 else "")
                          + ("（隣の列から一意に決まる値＝氏名→フリガナ・対応表のあるコード→名称は埋めて report に書く。"
