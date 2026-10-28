@@ -977,7 +977,10 @@ def cmd_build_sheet(args):
     except ValueError as ex:
         print(f"エラー: 設計図に問題があります: {ex}")
         return False
-    overwrite = bool(getattr(args, 'overwrite', False)) or plan['overwrite']
+    # AI に書かせた設計図（--ask）の overwrite は数えない＝中身のあるシートを消すのは人の --overwrite だけ
+    # （agent の run_build は 2026-09-04 に塞いでいたが、build-sheet --ask はまだ AI の一言で Cells.Clear していた・2026-10-28 点検）。
+    # 人が書いた設計図ファイルの overwrite は今まで通り効く
+    overwrite = bool(getattr(args, 'overwrite', False)) or (plan['overwrite'] and not ask)
     print(_plan_summary(plan))
     if dry:
         print("（--dry-run: Excel には触っていません）")

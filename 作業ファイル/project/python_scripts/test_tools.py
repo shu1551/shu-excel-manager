@@ -6614,3 +6614,25 @@ def test_delete_control_stops_when_the_form_cannot_be_backed_up(monkeypatch):
     with pytest.raises(SystemExit):
         ft.cmd_delete(args)
     assert removed == []
+
+
+def test_build_sheet_ask_does_not_wipe_a_sheet_because_the_ai_said_overwrite(monkeypatch, capsys):
+    """build-sheet --ask は、AI が設計図に "overwrite": true と書くだけで中身のあるシートを Cells.Clear していた
+    （agent の run_build は 2026-09-04 に塞いでいた・2026-10-28 点検）。消すのは人の --overwrite だけ。"""
+    import inspect
+    import vbam_build as vb
+    spec = dict(vb.SAMPLE_SPEC, overwrite=True)
+    monkeypatch.setattr(vb, "ask_design", lambda *a, **k: spec)
+    cleared = []
+    ur = type("U", (), {"Rows": type("R", (), {"Count": 5})(), "Columns": type("C", (), {"Count": 3})(), "Row": 1, "Column": 1})()
+    ws = type("WS", (), {"Name": spec["sheet"], "UsedRange": ur,
+                         "Cells": type("Cs", (), {"Clear": lambda s: cleared.append(1)})()})()
+    wb = type("WB", (), {"Worksheets": [ws], "Sheets": [ws], "Name": "人の.xlsx"})()
+    monkeypatch.setattr(vb, "get_workbook", lambda *a, **k: (None, wb))
+    monkeypatch.setattr(vb, "_book_materials", lambda wb: None)
+    monkeypatch.setattr(vb, "_find_sheet", lambda wb, name: ws)
+    cmd = inspect.unwrap(vb.cmd_build_sheet)
+    args = type("A", (), {"posargs": [], "ask": "名簿を作り直して", "overwrite": False, "dry_run": False,
+                          "new_book": False, "sample": False, "recipe": None, "recipes": False, "ai": None, "model": None})()
+    assert cmd(args) is False
+    assert cleared == [] and "既に中身があります" in capsys.readouterr().out
