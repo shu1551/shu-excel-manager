@@ -13543,3 +13543,702 @@ Sub 美化の色を言って撃つ(ByVal 色 As String)
     Call 表のデザインを美化する
     コンボ道具.m頼みの文 = 元
 End Sub
+
+' ---- 見つけるだけの棚が見つける物を直す棚 3 本（2026-10-28） ----
+' 数式の危ない所を右に報告する（合計のずれ・ならびの違う式）と 列番号を直書きした式を一覧にする が見つける物を、式のまま直す。
+' 3 本とも式のセルだけを書き換える（値のセル・人の値は触らない）。書くのは下の 変えた式だけ書く だけ
+' （表の整理_下請け.変えたセルだけ書く は数式セルを元の式のまま書き戻す作りなので、式を書き換えるのには使えない）。
+
+Sub 合計の式の範囲を表の終わりまで広げる()
+    ' 依頼の語: 合計の範囲が足りない|合計の範囲を広げ|合計の範囲を直|合計の範囲がずれ|SUMの範囲を直|SUMの範囲を広げ|SUMの範囲が足りない|SUMの範囲がずれ|集計漏れを直|合計の取りこぼしを直|合計に入っていない|合計から漏れ|合計の式の範囲
+    ' 依頼の組: 合計,SUM,縦計,集計+範囲,漏れ,取りこぼし,届いていない,足りない,入っていない,含まれていない+直して,直す,直し,広げ,伸ばし,修正,含め,入れ+-一覧,報告,調べ,点検,確かめ,どこ,教えて,合計行を足,ピボット,小計行
+    ' 扱う: 数式 SUM 合計 範囲 集計漏れ
+    ' 見出し: なし
+    ' 形: 数の列
+    ' 変えてよい: 数式
+    ' 列の合計の式（=SUM(D2:D8)・=SUBTOTAL(9,D2:D8)）の範囲が、すぐ上に続く明細の行まで届いていない所を、届く範囲に広げる
+    '   （例: 明細が D2:D10 なのに D11 が =SUM(D2:D8) → =SUM(D2:D10)）。
+    '   直すのは、引数が同じ列の 1 列の範囲 1 つだけの合計で、式のセルがその列の範囲より下にあり、表の本文の最後の行以下か合計の行にあるとき。
+    '   範囲の下から式の 1 つ上までの数のセルを足す（文字・エラー値・合計の式・合計の行・まるごと空の行で止める）。
+    '   広げた範囲の下から式までが空で、足す行を同じ列のほかの合計の式（上期計・下期計など）が足していないときだけ直す。
+    '   範囲の上へは広げない（数の見出し「4」「2025」を合計に足してしまう）。値のセルは触らない
+    Dim ws As Worksheet, 式域 As Range, cel As Range, 列域 As Range, 他 As Range
+    Dim f As String, 新 As String, 関 As Variant, 所() As Long, 所数 As Long, k As Long
+    Dim 位置() As Long, 長さ() As Long, 数 As Long, 引番 As Long, 元引 As String, 引 As String, 前空 As Long, 後空 As Long
+    Dim 列字 As String, 上 As Long, 下 As Long, 新下 As Long, r As Long, 届く As Boolean
+    Dim 本文末 As Long, 左 As Long, 右 As Long
+    Dim 直した As Long, 失敗 As Long, 番地 As String, 例 As String
+    Dim oldScreen As Boolean, oldEvents As Boolean
+
+    Set ws = ActiveSheet
+    On Error Resume Next
+    Set 式域 = ws.UsedRange.SpecialCells(xlCellTypeFormulas)
+    On Error GoTo 0
+    If 式域 Is Nothing Then
+        Call 先撃ちに断る("このシートに式がありません（広げる合計の式は見つかりませんでした）。")
+        Exit Sub
+    End If
+    本文末 = 表の本文の最終行(ws)
+    左 = ws.UsedRange.Column
+    右 = 左 + ws.UsedRange.Columns.Count - 1
+
+    oldScreen = Application.ScreenUpdating
+    oldEvents = Application.EnableEvents
+    On Error GoTo 後始末
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+
+    For Each cel In 式域.Cells
+        If cel.HasArray Then GoTo 次のセル
+        f = cel.Formula
+        If Len(f) > 8000 Then GoTo 次のセル
+        新 = f
+        For Each 関 In Array("SUBTOTAL", "SUM")
+            所数 = 式の関数の位置(新, CStr(関), 所)
+            ' 後ろの呼び出しから直す（前の呼び出しの位置がずれない）
+            For k = 所数 To 1 Step -1
+                数 = 式の引数を切る(新, 所(k) + Len(関) + 1, 位置, 長さ)
+                引番 = 0
+                If 関 = "SUM" And 数 = 1 Then 引番 = 1
+                If 関 = "SUBTOTAL" And 数 = 2 Then
+                    If Trim$(Mid$(新, 位置(1), 長さ(1))) = "9" Or Trim$(Mid$(新, 位置(1), 長さ(1))) = "109" Then 引番 = 2
+                End If
+                If 引番 > 0 Then
+                    元引 = Mid$(新, 位置(引番), 長さ(引番))
+                    引 = Trim$(元引)
+                    前空 = Len(元引) - Len(LTrim$(元引))
+                    後空 = Len(元引) - Len(RTrim$(元引))
+                    If 一列の範囲か(引, 列字, 上, 下) Then
+                        If 列字の番号(列字) = cel.Column And cel.Row > 下 Then
+                            If cel.Row >= 本文末 Or 集計の行か(ws, cel.Row, 左, 右) Then
+                                新下 = 下
+                                For r = 下 + 1 To cel.Row - 1
+                                    If 合計で止める(ws, ws.Cells(r, cel.Column), 左, 右) Then Exit For
+                                    If Not IsEmpty(ws.Cells(r, cel.Column).Value) And VarType(ws.Cells(r, cel.Column).Value) <> vbString Then 新下 = r
+                                Next r
+                                届く = (新下 > 下)
+                                ' 広げた範囲の下から式までは空（間に文字・メモ・別の式があれば触らない）
+                                For r = 新下 + 1 To cel.Row - 1
+                                    If Not IsEmpty(ws.Cells(r, cel.Column).Value) Then 届く = False
+                                Next r
+                                ' 足す行を、同じ列のほかの合計の式が足していれば触らない（上期計と下期計を分けた表）
+                                If 届く Then
+                                    Set 列域 = Intersect(式域, ws.Columns(cel.Column))
+                                    For Each 他 In 列域.Cells
+                                        If 他.Row <> cel.Row Then
+                                            If 同じ列を合計しているか(他.Formula, cel.Column, 下 + 1, 新下) Then 届く = False: Exit For
+                                        End If
+                                    Next 他
+                                End If
+                                If 届く Then
+                                    新 = Left$(新, 位置(引番) - 1) & Left$(元引, 前空) & 行を変えた範囲(引, 上, 新下) & Right$(元引, 後空) & Mid$(新, 位置(引番) + 長さ(引番))
+                                End If
+                            End If
+                        End If
+                    End If
+                End If
+            Next k
+        Next 関
+        If 新 <> f Then
+            If 変えた式だけ書く(cel, 新, False) Then
+                直した = 直した + 1
+                If 直した <= 6 Then 番地 = 番地 & IIf(Len(番地) > 0, "・", "") & cel.Address(False, False)
+                If 直した = 1 Then 例 = "（例: " & cel.Address(False, False) & " " & f & " → " & 新 & "）"
+            Else
+                失敗 = 失敗 + 1
+            End If
+        End If
+次のセル:
+    Next cel
+
+    If 直した = 0 Then
+        Call 先撃ちに断る("範囲が明細の行まで届いていない合計の式は見つかりませんでした（何も変えていません）。" & IIf(失敗 > 0, "　書けなかった式 " & 失敗 & " 件", ""))
+    Else
+        Application.StatusBar = "合計の式 " & 直した & " 件の範囲を明細の行まで広げました（" & 番地 & IIf(直した > 6, " ほか", "") & "）" & 例 & IIf(失敗 > 0, "　書けなかった式 " & 失敗 & " 件", "")
+    End If
+
+後始末:
+    Application.ScreenUpdating = oldScreen
+    Application.EnableEvents = oldEvents
+    If Err.Number <> 0 Then Err.Raise Err.Number
+End Sub
+
+Sub 下へ写した式の絶対参照の抜けを直す()
+    ' 依頼の語: 絶対参照の抜け|絶対参照が抜け|絶対参照になっていない|絶対参照にし忘れ|絶対参照を付け忘れ|絶対参照の付け忘れ|＄が抜け|＄が付いていない|＄の付け忘れ|＄を付け忘れ|ドルマークが抜け|ドルマークの付け忘れ|ドルマークを付け忘れ|参照を固定し忘れ|参照の固定が抜け|コピーしたら参照がずれ|下にコピーするとずれ|下にコピーしたらずれ
+    ' 依頼の組: 絶対参照,$,＄,ドルマーク,参照の固定+抜け,忘れ,付いていない,なっていない,ずれ,無い,ない+直して,直す,直し,修正,そろえ,付けて,付け直+-一覧,報告,調べ,点検,確かめ,どこ,教えて,外して,相対参照に
+    ' 扱う: 数式 絶対参照 コピー ずれ
+    ' 見出し: なし
+    ' 形: なし
+    ' 変えてよい: 数式
+    ' 下へ写す前提の式で、動いてはいけない参照に $ が無い所を、同じ列の式の多数の形にそろえる
+    '   （例: E2:E9 が =D2*$G$1 なのに E10 が =D10*G9 → =D10*$G$1）。
+    '   列ごとに式の形（R1C1）を比べ、3 本以上で半分より多い形を多数とする。多数と違う式のうち、違いが「多数では $ の付いた行・列に $ が無い」所だけの式を直す。
+    '   直すのは、その形の式が 1 本だけか、多数の 4 分の 1 以下のとき（下に続く別の表のまとまりは触らない）。
+    '   関数・数・文字・相対の位置のずれなど、$ の付け忘れ以外の違いがある式（合計の行など）は触らない。値のセルは触らない
+    Dim ws As Worksheet, 式域 As Range, 列域 As Range, cel As Range
+    Dim 左 As Long, 右 As Long, c As Long, i As Long, k As Long, 件 As Long
+    Dim 式() As String, 番地々() As String, 形番() As Long, 形々() As String, 形数() As Long, 形の数 As Long, 最多 As Long, 多数 As String
+    Dim 骨多 As String, 骨少 As String, 参多() As String, 参少() As String, 数多 As Long, 数少 As Long, 抜け As Long, 合う As Boolean
+    Dim 直した As Long, 失敗 As Long, 番地 As String, 例 As String, 前 As String
+    Dim oldScreen As Boolean, oldEvents As Boolean
+
+    Set ws = ActiveSheet
+    On Error Resume Next
+    Set 式域 = ws.UsedRange.SpecialCells(xlCellTypeFormulas)
+    On Error GoTo 0
+    If 式域 Is Nothing Then
+        Call 先撃ちに断る("このシートに式がありません（$ の抜けた式は見つかりませんでした）。")
+        Exit Sub
+    End If
+    左 = ws.UsedRange.Column
+    右 = 左 + ws.UsedRange.Columns.Count - 1
+
+    oldScreen = Application.ScreenUpdating
+    oldEvents = Application.EnableEvents
+    On Error GoTo 後始末
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+
+    For c = 左 To 右
+        Set 列域 = Intersect(式域, ws.Columns(c))
+        If 列域 Is Nothing Then GoTo 次の列
+        If 列域.Cells.CountLarge < 3 Then GoTo 次の列
+        件 = 0
+        ReDim 式(1 To 列域.Cells.Count): ReDim 番地々(1 To 列域.Cells.Count): ReDim 形番(1 To 列域.Cells.Count)
+        For Each cel In 列域.Cells
+            If Not cel.HasArray Then
+                件 = 件 + 1
+                式(件) = cel.FormulaR1C1
+                番地々(件) = cel.Address(False, False)
+            End If
+        Next cel
+        If 件 < 3 Then GoTo 次の列
+        ' 多数の形（形が 64 を超える列は多数が無いと見て飛ばす）
+        形の数 = 0
+        ReDim 形々(1 To 64): ReDim 形数(1 To 64)
+        For i = 1 To 件
+            For k = 1 To 形の数
+                If 形々(k) = 式(i) Then Exit For
+            Next k
+            If k > 形の数 Then
+                If 形の数 = 64 Then GoTo 次の列
+                形の数 = 形の数 + 1
+                形々(形の数) = 式(i)
+            End If
+            形数(k) = 形数(k) + 1
+            形番(i) = k
+        Next i
+        最多 = 0: 多数 = ""
+        For k = 1 To 形の数
+            If 形数(k) > 最多 Then 最多 = 形数(k): 多数 = 形々(k)
+        Next k
+        If 最多 * 2 <= 件 Or 最多 = 件 Then GoTo 次の列
+        骨多 = R1C1の骨組み(多数, 参多, 数多)
+        For i = 1 To 件
+            If 式(i) <> 多数 And (形数(形番(i)) = 1 Or 形数(形番(i)) * 4 <= 最多) Then
+                骨少 = R1C1の骨組み(式(i), 参少, 数少)
+                合う = (骨少 = 骨多 And 数少 = 数多)
+                抜け = 0
+                If 合う Then
+                    For k = 1 To 数多
+                        If 参多(k) <> 参少(k) Then
+                            If ドルの抜けだけか(参多(k), 参少(k)) Then
+                                抜け = 抜け + 1
+                            Else
+                                合う = False
+                                Exit For
+                            End If
+                        End If
+                    Next k
+                End If
+                If 合う And 抜け > 0 Then
+                    Set cel = ws.Range(番地々(i))
+                    前 = cel.Formula
+                    If 変えた式だけ書く(cel, 多数, True) Then
+                        直した = 直した + 1
+                        If 直した <= 6 Then 番地 = 番地 & IIf(Len(番地) > 0, "・", "") & 番地々(i)
+                        If 直した = 1 Then 例 = "（例: " & 番地々(i) & " " & 前 & " → " & cel.Formula & "）"
+                    Else
+                        失敗 = 失敗 + 1
+                    End If
+                End If
+            End If
+        Next i
+次の列:
+    Next c
+
+    If 直した = 0 Then
+        Call 先撃ちに断る("同じ列の多数の式と比べて $ の抜けた式は見つかりませんでした（何も変えていません）。" & IIf(失敗 > 0, "　書けなかった式 " & 失敗 & " 件", ""))
+    Else
+        Application.StatusBar = "$ の抜けた式 " & 直した & " 件を同じ列の多数の形にそろえました（" & 番地 & IIf(直した > 6, " ほか", "") & "）" & 例 & IIf(失敗 > 0, "　書けなかった式 " & 失敗 & " 件", "")
+    End If
+
+後始末:
+    Application.ScreenUpdating = oldScreen
+    Application.EnableEvents = oldEvents
+    If Err.Number <> 0 Then Err.Raise Err.Number
+End Sub
+
+Sub VLOOKUPの列番号を見出しから引く形にする()
+    ' 依頼の語: 列番号をMATCH|列番号を見出しから|列番号を見出しで|MATCHで列番号|MATCHで見出し|MATCH関数で列|MATCHに置き換え|MATCHに直|MATCHにして|MATCHを使う形|列番号の直書きを直|列番号の直書きをやめ|列番号の直書きを無く|直書きを無くし|直書きをやめて|列番号を直書きしない|列を挿入しても壊れない|列を挿入してもずれない|列を足してもずれない|列を入れても壊れない
+    ' 依頼の組: VLOOKUP,列番号+直書き,決め打ち,MATCH,見出しから,見出しで+直して,直す,直し,修正,書き換え,置き換え,やめ,無く,にして,変え+-一覧,調べ,探,どこ,報告,HLOOKUP,XLOOKUP,INDEX
+    ' 扱う: 数式 VLOOKUP 列番号 MATCH 直書き
+    ' 見出し: なし
+    ' 形: なし
+    ' 変えてよい: 数式
+    ' このシートの式の VLOOKUP で、列番号が数字で直書きの所を、MATCH で見出しから引く形にする
+    '   （例: =VLOOKUP(A2,$H$2:$K$20,3,FALSE) → =VLOOKUP(A2,$H$2:$K$20,MATCH("単価",$H$1:$K$1,0),FALSE)）。
+    '   見出しの行は、表の範囲のすぐ上の行（全部が文字のとき）か、範囲の 1 行目（全部が文字のとき）。番号の指す見出しが範囲の外・同じ字が左にもある所は触らない。
+    '   書いた後に値が前と同じか確かめ、違えば元の式に戻す。値のセルは触らない
+    Dim ws As Worksheet, 式域 As Range, cel As Range, 図 As Range, 見 As Range
+    Dim f As String, 新 As String, 所() As Long, 所数 As Long, k As Long
+    Dim 位置() As Long, 長さ() As Long, 数 As Long, 番号 As String, 番 As Long, 字 As String, 見の番地 As String
+    Dim 前値 As Variant, 直した As Long, 戻した As Long, 見出し無し As Long, 失敗 As Long, 番地 As String, 例 As String, 付記 As String
+    Dim oldScreen As Boolean, oldEvents As Boolean
+
+    Set ws = ActiveSheet
+    On Error Resume Next
+    Set 式域 = ws.UsedRange.SpecialCells(xlCellTypeFormulas)
+    On Error GoTo 0
+    If 式域 Is Nothing Then
+        Call 先撃ちに断る("このシートに式がありません（列番号が直書きの VLOOKUP は見つかりませんでした）。")
+        Exit Sub
+    End If
+
+    oldScreen = Application.ScreenUpdating
+    oldEvents = Application.EnableEvents
+    On Error GoTo 後始末
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+
+    For Each cel In 式域.Cells
+        If cel.HasArray Then GoTo 次のセル
+        f = cel.Formula
+        If Len(f) > 8000 Then GoTo 次のセル
+        If InStr(UCase$(f), "VLOOKUP(") = 0 Then GoTo 次のセル
+        新 = f
+        所数 = 式の関数の位置(新, "VLOOKUP", 所)
+        ' 後ろの呼び出しから直す（前の呼び出しの位置がずれない）
+        For k = 所数 To 1 Step -1
+            数 = 式の引数を切る(新, 所(k) + Len("VLOOKUP") + 1, 位置, 長さ)
+            If 数 >= 3 Then
+                番号 = Trim$(Mid$(新, 位置(3), 長さ(3)))
+                If Len(番号) >= 1 And Len(番号) <= 4 And Not (番号 Like "*[!0-9]*") Then
+                    番 = CLng(番号)
+                    Set 図 = Nothing
+                    Set 見 = Nothing
+                    If 番 >= 1 Then Set 図 = 式の範囲(ws, Trim$(Mid$(新, 位置(2), 長さ(2))))
+                    If Not 図 Is Nothing Then
+                        If 図.Areas.Count = 1 And 番 <= 図.Columns.Count Then Set 見 = 表の見出しの行(図)
+                    End If
+                    If 見 Is Nothing Then
+                        見出し無し = 見出し無し + 1
+                    Else
+                        字 = CStr(見.Cells(1, 番).Value)
+                        If Len(字) > 200 Or 最初の位置(見, 字) <> 番 Then
+                            見出し無し = 見出し無し + 1
+                        Else
+                            見の番地 = 見.Address(True, True)
+                            If 見.Worksheet.Name <> ws.Name Then 見の番地 = "'" & Replace(見.Worksheet.Name, "'", "''") & "'!" & 見の番地
+                            ' MATCH の 0 は * ? ~ をワイルドカードに読むので、見出しの字のそれには ~ を付ける
+                            字 = Replace(Replace(Replace(字, "~", "~~"), "*", "~*"), "?", "~?")
+                            新 = Left$(新, 位置(3) - 1) & "MATCH(""" & Replace(字, """", """""") & """," & 見の番地 & ",0)" & Mid$(新, 位置(3) + 長さ(3))
+                        End If
+                    End If
+                End If
+            End If
+        Next k
+        If 新 <> f Then
+            前値 = cel.Value
+            If 変えた式だけ書く(cel, 新, False) Then
+                cel.Calculate
+                If 同じ値か(前値, cel.Value) Then
+                    直した = 直した + 1
+                    If 直した <= 6 Then 番地 = 番地 & IIf(Len(番地) > 0, "・", "") & cel.Address(False, False)
+                    If 直した = 1 Then 例 = "（例: " & cel.Address(False, False) & " " & f & " → " & 新 & "）"
+                Else
+                    ' 値が変わった＝見出しの取り違え。元の式に戻す
+                    If 変えた式だけ書く(cel, f, False) Then cel.Calculate
+                    戻した = 戻した + 1
+                End If
+            Else
+                失敗 = 失敗 + 1
+            End If
+        End If
+次のセル:
+    Next cel
+
+    If 戻した > 0 Then 付記 = 付記 & "　値が変わるので元に戻した式 " & 戻した & " 件"
+    If 見出し無し > 0 Then 付記 = 付記 & "　見出しが見つからず触っていない所 " & 見出し無し & " 件"
+    If 失敗 > 0 Then 付記 = 付記 & "　書けなかった式 " & 失敗 & " 件"
+    If 直した = 0 Then
+        Call 先撃ちに断る("MATCH に直せる、列番号が数字の VLOOKUP はありませんでした（何も変えていません）。" & 付記)
+    Else
+        Application.StatusBar = "VLOOKUP の列番号 " & 直した & " 件の式を MATCH で見出しから引く形にしました（" & 番地 & IIf(直した > 6, " ほか", "") & "）" & 例 & 付記
+    End If
+
+後始末:
+    Application.ScreenUpdating = oldScreen
+    Application.EnableEvents = oldEvents
+    If Err.Number <> 0 Then Err.Raise Err.Number
+End Sub
+
+' 直す棚 3 本の書き戻し: 式のセル（配列数式・広がる式でない）だけに、前と違う式を書く。値のセルには書かない。書けたら True
+'   （広がる式を .Formula で書き直すと広がらなくなるので触らない）
+Private Function 変えた式だけ書く(ByVal cel As Range, ByVal 新式 As String, ByVal R1C1で As Boolean) As Boolean
+    If Not cel.HasFormula Then Exit Function
+    If cel.HasArray Then Exit Function
+    If Not スピルの元なら範囲(cel) Is Nothing Then Exit Function
+    If R1C1で Then
+        If cel.FormulaR1C1 = 新式 Then Exit Function
+    Else
+        If cel.Formula = 新式 Then Exit Function
+    End If
+    On Error Resume Next
+    If R1C1で Then
+        cel.FormulaR1C1 = 新式
+    Else
+        cel.Formula = 新式
+    End If
+    変えた式だけ書く = (Err.Number = 0)
+    Err.Clear
+End Function
+
+' 式 f の中の関数「名(」の位置（名の 1 字目）を 所(1..) に入れ、数を返す。"…" と '…' の中・名の一部（DSUM の SUM）は数えない
+Private Function 式の関数の位置(ByVal f As String, ByVal 名 As String, ByRef 所() As Long) As Long
+    Dim i As Long, n As Long, L As Long, ch As String, 前 As String, 引用 As Boolean, 引用S As Boolean, 大 As String
+    L = Len(名)
+    ReDim 所(1 To 1)
+    大 = UCase$(f)
+    For i = 1 To Len(f)
+        ch = Mid$(f, i, 1)
+        If 引用 Then
+            If ch = """" Then 引用 = False
+        ElseIf 引用S Then
+            If ch = "'" Then 引用S = False
+        ElseIf ch = """" Then
+            引用 = True
+        ElseIf ch = "'" Then
+            引用S = True
+        ElseIf Mid$(大, i, L + 1) = 名 & "(" Then
+            前 = ""
+            If i > 1 Then 前 = Mid$(f, i - 1, 1)
+            If Not (前 Like "[A-Za-z0-9_.]") Then
+                n = n + 1
+                ReDim Preserve 所(1 To n)
+                所(n) = i
+            End If
+        End If
+    Next i
+    式の関数の位置 = n
+End Function
+
+' f の 始（"(" の次の字）から、対応する ")" までの引数の位置と字数を 位置(1..)・長さ(1..) に入れ、数を返す。
+' かっこ・{}・[]・"…"・'…' の中のコンマでは切らない。閉じていなければ 0
+Private Function 式の引数を切る(ByVal f As String, ByVal 始 As Long, ByRef 位置() As Long, ByRef 長さ() As Long) As Long
+    Dim i As Long, 深 As Long, 引 As Long, n As Long, ch As String, 引用 As Boolean, 引用S As Boolean
+    ReDim 位置(1 To 1): ReDim 長さ(1 To 1)
+    深 = 1: 引 = 始
+    For i = 始 To Len(f)
+        ch = Mid$(f, i, 1)
+        If 引用 Then
+            If ch = """" Then 引用 = False
+        ElseIf 引用S Then
+            If ch = "'" Then 引用S = False
+        ElseIf ch = """" Then
+            引用 = True
+        ElseIf ch = "'" Then
+            引用S = True
+        ElseIf ch = "(" Or ch = "{" Or ch = "[" Then
+            深 = 深 + 1
+        ElseIf ch = ")" Or ch = "}" Or ch = "]" Then
+            深 = 深 - 1
+            If 深 = 0 Then
+                n = n + 1
+                ReDim Preserve 位置(1 To n): ReDim Preserve 長さ(1 To n)
+                位置(n) = 引: 長さ(n) = i - 引
+                式の引数を切る = n
+                Exit Function
+            End If
+        ElseIf ch = "," And 深 = 1 Then
+            n = n + 1
+            ReDim Preserve 位置(1 To n): ReDim Preserve 長さ(1 To n)
+            位置(n) = 引: 長さ(n) = i - 引
+            引 = i + 1
+        End If
+    Next i
+End Function
+
+' 式 f の SUM・SUBTOTAL の引数に、列 の 1 列の範囲で、行1 から 行2 までと重なる物があるか
+Private Function 同じ列を合計しているか(ByVal f As String, ByVal 列 As Long, ByVal 行1 As Long, ByVal 行2 As Long) As Boolean
+    Dim 関 As Variant, 所() As Long, 所数 As Long, k As Long, i As Long, 位置() As Long, 長さ() As Long, 数 As Long
+    Dim 列字 As String, 上 As Long, 下 As Long
+    For Each 関 In Array("SUBTOTAL", "SUM")
+        所数 = 式の関数の位置(f, CStr(関), 所)
+        For k = 1 To 所数
+            数 = 式の引数を切る(f, 所(k) + Len(関) + 1, 位置, 長さ)
+            For i = 1 To 数
+                If 一列の範囲か(Trim$(Mid$(f, 位置(i), 長さ(i))), 列字, 上, 下) Then
+                    If 列字の番号(列字) = 列 And 上 <= 行2 And 下 >= 行1 Then
+                        同じ列を合計しているか = True
+                        Exit Function
+                    End If
+                End If
+            Next i
+        Next k
+    Next 関
+End Function
+
+' "D2:D8"・"$D$2:$D$8" のような同じ列の 1 列の範囲なら True で、列の字と上・下の行を返す（シート名つき・列だけ・名前は False）
+Private Function 一列の範囲か(ByVal s As String, ByRef 列字 As String, ByRef 上 As Long, ByRef 下 As Long) As Boolean
+    Dim p As Long, c1 As String, c2 As String, r1 As Long, r2 As Long
+    p = InStr(s, ":")
+    If p = 0 Then Exit Function
+    If Not 番地を分ける(Left$(s, p - 1), c1, r1) Then Exit Function
+    If Not 番地を分ける(Mid$(s, p + 1), c2, r2) Then Exit Function
+    If c1 <> c2 Or r1 > r2 Then Exit Function
+    列字 = c1: 上 = r1: 下 = r2
+    一列の範囲か = True
+End Function
+
+' "$D$12"・"D12"・"D$12" → 列の字 "D"・行 12。ほかの形は False
+Private Function 番地を分ける(ByVal s As String, ByRef 列字 As String, ByRef 行 As Long) As Boolean
+    Dim i As Long, ch As String, 字 As String, 数字 As String
+    s = Replace(s, "$", "")
+    For i = 1 To Len(s)
+        ch = Mid$(s, i, 1)
+        If ch Like "[A-Za-z]" And 数字 = "" Then
+            字 = 字 & UCase$(ch)
+        ElseIf ch Like "[0-9]" And 字 <> "" Then
+            数字 = 数字 & ch
+        Else
+            Exit Function
+        End If
+    Next i
+    If Len(字) = 0 Or Len(字) > 3 Or Len(数字) = 0 Or Len(数字) > 7 Then Exit Function
+    If CLng(数字) < 1 Then Exit Function
+    列字 = 字: 行 = CLng(数字)
+    番地を分ける = True
+End Function
+
+' 列の字（"D"・"AB"）→ 列の番号
+Private Function 列字の番号(ByVal 列字 As String) As Long
+    Dim i As Long, n As Long
+    For i = 1 To Len(列字)
+        n = n * 26 + (Asc(Mid$(列字, i, 1)) - 64)
+    Next i
+    列字の番号 = n
+End Function
+
+' "$D$2:$D$8" の行を 上・下 に変えた字（$ の付き方はそのまま）
+Private Function 行を変えた範囲(ByVal s As String, ByVal 上 As Long, ByVal 下 As Long) As String
+    Dim p As Long
+    p = InStr(s, ":")
+    行を変えた範囲 = 行を変えた番地(Left$(s, p - 1), 上) & ":" & 行を変えた番地(Mid$(s, p + 1), 下)
+End Function
+
+Private Function 行を変えた番地(ByVal s As String, ByVal 行 As Long) As String
+    Dim i As Long
+    i = Len(s)
+    Do While i > 0
+        If Not (Mid$(s, i, 1) Like "[0-9]") Then Exit Do
+        i = i - 1
+    Loop
+    行を変えた番地 = Left$(s, i) & CStr(行)
+End Function
+
+' 合計の範囲を広げるのを止めるセルか（エラー値・文字・TRUE/FALSE・合計の式・合計の行・まるごと空の行）
+Private Function 合計で止める(ByVal ws As Worksheet, ByVal c As Range, ByVal 左 As Long, ByVal 右 As Long) As Boolean
+    Dim v As Variant, u As String
+    v = c.Value
+    合計で止める = True
+    If IsError(v) Then Exit Function
+    If VarType(v) = vbBoolean Then Exit Function
+    If VarType(v) = vbString Then
+        If Len(Trim$(v)) > 0 Then Exit Function
+    End If
+    If c.HasFormula Then
+        u = UCase$(c.Formula)
+        If InStr(u, "SUM(") > 0 Or InStr(u, "SUBTOTAL(") > 0 Then Exit Function
+    End If
+    If 集計の行か(ws, c.Row, 左, 右) Then Exit Function
+    If IsEmpty(v) Then
+        If Application.WorksheetFunction.CountA(ws.Range(ws.Cells(c.Row, 左), ws.Cells(c.Row, 右))) = 0 Then Exit Function
+    End If
+    合計で止める = False
+End Function
+
+' R1C1 の式 f の参照（R2C3・R[-1]C・RC[2]・R[1]C[-1]・C3 など）を ChrW(1) に伏せた骨組みを返し、参照を 参照(1..数) に入れる。"…" と '…' の中は伏せない
+Private Function R1C1の骨組み(ByVal f As String, ByRef 参照() As String, ByRef 数 As Long) As String
+    Dim i As Long, j As Long, n As Long, ch As String, 前 As String, 骨 As String, 引用 As Boolean, 引用S As Boolean
+    n = Len(f): 数 = 0
+    ReDim 参照(1 To 1)
+    i = 1
+    Do While i <= n
+        ch = Mid$(f, i, 1)
+        j = 0
+        If 引用 Then
+            If ch = """" Then 引用 = False
+        ElseIf 引用S Then
+            If ch = "'" Then 引用S = False
+        ElseIf ch = """" Then
+            引用 = True
+        ElseIf ch = "'" Then
+            引用S = True
+        ElseIf ch = "R" Or ch = "C" Then
+            前 = ""
+            If i > 1 Then 前 = Mid$(f, i - 1, 1)
+            If Not (前 Like "[A-Za-z0-9_.]") Then j = R1C1の参照の長さ(f, i)
+        End If
+        If j > 0 Then
+            数 = 数 + 1
+            ReDim Preserve 参照(1 To 数)
+            参照(数) = Mid$(f, i, j)
+            骨 = 骨 & ChrW(1)
+            i = i + j
+        Else
+            骨 = 骨 & ch
+            i = i + 1
+        End If
+    Loop
+    R1C1の骨組み = 骨
+End Function
+
+' f の i 字目から始まる R1C1 の参照（R の部と C の部）の字数。参照でなければ 0
+Private Function R1C1の参照の長さ(ByVal f As String, ByVal i As Long) As Long
+    Dim j As Long, 有 As Boolean, 次 As String
+    j = i
+    If Mid$(f, j, 1) = "R" Then
+        有 = True
+        j = R1C1の部の終わり(f, j + 1)
+    End If
+    If Mid$(f, j, 1) = "C" Then
+        有 = True
+        j = R1C1の部の終わり(f, j + 1)
+    End If
+    If Not 有 Then Exit Function
+    次 = Mid$(f, j, 1)
+    If 次 Like "[A-Za-z0-9_.(]" Then Exit Function
+    R1C1の参照の長さ = j - i
+End Function
+
+' R・C の後ろの「数」か「[数]」を越えた位置
+Private Function R1C1の部の終わり(ByVal f As String, ByVal j As Long) As Long
+    Dim k As Long
+    If Mid$(f, j, 1) = "[" Then
+        k = InStr(j, f, "]")
+        If k > j + 1 Then
+            If Not (Mid$(f, j + 1, k - j - 1) Like "*[!0-9-]*") Then
+                R1C1の部の終わり = k + 1
+                Exit Function
+            End If
+        End If
+    End If
+    Do While j <= Len(f)
+        If Not (Mid$(f, j, 1) Like "[0-9]") Then Exit Do
+        j = j + 1
+    Loop
+    R1C1の部の終わり = j
+End Function
+
+' R1C1 の参照 2 つで、違う部（R の部・C の部）がどれも「多では $ 付き（R2・C5）、少では $ 無し（R・R[-1]・C・C[3]）」なら True
+Private Function ドルの抜けだけか(ByVal 多 As String, ByVal 少 As String) As Boolean
+    Dim 多R As String, 多C As String, 少R As String, 少C As String, n As Long
+    R1C1の参照を分ける 多, 多R, 多C
+    R1C1の参照を分ける 少, 少R, 少C
+    If 多R <> 少R Then
+        If Not (R1C1の部が固定か(多R) And Not R1C1の部が固定か(少R) And Len(少R) > 0) Then Exit Function
+        n = n + 1
+    End If
+    If 多C <> 少C Then
+        If Not (R1C1の部が固定か(多C) And Not R1C1の部が固定か(少C) And Len(少C) > 0) Then Exit Function
+        n = n + 1
+    End If
+    ドルの抜けだけか = (n > 0)
+End Function
+
+' R1C1 の参照を R の部（R・R2・R[-1]）と C の部（C・C5・C[3]）に分ける
+Private Function R1C1の参照を分ける(ByVal s As String, ByRef 行部 As String, ByRef 列部 As String) As Boolean
+    Dim p As Long
+    行部 = "": 列部 = ""
+    p = InStr(s, "C")
+    If p = 0 Then
+        行部 = s
+    Else
+        行部 = Left$(s, p - 1)
+        列部 = Mid$(s, p)
+    End If
+    R1C1の参照を分ける = True
+End Function
+
+' R の部・C の部が $ 付き（R2・C5 のように数が [ ] で包まれていない）か
+Private Function R1C1の部が固定か(ByVal s As String) As Boolean
+    If Len(s) < 2 Then Exit Function
+    R1C1の部が固定か = Not (Mid$(s, 2) Like "*[!0-9]*")
+End Function
+
+' 式の中の範囲の字（$H$2:$K$20・'単価表'!A:D・名前）→ Range。別のブック・読めない字は Nothing
+Private Function 式の範囲(ByVal ws As Worksheet, ByVal 表 As String) As Range
+    Dim p As Long, 名 As String, sh As Object, 先 As String, 図 As Range
+    On Error Resume Next
+    p = InStrRev(表, "!")
+    If p > 0 Then
+        名 = Left$(表, p - 1)
+        If InStr(名, "[") > 0 Then Exit Function
+        If Left$(名, 1) = "'" And Right$(名, 1) = "'" And Len(名) >= 2 Then 名 = Replace(Mid$(名, 2, Len(名) - 2), "''", "'")
+        Set sh = ws.Parent.Worksheets(名)
+        先 = Mid$(表, p + 1)
+    Else
+        Set sh = ws
+        先 = 表
+    End If
+    If sh Is Nothing Then Exit Function
+    Set 図 = sh.Range(先)
+    If 図 Is Nothing And p = 0 Then Set 図 = ws.Parent.Names(表).RefersToRange
+    Err.Clear
+    Set 式の範囲 = 図
+End Function
+
+' VLOOKUP の表の見出しの行: 範囲のすぐ上の行が全部文字ならそこ、でなければ範囲の 1 行目が全部文字ならそこ（範囲が 2 行以上のとき）。どちらでもなければ Nothing
+Private Function 表の見出しの行(ByVal 図 As Range) As Range
+    If 図.Row > 1 Then
+        If 全部文字か(図.Rows(1).Offset(-1, 0)) Then
+            Set 表の見出しの行 = 図.Rows(1).Offset(-1, 0)
+            Exit Function
+        End If
+    End If
+    If 図.Rows.Count >= 2 Then
+        If 全部文字か(図.Rows(1)) Then Set 表の見出しの行 = 図.Rows(1)
+    End If
+End Function
+
+Private Function 全部文字か(ByVal 行 As Range) As Boolean
+    Dim k As Long, v As Variant
+    If 行.Columns.Count > 256 Then Exit Function
+    For k = 1 To 行.Columns.Count
+        v = 行.Cells(1, k).Value
+        If VarType(v) <> vbString Then Exit Function
+        If Len(Trim$(v)) = 0 Then Exit Function
+    Next k
+    全部文字か = True
+End Function
+
+' 見出しの行で、字が最初に出てくる列（1 始まり・大文字小文字は同じと見る）。無ければ 0
+Private Function 最初の位置(ByVal 見 As Range, ByVal 字 As String) As Long
+    Dim k As Long
+    For k = 1 To 見.Columns.Count
+        If StrComp(CStr(見.Cells(1, k).Value), 字, vbTextCompare) = 0 Then
+            最初の位置 = k
+            Exit Function
+        End If
+    Next k
+End Function
+
+' 書く前と後の値が同じか（エラー値はエラーの種類で比べる）
+Private Function 同じ値か(ByVal a As Variant, ByVal b As Variant) As Boolean
+    If IsError(a) Or IsError(b) Then
+        If IsError(a) And IsError(b) Then 同じ値か = (CStr(a) = CStr(b))
+    ElseIf VarType(a) = VarType(b) Then
+        同じ値か = (a = b)
+    End If
+End Function
