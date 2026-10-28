@@ -8097,3 +8097,115 @@ Sub 選んだ列の数値を指定桁数でゼロ埋め文字列にする_本体(ByVal 指定桁数 As Long)
 
     Application.ScreenUpdating = True
 End Sub
+
+Sub 氏名の空白を全角1つにそろえる()
+    ' 氏名の列（見出しが 氏名・名前・名称）の、姓と名の間の空白（半角・全角・タブ・連続）を全角 1 つにそろえ、前後の空白を取る。英字・数字の入った字は触らない（ABC Corp を変えない）。2 つ以上のセルを選んでいればその列だけ。式のセルは触らない（2026-10-29「氏名の空白を全角1つに統一して」が表の書き方の棚に当たり、半角 1 つにしていた）
+    ' 依頼の語: 空白を全角1つ|スペースを全角1つ|空白を全角１つ|スペースを全角１つ|空白を全角ひとつ|スペースを全角ひとつ|空白を全角一つ|全角スペース1つ|全角スペース１つ|全角スペースひとつ|全角の空白1つ|空白を全角に|スペースを全角に|全角スペースにそろえ|全角スペースに揃え|全角スペースに統一|全角の空白にそろえ|全角の空白に統一
+    ' 依頼の組: 空白,スペース,すきま,姓と名+全角+-消し,削除,取っ,取り除,先頭,末尾,空に,見えない,一覧,洗い出,探,数え,半角に,半角1つ,半角ひとつ
+    ' 扱う: 空白 スペース 全角 氏名 表記ゆれ
+    ' 見出し: なし
+    ' 形: 文字の列
+
+    Dim ws As Worksheet, 表 As Range, why As String
+    Dim hdr As Long, c1 As Long, c2 As Long, 最終 As Long, c As Long, r As Long, k As Long, n As Long, 行数 As Long
+    Dim 列々() As Long, 本数 As Long, 一覧 As String, 選列 As Object, a As Range, cc As Range
+    Dim 値々 As Variant, 式々 As Variant, 変() As Boolean, s As String, t As String, 直した As Long, 対 As String
+    Dim oldScreen As Boolean, oldEvents As Boolean
+
+    Set ws = ActiveSheet
+    Set 表 = 明細の表の範囲(ws, why)
+    If 表 Is Nothing Then Call 先撃ちに断る(why): Exit Sub
+    hdr = 表.row
+    c1 = 表.Column
+    c2 = 表.Column + 表.Columns.Count - 1
+    最終 = 表.row + 表.rows.Count - 1
+    If 最終 <= hdr Then Call 先撃ちに断る("見出しの下に明細の行がありません。"): Exit Sub
+    行数 = 最終 - hdr
+
+    ' 2 つ以上のセルを選んでいればその列だけ。選んでいなければ見出しが氏名の列
+    Set 選列 = CreateObject("Scripting.Dictionary")
+    If TypeName(Selection) = "Range" Then
+        If Selection.Cells.Count > 1 And Selection.Worksheet.Name = ws.Name Then
+            For Each a In Selection.Areas
+                For Each cc In a.Columns
+                    If cc.Column >= c1 And cc.Column <= c2 Then 選列(cc.Column) = True
+                Next cc
+            Next a
+        End If
+    End If
+    ReDim 列々(1 To 表.Columns.Count)
+    For c = c1 To c2
+        If 選列.Count > 0 Then
+            If 選列.exists(c) Then 本数 = 本数 + 1: 列々(本数) = c
+        ElseIf 氏名の見出しか(見出しの字(ws.Cells(hdr, c))) Then
+            本数 = 本数 + 1: 列々(本数) = c
+        End If
+        一覧 = 一覧 & IIf(Len(一覧) > 0, "・", "") & 見出しの字(ws.Cells(hdr, c))
+    Next c
+    If 本数 = 0 Then
+        Call 先撃ちに断る("氏名の列（見出しが 氏名・名前・名称）がありません（見出し: " & 一覧 & "）。そろえる列を選んでから撃ってください。")
+        Exit Sub
+    End If
+
+    oldScreen = Application.ScreenUpdating
+    oldEvents = Application.EnableEvents
+    On Error GoTo 後始末
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+
+    For k = 1 To 本数
+        c = 列々(k)
+        値々 = 二次元にする(ws.Range(ws.Cells(hdr + 1, c), ws.Cells(最終, c)).Value2)
+        式々 = 二次元にする(ws.Range(ws.Cells(hdr + 1, c), ws.Cells(最終, c)).Formula)
+        ReDim 変(1 To 行数, 1 To 1)
+        n = 0
+        For r = 1 To 行数
+            If VarType(値々(r, 1)) = vbString And Left$(CStr(式々(r, 1)), 1) <> "=" Then
+                s = CStr(値々(r, 1))
+                t = 空白を全角1つに(s)
+                If t <> s Then
+                    値々(r, 1) = t
+                    変(r, 1) = True
+                    n = n + 1
+                End If
+            End If
+        Next r
+        If n > 0 Then Call 表の整理_下請け.変えたセルだけ書く(ws.Cells(hdr + 1, c), 値々, 変, False, "")
+        直した = 直した + n
+        対 = 対 & IIf(Len(対) > 0, "・", "") & Split(ws.Cells(1, c).Address(True, False), "$")(0) & "列 " & n & " 件"
+    Next k
+
+    If 直した = 0 Then
+        Application.StatusBar = "氏名の空白はもう全角 1 つでした（" & 対 & "）"
+    Else
+        Application.StatusBar = "氏名の空白を全角 1 つにそろえました（" & 対 & "）"
+    End If
+
+後始末:
+    Application.ScreenUpdating = oldScreen
+    Application.EnableEvents = oldEvents
+    If Err.Number <> 0 Then Err.Raise Err.Number
+End Sub
+
+' 字の中の空白（半角・全角・タブ・ノーブレークスペース・連続）を全角 1 つにし、前後の空白を取る。
+' 英字・数字（半角・全角）が入った字はそのまま返す＝会社名や英語の名前（ABC Corp）を変えない（2026-10-29）
+Private Function 空白を全角1つに(ByVal s As String) As String
+    Dim i As Long, u As Long
+    For i = 1 To Len(s)
+        u = AscW(Mid$(s, i, 1))
+        If (u >= 48 And u <= 57) Or (u >= 65 And u <= 90) Or (u >= 97 And u <= 122) Or _
+           (u >= &HFF10& And u <= &HFF19&) Or (u >= &HFF21& And u <= &HFF3A&) Or (u >= &HFF41& And u <= &HFF5A&) Then
+            空白を全角1つに = s
+            Exit Function
+        End If
+    Next i
+    s = Replace(s, vbTab, " ")
+    s = Replace(s, ChrW(&HA0), " ")
+    s = Replace(s, ChrW(&H3000), " ")
+    s = Trim$(s)
+    Do While InStr(s, "  ") > 0
+        s = Replace(s, "  ", " ")
+    Loop
+    空白を全角1つに = Replace(s, " ", ChrW(&H3000))
+End Function
+
