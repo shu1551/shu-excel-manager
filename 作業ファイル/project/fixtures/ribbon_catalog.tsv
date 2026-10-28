@@ -1,0 +1,1002 @@
+# リボンの目録（2026-10-28）: Excel のリボンの全コマンドを 棚にする／もう棚にある／棚にしない に分けた物
+# 出典: github.com/OfficeDev/office-fluent-ui-command-identifiers の Microsoft 365/Current Channel/excelcontrols.xlsx（b230a0d）
+# 中心のタブ（ホーム～ヘルプ・印刷プレビュー）と、テーブル・ピボット・スパークライン・クエリのタブはコマンドごと。
+# 図・グラフ・SmartArt などの書式のタブはグループごと（コマンドID の列はグループの ID）。右クリックのメニューとリボンに無い物は入れない
+# 行き先の棚が 2 本あるときは ／ で区切る（例: 太字＝選んだ範囲の頼みは 選んだ範囲の文字を太字にする、場所を言った頼みは 頼みの文で指した所の書式を変える）
+コマンドID	リボンの場所	日本語の名前	分け	行き先の棚
+PasteMenu	ホーム > クリップボード	貼り付け（メニュー）	棚にしない	
+Paste	ホーム > クリップボード	貼り付け	棚にしない	
+PasteGallery	ホーム > クリップボード	貼り付けの種類	棚にしない	
+PasteUsingTextImportWizard	ホーム > クリップボード	テキスト ファイル ウィザードを使用	棚にしない	
+PasteRefreshableWebQuery	ホーム > クリップボード	更新可能な Web クエリ	棚にしない	
+PasteSpecialDialog	ホーム > クリップボード	形式を選択して貼り付け	棚にしない	
+Cut	ホーム > クリップボード	切り取り	棚にしない	
+CopySplitButton	ホーム > クリップボード	コピー（メニュー）	棚にしない	
+Copy	ホーム > クリップボード	コピー	棚にしない	
+CopyAsPicture	ホーム > クリップボード	図としてコピー	棚にしない	
+FormatPainter	ホーム > クリップボード	書式のコピー/貼り付け	棚にしない	
+ShowClipboard	ホーム > クリップボード	クリップボード	棚にしない	
+Font	ホーム > フォント	フォント	棚にする	頼みの文で指した所の書式を変える
+FontSize	ホーム > フォント	フォント サイズ	棚にする	頼みの文で指した所の書式を変える
+FontSizeIncrease	ホーム > フォント	フォント サイズの拡大	棚にする	頼みの文で指した所の書式を変える
+FontSizeDecrease	ホーム > フォント	フォント サイズの縮小	棚にする	頼みの文で指した所の書式を変える
+Bold	ホーム > フォント	太字	もう棚にある	選んだ範囲の文字を太字にする／頼みの文で指した所の書式を変える
+Italic	ホーム > フォント	斜体	棚にする	頼みの文で指した所の書式を変える
+UnderlineGallery	ホーム > フォント	下線（種類）	棚にする	頼みの文で指した所の書式を変える
+Underline	ホーム > フォント	下線	棚にする	頼みの文で指した所の書式を変える
+UnderlineDouble	ホーム > フォント	二重下線	棚にする	頼みの文で指した所の書式を変える
+BordersGallery	ホーム > フォント	罫線	棚にする	頼みの文で指した所の書式を変える
+BorderBottomNoToggle	ホーム > フォント	下罫線	棚にする	頼みの文で指した所の書式を変える
+BorderTopNoToggle	ホーム > フォント	上罫線	棚にする	頼みの文で指した所の書式を変える
+BorderLeftNoToggle	ホーム > フォント	左罫線	棚にする	頼みの文で指した所の書式を変える
+BorderRightNoToggle	ホーム > フォント	右罫線	棚にする	頼みの文で指した所の書式を変える
+BorderNone	ホーム > フォント	枠なし	棚にする	頼みの文で指した所の書式を変える
+BordersAll	ホーム > フォント	格子	もう棚にある	表の外枠を太線で囲み中は細線にする／頼みの文で指した所の書式を変える
+BorderOutside	ホーム > フォント	外枠	棚にする	頼みの文で指した所の書式を変える
+BorderThickOutside	ホーム > フォント	太い外枠	もう棚にある	表の外枠を太線で囲み中は細線にする／頼みの文で指した所の書式を変える
+BorderDoubleBottom	ホーム > フォント	下二重罫線	棚にする	頼みの文で指した所の書式を変える
+BorderThickBottom	ホーム > フォント	下太罫線	棚にする	頼みの文で指した所の書式を変える
+BorderTopAndBottom	ホーム > フォント	上罫線 + 下罫線	棚にする	頼みの文で指した所の書式を変える
+BorderTopAndThickBottom	ホーム > フォント	上罫線 + 下太罫線	棚にする	頼みの文で指した所の書式を変える
+BorderTopAndDoubleBottom	ホーム > フォント	上罫線 + 下二重罫線	棚にする	頼みの文で指した所の書式を変える
+BorderDrawLine	ホーム > フォント	罫線の作成	棚にしない	
+BorderDrawGrid	ホーム > フォント	罫線グリッドの作成	棚にしない	
+BorderErase	ホーム > フォント	罫線の削除（消しゴム）	棚にしない	
+BorderColorPickerExcel	ホーム > フォント	線の色	棚にする	頼みの文で指した所の書式を変える
+BorderMoreColorsDialog	ホーム > フォント	線の色（その他の色）	棚にしない	
+BorderStyle	ホーム > フォント	線のスタイル	棚にする	頼みの文で指した所の書式を変える
+BordersMoreDialog	ホーム > フォント	その他の罫線	棚にしない	
+CellFillColorPicker	ホーム > フォント	塗りつぶしの色	棚にする	頼みの文で指した所の書式を変える
+FontShadingColorMoreColorsDialog	ホーム > フォント	塗りつぶしの色（その他の色）	棚にしない	
+FontColorPicker	ホーム > フォント	フォントの色	棚にする	頼みの文で指した所の書式を変える
+FontColorMoreColorsDialogExcel	ホーム > フォント	フォントの色（その他の色）	棚にしない	
+PhoneticGuideMenu	ホーム > フォント	ふりがなの表示/非表示（メニュー）	棚にしない	
+PhoneticGuideFieldShow	ホーム > フォント	ふりがなの表示	棚にしない	
+PhoneticGuideEdit	ホーム > フォント	ふりがなの編集	もう棚にある	ふりがなの空欄を埋める
+PhoneticGuideSettings	ホーム > フォント	ふりがなの設定	棚にしない	
+FormatCellsFontDialog	ホーム > フォント	セルの書式設定（フォント）	棚にしない	
+AlignTopExcel	ホーム > 配置	上揃え	棚にする	頼みの文で指した所の書式を変える
+AlignMiddleExcel	ホーム > 配置	上下中央揃え	棚にする	頼みの文で指した所の書式を変える
+AlignBottomExcel	ホーム > 配置	下揃え	棚にする	頼みの文で指した所の書式を変える
+OrientationMenu	ホーム > 配置	方向	棚にしない	
+TextOrientationAngleCounterclockwise	ホーム > 配置	左回りに回転	棚にしない	
+TextOrientationAngleClockwise	ホーム > 配置	右回りに回転	棚にしない	
+TextOrientationVertical	ホーム > 配置	縦書き	棚にする	頼みの文で指した所の書式を変える
+TextOrientationRotateUp	ホーム > 配置	左へ 90 度回転	棚にしない	
+TextOrientationRotateDown	ホーム > 配置	右へ 90 度回転	棚にしない	
+CellAlignmentOptions	ホーム > 配置	セルの配置の書式設定	棚にしない	
+AlignLeftToRightMenu	ホーム > 配置	文字の方向	棚にしない	
+TextDirectionLeftToRight	ホーム > 配置	左から右	棚にしない	
+TextDirectionRightToLeft	ホーム > 配置	右から左	棚にしない	
+TextDirectionContext	ホーム > 配置	文脈	棚にしない	
+AlignLeft	ホーム > 配置	左揃え	もう棚にある	選んだ範囲の文字を左寄せにする／頼みの文で指した所の書式を変える
+AlignCenter	ホーム > 配置	中央揃え	もう棚にある	選んだ範囲の文字を中央揃えにする／頼みの文で指した所の書式を変える
+AlignRight	ホーム > 配置	右揃え	もう棚にある	選んだ範囲の文字を右寄せにする／頼みの文で指した所の書式を変える
+IndentDecreaseExcel	ホーム > 配置	インデントを減らす	棚にする	頼みの文で指した所の書式を変える
+IndentIncreaseExcel	ホーム > 配置	インデントを増やす	棚にする	頼みの文で指した所の書式を変える
+WrapText	ホーム > 配置	折り返して全体を表示する	棚にする	頼みの文で指した所の書式を変える
+MergeCenterMenu	ホーム > 配置	セルを結合して中央揃え（メニュー）	棚にしない	
+MergeCenter	ホーム > 配置	セルを結合して中央揃え	棚にしない	
+MergeCellsAcross	ホーム > 配置	横方向に結合	棚にしない	
+MergeCells	ホーム > 配置	セルの結合	棚にしない	
+UnmergeCells	ホーム > 配置	セル結合の解除	もう棚にある	結合セルをほどいて値を埋める
+CenterAcrossSelection	ホーム > 配置	選択範囲内で中央	棚にしない	
+NumberFormatGallery	ホーム > 数値	表示形式	棚にする	頼みの文で指した列の表示形式を変える
+NumberFormatsDialog	ホーム > 数値	その他の表示形式	棚にしない	
+AccountingFormatMenu	ホーム > 数値	通貨表示形式（メニュー）	もう棚にある	選んだ列の数値を円マーク通貨表示にする／頼みの文で指した列の表示形式を変える
+AccountingFormat	ホーム > 数値	通貨表示形式	もう棚にある	選んだ列の数値を円マーク通貨表示にする／頼みの文で指した列の表示形式を変える
+AccountingFormatExcel	ホーム > 数値	通貨表示形式（円）	もう棚にある	選んだ列の数値を円マーク通貨表示にする／頼みの文で指した列の表示形式を変える
+AccountingFormatMoreExcel	ホーム > 数値	その他の通貨表示形式	棚にしない	
+PercentStyle	ホーム > 数値	パーセント スタイル	もう棚にある	選んだ列の数値をパーセント表示にする／頼みの文で指した列の表示形式を変える
+CommaStyle	ホーム > 数値	桁区切りスタイル	もう棚にある	選んだ列の数値を3桁カンマ区切りにする／頼みの文で指した列の表示形式を変える
+DecimalsIncrease	ホーム > 数値	小数点以下の表示桁数を増やす	棚にする	頼みの文で指した列の表示形式を変える
+DecimalsDecrease	ホーム > 数値	小数点以下の表示桁数を減らす	棚にする	頼みの文で指した列の表示形式を変える
+FormatCellsNumberDialog	ホーム > 数値	セルの書式設定（表示形式）	棚にしない	
+ConditionalFormattingMenu	ホーム > スタイル	条件付き書式	もう棚にある	基準を下回る行に印と色を付ける
+ConditionalFormattingHighlightCellsMenu	ホーム > スタイル	セルの強調表示ルール	もう棚にある	基準を下回る行に印と色を付ける
+ConditionalFormattingHighlightGreaterThan	ホーム > スタイル	指定の値より大きい	もう棚にある	基準を下回る行に印と色を付ける
+ConditionalFormattingHighlightLessThan	ホーム > スタイル	指定の値より小さい	もう棚にある	基準を下回る行に印と色を付ける
+ConditionalFormattingHighlightBetween	ホーム > スタイル	指定の範囲内	もう棚にある	基準を下回る行に印と色を付ける
+ConditionalFormattingHighlightEqualTo	ホーム > スタイル	指定の値に等しい	もう棚にある	基準を下回る行に印と色を付ける
+ConditionalFormattingHighlightTextContaining	ホーム > スタイル	文字列	もう棚にある	基準を下回る行に印と色を付ける
+ConditionalFormattingHighlightDateOccuring	ホーム > スタイル	日付	もう棚にある	基準を下回る行に印と色を付ける
+ConditionalFormattingHighlightDuplicateValues	ホーム > スタイル	重複する値	もう棚にある	選んだ列の重複する値を一覧にする
+ConditionalFormattingHighlightRulesMore	ホーム > スタイル	その他のルール（強調表示）	棚にしない	
+ConditionalFormattingTopBottomMenu	ホーム > スタイル	上位/下位ルール	もう棚にある	基準を下回る行に印と色を付ける
+ConditionalFormattingTopNItems	ホーム > スタイル	上位 10 項目	もう棚にある	選んだ列の上位5件を右に抜き出す
+ConditionalFormattingTopNPercent	ホーム > スタイル	上位 10%	棚にしない	
+ConditionalFormattingBottomNItems	ホーム > スタイル	下位 10 項目	棚にしない	
+ConditionalFormattingBottomNPercent	ホーム > スタイル	下位 10%	棚にしない	
+ConditionalFormattingAboveAverage	ホーム > スタイル	平均より上	もう棚にある	基準を下回る行に印と色を付ける
+ConditionalFormattingBelowAverage	ホーム > スタイル	平均より下	もう棚にある	基準を下回る行に印と色を付ける
+ConditionalFormattingTopBottomMore	ホーム > スタイル	その他のルール（上位/下位）	棚にしない	
+ConditionalFormattingDataBarsGallery	ホーム > スタイル	データ バー	棚にしない	
+ConditionalFormattingDataBarsMoreOptions	ホーム > スタイル	データ バー（その他のルール）	棚にしない	
+ConditionalFormattingColorScalesGallery	ホーム > スタイル	カラー スケール	棚にしない	
+ConditionalFormattingColorScalesMore	ホーム > スタイル	カラー スケール（その他のルール）	棚にしない	
+ConditionalFormattingIconSetsGallery	ホーム > スタイル	アイコン セット	棚にしない	
+ConditionalFormattingIconSetsMore	ホーム > スタイル	アイコン セット（その他のルール）	棚にしない	
+ConditionalFormattingNewRule	ホーム > スタイル	新しいルール	もう棚にある	基準を下回る行に印と色を付ける
+ConditionalFormattingClearMenu	ホーム > スタイル	ルールのクリア	棚にしない	
+ConditionalFormattingClearSelectedCells	ホーム > スタイル	選択したセルからルールをクリア	棚にしない	
+ConditionalFormattingClearSheet	ホーム > スタイル	シート全体からルールをクリア	棚にしない	
+ConditionalFormattingClearTable	ホーム > スタイル	このテーブルからルールをクリア	棚にしない	
+ConditionalFormattingClearPivotTable	ホーム > スタイル	このピボットテーブルからルールをクリア	棚にしない	
+ConditionalFormattingsManage	ホーム > スタイル	ルールの管理	もう棚にある	入力規則などの仕掛けを一覧にする
+FormatAsTableGallery	ホーム > スタイル	テーブルとして書式設定	もう棚にある	表をテーブルにして集計行を出す
+TableStyleNew	ホーム > スタイル	新しいテーブル スタイル	棚にしない	
+PivotTableNewStyle	ホーム > スタイル	新しいピボットテーブル スタイル	棚にしない	
+CellStylesGallery	ホーム > スタイル	セルのスタイル	棚にしない	
+CellStyleNew	ホーム > スタイル	新しいセルのスタイル	棚にしない	
+CellStylesMerge	ホーム > スタイル	スタイルの結合	棚にしない	
+InsertCellstMenu	ホーム > セル	挿入（メニュー）	棚にしない	
+CellsInsertSmart	ホーム > セル	セルの挿入	棚にしない	
+CellsInsertDialog	ホーム > セル	セルの挿入（ダイアログ）	棚にしない	
+SheetRowsInsert	ホーム > セル	シートの行を挿入	棚にしない	
+SheetColumnsInsert	ホーム > セル	シートの列を挿入	棚にしない	
+TableRowsInsertAboveExcel	ホーム > セル	テーブルの行（上）	棚にしない	
+TableRowsInsertBelowExcel	ホーム > セル	テーブルの行（下）	棚にしない	
+TableColumnsInsertLeftExcel	ホーム > セル	テーブルの列（左）	棚にしない	
+TableColumnsInsertRightExcel	ホーム > セル	テーブルの列（右）	棚にしない	
+SheetInsert	ホーム > セル	シートの挿入	棚にする	頼みの文でシートの名前と色と並びを変える
+TableDeleteRowsAndColumnsMenu	ホーム > セル	削除（メニュー）	棚にしない	
+CellsDeleteSmart	ホーム > セル	セルの削除	棚にしない	
+CellsDelete	ホーム > セル	セルの削除（ダイアログ）	棚にしない	
+SheetRowsDelete	ホーム > セル	シートの行を削除	棚にしない	
+SheetColumnsDelete	ホーム > セル	シートの列を削除	棚にしない	
+TableRowsDeleteExcel	ホーム > セル	テーブルの行の削除	棚にしない	
+TableColumnsDeleteExcel	ホーム > セル	テーブルの列の削除	棚にしない	
+SheetDelete	ホーム > セル	シートの削除	棚にしない	
+FormatCellsMenu	ホーム > セル	書式（メニュー）	棚にしない	
+RowHeight	ホーム > セル	行の高さ	棚にする	頼みの文で指した列と行の幅と表示を変える
+RowHeightAutoFit	ホーム > セル	行の高さの自動調整	棚にする	頼みの文で指した列と行の幅と表示を変える
+ColumnWidth	ホーム > セル	列の幅	棚にする	頼みの文で指した列と行の幅と表示を変える
+ColumnWidthAutoFit	ホーム > セル	列の幅の自動調整	棚にする	頼みの文で指した列と行の幅と表示を変える
+ColumnWidthDefault	ホーム > セル	既定の幅	棚にしない	
+HideAndUnhideMenu	ホーム > セル	非表示/再表示	棚にしない	
+RowsHide	ホーム > セル	行を表示しない	棚にする	頼みの文で指した列と行の幅と表示を変える
+ColumnsHide	ホーム > セル	列を表示しない	もう棚にある	選んだ列を非表示にする／頼みの文で指した列と行の幅と表示を変える
+SheetHide	ホーム > セル	シートを表示しない	棚にする	頼みの文でシートの名前と色と並びを変える
+RowsUnhide	ホーム > セル	行の再表示	もう棚にある	隠れた行と列を全部表示する
+ColumnsUnhide	ホーム > セル	列の再表示	もう棚にある	隠れた行と列を全部表示する
+SheetUnhide	ホーム > セル	シートの再表示	棚にする	頼みの文でシートの名前と色と並びを変える
+SheetRename	ホーム > セル	シート名の変更	棚にする	頼みの文でシートの名前と色と並びを変える
+SheetMoveOrCopy	ホーム > セル	シートの移動またはコピー	棚にする	頼みの文でシートの名前と色と並びを変える
+SheetTabColorGallery	ホーム > セル	シート見出しの色	棚にする	頼みの文でシートの名前と色と並びを変える
+SheetTabColorMoreColorsDialog	ホーム > セル	シート見出しの色（その他の色）	棚にしない	
+CollapseArrays	ホーム > セル	配列の折りたたみ	棚にしない	
+SheetProtect	ホーム > セル	シートの保護	棚にする	頼みの文でシートの名前と色と並びを変える
+Lock	ホーム > セル	セルのロック	棚にしない	
+FormatCellsDialog	ホーム > セル	セルの書式設定	棚にしない	
+AutoSumMenu	ホーム > 編集	オート SUM（メニュー）	もう棚にある	表の下に合計行を足す
+AutoSum	ホーム > 編集	合計	もう棚にある	表の下に合計行を足す
+AutoSumAverage	ホーム > 編集	平均	もう棚にある	選んだ2列の平均最大最小を作る
+AutoSumCount	ホーム > 編集	数値の個数	もう棚にある	選んだ列の項目別件数表を右に作る
+AutoSumMax	ホーム > 編集	最大値	もう棚にある	選んだ2列の平均最大最小を作る
+AutoSumMin	ホーム > 編集	最小値	もう棚にある	選んだ2列の平均最大最小を作る
+AutoSumMoreFunctions	ホーム > 編集	その他の関数	棚にしない	
+FillMenu	ホーム > 編集	フィル	棚にしない	
+FillDown	ホーム > 編集	下方向へコピー	棚にしない	
+FillRight	ホーム > 編集	右方向へコピー	棚にしない	
+FillUp	ホーム > 編集	上方向へコピー	棚にしない	
+FillLeft	ホーム > 編集	左方向へコピー	棚にしない	
+FillAcrossWorksheets	ホーム > 編集	作業グループへコピー	棚にしない	
+FillSeries	ホーム > 編集	連続データの作成	もう棚にある	番号の列を連番に振り直す
+FillJustify	ホーム > 編集	文字の割付	棚にしない	
+QuickCode	ホーム > 編集	フラッシュ フィル	棚にしない	
+ClearMenu	ホーム > 編集	クリア（メニュー）	棚にしない	
+ClearAll	ホーム > 編集	すべてクリア	棚にしない	
+ClearFormats	ホーム > 編集	書式のクリア	棚にしない	
+ClearContents	ホーム > 編集	数式と値のクリア	棚にしない	
+ClearComments	ホーム > 編集	コメントのクリア	棚にしない	
+ClearThreadedCommentsAndNotes	ホーム > 編集	コメントとメモのクリア	棚にしない	
+HyperlinksClear	ホーム > 編集	ハイパーリンクのクリア	棚にしない	
+HyperlinksRemove	ホーム > 編集	ハイパーリンクの削除	棚にしない	
+CleanupWorkbook	ホーム > 編集	ブックのクリーンアップ	もう棚にある	余分な行列を削除し軽くする
+SortFilterMenu	ホーム > 編集	並べ替えとフィルター（メニュー）	もう棚にある	選んだ列で表を並べ替える／頼みの文で指した列で表を絞り込む
+SortAscendingExcel	ホーム > 編集	昇順	もう棚にある	選んだ列で表を並べ替える
+SortDescendingExcel	ホーム > 編集	降順	もう棚にある	選んだ列で表を並べ替える
+SortCustomExcel	ホーム > 編集	ユーザー設定の並べ替え	もう棚にある	選んだ列で表を並べ替える
+Filter	ホーム > 編集	フィルター	棚にする	頼みの文で指した列で表を絞り込む
+SortClear	ホーム > 編集	クリア（フィルター）	棚にする	頼みの文で指した列で表を絞り込む
+FilterReapply	ホーム > 編集	再適用	棚にしない	
+SelectMenuExcel	ホーム > 編集	検索と選択（メニュー）	棚にしない	
+FindDialogExcel	ホーム > 編集	検索	棚にしない	
+ReplaceDialog	ホーム > 編集	置換	棚にしない	
+GoTo	ホーム > 編集	ジャンプ	棚にしない	
+GoToSpecial	ホーム > 編集	条件を選択してジャンプ	棚にしない	
+GoToFormulas	ホーム > 編集	数式（選択）	もう棚にある	シートの数式を形ごとに一覧にする
+GoToComments	ホーム > 編集	コメント（選択）	棚にしない	
+GoToCommentsLegacy	ホーム > 編集	メモ（選択）	棚にしない	
+GoToConditionalFormatting	ホーム > 編集	条件付き書式（選択）	もう棚にある	入力規則などの仕掛けを一覧にする
+GoToConstants	ホーム > 編集	定数（選択）	棚にしない	
+GoToDataValidation	ホーム > 編集	データの入力規則（選択）	もう棚にある	入力規則などの仕掛けを一覧にする
+ObjectsSelect	ホーム > 編集	オブジェクトの選択	棚にしない	
+SelectionPane	ホーム > 編集	オブジェクトの選択と表示	もう棚にある	図形を一覧にし位置をそろえる
+ActivateOffice	ホーム > ライセンス認証	ライセンス認証	棚にしない	
+DataCleansing	ホーム > アイデア	データのクリーンアップ	もう棚にある	表の書き方と罫線と列幅をそろえる
+AnalyzeData	ホーム > アイデア	データ分析	棚にしない	
+ClassifyLabelProtect	ホーム > 秘密度	秘密度ラベル	棚にしない	
+OfficeExtensionsShowAddinFlyout	ホーム > アドイン	アドイン	棚にしない	
+UXPPPowerOptions	ホーム > 電源	電源オプション	棚にしない	
+Copilot	ホーム > Copilot	Copilot	棚にしない	
+PivotTableInsert	挿入 > テーブル	ピボットテーブル	もう棚にある	選んだ3列でピボットを作る
+InsertPivotTableSplit	挿入 > テーブル	ピボットテーブル（分割ボタン）	もう棚にある	選んだ3列でピボットを作る
+NewPivotTable	挿入 > テーブル	ピボットテーブル（新規）	もう棚にある	選んだ3列でピボットを作る
+PowerBIDataInsert	挿入 > テーブル	Power BI から	棚にしない	
+InsertPivotTableDropdown	挿入 > テーブル	ピボットテーブル（メニュー）	もう棚にある	選んだ3列でピボットを作る
+CreatePivotTableFromTableRange	挿入 > テーブル	テーブルまたは範囲から（ピボット）	もう棚にある	選んだ3列でピボットを作る
+CreatePivotTableFromExternalDataSource	挿入 > テーブル	外部データ ソースから（ピボット）	棚にしない	
+CreatePivotTableFromDataModel	挿入 > テーブル	データ モデルから（ピボット）	棚にしない	
+PivotTableSuggestion	挿入 > テーブル	おすすめピボットテーブル	もう棚にある	選んだ3列でピボットを作る
+TableInsertExcel	挿入 > テーブル	テーブル	もう棚にある	表をテーブルにして集計行を出す
+SplitButtonMsForm	挿入 > テーブル	Forms	棚にしない	
+MsFormInsert	挿入 > テーブル	新しいフォーム	棚にしない	
+MsFormPreview	挿入 > テーブル	フォームのプレビュー	棚にしない	
+MsFormEdit	挿入 > テーブル	フォームの編集	棚にしない	
+MsFormSend	挿入 > テーブル	フォームの送信	棚にしない	
+MsFormDelete	挿入 > テーブル	フォームの削除	棚にしない	
+FlyoutAnchorInsertPictures	挿入 > 図	画像	棚にしない	
+PictureInsertFromFile	挿入 > 図	このデバイス（画像）	棚にしない	
+InsertMobilePicture	挿入 > 図	モバイル デバイス（画像）	棚にしない	
+InsertM365Picture	挿入 > 図	ストック画像	棚にしない	
+ClipArtInsertDialog	挿入 > 図	オンライン画像	棚にしない	
+ShapesInsertGallery	挿入 > 図	図形	棚にしない	
+IconInsertFromFile	挿入 > 図	アイコン	棚にしない	
+Insert3DModelDropdown	挿入 > 図	3D モデル（メニュー）	棚にしない	
+Insert3DModelDefault	挿入 > 図	3D モデル	棚にしない	
+Insert3DModelFromFile	挿入 > 図	3D モデル（このデバイス）	棚にしない	
+Insert3DModelFromFileConsumer	挿入 > 図	3D モデル（ファイル）	棚にしない	
+Insert3DModelFromOnline	挿入 > 図	3D モデル（ストック）	棚にしない	
+Insert3DModelFromOnlineConsumer	挿入 > 図	3D モデル（オンライン）	棚にしない	
+SmartArtInsert	挿入 > 図	SmartArt	棚にしない	
+Insert3DModelFallback	挿入 > 図	3D モデル（代替）	棚にしない	
+ScreenshotInsertGallery	挿入 > 図	スクリーンショット	棚にしない	
+ScreenClipping	挿入 > 図	画面の領域	棚にしない	
+InsertPicturesInCellOverCellsMenu	挿入 > 図	画像（セル内・セルの上）	棚にしない	
+InsertPicturePlaceInCellsMenu	挿入 > 図	セルに配置（画像）	棚にしない	
+InsertCellPictureFromFile	挿入 > 図	セルに配置（このデバイス）	棚にしない	
+InsertCellMobilePicture	挿入 > 図	セルに配置（モバイル デバイス）	棚にしない	
+InsertCellM365Picture	挿入 > 図	セルに配置（ストック画像）	棚にしない	
+InsertCellClipArtDialog	挿入 > 図	セルに配置（オンライン画像）	棚にしない	
+InsertPicturePlaceOverCellsMenu	挿入 > 図	セルの上に配置（画像）	棚にしない	
+OfficeExtensionsAppStore	挿入 > アドイン	アドインを入手	棚にしない	
+OfficeExtensionsGallery2	挿入 > アドイン	個人用アドイン	棚にしない	
+OfficeExtensionsDialog	挿入 > アドイン	アドインの管理	棚にしない	
+OfficeExtensionsManageOtherAddins	挿入 > アドイン	その他のアドインの管理	棚にしない	
+ExtensibilityExperimentation	挿入 > アドイン	アドインの試用	棚にしない	
+OfficeExtensionsFeaturedApp1	挿入 > アドイン	おすすめのアドイン 1	棚にしない	
+OfficeExtensionsFeaturedApp2	挿入 > アドイン	おすすめのアドイン 2	棚にしない	
+OfficeExtensionsFeaturedApp3	挿入 > アドイン	おすすめのアドイン 3	棚にしない	
+OfficeExtensionsFeaturedApp4	挿入 > アドイン	おすすめのアドイン 4	棚にしない	
+OfficeExtensionsFeaturedApp5	挿入 > アドイン	おすすめのアドイン 5	棚にしない	
+OfficeExtensionsFeaturedApp6	挿入 > アドイン	おすすめのアドイン 6	棚にしない	
+ChartInsertGalleryNew	挿入 > グラフ	おすすめグラフ	もう棚にある	項目と金額の棒グラフを作る
+ChartTypeColumnInsertGallery	挿入 > グラフ	縦棒/横棒グラフの挿入	もう棚にある	項目と金額の棒グラフを作る
+ChartTypeColumnInsertDialog	挿入 > グラフ	その他の縦棒グラフ	棚にしない	
+ChartTypeLineInsertGallery	挿入 > グラフ	折れ線/面グラフの挿入	もう棚にある	推移の折れ線グラフを作る
+ChartTypeLineInsertDialog	挿入 > グラフ	その他の折れ線グラフ	棚にしない	
+ChartTypePieInsertGallery	挿入 > グラフ	円またはドーナツ グラフの挿入	もう棚にある	項目と金額の円グラフを作る
+ChartTypePieInsertDialog	挿入 > グラフ	その他の円グラフ	棚にしない	
+ChartTypeHierarchyInsertGallery	挿入 > グラフ	階層構造グラフの挿入	棚にしない	
+ChartTypeHierarchyInsertDialog	挿入 > グラフ	その他の階層構造グラフ	棚にしない	
+ChartTypeStatisticalInsertGallery	挿入 > グラフ	統計グラフの挿入	棚にしない	
+ChartTypeStatisticalInsertDialog	挿入 > グラフ	その他の統計グラフ	棚にしない	
+ChartTypeXYScatterInsertGallery	挿入 > グラフ	散布図 (X, Y) またはバブル チャートの挿入	棚にしない	
+ChartTypeScatterInsertDialog	挿入 > グラフ	その他の散布図	棚にしない	
+ChartTypeWaterfallInsertChartGallery	挿入 > グラフ	ウォーターフォール図、じょうご図、株価チャート、等高線グラフ、レーダー チャートの挿入	もう棚にある	選んだ2列で滝グラフを作る
+ChartTypeStockInsertDialog	挿入 > グラフ	その他の株価チャート	棚にしない	
+ChartTypeComboInsertGallery	挿入 > グラフ	複合グラフの挿入	もう棚にある	棒と率の折れ線の複合グラフを作る
+ChartTypeComboInsertDialog	挿入 > グラフ	ユーザー設定の複合グラフ	棚にしない	
+ChartTypeCustomVisualInsertGallery	挿入 > グラフ	カスタム ビジュアル	棚にしない	
+ChartTypeCustomVisualInsertDialog	挿入 > グラフ	その他のカスタム ビジュアル	棚にしない	
+ChartTypeMapsInsertGallery	挿入 > グラフ	マップ グラフ	棚にしない	
+ChartTypeMapsInsertDialog	挿入 > グラフ	その他のマップ グラフ	棚にしない	
+NewPivotChartSplitButton	挿入 > グラフ	ピボットグラフ（分割ボタン）	もう棚にある	項目と金額の棒グラフを作る
+PivotChartInsert	挿入 > グラフ	ピボットグラフ	もう棚にある	項目と金額の棒グラフを作る
+SxNewPivotChartAndTable	挿入 > グラフ	ピボットグラフとピボットテーブル	もう棚にある	項目と金額の棒グラフを作る
+ChartDialogLauncherAll	挿入 > グラフ	すべてのグラフを表示	棚にしない	
+SplitButtonPowerMap	挿入 > ツアー	3D マップ（分割ボタン）	棚にしない	
+PowerMapLaunch	挿入 > ツアー	3D マップを開く	棚にしない	
+PowerMapAddData	挿入 > ツアー	3D マップにデータを追加	棚にしない	
+SparklineLineInsert	挿入 > スパークライン	スパークライン（折れ線）	もう棚にある	各行の右にスパークラインを足す
+SparklineColumnInsert	挿入 > スパークライン	スパークライン（縦棒）	もう棚にある	各行の右にスパークラインを足す
+SparklineWinLossInsert	挿入 > スパークライン	スパークライン（勝敗）	もう棚にある	各行の右にスパークラインを足す
+SlicerInsert	挿入 > フィルター	スライサー	棚にしない	
+InsertTimeline	挿入 > フィルター	タイムライン	棚にしない	
+InsertLinkGallery	挿入 > リンク	リンク	棚にしない	
+HyperlinkInsert	挿入 > リンク	リンクの挿入	棚にしない	
+InsertNewComment	挿入 > コメント	コメント	棚にしない	
+InsertInCellCheckbox	挿入 > セルのコントロール	チェックボックス	棚にしない	
+InCellStarRating	挿入 > セルのコントロール	星評価	棚にしない	
+InCellPictureCellFormat	挿入 > セルのコントロール	画像セルの書式	棚にしない	
+TextBoxInsertExcel	挿入 > テキスト	テキスト ボックス	棚にしない	
+TextBoxInsertMenu	挿入 > テキスト	テキスト ボックス（メニュー）	棚にしない	
+TextBoxInsertHorizontal	挿入 > テキスト	横書きテキスト ボックス	棚にしない	
+TextBoxInsertVertical	挿入 > テキスト	縦書きテキスト ボックス	棚にしない	
+HeaderFooterInsert	挿入 > テキスト	ヘッダーとフッター	棚にする	頼みの文でシートの表示と印刷を変える
+WordArtInsertGallery	挿入 > テキスト	ワードアート	棚にしない	
+SignatureLineInsertMenu	挿入 > テキスト	署名欄（メニュー）	棚にしない	
+SignatureLineInsert	挿入 > テキスト	Microsoft Office 署名欄	棚にしない	
+SignatureServicesAdd	挿入 > テキスト	署名サービスの追加	棚にしない	
+OleObjectctInsert	挿入 > テキスト	オブジェクト	棚にしない	
+InsertBuildingBlocksEquationsGallery	挿入 > 記号と特殊文字	数式（Equation）	棚にしない	
+EquationInsertNew	挿入 > 記号と特殊文字	新しい数式の挿入	棚にしない	
+InkEquation	挿入 > 記号と特殊文字	インク数式	棚にしない	
+SymbolInsert	挿入 > 記号と特殊文字	記号と特殊文字	棚にしない	
+InkSelect	描画 > 入力	選択（描画）	棚にしない	
+FingerPaintingMode	描画 > 入力	タッチして描画する	棚にしない	
+DrawInkMode	描画 > 入力	描画	棚にしない	
+InkEraser	描画 > ツール	消しゴム	棚にしない	
+LassoSelect	描画 > ツール	なげなわ選択	棚にしない	
+InkToolboxWithEraserAndLasso	描画 > 描画ツール	描画ツール	棚にしない	
+InkToolbox	描画 > ペン	ペン	棚にしない	
+PensGallery2	描画 > ペン	ペン（ギャラリー）	棚にしない	
+PenAddFavorite	描画 > ペン	ペンの追加	棚にしない	
+InkColorPicker2	描画 > ペン	インクの色	棚にしない	
+InkColorMoreColorsDialog	描画 > ペン	インクの色（その他の色）	棚にしない	
+LineThickness2	描画 > ペン	太さ	棚にしない	
+LineStylesDialog	描画 > ペン	線のスタイル（描画）	棚にしない	
+DiagrammingOnline	描画 > 変換	インクを図形に変換	棚にしない	
+SelectionToMathConvert	描画 > 変換	インクを数式に変換	棚にしない	
+Replay	描画 > 再生	インクの再生	棚にしない	
+InkStopInkingReadingView	描画 > 閉じる	インクの終了	棚にしない	
+PenAndInkHelp	描画 > ヘルプ	ペンのヘルプ	棚にしない	
+ThemesGallery	ページ レイアウト > テーマ	テーマ	棚にしない	
+ThemeSearchOfficeOnline	ページ レイアウト > テーマ	テーマの検索	棚にしない	
+ThemeBrowseForThemes	ページ レイアウト > テーマ	テーマの参照	棚にしない	
+ThemeSaveCurrent	ページ レイアウト > テーマ	現在のテーマを保存	棚にしない	
+ThemeColorsGallery	ページ レイアウト > テーマ	配色	棚にしない	
+ThemeColorsCreateNew	ページ レイアウト > テーマ	色のカスタマイズ	棚にしない	
+ThemeFontsGallery	ページ レイアウト > テーマ	フォント（テーマ）	棚にしない	
+ThemeFontsCreateNew	ページ レイアウト > テーマ	フォントのカスタマイズ	棚にしない	
+ThemeEffectsGallery	ページ レイアウト > テーマ	効果	棚にしない	
+PageMarginsGallery	ページ レイアウト > ページ設定	余白	棚にする	頼みの文でシートの表示と印刷を変える
+MarginsCustomMargins	ページ レイアウト > ページ設定	ユーザー設定の余白	棚にしない	
+PageOrientationGallery	ページ レイアウト > ページ設定	印刷の向き	棚にする	頼みの文でシートの表示と印刷を変える
+PageSizeGallery	ページ レイアウト > ページ設定	サイズ（用紙）	棚にする	頼みの文でシートの表示と印刷を変える
+PageSizeMorePaperSizesDialogExcel	ページ レイアウト > ページ設定	その他の用紙サイズ	棚にしない	
+PrintAreaMenu	ページ レイアウト > ページ設定	印刷範囲（メニュー）	棚にする	頼みの文でシートの表示と印刷を変える
+PrintAreaSetPrintArea	ページ レイアウト > ページ設定	印刷範囲の設定	棚にする	頼みの文でシートの表示と印刷を変える
+PrintAreaClearPrintArea	ページ レイアウト > ページ設定	印刷範囲のクリア	棚にする	頼みの文でシートの表示と印刷を変える
+PrintAreaAddToPrintArea	ページ レイアウト > ページ設定	印刷範囲に追加	棚にしない	
+PageBreakMenu	ページ レイアウト > ページ設定	改ページ（メニュー）	棚にしない	
+PageBreakInsertExcel	ページ レイアウト > ページ設定	改ページの挿入	棚にしない	
+PageBreakRemove	ページ レイアウト > ページ設定	改ページの解除	棚にしない	
+PageBreaksResetAll	ページ レイアウト > ページ設定	すべての改ページを解除	棚にしない	
+SheetBackground	ページ レイアウト > ページ設定	背景（シート）	棚にしない	
+PrintTitles	ページ レイアウト > ページ設定	印刷タイトル	もう棚にある	横で見出し毎ページの印刷設定
+PageSetupPageDialog	ページ レイアウト > ページ設定	ページ設定	棚にしない	
+PageScaleToFitWidth	ページ レイアウト > 拡大縮小印刷	横（ページ数）	もう棚にある	縦横1ページに収めて印刷設定／横で見出し毎ページの印刷設定
+PageScaleToFitOptionsDialog	ページ レイアウト > 拡大縮小印刷	拡大縮小印刷の設定	棚にしない	
+PageScaleToFitHeight	ページ レイアウト > 拡大縮小印刷	縦（ページ数）	もう棚にある	縦横1ページに収めて印刷設定
+PageScaleToFitScale	ページ レイアウト > 拡大縮小印刷	拡大/縮小（印刷）	棚にしない	
+RightToLeftDocument	ページ レイアウト > シートのオプション	シートを右から左へ	棚にしない	
+ViewSheetGridlines	ページ レイアウト > シートのオプション	枠線の表示	棚にする	頼みの文でシートの表示と印刷を変える
+SheetPrintGridlines	ページ レイアウト > シートのオプション	枠線の印刷	棚にする	頼みの文でシートの表示と印刷を変える
+ViewSheetHeadings	ページ レイアウト > シートのオプション	見出しの表示（行列番号）	棚にする	頼みの文でシートの表示と印刷を変える
+SheetPrintHeadings	ページ レイアウト > シートのオプション	見出しの印刷（行列番号）	棚にしない	
+PageSetupSheetDialog	ページ レイアウト > シートのオプション	ページ設定（シート）	棚にしない	
+ObjectBringForwardMenu	ページ レイアウト > 配置	前面へ移動（メニュー）	棚にしない	
+ObjectBringForward	ページ レイアウト > 配置	前面へ移動	棚にしない	
+ObjectBringToFront	ページ レイアウト > 配置	最前面へ移動	棚にしない	
+ObjectSendBackwardMenu	ページ レイアウト > 配置	背面へ移動（メニュー）	棚にしない	
+ObjectSendBackward	ページ レイアウト > 配置	背面へ移動	棚にしない	
+ObjectSendToBack	ページ レイアウト > 配置	最背面へ移動	棚にしない	
+ObjectAlignMenu	ページ レイアウト > 配置	配置（図形・メニュー）	もう棚にある	図形を一覧にし位置をそろえる
+ObjectsAlignLeft	ページ レイアウト > 配置	左揃え（図形）	もう棚にある	図形を一覧にし位置をそろえる
+ObjectsAlignCenterHorizontal	ページ レイアウト > 配置	左右中央揃え（図形）	もう棚にある	図形を一覧にし位置をそろえる
+ObjectsAlignRight	ページ レイアウト > 配置	右揃え（図形）	もう棚にある	図形を一覧にし位置をそろえる
+ObjectsAlignTop	ページ レイアウト > 配置	上揃え（図形）	もう棚にある	図形を一覧にし位置をそろえる
+ObjectsAlignMiddleVertical	ページ レイアウト > 配置	上下中央揃え（図形）	もう棚にある	図形を一覧にし位置をそろえる
+ObjectsAlignBottom	ページ レイアウト > 配置	下揃え（図形）	もう棚にある	図形を一覧にし位置をそろえる
+AlignDistributeHorizontallyClassic	ページ レイアウト > 配置	左右に整列（図形）	もう棚にある	図形を一覧にし位置をそろえる
+AlignDistributeVerticallyClassic	ページ レイアウト > 配置	上下に整列（図形）	もう棚にある	図形を一覧にし位置をそろえる
+SnapToGrid	ページ レイアウト > 配置	枠線に合わせる	棚にしない	
+SnapToShapes	ページ レイアウト > 配置	図形に合わせる	棚にしない	
+ViewGridlinesToggleExcel	ページ レイアウト > 配置	枠線の表示（配置）	棚にする	頼みの文でシートの表示と印刷を変える
+ObjectsGroupMenu	ページ レイアウト > 配置	グループ化（図形・メニュー）	棚にしない	
+ObjectsGroup	ページ レイアウト > 配置	グループ化（図形）	棚にしない	
+ObjectsRegroup	ページ レイアウト > 配置	再グループ化（図形）	棚にしない	
+ObjectsUngroup	ページ レイアウト > 配置	グループ解除（図形）	棚にしない	
+ObjectRotateGallery	ページ レイアウト > 配置	回転（図形）	棚にしない	
+ObjectRotationOptionsDialog	ページ レイアウト > 配置	その他の回転オプション	棚にしない	
+ObjectsArrangeMenu	ページ レイアウト > 配置	配置（図形）	棚にしない	
+FunctionWizard	数式 > 関数ライブラリ	関数の挿入	棚にしない	
+FunctionsRecentlyUsedtInsertGallery	数式 > 関数ライブラリ	最近使用した関数	棚にしない	
+FunctionsFinancialInsertGallery	数式 > 関数ライブラリ	財務	棚にしない	
+FunctionsLogicalInsertGallery	数式 > 関数ライブラリ	論理	棚にしない	
+FunctionsTextInsertGallery	数式 > 関数ライブラリ	文字列操作	棚にしない	
+FunctionsDateTimeInsertGallery	数式 > 関数ライブラリ	日付/時刻	棚にしない	
+FunctionsLookupReferenceInsertGallery	数式 > 関数ライブラリ	検索/行列	もう棚にある	マスタを引く計算列を足す
+FunctionsMathTrigInsertGallery	数式 > 関数ライブラリ	数学/三角	棚にしない	
+FormulaMoreFunctionsMenu	数式 > 関数ライブラリ	その他の関数（メニュー）	棚にしない	
+FunctionsStatisticalInsertGallery	数式 > 関数ライブラリ	統計	棚にしない	
+FunctionsEngineeringInsertGallery	数式 > 関数ライブラリ	エンジニアリング	棚にしない	
+FunctionsCubeInsertGallery	数式 > 関数ライブラリ	キューブ	棚にしない	
+FunctionsInformationInsertGallery	数式 > 関数ライブラリ	情報	棚にしない	
+FunctionsCompatibility	数式 > 関数ライブラリ	互換性	棚にしない	
+FunctionsWebInsertGallery	数式 > 関数ライブラリ	Web	棚にしない	
+FunctionsAzureInsertGallery	数式 > 関数ライブラリ	Azure	棚にしない	
+InsertPythonMenu	数式 > Python	Python の挿入（メニュー）	棚にしない	
+InsertPython	数式 > Python	Python の挿入	棚にしない	
+PythonInExcelOption	数式 > Python	Python のオプション	棚にしない	
+TryPythonSamples	数式 > Python	Python のサンプル	棚にしない	
+PythonResetMenu	数式 > Python	Python のリセット（メニュー）	棚にしない	
+PythonClearGlobals	数式 > Python	Python の変数を消す	棚にしない	
+PythonResetRuntime	数式 > Python	Python の実行環境のリセット	棚にしない	
+ShowExternalCodeDiagnostics	数式 > Python	診断（Python）	棚にしない	
+InitPyEditor	数式 > Python	Python エディター	棚にしない	
+NameManager	数式 > 定義された名前	名前の管理	もう棚にある	名前を一覧にし壊れた名前を削除
+NameDefineMenu	数式 > 定義された名前	名前の定義（メニュー）	もう棚にある	見出しの語で列に名前を付ける
+NameDefine	数式 > 定義された名前	名前の定義	もう棚にある	見出しの語で列に名前を付ける
+NamesApply	数式 > 定義された名前	名前の適用	棚にしない	
+NameUseInFormula	数式 > 定義された名前	数式で使用	棚にしない	
+NamePasteName	数式 > 定義された名前	名前の貼り付け	棚にしない	
+NameCreateFromSelection	数式 > 定義された名前	選択範囲から作成	もう棚にある	見出しの語で列に名前を付ける
+TracePrecedents	数式 > ワークシート分析	参照元のトレース	もう棚にある	参照とリンクを一覧にする
+TraceDependents	数式 > ワークシート分析	参照先のトレース	もう棚にある	参照とリンクを一覧にする
+TraceRemoveArrowsMenu	数式 > ワークシート分析	トレース矢印の削除（メニュー）	棚にしない	
+TraceRemoveAllArrows	数式 > ワークシート分析	トレース矢印の削除	棚にしない	
+TracePrecedentsRemoveArrows	数式 > ワークシート分析	参照元トレース矢印の削除	棚にしない	
+TraceDependentRemoveArrows	数式 > ワークシート分析	参照先トレース矢印の削除	棚にしない	
+ShowFormulas	数式 > ワークシート分析	数式の表示	棚にしない	
+ErrorCheckingMenu	数式 > ワークシート分析	エラー チェック（メニュー）	もう棚にある	エラー値のセルを一覧にする
+ErrorChecking	数式 > ワークシート分析	エラー チェック	もう棚にある	エラー値のセルを一覧にする
+TraceError	数式 > ワークシート分析	エラーのトレース	もう棚にある	エラー値のセルを一覧にする
+CircularReferences	数式 > ワークシート分析	循環参照	もう棚にある	数式の危ない所を右に報告する
+FormulaEvaluate	数式 > ワークシート分析	数式の検証	棚にしない	
+WatchWindow	数式 > ワークシート分析	ウォッチ ウィンドウ	棚にしない	
+CalculationOptionsMenu	数式 > 計算方法	計算方法の設定	棚にしない	
+CalculationOptionsAutomatically	数式 > 計算方法	自動	棚にしない	
+CalculationOptionsAutomaticallyExceptDataTables	数式 > 計算方法	データ テーブル以外自動	棚にしない	
+CalculationOptionsManuallly	数式 > 計算方法	手動	棚にしない	
+StaleValueNotification	数式 > 計算方法	古い値の書式設定	棚にしない	
+CalculateNow	数式 > 計算方法	再計算実行	棚にしない	
+CalculateSheet	数式 > 計算方法	シート再計算	棚にしない	
+GetExternalDataFromAccess	データ > 外部データの取り込み	Access データベース	棚にしない	
+GetExternalDataFromWeb	データ > 外部データの取り込み	Web クエリ	棚にしない	
+GetExternalDataFromText	データ > 外部データの取り込み	テキスト ファイル	棚にしない	
+GetExternalDataFromOtherSources	データ > 外部データの取り込み	その他のデータ ソース	棚にしない	
+GetExternalDataExistingConnections	データ > 外部データの取り込み	既存の接続	棚にしない	
+PowerQueryGetTransformDataMenuSubscription19	データ > データの取得と変換	データの取得	棚にしない	
+PowerQueryModernGetData	データ > データの取得と変換	データの取得（新しい画面）	棚にしない	
+PowerQueryGetTransformDataFromFileSubscription19	データ > データの取得と変換	ファイル から	棚にしない	
+GetPowerQueryDataFromExcel	データ > データの取得と変換	Excel ブック から	棚にしない	
+GetPowerQueryGetTransformDataFromText	データ > データの取得と変換	テキスト/CSV から	棚にしない	
+GetPowerQueryDataFromXml	データ > データの取得と変換	XML から	棚にしない	
+GetPowerQueryDataFromJson	データ > データの取得と変換	JSON から	棚にしない	
+PowerQueryDataFromPDFFile	データ > データの取得と変換	PDF から	棚にしない	
+GetPowerQueryDataFromFolder	データ > データの取得と変換	フォルダー から	棚にしない	
+GetPowerQueryDataFromSharePointFolder	データ > データの取得と変換	SharePoint フォルダー から	棚にしない	
+PowerQueryGetTransformDataFromDatabaseSubscription19	データ > データの取得と変換	データベース から	棚にしない	
+GetPowerQueryDataFromSqlServerDatabase	データ > データの取得と変換	SQL Server データベース から	棚にしない	
+GetPowerQueryDataFromAccessDatabase	データ > データの取得と変換	Microsoft Access データベース から	棚にしない	
+GetPowerQueryGetTransformDataFromAnalysisServices	データ > データの取得と変換	Analysis Services から	棚にしない	
+GetPowerQueryGetTransformDataFromSqlServerASServices	データ > データの取得と変換	SQL Server Analysis Services から	棚にしない	
+GetPowerQueryDataFromOracleDatabase	データ > データの取得と変換	Oracle データベース から	棚にしない	
+GetPowerQueryDataFromIbmDb2Database	データ > データの取得と変換	IBM Db2 データベース から	棚にしない	
+GetPowerQueryDataFromMySqlDatabase	データ > データの取得と変換	MySQL データベース から	棚にしない	
+GetPowerQueryDataFromPostgreSqlDatabase	データ > データの取得と変換	PostgreSQL データベース から	棚にしない	
+GetPowerQueryDataFromSybaseDatabase	データ > データの取得と変換	Sybase データベース から	棚にしない	
+GetPowerQueryDataFromTeradataDatabase	データ > データの取得と変換	Teradata データベース から	棚にしない	
+GetPowerQueryDataFromSapHanaDatabase	データ > データの取得と変換	SAP HANA データベース から	棚にしない	
+PowerQueryDataFromSnowflake	データ > データの取得と変換	Snowflake から	棚にしない	
+PowerQueryGetTransformDataFromAzureSubscription19	データ > データの取得と変換	Azure から	棚にしない	
+GetPowerQueryDataFromAzureSqlDatabase	データ > データの取得と変換	Azure SQL データベース から	棚にしない	
+GetPowerQueryDataFromAzureDataWarehouse	データ > データの取得と変換	Azure Synapse Analytics から	棚にしない	
+GetPowerQueryDataFromWindowsAzureHdInsight	データ > データの取得と変換	Azure HDInsight から	棚にしない	
+GetPowerQueryDataFromWindowsAzureBlob	データ > データの取得と変換	Azure Blob Storage から	棚にしない	
+GetPowerQueryDataFromWindowsAzureTable	データ > データの取得と変換	Azure Table Storage から	棚にしない	
+GetPowerQueryDataFromAzureDataLakeStore	データ > データの取得と変換	Azure Data Lake Storage から	棚にしない	
+GetPowerQueryDataFromAzureDataLakeStoreGen2	データ > データの取得と変換	Azure Data Lake Storage Gen2 から	棚にしない	
+PowerQueryDataFromKusto	データ > データの取得と変換	Azure Data Explorer から	棚にしない	
+PowerQueryDataFromPowerPlatform	データ > データの取得と変換	Power Platform から	棚にしない	
+PowerBIData	データ > データの取得と変換	Power BI から	棚にしない	
+PowerQueryDataFromPowerBIDataFlows	データ > データの取得と変換	Power BI データフロー から	棚にしない	
+PowerQueryDataFromPowerBIDataVerse	データ > データの取得と変換	Dataverse から	棚にしない	
+PowerQueryGetTransformDataFromOnlineServicesSubscription19	データ > データの取得と変換	オンライン サービス から	棚にしない	
+GetPowerQueryDataFromSharePointOnlineList	データ > データの取得と変換	SharePoint Online リスト から	棚にしない	
+GetPowerQueryDataFromMicrosoftExchangeOnline	データ > データの取得と変換	Microsoft Exchange Online から	棚にしない	
+GetPowerQueryDataFromDynamicsCRM	データ > データの取得と変換	Dynamics 365 から	棚にしない	
+PowerQueryDataFromMicrosoftDynamics365BusinessCentral	データ > データの取得と変換	Dynamics 365 Business Central から	棚にしない	
+GetPowerQueryDataFromSalesforceObjects	データ > データの取得と変換	Salesforce オブジェクト から	棚にしない	
+GetPowerQueryDataFromSalesforceReports	データ > データの取得と変換	Salesforce レポート から	棚にしない	
+PowerQueryDataFromAdobeAnalytics	データ > データの取得と変換	Adobe Analytics から	棚にしない	
+PowerQueryGetTransformDataFromOtherSourceSubscription19	データ > データの取得と変換	その他のデータ ソース から	棚にしない	
+GetPowerQueryGetTransformDataFromTable	データ > データの取得と変換	テーブルまたは範囲 から	棚にしない	
+GetPowerQueryDataFromWeb	データ > データの取得と変換	Web から	棚にしない	
+GetPowerQueryGetTransformDataFromMicrosoftQuery	データ > データの取得と変換	Microsoft Query から	棚にしない	
+GetPowerQueryDataFromSharePointList	データ > データの取得と変換	SharePoint リスト から	棚にしない	
+GetPowerQueryDataFromODataFeed	データ > データの取得と変換	OData フィード から	棚にしない	
+GetPowerQueryDataFromHdfsFile	データ > データの取得と変換	Hadoop ファイル (HDFS) から	棚にしない	
+GetPowerQueryDataFromActiveDirectory	データ > データの取得と変換	Active Directory から	棚にしない	
+GetPowerQueryDataFromMicrosoftExchange	データ > データの取得と変換	Microsoft Exchange から	棚にしない	
+GetPowerQueryDataFromODBC	データ > データの取得と変換	ODBC から	棚にしない	
+GetPowerQueryDataFromOLEDB	データ > データの取得と変換	OLEDB から	棚にしない	
+DataFromPicture	データ > データの取得と変換	画像から	棚にしない	
+DataFromScreenshot	データ > データの取得と変換	スクリーンショットから	棚にしない	
+DataFromClipboardImage	データ > データの取得と変換	クリップボードの画像から	棚にしない	
+GetPowerQueryDataFromEmptyFormula	データ > データの取得と変換	空のクエリ から	棚にしない	
+GetPowerQueryGetTransformDataLegacyWizard	データ > データの取得と変換	従来のウィザード	棚にしない	
+PowerQueryGetTransformDataCombineSubscription19	データ > データの取得と変換	クエリの結合	棚にしない	
+GetPowerQueryMerge	データ > データの取得と変換	マージ（クエリの結合）	もう棚にある	別テーブルの列をクエリで結合する
+GetPowerQueryAppend	データ > データの取得と変換	追加（クエリの結合）	もう棚にある	同じ形のシートを縦につなぐ
+PowerQueryGetTransformDataLaunchQueryEditor	データ > データの取得と変換	Power Query エディターの起動	棚にしない	
+GetPowerQueryDataSourceSettings	データ > データの取得と変換	データ ソース設定	棚にしない	
+PowerQueryShowQuerySettings	データ > データの取得と変換	クエリのオプション	棚にしない	
+PowerQueryRecentSources	データ > データの取得と変換	最近使ったソース	棚にしない	
+GetTransformExistingConnections	データ > データの取得と変換	既存の接続	棚にしない	
+PowerQueryGetTransformDataMenu	データ > データの取得と変換	データの取得	棚にしない	
+GetPowerQueryGetTransformDataFromFile	データ > データの取得と変換	ファイル から	棚にしない	
+GetPowerQueryGetTransformDataFromDatabaseSubscription	データ > データの取得と変換	データベース から	棚にしない	
+PowerQueryGetTransformDataFromAzure	データ > データの取得と変換	Azure から	棚にしない	
+PowerQueryGetTransformDataFromOnlineServices	データ > データの取得と変換	オンライン サービス から	棚にしない	
+GetPowerQueryGetTransformDataFromOtherSource	データ > データの取得と変換	その他のデータ ソース から	棚にしない	
+PowerQueryGetTransformDataCombine	データ > データの取得と変換	クエリの結合	棚にしない	
+FlyoutAnchorPowerQueryNewQuerySubscription	データ > データの取得と変換（Power Query）	新しいクエリ	棚にしない	
+GetPowerQueryDataFromFileSubscription	データ > データの取得と変換（Power Query）	ファイル から	棚にしない	
+GetPowerQueryDataFromCsv	データ > データの取得と変換（Power Query）	テキスト/CSV から	棚にしない	
+GetPowerQueryDataFromText	データ > データの取得と変換（Power Query）	テキスト/CSV から	棚にしない	
+GetPowerQueryDataFromDatabaseSubscription	データ > データの取得と変換（Power Query）	データベース から	棚にしない	
+GetPowerQueryDataFromSqlServerASServices	データ > データの取得と変換（Power Query）	SQL Server Analysis Services から	棚にしない	
+GetPowerQueryDataFromAzureSubscription	データ > データの取得と変換（Power Query）	Azure から	棚にしない	
+GetPowerQueryDataFromOnlineServicesSubscription	データ > データの取得と変換（Power Query）	オンライン サービス から	棚にしない	
+GetPowerQueryDataFromOtherSourceSubscription	データ > データの取得と変換（Power Query）	その他のデータ ソース から	棚にしない	
+FlyoutAnchorPowerQueryCombineSubscription	データ > データの取得と変換（Power Query）	クエリの結合	棚にしない	
+PowerQueryLaunchQueryEditor	データ > データの取得と変換（Power Query）	Power Query エディターの起動	棚にしない	
+PowerQueryManageWorkbookQueries	データ > データの取得と変換（Power Query）	ブックのクエリの表示	棚にしない	
+GetPowerQueryExcelDataFromTable	データ > データの取得と変換（Power Query）	テーブルから	棚にしない	
+FlyoutAnchorPowerQueryNewQuery	データ > データの取得と変換（Power Query）	新しいクエリ	棚にしない	
+GetPowerQueryDataFromFile	データ > データの取得と変換（Power Query）	ファイル から	棚にしない	
+GetPowerQueryDataFromDatabase	データ > データの取得と変換（Power Query）	データベース から	棚にしない	
+GetPowerQueryDataFromAzure	データ > データの取得と変換（Power Query）	Azure から	棚にしない	
+GetPowerQueryDataFromOnlineServices	データ > データの取得と変換（Power Query）	オンライン サービス から	棚にしない	
+GetPowerQueryDataFromOtherSource	データ > データの取得と変換（Power Query）	その他のデータ ソース から	棚にしない	
+FlyoutAnchorPowerQueryCombine	データ > データの取得と変換（Power Query）	クエリの結合	棚にしない	
+RefreshAllMenu	データ > クエリと接続	すべて更新（メニュー）	棚にしない	
+RefreshAll	データ > クエリと接続	すべて更新	棚にしない	
+Refresh	データ > クエリと接続	更新	棚にしない	
+RefreshStatus	データ > クエリと接続	更新の状態	棚にしない	
+RefreshCancel	データ > クエリと接続	更新の取り消し	棚にしない	
+ConnectionProperties	データ > クエリと接続	接続のプロパティ	棚にしない	
+Connections	データ > クエリと接続	接続	棚にしない	
+DataRangeProperties	データ > クエリと接続	データ範囲のプロパティ	棚にしない	
+EditLinks	データ > クエリと接続	リンクの編集	もう棚にある	外部リンクを値に変えて切る
+ShowQueriesAndConnections	データ > クエリと接続	クエリと接続	棚にしない	
+WorkbookLinks	データ > クエリと接続	ブックのリンク	もう棚にある	参照とリンクを一覧にする
+ConvertToLinkedEntity	データ > データの種類	データの種類	棚にしない	
+LinkedEntityMoreDataBtn	データ > データの種類	データの種類（その他）	棚にしない	
+SortDialog	データ > 並べ替えとフィルター	並べ替え	もう棚にある	選んだ列で表を並べ替える
+AdvancedFilterDialog	データ > 並べ替えとフィルター	詳細設定（フィルター）	もう棚にある	選んだ値に合う行を抜き出す
+ConvertTextToTable	データ > データ ツール	区切り位置	もう棚にある	選んだ列をクエリで区切って分ける
+RemoveDuplicates	データ > データ ツール	重複の削除	もう棚にある	全列が同じ重複行を削除する
+DataValidationMenu	データ > データ ツール	データの入力規則（メニュー）	もう棚にある	選んだ文字で入力規則リストを作る
+DataValidation	データ > データ ツール	データの入力規則	もう棚にある	選んだ文字で入力規則リストを作る
+DataValidationCircleInvalid	データ > データ ツール	無効データのマーク	棚にしない	
+DataValidationClearValidationCircles	データ > データ ツール	入力規則マークのクリア	棚にしない	
+Consolidate	データ > データ ツール	統合	もう棚にある	他のシートの表を1枚に集約する
+AsppRelationships	データ > データ ツール	リレーションシップ	棚にしない	
+DataModelManage	データ > データ ツール	データ モデルの管理	棚にしない	
+WhatIfAnalysisMenu	データ > 予測	What-If 分析	棚にしない	
+ScenarioManager	データ > 予測	シナリオの登録と管理	棚にしない	
+GoalSeek	データ > 予測	ゴール シーク	棚にしない	
+DataTable	データ > 予測	データ テーブル（What-If）	棚にしない	
+ForecastInsert	データ > 予測	予測シート	棚にしない	
+OutlineGroupMenu	データ > アウトライン	グループ化（メニュー）	棚にする	頼みの文で指した列と行の幅と表示を変える
+OutlineGroup	データ > アウトライン	グループ化	棚にする	頼みの文で指した列と行の幅と表示を変える
+OutlineAuto	データ > アウトライン	自動アウトライン	棚にしない	
+OutlineUngroupMenu	データ > アウトライン	グループ解除（メニュー）	棚にする	頼みの文で指した列と行の幅と表示を変える
+OutlineUngroup	データ > アウトライン	グループ解除	棚にする	頼みの文で指した列と行の幅と表示を変える
+OutlineClear	データ > アウトライン	アウトラインのクリア	棚にしない	
+OutlineSubtotals	データ > アウトライン	小計	もう棚にある	区分の切れ目に小計行を挿入する
+OutlineShowDetail	データ > アウトライン	詳細データの表示	棚にしない	
+OutlineHideDetail	データ > アウトライン	詳細データを表示しない	棚にしない	
+OutlineSettings	データ > アウトライン	アウトラインの設定	棚にしない	
+Spelling	校閲 > 文章校正	スペル チェック	棚にしない	
+Thesaurus	校閲 > 文章校正	類義語辞典	棚にしない	
+StatusWorkbookStatistics	校閲 > 文章校正	ブックの統計	もう棚にある	ブックの構造を一覧にする
+CheckPerformance	校閲 > パフォーマンス	パフォーマンスの確認	もう棚にある	ブックが重い原因を一覧にする
+MenuAccessibility	校閲 > アクセシビリティ	アクセシビリティ（メニュー）	棚にしない	
+AccessibilityChecker	校閲 > アクセシビリティ	アクセシビリティ チェック	棚にしない	
+AltTextPaneRibbon	校閲 > アクセシビリティ	代替テキスト	棚にしない	
+OpenOptionsEaseOfAcess	校閲 > アクセシビリティ	アクセシビリティの設定	棚にしない	
+AccessibilityHelp	校閲 > アクセシビリティ	アクセシビリティのヘルプ	棚にしない	
+Insights	校閲 > インサイト	スマート検索	棚にしない	
+Translate	校閲 > 言語	翻訳	棚にしない	
+Translator	校閲 > 言語	翻訳ツール	棚にしない	
+HangulHanjaConversion	校閲 > 言語	ハングル/漢字変換	棚にしない	
+LineageShowChanges	校閲 > 変更	変更の表示	棚にしない	
+ReviewNewComment	校閲 > コメント	新しいコメント	棚にしない	
+ReviewDeleteComment	校閲 > コメント	コメントの削除	棚にしない	
+ReviewPreviousComment	校閲 > コメント	前のコメント	棚にしない	
+ReviewNextComment	校閲 > コメント	次のコメント	棚にしない	
+ReviewShowOrHideComment	校閲 > コメント	コメントの表示/非表示	棚にしない	
+ReviewShowAllComments	校閲 > コメント	すべてのコメントの表示	棚にしない	
+NewThreadedComment	校閲 > コメント	新しいコメント（スレッド）	棚にしない	
+PreviousThreadedComment	校閲 > コメント	前のコメント（スレッド）	棚にしない	
+NextThreadedComment	校閲 > コメント	次のコメント（スレッド）	棚にしない	
+ShowThreadedComments	校閲 > コメント	コメントの表示（スレッド）	棚にしない	
+ReviewNoteSplit	校閲 > メモ	メモ（分割ボタン）	棚にしない	
+NewCommentLegacy	校閲 > メモ	新しいメモ	棚にしない	
+PreviousCommentLegacy	校閲 > メモ	前のメモ	棚にしない	
+NextCommentLegacy	校閲 > メモ	次のメモ	棚にしない	
+ShowCommentLegacy	校閲 > メモ	メモの表示/非表示	棚にしない	
+ShowAllCommentsLegacy	校閲 > メモ	すべてのメモを表示	棚にしない	
+ConvertComments	校閲 > メモ	メモに変換	棚にしない	
+ReviewRestrictEditing	校閲 > 保護	ブックの保護	棚にしない	
+ReviewShareWorkbook	校閲 > 保護	ブックの共有（旧）	棚にしない	
+ReviewProtectAndShareWorkbook	校閲 > 保護	共有ブックの保護（旧）	棚にしない	
+ReviewAllowUsersToEditRanges	校閲 > 保護	範囲の編集を許可	棚にしない	
+ReviewTrackChangesMenu	校閲 > 保護	変更履歴の記録（旧）	棚にしない	
+ReviewHighlightChanges	校閲 > 保護	変更箇所の表示（旧）	棚にしない	
+ReviewAcceptOrRejectChangeDialog	校閲 > 保護	変更の承諾/元に戻す（旧）	棚にしない	
+ReviewAllowUsersToEditRangesCoauth	校閲 > 保護	範囲の編集を許可（共同編集）	棚にしない	
+SameAsName	校閲 > 保護	（SameAsName）	棚にしない	
+InkingStart	校閲 > インク	インクの開始	棚にしない	
+HideInkSplitButton	校閲 > インク	インクを非表示（分割ボタン）	棚にしない	
+HideInk	校閲 > インク	インクを非表示	棚にしない	
+InkDeleteAllOnSheet	校閲 > インク	シートのインクをすべて削除	棚にしない	
+InkDeleteAll	校閲 > インク	インクをすべて削除	棚にしない	
+CollaborateChanges	校閲 > 共同作業	共同作業の変更	棚にしない	
+SheetViewComboBox	表示 > シート ビュー	シート ビュー	棚にしない	
+KeepTemporarySheetView	表示 > シート ビュー	一時的なシート ビューを保持	棚にしない	
+ExitSheetView	表示 > シート ビュー	シート ビューの終了	棚にしない	
+NewSheetView	表示 > シート ビュー	新規シート ビュー	棚にしない	
+SheetViewOptions	表示 > シート ビュー	シート ビューのオプション	棚にしない	
+ViewNormalViewExcel	表示 > ブックの表示	標準（表示）	棚にする	頼みの文でシートの表示と印刷を変える
+ViewPageBreakPreviewView	表示 > ブックの表示	改ページ プレビュー	棚にする	頼みの文でシートの表示と印刷を変える
+ViewPageLayoutView	表示 > ブックの表示	ページ レイアウト（表示）	棚にする	頼みの文でシートの表示と印刷を変える
+ViewCustomViews	表示 > ブックの表示	ユーザー設定のビュー	棚にしない	
+DarkModeOn	表示 > ダーク モード	ダーク モード	棚にしない	
+ViewDocumentActionsPane	表示 > 表示	作業ウィンドウ	棚にしない	
+NavigationPaneExcelFeature	表示 > 表示	ナビゲーション	棚にしない	
+FocusActiveCell	表示 > 表示	フォーカス セル	棚にしない	
+ViewRulerExcel	表示 > 表示	ルーラー	棚にしない	
+GridlinesExcel	表示 > 表示	目盛線	棚にする	頼みの文でシートの表示と印刷を変える
+ViewFormulaBar	表示 > 表示	数式バー	棚にする	頼みの文でシートの表示と印刷を変える
+ViewHeadings	表示 > 表示	見出し（行列番号）	棚にする	頼みの文でシートの表示と印刷を変える
+DataTypeIcons	表示 > 表示	データの種類のアイコン	棚にしない	
+ZoomDialog	表示 > ズーム	ズーム	棚にする	頼みの文でシートの表示と印刷を変える
+ZoomCurrent100	表示 > ズーム	100%	棚にする	頼みの文でシートの表示と印刷を変える
+ZoomToSelection	表示 > ズーム	選択範囲に合わせて拡大/縮小	棚にする	頼みの文でシートの表示と印刷を変える
+WindowNew	表示 > ウィンドウ	新しいウィンドウを開く	棚にしない	
+WindowsArrangeAll	表示 > ウィンドウ	整列	棚にしない	
+ViewFreezePanesGallery	表示 > ウィンドウ	ウィンドウ枠の固定	もう棚にある	見出しで枠を固定しA1に戻す／頼みの文でシートの表示と印刷を変える
+WindowSplitToggle	表示 > ウィンドウ	分割	棚にしない	
+WindowHide	表示 > ウィンドウ	ウィンドウを表示しない	棚にしない	
+WindowUnhide	表示 > ウィンドウ	ウィンドウの再表示	棚にしない	
+ViewSideBySide	表示 > ウィンドウ	並べて比較	棚にしない	
+WindowSideBySideSynchronousScrolling	表示 > ウィンドウ	同時にスクロール	棚にしない	
+WindowResetPosition	表示 > ウィンドウ	ウィンドウの位置を元に戻す	棚にしない	
+WindowSwitchWindowsMenuExcel	表示 > ウィンドウ	ウィンドウの切り替え	棚にしない	
+MenuMacros	表示 > マクロ	マクロ（メニュー）	棚にしない	
+PlayMacro	表示 > マクロ	マクロの表示	棚にしない	
+MacroRecord	表示 > マクロ	マクロの記録	棚にしない	
+MacroRelativeReferences	表示 > マクロ	相対参照で記録	棚にしない	
+DisableGdiHWAcceleration	表示 > デバッグ	ハードウェア アクセラレータを無効にする	棚にしない	
+RecordActions	自動化 > スクリプト ツール	操作を記録	棚にしない	
+NewScript	自動化 > スクリプト ツール	新しいスクリプト	棚にしない	
+OfficeScriptsGallery	自動化 > Office スクリプト	Office スクリプト	棚にしない	
+SharedScripts	自動化 > Office スクリプト	共有スクリプト	棚にしない	
+AllScripts	自動化 > Office スクリプト	すべてのスクリプト	棚にしない	
+PowerAutomate	自動化 > Power Automate	Power Automate	棚にしない	
+VisualBasic	開発 > コード	Visual Basic	棚にしない	
+MacroPlay	開発 > コード	マクロ	棚にしない	
+MacroSecurity	開発 > コード	マクロのセキュリティ	棚にしない	
+OfficeExtensionsGallery3	開発 > アドイン	アドイン（開発）	棚にしない	
+AddInManager	開発 > アドイン	Excel アドイン	棚にしない	
+ComAddInsDialog	開発 > アドイン	COM アドイン	棚にしない	
+ControlsGallery	開発 > コントロール	挿入（コントロール）	棚にしない	
+DesignMode	開発 > コントロール	デザイン モード	棚にしない	
+ControlProperties	開発 > コントロール	プロパティ（コントロール）	棚にしない	
+ViewCode	開発 > コントロール	コードの表示	棚にしない	
+RunDialog	開発 > コントロール	ダイアログの実行	棚にしない	
+XmlSource	開発 > XML	ソース（XML）	棚にしない	
+XmlMapProperties	開発 > XML	対応付けのプロパティ	棚にしない	
+XmlExpansionPacksExcel	開発 > XML	拡張パック	棚にしない	
+XmlDataRefresh	開発 > XML	データの更新（XML）	棚にしない	
+XmlImport	開発 > XML	インポート（XML）	棚にしない	
+XmlExport	開発 > XML	エクスポート（XML）	棚にしない	
+Help	ヘルプ > ヘルプとサポート	ヘルプ	棚にしない	
+ContactUs	ヘルプ > ヘルプとサポート	サポートに問い合わせる	棚にしない	
+OfficeFeedbackHelpTab	ヘルプ > ヘルプとサポート	フィードバック	棚にしない	
+OfficeFeedbackIcon	ヘルプ > ヘルプとサポート	フィードバック（アイコン）	棚にしない	
+ShowTraining	ヘルプ > ヘルプとサポート	トレーニングを表示	棚にしない	
+WhatsNewRecentUpdates	ヘルプ > ヘルプとサポート	新機能	棚にしない	
+AskCommunity	ヘルプ > コミュニティ	コミュニティ	棚にしない	
+BlogSite	ヘルプ > コミュニティ	Excel ブログ	棚にしない	
+FilePrint	印刷プレビュー > 印刷	印刷	棚にしない	
+ZoomPrintPreviewExcel	印刷プレビュー > ズーム	ズーム（印刷プレビュー）	棚にしない	
+PageNext	印刷プレビュー > プレビュー	次のページ	棚にしない	
+PagePrevious	印刷プレビュー > プレビュー	前のページ	棚にしない	
+MarginsShowHide	印刷プレビュー > プレビュー	余白の表示	棚にしない	
+PrintPreviewClose	印刷プレビュー > プレビュー	印刷プレビューを閉じる	棚にしない	
+PictureBackgroundRemovalMarkForeground	背景の削除 > 調整	保持する領域としてマーク	棚にしない	
+PictureBackgroundRemovalMarkBackground	背景の削除 > 調整	削除する領域としてマーク	棚にしない	
+PictureBackgroundRemovalMarkDelete	背景の削除 > 調整	マークの削除	棚にしない	
+BackgroundRemovalClose	背景の削除 > 閉じる	すべての変更を破棄	棚にしない	
+KeepBackgroundRemoval	背景の削除 > 閉じる	変更を保持	棚にしない	
+PivotTableName	ピボットテーブル分析（状況タブ） > ピボットテーブル	ピボットテーブル名	棚にしない	
+PivotTableOptionsMenu	ピボットテーブル分析（状況タブ） > ピボットテーブル	オプション（ピボット・メニュー）	棚にしない	
+PivotTableOptions	ピボットテーブル分析（状況タブ） > ピボットテーブル	オプション（ピボット）	棚にしない	
+PivotTableShowPages	ピボットテーブル分析（状況タブ） > ピボットテーブル	レポート フィルター ページの表示	もう棚にある	選んだ列の値ごとにシートを分ける
+PivotTableGenerateGetPivotData	ピボットテーブル分析（状況タブ） > ピボットテーブル	GetPivotData の生成	棚にしない	
+PivotFieldName	ピボットテーブル分析（状況タブ） > アクティブなフィールド	アクティブなフィールド	棚にしない	
+PivotTableFieldSettings	ピボットテーブル分析（状況タブ） > アクティブなフィールド	フィールドの設定	もう棚にある	頼みの文でピボットを手直しする
+SelectedItemNavDrillDown	ピボットテーブル分析（状況タブ） > アクティブなフィールド	ドリルダウン	棚にしない	
+SelectedItemNavDrillUpSplitButton	ピボットテーブル分析（状況タブ） > アクティブなフィールド	ドリルアップ（分割ボタン）	棚にしない	
+SelectedItemNavDrillUp	ピボットテーブル分析（状況タブ） > アクティブなフィールド	ドリルアップ	棚にしない	
+PivotTableExpandField	ピボットテーブル分析（状況タブ） > アクティブなフィールド	フィールドの展開	棚にしない	
+PivotCollapseField	ピボットテーブル分析（状況タブ） > アクティブなフィールド	フィールドの折りたたみ	棚にしない	
+PivotTableShowDetails	ピボットテーブル分析（状況タブ） > アクティブなフィールド	詳細の表示（ピボット）	棚にしない	
+PivotTableGroupSelection	ピボットテーブル分析（状況タブ） > グループ	グループの選択（ピボット）	もう棚にある	選んだ3列で月別ピボットを作る
+PivotTableGroupField	ピボットテーブル分析（状況タブ） > グループ	グループ フィールド	もう棚にある	選んだ3列で月別ピボットを作る
+SlicerCreate	ピボットテーブル分析（状況タブ） > フィルター	スライサーの挿入（ピボット）	棚にしない	
+TimeSlicerCreate	ピボットテーブル分析（状況タブ） > フィルター	タイムラインの挿入（ピボット）	棚にしない	
+SlicerShare	ピボットテーブル分析（状況タブ） > フィルター	フィルターの接続	棚にしない	
+RefreshMenu	ピボットテーブル分析（状況タブ） > データ	更新（ピボット）	もう棚にある	ピボットの元範囲を広げて更新する
+PivotTableEditDataSource	ピボットテーブル分析（状況タブ） > データ	データ ソースの変更（メニュー）	もう棚にある	ピボットの元範囲を広げて更新する
+PivotTableChangeDataSource	ピボットテーブル分析（状況タブ） > データ	データ ソースの変更	もう棚にある	ピボットの元範囲を広げて更新する
+PivotTableClearMenu	ピボットテーブル分析（状況タブ） > アクション	クリア（ピボット・メニュー）	棚にしない	
+PivotClearAll	ピボットテーブル分析（状況タブ） > アクション	すべてクリア（ピボット）	棚にしない	
+PivotClearFilters	ピボットテーブル分析（状況タブ） > アクション	フィルターのクリア（ピボット）	もう棚にある	頼みの文でピボットを手直しする
+PivotTableSelectFlyout	ピボットテーブル分析（状況タブ） > アクション	選択（ピボット）	棚にしない	
+PivotTableSelectLabelAndData	ピボットテーブル分析（状況タブ） > アクション	ラベルと値（選択）	棚にしない	
+PivotTableSelectData	ピボットテーブル分析（状況タブ） > アクション	値（選択）	棚にしない	
+PivotTableSelectLabel	ピボットテーブル分析（状況タブ） > アクション	ラベル（選択）	棚にしない	
+PivotTableSelectEntireTable	ピボットテーブル分析（状況タブ） > アクション	ピボットテーブル全体（選択）	棚にしない	
+PivotTableEnableSelection	ピボットテーブル分析（状況タブ） > アクション	選択範囲の有効化	棚にしない	
+PivotTableMove	ピボットテーブル分析（状況タブ） > アクション	ピボットテーブルの移動	棚にしない	
+PivotTableFormulasMenu	ピボットテーブル分析（状況タブ） > 計算方法	フィールド/アイテム/セット	棚にしない	
+PivotTableFieldInsert	ピボットテーブル分析（状況タブ） > 計算方法	集計フィールド	棚にしない	
+PivotTableCalculatedItem	ピボットテーブル分析（状況タブ） > 計算方法	集計アイテム	棚にしない	
+PivotTableSolveOrder	ピボットテーブル分析（状況タブ） > 計算方法	計算の順序	棚にしない	
+PivotTableListFormulas	ピボットテーブル分析（状況タブ） > 計算方法	数式の一覧	棚にしない	
+PivotTableCreateTableBasedOnRow	ピボットテーブル分析（状況タブ） > 計算方法	行アイテムに基づいてセットを作成	棚にしない	
+PivotTableCreateTableBasedOnColumn	ピボットテーブル分析（状況タブ） > 計算方法	列アイテムに基づいてセットを作成	棚にしない	
+NamedSetManager	ピボットテーブル分析（状況タブ） > 計算方法	セットの管理	棚にしない	
+PivotTableOlapTools	ピボットテーブル分析（状況タブ） > 計算方法	OLAP ツール	棚にしない	
+PivotTableOlapPropertyFields	ピボットテーブル分析（状況タブ） > 計算方法	プロパティ フィールド	棚にしない	
+PivotTableOlapOffline	ピボットテーブル分析（状況タブ） > 計算方法	オフライン OLAP	棚にしない	
+PivotTableOlapConvertToFormulas	ピボットテーブル分析（状況タブ） > 計算方法	数式に変換（OLAP）	棚にしない	
+PivotTableWhatIfAnalysisMenu	ピボットテーブル分析（状況タブ） > 計算方法	What-If 分析（ピボット）	棚にしない	
+PivotTableEnableWhatIfAnalysis	ピボットテーブル分析（状況タブ） > 計算方法	What-If 分析を有効にする	棚にしない	
+PivotTableCalculateChanges	ピボットテーブル分析（状況タブ） > 計算方法	変更の計算	棚にしない	
+PivotTableAutoCalculate	ピボットテーブル分析（状況タブ） > 計算方法	変更を自動的に計算	棚にしない	
+PivotTableDiscardChanges	ピボットテーブル分析（状況タブ） > 計算方法	変更の破棄	棚にしない	
+PivotTablePublishChanges	ピボットテーブル分析（状況タブ） > 計算方法	変更の発行	棚にしない	
+PivotTableRefreshDataSourceValue	ピボットテーブル分析（状況タブ） > 計算方法	データ ソースの値の更新	棚にしない	
+PivotTableWhatIfAnalysisSettings	ピボットテーブル分析（状況タブ） > 計算方法	What-If 分析の設定	棚にしない	
+PivotTableCreateMeasures	ピボットテーブル分析（状況タブ） > 計算方法	メジャー	棚にしない	
+PivotTableCreateMembers	ピボットテーブル分析（状況タブ） > 計算方法	メンバー	棚にしない	
+PivotTableManageCalculations	ピボットテーブル分析（状況タブ） > 計算方法	計算の管理	棚にしない	
+PivotChartInsertClassic	ピボットテーブル分析（状況タブ） > ツール	ピボットグラフ（ピボット）	もう棚にある	項目と金額の棒グラフを作る
+SuggestPivot	ピボットテーブル分析（状況タブ） > ツール	おすすめピボットテーブル（ピボット）	もう棚にある	選んだ3列でピボットを作る
+PivotFieldListShowHide	ピボットテーブル分析（状況タブ） > 表示	フィールド リスト	棚にしない	
+PivotPlusMinusButtonsShowHide	ピボットテーブル分析（状況タブ） > 表示	+/- ボタン	棚にしない	
+PivotPlusMinusFieldHeadersShowHide	ピボットテーブル分析（状況タブ） > 表示	フィールドの見出し	棚にしない	
+PivotTableLayoutSubtotals	ピボットテーブルのデザイン（状況タブ） > レイアウト	小計（ピボット）	もう棚にある	頼みの文でピボットを手直しする
+PivotTableSubtotalsDoNotShow	ピボットテーブルのデザイン（状況タブ） > レイアウト	小計を表示しない	もう棚にある	頼みの文でピボットを手直しする
+PivotTableSubtotalsOnBottom	ピボットテーブルのデザイン（状況タブ） > レイアウト	すべての小計をグループの末尾に表示	もう棚にある	頼みの文でピボットを手直しする
+PivotTableSubtotalsOnTop	ピボットテーブルのデザイン（状況タブ） > レイアウト	すべての小計をグループの先頭に表示	もう棚にある	頼みの文でピボットを手直しする
+PivotTableNonVisualTotals	ピボットテーブルのデザイン（状況タブ） > レイアウト	フィルターした項目を総計に含める	棚にしない	
+PivotTableLayoutGrandTotals	ピボットテーブルのデザイン（状況タブ） > レイアウト	総計（ピボット）	もう棚にある	頼みの文でピボットを手直しする
+PivotTableGrandTotalsOffForRowsAndColumns	ピボットテーブルのデザイン（状況タブ） > レイアウト	行と列の集計を行わない	もう棚にある	頼みの文でピボットを手直しする
+PivotTableGrandTotalsOnForRowsAndColumns	ピボットテーブルのデザイン（状況タブ） > レイアウト	行と列の集計を行う	もう棚にある	頼みの文でピボットを手直しする
+PivotTableGrandTotalsOnForRowsOnly	ピボットテーブルのデザイン（状況タブ） > レイアウト	行のみ集計を行う	もう棚にある	頼みの文でピボットを手直しする
+PivotTableGrandTotalsOnForColumnsOnly	ピボットテーブルのデザイン（状況タブ） > レイアウト	列のみ集計を行う	もう棚にある	頼みの文でピボットを手直しする
+PivotTableLayoutReportLayout	ピボットテーブルのデザイン（状況タブ） > レイアウト	レポートのレイアウト	もう棚にある	ピボットをいつもの形にそろえる
+PivotTableLayoutShowInCompactForm	ピボットテーブルのデザイン（状況タブ） > レイアウト	コンパクト形式で表示	もう棚にある	ピボットをいつもの形にそろえる
+PivotTableLayoutShowInOutlineForm	ピボットテーブルのデザイン（状況タブ） > レイアウト	アウトライン形式で表示	もう棚にある	ピボットをいつもの形にそろえる
+PivotTableLayoutShowInTabularForm	ピボットテーブルのデザイン（状況タブ） > レイアウト	表形式で表示	もう棚にある	ピボットをいつもの形にそろえる
+PivotTableRepeatItemLabels	ピボットテーブルのデザイン（状況タブ） > レイアウト	アイテムのラベルをすべて繰り返す	もう棚にある	ピボットをいつもの形にそろえる
+PivotTableDoNotRepeatItemLabels	ピボットテーブルのデザイン（状況タブ） > レイアウト	アイテムのラベルを繰り返さない	もう棚にある	ピボットをいつもの形にそろえる
+PivotTableLayoutBlankRows	ピボットテーブルのデザイン（状況タブ） > レイアウト	空白行	棚にしない	
+PivotTableBlankRowsInsert	ピボットテーブルのデザイン（状況タブ） > レイアウト	アイテムの後ろに空行を入れる	棚にしない	
+PivotTableBlankRowsRemove	ピボットテーブルのデザイン（状況タブ） > レイアウト	アイテムの後ろの空行を削除する	棚にしない	
+TableStyleRowHeaders	ピボットテーブルのデザイン（状況タブ） > ピボットテーブル スタイルのオプション	行見出し（ピボット）	もう棚にある	ピボットをいつもの形にそろえる
+TableStyleColumnHeaders	ピボットテーブルのデザイン（状況タブ） > ピボットテーブル スタイルのオプション	列見出し（ピボット）	もう棚にある	ピボットをいつもの形にそろえる
+TableStyleBandedRows	ピボットテーブルのデザイン（状況タブ） > ピボットテーブル スタイルのオプション	縞模様（行）	棚にしない	
+TableStyleBandedColumns	ピボットテーブルのデザイン（状況タブ） > ピボットテーブル スタイルのオプション	縞模様（列）	棚にしない	
+PivotTableStylesGallery	ピボットテーブルのデザイン（状況タブ） > ピボットテーブル スタイル	ピボットテーブル スタイル	もう棚にある	ピボットをいつもの形にそろえる
+TableStyleClear	ピボットテーブルのデザイン（状況タブ） > ピボットテーブル スタイル	クリア（スタイル）	棚にしない	
+PivotTableSummarizeByMenu	ピボットテーブル（旧の集計）（状況タブ） > 集計方法と計算の種類	値の集計方法	もう棚にある	頼みの文でピボットを手直しする
+PivotTableSummarizeBySum	ピボットテーブル（旧の集計）（状況タブ） > 集計方法と計算の種類	合計（集計方法）	もう棚にある	頼みの文でピボットを手直しする
+PivotTableSummarizeByCount	ピボットテーブル（旧の集計）（状況タブ） > 集計方法と計算の種類	個数（集計方法）	もう棚にある	頼みの文でピボットを手直しする
+PivotTableSummarizeByAverage	ピボットテーブル（旧の集計）（状況タブ） > 集計方法と計算の種類	平均（集計方法）	もう棚にある	頼みの文でピボットを手直しする
+PivotTableSummarizeByMaximum	ピボットテーブル（旧の集計）（状況タブ） > 集計方法と計算の種類	最大（集計方法）	もう棚にある	頼みの文でピボットを手直しする
+PivotTableSummarizeByMinimum	ピボットテーブル（旧の集計）（状況タブ） > 集計方法と計算の種類	最小（集計方法）	もう棚にある	頼みの文でピボットを手直しする
+PivotTableSummarizeByProduct	ピボットテーブル（旧の集計）（状況タブ） > 集計方法と計算の種類	積（集計方法）	棚にしない	
+PivotTableSummarizeByMore	ピボットテーブル（旧の集計）（状況タブ） > 集計方法と計算の種類	その他のオプション（集計方法）	棚にしない	
+PivotTableShowAsMenu	ピボットテーブル（旧の集計）（状況タブ） > 集計方法と計算の種類	計算の種類	もう棚にある	頼みの文でピボットを手直しする
+PivotTableShowAs	ピボットテーブル（旧の集計）（状況タブ） > 集計方法と計算の種類	計算の種類（なし）	もう棚にある	頼みの文でピボットを手直しする
+PivotTableShowAsPercentOfTotal	ピボットテーブル（旧の集計）（状況タブ） > 集計方法と計算の種類	総計に対する比率	もう棚にある	選んだ2列で構成比ピボットを作る
+PivotTableShowAsPercentOfColumn	ピボットテーブル（旧の集計）（状況タブ） > 集計方法と計算の種類	列集計に対する比率	もう棚にある	選んだ2列で構成比ピボットを作る
+PivotTableShowAsPercentOfRow	ピボットテーブル（旧の集計）（状況タブ） > 集計方法と計算の種類	行集計に対する比率	もう棚にある	選んだ2列で構成比ピボットを作る
+PivotTableShowAsPercentOf	ピボットテーブル（旧の集計）（状況タブ） > 集計方法と計算の種類	基準値に対する比率	棚にしない	
+PivotTableShowAsPercentOfParentRow	ピボットテーブル（旧の集計）（状況タブ） > 集計方法と計算の種類	親行集計に対する比率	棚にしない	
+PivotTableShowAsPercentOfParentColumn	ピボットテーブル（旧の集計）（状況タブ） > 集計方法と計算の種類	親列集計に対する比率	棚にしない	
+PivotTableShowAsPercentOfParent	ピボットテーブル（旧の集計）（状況タブ） > 集計方法と計算の種類	親集計に対する比率	棚にしない	
+PivotTableShowAsDifference	ピボットテーブル（旧の集計）（状況タブ） > 集計方法と計算の種類	基準値との差分	棚にしない	
+PivotTableShowAsPercentDifference	ピボットテーブル（旧の集計）（状況タブ） > 集計方法と計算の種類	基準値との差分の比率	棚にしない	
+PivotTableShowAsRunningTotal	ピボットテーブル（旧の集計）（状況タブ） > 集計方法と計算の種類	累計	もう棚にある	ピボットの値の横に累計を足す
+PivotTableShowAsPercentRunningTotal	ピボットテーブル（旧の集計）（状況タブ） > 集計方法と計算の種類	比率の累計	棚にしない	
+PivotTableShowAsRangAscending	ピボットテーブル（旧の集計）（状況タブ） > 集計方法と計算の種類	昇順での順位	棚にしない	
+PivotTableShowAsRankDescending	ピボットテーブル（旧の集計）（状況タブ） > 集計方法と計算の種類	降順での順位	棚にしない	
+PivotTableShowAsIndex	ピボットテーブル（旧の集計）（状況タブ） > 集計方法と計算の種類	指数	棚にしない	
+PivotTableShowAsMore	ピボットテーブル（旧の集計）（状況タブ） > 集計方法と計算の種類	その他のオプション（計算の種類）	棚にしない	
+TableName	テーブル デザイン（状況タブ） > プロパティ	テーブル名	棚にしない	
+TableResize	テーブル デザイン（状況タブ） > プロパティ	テーブルのサイズ変更	もう棚にある	テーブルの範囲を下と右へ広げる
+TableSummarizeWithPivot	テーブル デザイン（状況タブ） > ツール	ピボットテーブルで集計	もう棚にある	選んだ3列でピボットを作る
+TableConvertToRange	テーブル デザイン（状況タブ） > ツール	範囲に変換	棚にしない	
+TableSlicerInsert	テーブル デザイン（状況タブ） > ツール	スライサーの挿入（テーブル）	棚にしない	
+TableExportMenu	テーブル デザイン（状況タブ） > 外部のテーブル データ	エクスポート（テーブル）	棚にしない	
+TableExportTableToSharePointList	テーブル デザイン（状況タブ） > 外部のテーブル データ	SharePoint リストにエクスポート	棚にしない	
+TableExportTableToVisioPivotDiagram	テーブル デザイン（状況タブ） > 外部のテーブル データ	Visio ピボット ダイアグラムにエクスポート	棚にしない	
+CreateVisioDataVisualizer	テーブル デザイン（状況タブ） > 外部のテーブル データ	Visio データ ビジュアライザー	棚にしない	
+TableOpenInBrowser	テーブル デザイン（状況タブ） > 外部のテーブル データ	ブラウザーで開く	棚にしない	
+TableUnlinkExternalData	テーブル デザイン（状況タブ） > 外部のテーブル データ	リンク解除	棚にしない	
+TableStyleHeaderRow	テーブル デザイン（状況タブ） > テーブル スタイルのオプション	見出し行（テーブル）	棚にしない	
+TableStyleTotalsRow	テーブル デザイン（状況タブ） > テーブル スタイルのオプション	集計行（テーブル）	もう棚にある	表をテーブルにして集計行を出す
+TableStyleFirstColumn	テーブル デザイン（状況タブ） > テーブル スタイルのオプション	最初の列（テーブル）	棚にしない	
+TableStyleLastColumn	テーブル デザイン（状況タブ） > テーブル スタイルのオプション	最後の列（テーブル）	棚にしない	
+TableStyleFilterButton	テーブル デザイン（状況タブ） > テーブル スタイルのオプション	フィルター ボタン	棚にする	頼みの文で指した列で表を絞り込む
+TableStylesGalleryExcel	テーブル デザイン（状況タブ） > テーブル スタイル	テーブル スタイル	もう棚にある	表のデザインを美化する
+SparklineEditLocationAndDataMenu	スパークライン（状況タブ） > スパークライン	データの編集（スパークライン・メニュー）	棚にしない	
+SparklineEditLocationAndData	スパークライン（状況タブ） > スパークライン	グループの位置とデータの編集	棚にしない	
+SparklineEditSingleData	スパークライン（状況タブ） > スパークライン	単一スパークラインのデータを編集	棚にしない	
+SparklineHiddenAndEmptyCells	スパークライン（状況タブ） > スパークライン	非表示および空白のセル	棚にしない	
+SwitchSparklineRowColumn	スパークライン（状況タブ） > スパークライン	行/列の切り替え（スパークライン）	棚にしない	
+SparklineConvertToLine	スパークライン（状況タブ） > 種類	折れ線（スパークライン）	棚にしない	
+SparklineConvertToColumn	スパークライン（状況タブ） > 種類	縦棒（スパークライン）	棚にしない	
+SparklineConvertToWinLoss	スパークライン（状況タブ） > 種類	勝敗（スパークライン）	棚にしない	
+SparklineToggleHighPoint	スパークライン（状況タブ） > 表示	頂点（山）	棚にしない	
+SparklineToggleLowPoint	スパークライン（状況タブ） > 表示	頂点（谷）	棚にしない	
+SparklineToggleNegativePoints	スパークライン（状況タブ） > 表示	負のポイント	棚にしない	
+SparklineToggleFirstPoint	スパークライン（状況タブ） > 表示	始点	棚にしない	
+SparklineToggleLastPoint	スパークライン（状況タブ） > 表示	終点	棚にしない	
+SparklineToggleMarkers	スパークライン（状況タブ） > 表示	マーカー	棚にしない	
+SparklineColorStyleGallery	スパークライン（状況タブ） > スタイル	スタイル（スパークライン）	棚にしない	
+SparklineColorPicker	スパークライン（状況タブ） > スタイル	スパークラインの色	棚にしない	
+SparklineMoreColors	スパークライン（状況タブ） > スタイル	スパークラインの色（その他の色）	棚にしない	
+SparklineLineWeightGallery	スパークライン（状況タブ） > スタイル	太さ（スパークライン）	棚にしない	
+SparklineCustomWeight	スパークライン（状況タブ） > スタイル	ユーザー設定の太さ	棚にしない	
+SparklineAccentColorMenu	スパークライン（状況タブ） > スタイル	マーカーの色	棚にしない	
+SparkLineNegativePointColorPicker	スパークライン（状況タブ） > スタイル	負のポイントの色	棚にしない	
+SparklineNegativePointMoreColors	スパークライン（状況タブ） > スタイル	負のポイントの色（その他の色）	棚にしない	
+SparklineMarkerColorPicker	スパークライン（状況タブ） > スタイル	マーカーの色（マーカー）	棚にしない	
+SparklineMarkerMoreColors	スパークライン（状況タブ） > スタイル	マーカーの色（その他の色）	棚にしない	
+SparklineHighPointColorPicker	スパークライン（状況タブ） > スタイル	頂点（山）の色	棚にしない	
+SparklineHighPointMoreColors	スパークライン（状況タブ） > スタイル	頂点（山）の色（その他の色）	棚にしない	
+SparklineLowPointColorPicker	スパークライン（状況タブ） > スタイル	頂点（谷）の色	棚にしない	
+SparklineLowPointMoreColors	スパークライン（状況タブ） > スタイル	頂点（谷）の色（その他の色）	棚にしない	
+SparklineFirstPointColorPicker	スパークライン（状況タブ） > スタイル	始点の色	棚にしない	
+SparklineFirstPointMoreColors	スパークライン（状況タブ） > スタイル	始点の色（その他の色）	棚にしない	
+SparklineLastPointColorPicker	スパークライン（状況タブ） > スタイル	終点の色	棚にしない	
+SparklineLastPointMoreColors	スパークライン（状況タブ） > スタイル	終点の色（その他の色）	棚にしない	
+SparklineAxisMenu	スパークライン（状況タブ） > グループ	軸（スパークライン）	棚にしない	
+SparklineAxisGeneralType	スパークライン（状況タブ） > グループ	横軸の種類（標準）	棚にしない	
+SparklineAxisDateType	スパークライン（状況タブ） > グループ	横軸の種類（日付）	棚にしない	
+SparklineHorizontalAxisToggle	スパークライン（状況タブ） > グループ	横軸の表示	棚にしない	
+SparklinePlotDataRightToLeft	スパークライン（状況タブ） > グループ	右から左にデータをプロット	棚にしない	
+SparklineVerticalAxisAutomaticMinimumValue	スパークライン（状況タブ） > グループ	縦軸の最小値（自動）	棚にしない	
+SparklineVerticalAxisSameMinimumValue	スパークライン（状況タブ） > グループ	縦軸の最小値（すべて同じ）	棚にしない	
+SparklineVerticalAxisCustomMinimumValue	スパークライン（状況タブ） > グループ	縦軸の最小値（ユーザー設定）	棚にしない	
+SparklineVerticalAxisAutomaticMaximumValue	スパークライン（状況タブ） > グループ	縦軸の最大値（自動）	棚にしない	
+SparklineVerticalAxisSameMaximumValue	スパークライン（状況タブ） > グループ	縦軸の最大値（すべて同じ）	棚にしない	
+SparklineVerticalAxisCustomMaximumValue	スパークライン（状況タブ） > グループ	縦軸の最大値（ユーザー設定）	棚にしない	
+SparklinesGroupSelected	スパークライン（状況タブ） > グループ	グループ化（スパークライン）	棚にしない	
+SparklinesUngroupSelected	スパークライン（状況タブ） > グループ	グループ解除（スパークライン）	棚にしない	
+SparklineClearMenu	スパークライン（状況タブ） > グループ	クリア（スパークライン・メニュー）	棚にしない	
+SparklineClearSelected	スパークライン（状況タブ） > グループ	選択したスパークラインのクリア	棚にしない	
+SparklineClearSelectedGroups	スパークライン（状況タブ） > グループ	選択したスパークライン グループのクリア	棚にしない	
+PowerQueryEditQuery	クエリ（状況タブ） > 編集	編集（クエリ）	棚にしない	
+PowerQueryQueryProperties	クエリ（状況タブ） > 編集	プロパティ（クエリ）	棚にしない	
+PowerQueryDeleteQuery	クエリ（状況タブ） > 編集	削除（クエリ）	棚にしない	
+FlyoutAnchorPowerQueryRefresh	クエリ（状況タブ） > 読み込み	更新（クエリ・メニュー）	棚にしない	
+GetPowerQueryRefresh	クエリ（状況タブ） > 読み込み	更新（クエリ）	棚にしない	
+PowerQueryCancelRefresh	クエリ（状況タブ） > 読み込み	更新の取り消し（クエリ）	棚にしない	
+PowerQueryQueryLoadOptions	クエリ（状況タブ） > 読み込み	読み込み先（クエリ）	棚にしない	
+PowerQueryDuplicateQuery	クエリ（状況タブ） > 再利用	複製（クエリ）	棚にしない	
+PowerQueryReferenceQuery	クエリ（状況タブ） > 再利用	参照（クエリ）	棚にしない	
+PowerQueryMergeQuery	クエリ（状況タブ） > 結合	マージ（クエリ）	もう棚にある	別テーブルの列をクエリで結合する
+PowerQueryAppendQuery	クエリ（状況タブ） > 結合	追加（クエリ）	もう棚にある	同じ形のシートを縦につなぐ
+PowerQueryExportConnectionFile	クエリ（状況タブ） > 共有	接続ファイルのエクスポート	棚にしない	
+GroupSmartArtCreateGraphic	SmartArt のデザイン（状況タブ） > グラフィックの作成	グラフィックの作成（19 個のコマンド）	棚にしない	
+GroupSmartArtLayouts	SmartArt のデザイン（状況タブ） > レイアウト	レイアウト（2 個のコマンド）	棚にしない	
+GroupSmartArtQuickStyles	SmartArt のデザイン（状況タブ） > SmartArt のスタイル	SmartArt のスタイル（3 個のコマンド）	棚にしない	
+GroupSmartArtReset	SmartArt のデザイン（状況タブ） > リセット	リセット（2 個のコマンド）	棚にしない	
+GroupSmartArtShapes	SmartArt の書式（状況タブ） > 図形	図形（4 個のコマンド）	棚にしない	
+GroupShapeStyles	SmartArt の書式（状況タブ） > 図形のスタイル	図形のスタイル（34 個のコマンド）	棚にしない	
+GroupWordArtStyles	SmartArt の書式（状況タブ） > ワードアートのスタイル	ワードアートのスタイル（29 個のコマンド）	棚にしない	
+GroupSmartArtSize	SmartArt の書式（状況タブ） > サイズ	サイズ（3 個のコマンド）	棚にしない	
+GroupChartLayouts	グラフのデザイン（状況タブ） > グラフのレイアウト（グラフ要素を追加）	グラフのレイアウト（グラフ要素を追加）（23 個のコマンド）	もう棚にある	グラフの凡例の位置を下にする／グラフの凡例を消す
+GroupChartStyles	グラフのデザイン（状況タブ） > グラフ スタイル	グラフ スタイル（3 個のコマンド）	もう棚にある	グラフの書体と凡例をそろえる
+GroupChartData	グラフのデザイン（状況タブ） > データ	データ（2 個のコマンド）	棚にしない	
+GroupChartType	グラフのデザイン（状況タブ） > 種類	種類（1 個のコマンド）	もう棚にある	頼みの文でグラフの種類を変える
+GroupChartLocation	グラフのデザイン（状況タブ） > 場所	場所（1 個のコマンド）	棚にしない	
+GroupChartCurrentSelection	グラフの書式（状況タブ） > 現在の選択範囲	現在の選択範囲（3 個のコマンド）	棚にしない	
+GroupShapesChart	グラフの書式（状況タブ） > 図形の挿入	図形の挿入（1 個のコマンド）	棚にしない	
+GroupChartShapeStyles	グラフの書式（状況タブ） > 図形のスタイル	図形のスタイル（32 個のコマンド）	棚にしない	
+GroupWordArtStyles	グラフの書式（状況タブ） > ワードアートのスタイル	ワードアートのスタイル（29 個のコマンド）	棚にしない	
+GroupSize	グラフの書式（状況タブ） > サイズ	サイズ（3 個のコマンド）	棚にしない	
+GroupChartData	グラフのデザイン（旧）（状況タブ） > データ	データ（2 個のコマンド）	棚にしない	
+GroupChartStyles	グラフのデザイン（旧）（状況タブ） > グラフ スタイル	グラフ スタイル（3 個のコマンド）	もう棚にある	グラフの書体と凡例をそろえる
+GroupChartLocation	グラフのデザイン（旧）（状況タブ） > 場所	場所（1 個のコマンド）	棚にしない	
+GroupChartCurrentSelection	グラフのレイアウト（旧）（状況タブ） > 現在の選択範囲	現在の選択範囲（3 個のコマンド）	棚にしない	
+GroupChartLabels	グラフのレイアウト（旧）（状況タブ） > ラベル（タイトル・凡例・データ ラベル）	ラベル（タイトル・凡例・データ ラベル）（19 個のコマンド）	もう棚にある	グラフの凡例の位置を下にする／グラフの凡例を消す
+GroupChartAxes	グラフのレイアウト（旧）（状況タブ） > 軸	軸（22 個のコマンド）	棚にしない	
+GroupChartBackground	グラフのレイアウト（旧）（状況タブ） > 背景	背景（7 個のコマンド）	棚にしない	
+GroupChartAnalysis	グラフのレイアウト（旧）（状況タブ） > 分析	分析（7 個のコマンド）	棚にしない	
+GroupChartProperties	グラフのレイアウト（旧）（状況タブ） > プロパティ	プロパティ（1 個のコマンド）	棚にしない	
+GroupChartCurrentSelection	グラフの書式（旧）（状況タブ） > 現在の選択範囲	現在の選択範囲（3 個のコマンド）	棚にしない	
+GroupShapeStyles	グラフの書式（旧）（状況タブ） > 図形のスタイル	図形のスタイル（34 個のコマンド）	棚にしない	
+GroupWordArtStyles	グラフの書式（旧）（状況タブ） > ワードアートのスタイル	ワードアートのスタイル（29 個のコマンド）	棚にしない	
+GroupSize	グラフの書式（旧）（状況タブ） > サイズ	サイズ（3 個のコマンド）	棚にしない	
+GroupShapes	図形の書式（状況タブ） > 図形の挿入	図形の挿入（5 個のコマンド）	棚にしない	
+GroupShapeStyles	図形の書式（状況タブ） > 図形のスタイル	図形のスタイル（34 個のコマンド）	棚にしない	
+GroupWordArtStyles	図形の書式（状況タブ） > ワードアートのスタイル	ワードアートのスタイル（29 個のコマンド）	棚にしない	
+GroupSize	図形の書式（状況タブ） > サイズ	サイズ（3 個のコマンド）	棚にしない	
+GroupImagePlay	図の形式（状況タブ） > 再生	再生（1 個のコマンド）	棚にしない	
+GroupPictureTools	図の形式（状況タブ） > 調整	調整（30 個のコマンド）	棚にしない	
+GroupPictureStyles	図の形式（状況タブ） > 図のスタイル	図のスタイル（25 個のコマンド）	棚にしない	
+GroupPictureSize	図の形式（状況タブ） > サイズ	サイズ（20 個のコマンド）	棚にしない	
+GroupHeaderFooter	ヘッダーとフッター（状況タブ） > ヘッダー/フッター	ヘッダー/フッター（2 個のコマンド）	棚にする	頼みの文でシートの表示と印刷を変える
+GroupHeaderFooterElements	ヘッダーとフッター（状況タブ） > ヘッダー/フッター要素	ヘッダー/フッター要素（9 個のコマンド）	棚にする	頼みの文でシートの表示と印刷を変える
+GroupHeaderFooterNavigation	ヘッダーとフッター（状況タブ） > ナビゲーション	ナビゲーション（2 個のコマンド）	棚にしない	
+GroupHeaderFooterOptions	ヘッダーとフッター（状況タブ） > オプション	オプション（4 個のコマンド）	棚にしない	
+GroupPivotChartOptions	ピボットグラフ分析（状況タブ） > ピボットグラフ	ピボットグラフ（1 個のコマンド）	棚にしない	
+GroupPivotChartFilter	ピボットグラフ分析（状況タブ） > フィルター	フィルター（1 個のコマンド）	棚にしない	
+GroupPivotChartActions	ピボットグラフ分析（状況タブ） > アクション	アクション（1 個のコマンド）	棚にしない	
+GroupPivotChartCalculations	ピボットグラフ分析（状況タブ） > 計算方法	計算方法（4 個のコマンド）	棚にしない	
+GroupPivotChartShowOrHide	ピボットグラフ分析（状況タブ） > 表示/非表示	表示/非表示（8 個のコマンド）	棚にしない	
+GroupChartLayouts	ピボットグラフのデザイン（状況タブ） > グラフのレイアウト（グラフ要素を追加）	グラフのレイアウト（グラフ要素を追加）（23 個のコマンド）	もう棚にある	グラフの凡例の位置を下にする／グラフの凡例を消す
+GroupChartStyles	ピボットグラフのデザイン（状況タブ） > グラフ スタイル	グラフ スタイル（3 個のコマンド）	もう棚にある	グラフの書体と凡例をそろえる
+GroupChartData	ピボットグラフのデザイン（状況タブ） > データ	データ（2 個のコマンド）	棚にしない	
+GroupChartType	ピボットグラフのデザイン（状況タブ） > 種類	種類（1 個のコマンド）	もう棚にある	頼みの文でグラフの種類を変える
+GroupChartLocation	ピボットグラフのデザイン（状況タブ） > 場所	場所（1 個のコマンド）	棚にしない	
+GroupChartCurrentSelection	ピボットグラフの書式（状況タブ） > 現在の選択範囲	現在の選択範囲（3 個のコマンド）	棚にしない	
+GroupShapesChart	ピボットグラフの書式（状況タブ） > 図形の挿入	図形の挿入（1 個のコマンド）	棚にしない	
+GroupShapeStyles	ピボットグラフの書式（状況タブ） > 図形のスタイル	図形のスタイル（34 個のコマンド）	棚にしない	
+GroupWordArtStyles	ピボットグラフの書式（状況タブ） > ワードアートのスタイル	ワードアートのスタイル（29 個のコマンド）	棚にしない	
+GroupSize	ピボットグラフの書式（状況タブ） > サイズ	サイズ（3 個のコマンド）	棚にしない	
+GroupChartData	ピボットグラフのデザイン（旧）（状況タブ） > データ	データ（2 個のコマンド）	棚にしない	
+GroupChartStyles	ピボットグラフのデザイン（旧）（状況タブ） > グラフ スタイル	グラフ スタイル（3 個のコマンド）	もう棚にある	グラフの書体と凡例をそろえる
+GroupChartLocation	ピボットグラフのデザイン（旧）（状況タブ） > 場所	場所（1 個のコマンド）	棚にしない	
+GroupChartCurrentSelection	ピボットグラフのレイアウト（旧）（状況タブ） > 現在の選択範囲	現在の選択範囲（3 個のコマンド）	棚にしない	
+GroupChartLabels	ピボットグラフのレイアウト（旧）（状況タブ） > ラベル（タイトル・凡例・データ ラベル）	ラベル（タイトル・凡例・データ ラベル）（19 個のコマンド）	もう棚にある	グラフの凡例の位置を下にする／グラフの凡例を消す
+GroupChartAxes	ピボットグラフのレイアウト（旧）（状況タブ） > 軸	軸（22 個のコマンド）	棚にしない	
+GroupChartBackground	ピボットグラフのレイアウト（旧）（状況タブ） > 背景	背景（7 個のコマンド）	棚にしない	
+GroupChartAnalysis	ピボットグラフのレイアウト（旧）（状況タブ） > 分析	分析（7 個のコマンド）	棚にしない	
+GroupChartProperties	ピボットグラフのレイアウト（旧）（状況タブ） > プロパティ	プロパティ（1 個のコマンド）	棚にしない	
+GroupChartCurrentSelection	ピボットグラフの書式（旧）（状況タブ） > 現在の選択範囲	現在の選択範囲（3 個のコマンド）	棚にしない	
+GroupShapeStyles	ピボットグラフの書式（旧）（状況タブ） > 図形のスタイル	図形のスタイル（34 個のコマンド）	棚にしない	
+GroupWordArtStyles	ピボットグラフの書式（旧）（状況タブ） > ワードアートのスタイル	ワードアートのスタイル（29 個のコマンド）	棚にしない	
+GroupSize	ピボットグラフの書式（旧）（状況タブ） > サイズ	サイズ（3 個のコマンド）	棚にしない	
+GroupPensWrite	インク ツール（状況タブ） > 書き込み	書き込み（2 個のコマンド）	棚にしない	
+GroupPens	インク ツール（状況タブ） > ペン	ペン（3 個のコマンド）	棚にしない	
+GroupInkPens	インク ツール（状況タブ） > ペン	ペン（1 個のコマンド）	棚にしない	
+GroupTimeSlicerOptions	タイムライン（状況タブ） > タイムライン	タイムライン（2 個のコマンド）	棚にしない	
+GroupTimelineStyles	タイムライン（状況タブ） > タイムラインのスタイル	タイムラインのスタイル（2 個のコマンド）	棚にしない	
+GroupSize	タイムライン（状況タブ） > サイズ	サイズ（3 個のコマンド）	棚にしない	
+GroupTimeSlicerShowOptions	タイムライン（状況タブ） > 表示	表示（4 個のコマンド）	棚にしない	
+GroupSlicerOptions	スライサー（状況タブ） > スライサー	スライサー（3 個のコマンド）	棚にしない	
+GroupSlicerStyles	スライサー（状況タブ） > スライサー スタイル	スライサー スタイル（2 個のコマンド）	棚にしない	
+GroupSlicerRowColumnSize	スライサー（状況タブ） > ボタン	ボタン（3 個のコマンド）	棚にしない	
+GroupSize	スライサー（状況タブ） > サイズ	サイズ（3 個のコマンド）	棚にしない	
+GroupEquationTools	数式（Equation）（状況タブ） > ツール	ツール（5 個のコマンド）	棚にしない	
+GroupEquationSymbols	数式（Equation）（状況タブ） > 記号と特殊文字	記号と特殊文字（1 個のコマンド）	棚にしない	
+GroupEquationStructures	数式（Equation）（状況タブ） > 構造	構造（11 個のコマンド）	棚にしない	
+GroupIcons	グラフィックス形式（状況タブ） > 変更	変更（8 個のコマンド）	棚にしない	
+GroupGraphicsStyles	グラフィックス形式（状況タブ） > グラフィックのスタイル	グラフィックのスタイル（24 個のコマンド）	棚にしない	
+GroupGraphicsSize	グラフィックス形式（状況タブ） > サイズ	サイズ（20 個のコマンド）	棚にしない	
+Group3DModelPlay	3D モデル（状況タブ） > 再生	再生（2 個のコマンド）	棚にしない	
+GroupAdjust3DModel	3D モデル（状況タブ） > 調整	調整（3 個のコマンド）	棚にしない	
+Group3DModelStyles	3D モデル（状況タブ） > 3D モデル ビュー	3D モデル ビュー（2 個のコマンド）	棚にしない	
+GroupArrange	3D モデル（状況タブ） > 配置	配置（8 個のコマンド）	棚にしない	
+Group3DModelSize	3D モデル（状況タブ） > サイズ	サイズ（4 個のコマンド）	棚にしない	
+GroupBIVisualTools	Power BI ビジュアル（状況タブ） > Power BI	Power BI（3 個のコマンド）	棚にしない	
+GroupAccessibleAuthoringReview	アクセシビリティ（状況タブ） > 確認	確認（1 個のコマンド）	棚にしない	
+GroupAccessibleAuthoringStyle	アクセシビリティ（状況タブ） > スタイル	スタイル（6 個のコマンド）	棚にしない	
+GroupAccessibleAuthoringFormat	アクセシビリティ（状況タブ） > 書式	書式（2 個のコマンド）	棚にしない	
