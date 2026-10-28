@@ -185,6 +185,8 @@ def _combo_groups(combo):
 
 
 _ASK_REGEX_RE = re.compile(r'[()\[\]{}*+?^$\\]|\.\*')
+# Sub の宣言の行（引数つき）と、その下に続くコメントの行（頭の注記）。Private Sub は目録の外の手伝いなので見ない
+_ARG_SUB_HEAD_RE = re.compile(r"^[ \t]*(?:Public[ \t]+)?Sub[ \t]+([^\s(]+)[ \t]*\(([^)\n]*)\)[^\n]*\n((?:[ \t]*'[^\n]*\n)*)", re.M)
 _BULK_WRITE_PAT = re.compile(
     r'^(?:(?:\s*If\b.*?\bThen\s+)?)(?!\s*If\b)'
     r'(?P<lhs>[A-Za-z0-9_一-龠ぁ-んァ-ヶ\.\(\)]+?)'
@@ -314,6 +316,13 @@ def shelf_lint(text, base_rate_lines=None):
     for w, names in seen.items():
         if len(set(names)) >= 2:
             out.append(('注意', '・'.join(sorted(set(names))), f"依頼の語「{w}」が {len(set(names))} 本の棚にある"))
+
+    # 引数のある Sub に依頼の語・依頼の組がある＝先撃ちでは撃たれるのに、棚の目録にも Excel のマクロ一覧にも出ない（2026-10-29）。
+    # 使わない引数「勇退」を付けて隠した 32 本のうち 19 本が撃たれ続けていた。棚は引数なしの入口にし、引数は _本体 の手伝いに持たせる
+    for m in _ARG_SUB_HEAD_RE.finditer(str(text or '').replace('\r\n', '\n')):
+        if m.group(2).strip() and re.search(r"^\s*'\s*依頼の(?:語|組):", m.group(3), re.M):
+            out.append(('止める', m.group(1), f"引数（{m.group(2).strip()}）のある Sub に依頼の語がある（撃たれるのに目録とマクロ一覧に出ない。"
+                                              f"引数なしの入口と引数のある _本体 に分ける）"))
 
     # 範囲への丸ごと代入行（既存の表の数式・文字の数字を潰す穴）の検査（2026-10-22 指示書032）
     curr_sub = None
