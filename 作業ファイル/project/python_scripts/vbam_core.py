@@ -1519,11 +1519,18 @@ def make_module_backup(wb, module_name):
     os.makedirs(BACKUP_DIR, exist_ok=True)
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     base_wb_name = os.path.splitext(os.path.basename(wb.FullName))[0]
-    backup_filename = f"{base_wb_name}_{module_name}_{timestamp}.bas"
-    backup_path = os.path.join(BACKUP_DIR, backup_filename)
 
     for comp in wb.VBProject.VBComponents:
         if comp.Name.lower() == module_name.lower():
+            # 拡張子はモジュールの種類に合わせる（フォームは .frm＝.frx も一緒に出る・クラスは .cls）。
+            # 同じ秒の 2 本目が 1 本目の控えを上書きしない（make_backup と同じ・2026-10-28 点検）
+            ext = {2: '.cls', 3: '.frm'}.get(_comp_type(comp), '.bas')
+            backup_filename = f"{base_wb_name}_{module_name}_{timestamp}{ext}"
+            seq = 1
+            while os.path.exists(os.path.join(BACKUP_DIR, backup_filename)):
+                seq += 1
+                backup_filename = f"{base_wb_name}_{module_name}_{timestamp}_{seq}{ext}"
+            backup_path = os.path.join(BACKUP_DIR, backup_filename)
             try:
                 comp.Export(backup_path)
                 print(f"モジュールバックアップ作成: backups/{backup_filename}")
@@ -1531,6 +1538,14 @@ def make_module_backup(wb, module_name):
             except Exception as e:
                 print(f"警告: モジュールバックアップ失敗 ({e})")
     return None
+
+
+def _comp_type(comp):
+    """VBComponent の種類（1 標準・2 クラス・3 フォーム・100 ブック/シート）。読めなければ 1。"""
+    try:
+        return int(comp.Type)
+    except Exception:
+        return 1
 
 
 class ModuleNameCollisionError(Exception):
