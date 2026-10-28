@@ -177,6 +177,7 @@ def _keep_grid_text(ws, row0, col0, grid, skip_cols=()):
 
 
 _KEPT_NOTE = "文字列として保持（Excel が日付・数値に読み替えたので文字列で書き直した）: "
+_FR_KEEP_MAX = 5000              # find-replace で置き換え後の読み替えを見るセルの上限（それより多い当たりは見ない）
 
 # 動的配列の関数。.Value（＝.Formula）で書くと暗黙の交差 @ が付いて 1 セルに潰れる（FILTER が 1 件しか出ない・
 # 2026-09-04 の手順書の実射で発覚）。これらを含む数式は Formula2 で書く
@@ -3642,6 +3643,7 @@ def cmd_find_replace(args):
     # MatchCase, MatchByte, SearchFormat
     cell = rng.Find(needle, rng.Cells(rng.Cells.Count), -4123, look_at, 1, 1,
                     bool(match_case), True, False)
+    hits = []                        # 当たったセル（置き換え後に日付・数に化けたら文字に戻すため）
     while cell is not None:
         addr = cell.Address
         if first is None:
@@ -3649,6 +3651,8 @@ def cmd_find_replace(args):
         elif addr == first:
             break
         count += 1
+        if len(hits) < _FR_KEEP_MAX:
+            hits.append(cell)
         cell = rng.FindNext(cell)
     if count == 0:
         print(f"'{needle}' は {ws.Name}!{rng.Address} に見つかりませんでした（置換なし）")
@@ -3670,7 +3674,7 @@ def cmd_find_replace(args):
         r0, c0 = int(rng.Row), int(rng.Column)
         pat = re.compile(re.escape(raw), 0 if match_case else re.I)
         done = skipped = 0
-        failed = []
+        failed, kept = [], []
         for i, row in enumerate(vals):
             for j, v in enumerate(row):
                 f = fmls[i][j] if i < len(fmls) and j < len(fmls[i]) else None
@@ -3685,6 +3689,8 @@ def cmd_find_replace(args):
                 new = pat.sub(lambda m: repl, s)
                 if not is_formula:
                     cell.Value = new
+                    if _kept_as_text(cell, new):     # 「1番-2」の「番」を消した「1-2」が日付に化けたら文字に戻す
+                        kept.append(cell.Address.replace('$', ''))
                 else:
                     try:
                         try:
@@ -3700,12 +3706,39 @@ def cmd_find_replace(args):
         if failed:
             print(f"⚠ 置き換えると式として成り立たないので、元の式のまま残したセル: {' '.join(failed[:8])}"
                   + ("…" if len(failed) > 8 else ""))
+        if kept:
+            print(_KEPT_NOTE + " ".join(kept[:20]) + ("…" if len(kept) > 20 else ""))
         print("（保存はしていません）")
         return True
+    # Excel の Replace は、置き換えた結果を打ち込んだのと同じに読み直す＝「1番-2」から「番」を消すと「1-2」が日付に、
+    # 「No.0012」から「No.」を消すと 12 になる。文字だったセルが文字でなくなったら、置き換え後の文字で書き直す
+    # （write-range の _kept_as_text と同じ・2026-10-28 点検）。--wildcard は置き換え後の字を道具が作れないので見ない
+    watch = []
+    if not getattr(args, 'wildcard', False):
+        for c in hits:
+            try:
+                v = c.Value
+                if isinstance(v, str) and not c.HasFormula:
+                    watch.append((c, v))
+            except Exception:
+                continue
     # 位置で全部渡す（What, Replacement, LookAt, SearchOrder, MatchCase, MatchByte, SearchFormat, ReplaceFormat）。
     # SearchOrder を省くと環境によって MatchCase が届かず、大文字小文字の違うセルまで置き換わる
     rng.Replace(needle, repl, look_at, 1, bool(match_case), True, False, False)
+    kept = []
+    for c, v in watch:
+        if look_at == 1:
+            new = repl if ((v == raw) if match_case else (v.lower() == raw.lower())) else v
+        else:
+            new = re.sub(re.escape(raw), lambda m: repl, v, flags=0 if match_case else re.I)
+        try:
+            if new != v and _kept_as_text(c, new):
+                kept.append(c.Address.replace('$', ''))
+        except Exception:
+            continue
     print(f"置換: {ws.Name}!{rng.Address}  '{needle}' → '{repl}'  （{count}セルにヒット）")
+    if kept:
+        print(_KEPT_NOTE + " ".join(kept[:20]) + ("…" if len(kept) > 20 else ""))
     print("（保存はしていません）")
     return True
 
@@ -3739,11 +3772,9 @@ def cmd_save_as(args):
         target_file, out_arg = rest[0], rest[1]
     else:
         target_file, out_arg = None, rest[0]
-    out = os.path.abspath(out_arg)
-
     FMT = {'.xlsx': 51, '.xlsm': 52, '.xlsb': 50, '.xls': 56,
            '.csv': 6, '.txt': -4158}
-    ext = os.path.splitext(out)[1].lower()
+    ext = os.path.splitext(out_arg)[1].lower()
     if ext not in FMT:
         # 未知拡張子を黙って xlsx にフォールバックすると「中身xlsxの .pdf」等の壊れファイルになる
         print(f"エラー: 対応していない拡張子です: '{ext or '(なし)'}'")
@@ -3751,12 +3782,22 @@ def cmd_save_as(args):
         return False
     fmt = FMT[ext]
 
+    xl, wb = get_workbook(target_file)
+    # 名前だけ（新名.xlsx）・相対のパスは、そのブックのフォルダに置く（前は道具のフォルダ python_scripts に保存していた・2026-10-28 点検）。
+    # 未保存のブック（フォルダが無い）は今まで通りカレントから
+    base_dir = ''
+    if not os.path.isabs(out_arg):
+        try:
+            base_dir = str(wb.Path or '')
+        except Exception:
+            base_dir = ''
+    out = os.path.abspath(os.path.join(base_dir, out_arg) if base_dir else out_arg)
+
     if os.path.exists(out) and not getattr(args, 'overwrite', False):
         print(f"エラー: 出力先が既に存在します: {out}")
         print("  上書きするなら --overwrite を付けてください。")
         return False
 
-    xl, wb = get_workbook(target_file)
     try:
         old_full = wb.FullName
     except Exception:
