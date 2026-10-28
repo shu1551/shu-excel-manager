@@ -3945,8 +3945,17 @@ Sub 外部リンクを値に変えて切る()
                "_リンク解消前_" & Format$(Now, "yyyymmdd_hhnnss") & Mid$(wb.Name, InStrRev(wb.Name, "."))
         On Error Resume Next
         wb.SaveCopyAs 控え
-        If Err.Number <> 0 Then 控え = ""
-        Err.Clear
+        If Err.Number <> 0 Then
+            ' 保存してあるブックで控えが作れないときは切らない（式が値に変わって戻せない・ブックの式を全部値にすると同じ・2026-10-28 点検）
+            Err.Clear
+            On Error GoTo 0
+            sh.Cells(outRow, 1).Value = "結果"
+            sh.Cells(outRow, 2).Value = "ブック全体"
+            sh.Cells(outRow, 3).Value = "控えが作れなかったので、リンクは切っていません（" & 控え & "）"
+            Application.ScreenUpdating = True
+            Application.StatusBar = "外部リンクの解消: 控えが作れなかったので止めました（" & 控え & "）。"
+            Exit Sub
+        End If
         On Error GoTo 0
     End If
 
@@ -5987,6 +5996,19 @@ Sub 表の合計と小計の行を消す()
 
     If urBottom <= hdrRow Then Exit Sub
 
+    ' 本体の表の列＝見出しの行で、最初の見出しから空の見出しの手前まで（2026-10-28 点検）。
+    ' 前は使用範囲の全列で「合計」を探していたので、表の右の集計表の「合計」の行が本体の明細の行と同じ行だと、明細の行ごと消していた
+    Dim hc1 As Long, hc2 As Long, 外の値 As Long, 残した As Long
+    For c = urLeft To urRight
+        If 表の整理_下請け.見出しの字(ws.Cells(hdrRow, c)) <> "" Then
+            If hc1 = 0 Then hc1 = c
+            hc2 = c
+        ElseIf hc1 > 0 Then
+            Exit For
+        End If
+    Next c
+    If hc1 = 0 Then Exit Sub
+
     Dim nRows As Long
     nRows = urBottom - hdrRow
     Dim delFlags() As Boolean, hasDel As Boolean
@@ -5994,11 +6016,21 @@ Sub 表の合計と小計の行を消す()
     hasDel = False
 
     For r = urBottom To hdrRow + 1 Step -1
-        If 集計の行か(ws, r, urLeft, urRight) Then
-            delFlags(r) = True
-            hasDel = True
+        If 集計の行か(ws, r, hc1, hc2) Then
+            ' 行ごと消すので、同じ行の表の外（右・左の別の表やメモ）に値があれば消さずに数える（重複行の棚と同じ守り）
+            外の値 = Application.WorksheetFunction.CountA(ws.Range(ws.Cells(r, urLeft), ws.Cells(r, urRight))) _
+                   - Application.WorksheetFunction.CountA(ws.Range(ws.Cells(r, hc1), ws.Cells(r, hc2)))
+            If 外の値 = 0 Then
+                delFlags(r) = True
+                hasDel = True
+            Else
+                残した = 残した + 1
+            End If
         End If
     Next r
+    If 残した > 0 Then
+        Application.StatusBar = "表の合計と小計の行を消す: 表の外の同じ行に値がある " & 残した & " 行は、巻き込まないよう消していません"
+    End If
 
     ' 事前高速判定: 集計行が0件なら即終了（0秒判定）
     If Not hasDel Then Exit Sub
@@ -7543,6 +7575,7 @@ Public Sub ブックの式を全部値にする()
     Dim 控え As String, 処理シート数 As Long, 式の数 As Long
     Dim 一区 As Range, 一つ As Range, 文字の式 As Collection, 組 As Variant
     Dim スピル As Collection, 広がり As Range
+    Dim 前の計算 As XlCalculation
 
     Set wb = ActiveWorkbook
     If wb.path = "" Then
@@ -7562,6 +7595,7 @@ Public Sub ブックの式を全部値にする()
     On Error GoTo Catch
 
     Application.ScreenUpdating = False
+    前の計算 = Application.Calculation           ' 終わりに前の値へ戻す（手動計算にしていた人を自動に変えない・2026-10-28 点検）
     Application.Calculation = xlCalculationManual
     For Each 対象シート In wb.Worksheets
         Set 式域 = Nothing
@@ -7592,12 +7626,13 @@ Public Sub ブックの式を全部値にする()
             処理シート数 = 処理シート数 + 1
         End If
     Next 対象シート
-    Application.Calculation = xlCalculationAutomatic
+    Application.Calculation = 前の計算
     Application.ScreenUpdating = True
     Application.StatusBar = "ブックの式を全部値にする: " & 処理シート数 & " 枚のシートの式 " & 式の数 & " か所を値にしました。控え: " & 控え
     Exit Sub
 Catch:
-    Application.Calculation = xlCalculationAutomatic
+    If 前の計算 = 0 Then 前の計算 = xlCalculationAutomatic
+    Application.Calculation = 前の計算
     Application.ScreenUpdating = True
     Application.StatusBar = "ブックの式を全部値にする: 途中で止まりました（" & Err.Description & "）。控え: " & 控え
 End Sub

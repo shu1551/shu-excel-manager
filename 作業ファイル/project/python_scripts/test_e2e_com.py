@@ -1149,6 +1149,7 @@ def test_compile_names_the_failing_line(book):
     Desktop へ写して開き `compile` → `[写真貼り付け] 写真の貼り付け:82: On Error GoTo Errorgo ― …行ラベルが定義されていません。`
     """
     import gc
+    import vbam_vba                    # 下で _compile_vbproject を直に呼ぶ（import が無く NameError で落ちていた・2026-10-28 点検）
     xl = _new_excel()
     try:
         wb = xl.Workbooks.Open(book)
