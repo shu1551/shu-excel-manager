@@ -6656,3 +6656,56 @@ def test_blanks_inside_a_vertical_merge_over_two_columns_are_not_reported():
     assert vh._table_blanks(grid, 1, 1, 0, ["$A$2:$B$3", "$A$4:$B$5"]) == []     # $ 付きの番地でも
     notes = " ".join(vbam_view.dirt_notes(grid, r0=1, c0=1, header_idx=0, merged_areas=merged))
     assert "B3" not in notes and "B5" not in notes
+
+
+def test_find_replace_keeps_text_that_excel_would_turn_into_a_date(monkeypatch, capsys):
+    """Excel の Replace は置き換えた結果を打ち込んだのと同じに読み直す＝「1番-2」から「番」を消すと 1-2 が日付になる。
+    文字だったセルが文字でなくなったら、置き換え後の文字で書き直す（2026-10-28 点検）。"""
+    import datetime
+    import inspect
+    import vbam_edit as ve
+    book = {(1, 2): "1番-2"}
+
+    class Cell(_FRCell):
+        HasFormula = False
+        NumberFormat = "General"
+
+    class Rng:
+        Row, Column, Address = 1, 2, "$B$1"
+
+        def Find(self, *a):
+            return Cell(book, 1, 2)
+
+        def FindNext(self, cell):
+            return Cell(book, 1, 2)
+
+        def Cells(self, n):
+            return Cell(book, 1, 2)
+
+        def Replace(self, *a):
+            book[(1, 2)] = datetime.datetime(2026, 1, 2)       # Excel が「1-2」を日付に読み直した
+    Rng.Cells.Count = 1
+    monkeypatch.setattr(ve, "get_workbook", lambda t=None: (None, None))
+    monkeypatch.setattr(ve, "_resolve_range", lambda xl, wb, spec, sh=None: (type("W", (), {"Name": "表"})(), Rng()))
+    args = type("A", (), {"posargs": ["番", "", "B1"], "wildcard": False, "whole": False,
+                          "match_case": False, "sheet_opt": None})()
+    assert inspect.unwrap(ve.cmd_find_replace)(args) is True
+    assert book[(1, 2)] == "1-2" and "文字列として保持" in capsys.readouterr().out
+
+
+def test_save_as_puts_a_bare_name_next_to_the_workbook(monkeypatch, tmp_path):
+    """save-as 新名.xlsx は、道具のフォルダ（python_scripts）ではなく、そのブックのフォルダに置く（2026-10-28 点検）。"""
+    import vbam_edit as ve
+    saved = []
+    wb = type("WB", (), {"Name": "売上.xlsx", "FullName": str(tmp_path / "売上.xlsx"), "Path": str(tmp_path),
+                         "Sheets": type("S", (), {"Count": 1})(),
+                         "SaveAs": lambda self, p, FileFormat=None: saved.append(p)})()
+    xl = type("XL", (), {"DisplayAlerts": True})()
+    monkeypatch.setattr(ve, "get_workbook", lambda t=None: (xl, wb))
+    args = type("A", (), {"posargs": ["売上_控え.xlsx"], "overwrite": False})()
+    assert ve.cmd_save_as(args) is True
+    assert saved == [str(tmp_path / "売上_控え.xlsx")]
+    # 絶対パスは今まで通りそのまま
+    saved.clear()
+    args = type("A", (), {"posargs": [str(tmp_path / "別" / "x.xlsx")], "overwrite": False})()
+    assert ve.cmd_save_as(args) is True and saved == [str(tmp_path / "別" / "x.xlsx")]
