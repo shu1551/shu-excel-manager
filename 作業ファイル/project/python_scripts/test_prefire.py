@@ -464,3 +464,22 @@ def test_shelf_plan_shitekara_split():
     entries = vp.shelf_entries_from_text(text)
     res = vp.shelf_plan('重複行を削除してから空行を詰める', entries)
     assert res == ['全列が同じ重複行を削除する', '表の中の空行を削除して詰める']
+
+
+def test_lint_stops_hidden_shelf_with_argument_20261029():
+    """引数のある Sub に依頼の語がある＝撃たれるのに目録とマクロ一覧に出ない棚を止める（2026-10-29）。
+    使わない引数「勇退」で 32 本を隠し、そのうち 19 本が先撃ちで撃たれ続けていた。引数のある手伝い（_本体）と引数なしの入口は通す"""
+    text = "\n".join([
+        "Sub 隠し棚(Optional ByVal 勇退 As Boolean = True)",
+        "    ' 依頼の語: 隠れて撃つ",
+        "End Sub",
+        "Sub 値で分ける_本体(ByVal 知らせる As Boolean)",
+        "    ' 値で分ける の中身",
+        "End Sub",
+        "Sub 値で分ける()",
+        "    ' 依頼の語: 値ごとに分ける",
+        "    Call 値で分ける_本体(True)",
+        "End Sub",
+    ]) + "\n"
+    hits = [(lv, n) for lv, n, msg in vp.shelf_lint(text) if '引数' in msg]
+    assert hits == [('止める', '隠し棚')]
