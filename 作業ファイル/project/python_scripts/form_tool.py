@@ -73,6 +73,10 @@ def backup_form(wb, comp):
         stamp = time.strftime("%Y%m%d_%H%M%S")
         base = os.path.splitext(os.path.basename(wb.FullName))[0]
         path = os.path.join(BACKUP_DIR, f"{base}_{comp.Name}_{stamp}.frm")
+        seq = 1
+        while os.path.exists(path):          # 同じ秒の 2 本目が 1 本目（壊す前の姿）を上書きしない（2026-10-28 点検）
+            seq += 1
+            path = os.path.join(BACKUP_DIR, f"{base}_{comp.Name}_{stamp}_{seq}.frm")
         comp.Export(path)
         print(f"フォーム退避: backups/{os.path.basename(path)} (+.frx)")
         return True
@@ -530,8 +534,10 @@ def cmd_delete(args):
         sys.exit("delete-control は1個ずつ指定してください（カンマ区切り不可）。")
     xl, wb, comp = connect_form(args.form)
     if not backup_form(wb, comp):
-        # 「エラー」表示のまま黙って続行すると嘘になる。続行する事実を明示する
-        # （delete は退避が無いと元に戻せない＝ブックを保存せず閉じる以外の手が消える）
+        # delete は退避が無いと元に戻せない（保存せずにブックを閉じる以外の手が消える）。backup_form の約束どおり、
+        # --force が無ければ止める（前は「退避なしで続行」と出して消していた・2026-10-28 点検）
+        if not getattr(args, 'force', False):
+            sys.exit("退避できないため中止しました（--force で強行可。削除後に戻すには、保存せずにブックを閉じるしかありません）。")
         print("⚠ 退避なしで続行します（削除後に戻すには、保存せずにブックを閉じるしかありません）。")
     ct = pick_controls(comp, args.control)[0]
     name = ct.Name
@@ -659,6 +665,8 @@ def main():
     p.add_argument("form", help="フォーム名")
     p.add_argument("control", help="コントロール名 (1個)")
     p.add_argument("--save", action="store_true", help="実行後にブックを保存")
+    p.add_argument("--force", action="store_true",
+                   help="退避が取れなくても強行する（元に戻せなくなる）")
     p.set_defaults(func=cmd_delete)
 
     args = ap.parse_args()
