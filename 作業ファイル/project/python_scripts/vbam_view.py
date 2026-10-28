@@ -2117,6 +2117,14 @@ _SEIRI_COVERED = {'表の書き方と罫線と列幅をそろえる', '住所と
 _SEIRI_REPORT_WORDS_RE = re.compile(r'報告|一覧|洗い出|書き出|リスト|調べ|点検|チェック')
 
 
+# 頼みの文で書式・幅・表示を変える棚（表の整理_基本操作・2026-10-28 リボンの目録から）。値を書かないので、撃った後に
+# tidy を当てない。当てると列幅の自動調整が「金額の列の幅を広げて」を戻し、見出しの書式の複写が「金額の見出しを赤に」を
+# 見出し全体へ広げる（2026-10-29 取り込みの実機で実測）。表は先に撃つ表を整えるマクロが整えている
+_SEIRI_NO_TIDY_SHELVES = frozenset((
+    '頼みの文で指した所の書式を変える', '頼みの文で指した列の表示形式を変える', '頼みの文で指した列と行の幅と表示を変える',
+    '頼みの文で指した列で表を絞り込む', '頼みの文でシートの表示と印刷を変える', '頼みの文でシートの名前と色と並びを変える'))
+
+
 def _shelf_priority(macro_name):
     """棚マクロの実行優先順位（小さい順に撃つ＝DAG依存順序保証）"""
     # 1: 式・型・空白クレンジング（データの正規化が最優先）
@@ -2348,8 +2356,18 @@ def _seiri_fire_request(xl, wb, ws, request, before_snap):
 
 
 def _seiri_tidy(wb, ws, before_snap):
-    """棚を撃った後の仕上げ（tidy）を、元の表と棚が書いた表にまとめて 1 回当てる。"""
+    """棚を撃った後の仕上げ（tidy）を、元の表と棚が書いた表にまとめて 1 回当てる。
+
+    絞り込み中のシートには当てない。tidy は書く前に絞り込みを解くので、「区分が東京の行だけ表示して」で棚が掛けた
+    絞り込みが仕上げで消えていた（2026-10-29 リボンの棚の取り込みで実測）。表の書式は先に撃った表を整えるマクロが済ませている。
+    """
     import vbam_prefire as vp
+    try:
+        if bool(ws.FilterMode):
+            print("仕上げ（tidy）: 絞り込み中なので当てません（絞り込みを残すため。表の書式は先に整えています）")
+            return
+    except Exception:
+        pass
     targets = []
     for a in [vp._table_anchor(ws)] + vp._written_anchors(ws, before_snap):
         a = _trim_to_header_cols(ws, a) if a else a
@@ -2729,6 +2747,8 @@ def cmd_seiri(args):
         designed = any(_shelf_priority(n) == 40 for n in fired) or _has_dark_header(ws)
         if fired and not on_pivot and designed:
             print("仕上げ（tidy）: デザインの棚で美化した表なので当てません（見出しの色と罫線をそのままにする）")
+        elif fired and not on_pivot and any(n in _SEIRI_NO_TIDY_SHELVES for n in fired):
+            print("仕上げ（tidy）: 頼まれた書式・幅・表示を変える棚なので当てません（列幅の自動と見出しの書式の複写で戻さない）")
         elif fired and not on_pivot:
             try:
                 _seiri_tidy(wb, ws, before_snap)

@@ -1,4 +1,5 @@
 Attribute VB_Name = "表の整理_基本操作"
+
 ' 表の整理_基本操作 - 棚（言葉で頼んで撃つマクロ）の基本の操作（2026-10-28 リボンを目録にして棚にそろえた）
 '   Excel のリボンの全コマンド（Microsoft の Office Fluent UI Command Identifiers・fixtures\ribbon_catalog.tsv）を
 '   棚にする／もう棚にある／棚にしない の 3 つに分け、棚にする物を分類ごとの「どこを × どうする」の 6 本にまとめた。
@@ -6,7 +7,6 @@ Attribute VB_Name = "表の整理_基本操作"
 '   太字・3 桁区切り・幅をそろえる など）。頼む回数の一番多い基本の書式（「見出しの文字を大きくして赤にして」）が棚に当たらず
 '   AI に回っていた（10/25）。どれも値は書かない（書式・幅・絞り込み・設定・シートの名前だけを変える）
 '   1 操作 1 本の棚（表の整理_書式 の 中央揃え・3 桁区切り など）は選んだ範囲の頼みのまま残し、場所を言った頼みはこちらへ回す
-
 Sub 頼みの文で指した所の書式を変える()
     ' 依頼の語: 見出しの文字|合計行の文字|見出しの背景|合計行の背景|見出しを中央|見出しを左寄せ|見出しを右寄せ|列の文字を
     ' 依頼の組: 見出し,ヘッダー,項目名,項目の行,合計行,合計の行,総計の行,小計の行,選んだ範囲,選んだセル,選んだ所,選択範囲,選択した,この範囲,このセル,この列,この行,の列+大きく,小さく,文字サイズ,フォントサイズ,文字の大きさ,ポイント,太字,ボールド,細字,斜体,イタリック,下線,取り消し線,赤,青,緑,黄,黒,白,灰色,グレー,オレンジ,紫,紺,ピンク,水色,茶色,塗,背景,網掛,中央,真ん中,センター,左寄せ,左揃え,左詰め,右寄せ,右揃え,右詰め,上揃え,下揃え,上下中央,上に寄せ,下に寄せ,縦書き,横書き,折り返,縮小して,字下げ,インデント,明朝,ゴシック,メイリオ,書体,フォント,罫線,二重線,太線,細線,線を引+-一覧,調べ,探して,どこ,確認,チェック,点検,条件付き,グラフ,ピボット,スパーク,マイナス,負の,以上,以下,未満,超え,下回,上回,より大き,より小さ,場合,なら,だけ,ごとに,重複,空欄,空白,エラー,表示形式,桁区切り,カンマ,通貨,円マーク,パーセント,小数,和暦,幅,高さ,隠,非表示,並べ,絞,フィルタ,印刷,シート見出し,シートの見出し,タブ,美化,デザイン,テーマ,ダッシュボード,KPI,行を足,列を足,挿入,色分け,交互,縞,教え
@@ -183,7 +183,7 @@ End Function
 
 Private Function 基_罫線(ByVal rng As Range, ByVal s As String) As String
     ' 節の罫線の頼み（下に二重線・上に罫線・外枠を太線・格子・罫線を消す）を当てる。→ 変えた物
-    Dim 辺 As Variant, e As Variant, 種 As Long, 太 As Long, 名 As String, 何 As String, ar As Range, 消す As Boolean
+    Dim 辺 As Variant, E As Variant, 種 As Long, 太 As Long, 名 As String, 何 As String, ar As Range, 消す As Boolean
     消す = 基_やめか(s, "罫線") Or 基_やめか(s, "線")
     種 = xlContinuous: 太 = xlThin: 何 = "罫線"
     If 含む語(s, "二重線|二重の線") Then
@@ -214,8 +214,8 @@ Private Function 基_罫線(ByVal rng As Range, ByVal s As String) As String
     名 = 基_色の名(s)
     On Error Resume Next                 ' 1 行・1 列の範囲に内側の線は無い
     For Each ar In rng.Areas
-        For Each e In 辺
-            With ar.Borders(e)
+        For Each E In 辺
+            With ar.Borders(E)
                 If 消す Then
                     .LineStyle = xlNone
                 Else
@@ -224,7 +224,7 @@ Private Function 基_罫線(ByVal rng As Range, ByVal s As String) As String
                     If Len(名) > 0 Then .Color = 基_色(名, False) Else .ColorIndex = xlAutomatic
                 End If
             End With
-        Next e
+        Next E
     Next ar
     On Error GoTo 0
     基_罫線 = "・" & IIf(消す, "罫線なし", 何 & IIf(Len(名) > 0, "（" & 名 & "）", ""))
@@ -232,7 +232,7 @@ End Function
 
 Sub 頼みの文で指した列の表示形式を変える()
     ' 依頼の語: 列の表示形式|曜日も表示|曜日を表示|曜日付き|列を3桁区切り|列を桁区切り|列をカンマ区切り|列をパーセント|列を円マーク|列を通貨|列の小数|合計行を3桁区切り|合計行の表示形式
-    ' 依頼の組: 合計行,合計の行,総計の行,選んだ範囲,選んだセル,選択範囲,この範囲,このセル,この列,の列+桁区切り,3桁,３桁,カンマ,円マーク,￥,通貨,パーセント,％,小数,千円単位,千円で,百万円,万円単位,日付の形,日付の表示,年月日,曜日,時刻,文字列,表示形式,マイナスを赤,▲,ゼロを表示しない,0を表示しない,ゼロを隠,0を隠,整数+-一覧,調べ,探して,どこ,確認,チェック,条件付き,グラフ,ピボット,以上,以下,未満,超え,下回,上回,場合,なら,だけ,行を足,列を足,足して,追加,作って,作る,集計,ゼロ埋め,0埋め,先頭のゼロ,ゼロを付,和暦,元号,を数にして,数値に,日付にして,日付に直,文字の数字,文字の日付,行の,で付け,でつけ,で足,構成比,クエリ,きれい,掃除,整え,教え
+    ' 依頼の組: 合計行,合計の行,総計の行,選んだ範囲,選んだセル,選択範囲,この範囲,このセル,この列,の列+桁区切り,3桁,３桁,カンマ,円マーク,￥,通貨,パーセント,％,小数,千円単位,千円で,百万円,万円単位,日付の形,日付の表示,年月日,曜日,時刻,文字列,表示形式,マイナスを赤,▲,ゼロを表示しない,0を表示しない,ゼロを隠,0を隠,整数+-一覧,調べ,探して,どこ,確認,チェック,条件付き,グラフ,ピボット,以上,以下,未満,超え,下回,上回,場合,なら,だけ,行を足,列を足,足して,追加,作って,作る,集計,ゼロ埋め,0埋め,先頭のゼロ,ゼロを付,和暦,元号,を数にして,数値に,日付にして,日付に直,文字の数字,文字の日付,行の,で付け,でつけ,で足,構成比,クエリ,区切って,分けて,分割,きれい,掃除,整え,教え
     ' 階級: 基本
     ' 扱う: 表示形式 桁区切り 通貨 パーセント 小数 日付の形
     ' 見出し: なし
@@ -355,9 +355,9 @@ Sub 頼みの文で指した列と行の幅と表示を変える()
     If 含む語(頼, "列の幅|列幅|の列|列を|この列|選んだ列") Then 行の = 含む語(頼, "高さ|高く|低く|行高")
     全部 = 含む語(頼, "全部の列|すべての列|全ての列|表の列|列を全部|全列|全部の行|すべての行|表の行|行を全部")
     If 行の Then
-        If 全部 And 表あり Then Set 対 = ws.Range(ws.Rows(見r), ws.Rows(下)): 何 = "表の行"
-        If 含む語(頼, "見出しの行|見出し行|見出し") And 表あり And Not 全部 Then Set 対 = 基_足す(対, ws.Rows(見r)): 何 = 何 & "・見出しの行"
-        If 含む語(頼, "合計行|合計の行") And 合r > 0 Then Set 対 = 基_足す(対, ws.Rows(合r)): 何 = 何 & "・合計行"
+        If 全部 And 表あり Then Set 対 = ws.Range(ws.rows(見r), ws.rows(下)): 何 = "表の行"
+        If 含む語(頼, "見出しの行|見出し行|見出し") And 表あり And Not 全部 Then Set 対 = 基_足す(対, ws.rows(見r)): 何 = 何 & "・見出しの行"
+        If 含む語(頼, "合計行|合計の行") And 合r > 0 Then Set 対 = 基_足す(対, ws.rows(合r)): 何 = 何 & "・合計行"
         If 選 And 対 Is Nothing Then Set 対 = Selection.EntireRow: 何 = "選んだ行"
     Else
         If 全部 And 表あり Then Set 対 = ws.Range(ws.Columns(左), ws.Columns(右)): 何 = "表の列"
@@ -412,7 +412,7 @@ Sub 頼みの文で指した列と行の幅と表示を変える()
             If 行の Then
                 ar.EntireRow.AutoFit
             ElseIf 表あり Then
-                Intersect(ar.EntireColumn, ws.Range(ws.Rows(見r), ws.Rows(下))).Columns.AutoFit    ' 表の上の題で広がらないように表の行で合わせる
+                Intersect(ar.EntireColumn, ws.Range(ws.rows(見r), ws.rows(下))).Columns.AutoFit    ' 表の上の題で広がらないように表の行で合わせる
             Else
                 ar.EntireColumn.AutoFit
             End If
@@ -423,9 +423,9 @@ Sub 頼みの文で指した列と行の幅と表示を変える()
         If 含む語(頼, "そろえ|揃え|同じ|合わせ") Then
             大 = 0
             For Each ar In 対.Areas
-                For k = 1 To IIf(行の, ar.Rows.Count, ar.Columns.Count)
+                For k = 1 To IIf(行の, ar.rows.Count, ar.Columns.Count)
                     If 行の Then
-                        If ar.Rows(k).RowHeight > 大 Then 大 = ar.Rows(k).RowHeight
+                        If ar.rows(k).RowHeight > 大 Then 大 = ar.rows(k).RowHeight
                     Else
                         If ar.Columns(k).ColumnWidth > 大 Then 大 = ar.Columns(k).ColumnWidth
                     End If
@@ -446,9 +446,9 @@ Sub 頼みの文で指した列と行の幅と表示を変える()
             If 含む語(頼, "もっと|かなり|すごく|うんと|ぐっと") Then 足す = 足す + 足す
             If 含む語(頼, "狭く|狭め|小さく|低く|縮め") Then 足す = -足す
             For Each ar In 対.Areas
-                For k = 1 To IIf(行の, ar.Rows.Count, ar.Columns.Count)
+                For k = 1 To IIf(行の, ar.rows.Count, ar.Columns.Count)
                     If 行の Then
-                        ar.Rows(k).RowHeight = 基_範囲内(ar.Rows(k).RowHeight + 足す, 6, 409)
+                        ar.rows(k).RowHeight = 基_範囲内(ar.rows(k).RowHeight + 足す, 6, 409)
                     Else
                         ar.Columns(k).ColumnWidth = 基_範囲内(ar.Columns(k).ColumnWidth + 足す, 1, 255)
                     End If
@@ -537,6 +537,8 @@ Sub 頼みの文で指した列で表を絞り込む()
         End If
     Next c
     If Len(済) > 0 Then
+        ' Excel は絞り込みの範囲を下に続く行まで広げる（A1:E6 を渡しても A1:E7 になり、合計の行が隠れた。2026-10-29 実測）
+        If 合r > 0 And lo Is Nothing Then ws.rows(合r).Hidden = False
         On Error Resume Next
         n = rng.Columns(1).SpecialCells(xlCellTypeVisible).Count - 1
         On Error GoTo 0
@@ -562,7 +564,7 @@ End Sub
 Private Function 基_絞る値(ByVal 頼 As String, ByVal 見出し As String, ByRef 演 As String) As String
     ' 頼みの文の見出しの名前の後ろから、絞り込む値と比べ方を読む。演＝"=" "<>" ">=" "<=" ">" "<" "含む"。
     ' 「区分が東京の行だけ」→ =東京／「金額の列で10000以上」→ >=10000／「担当が空欄の行」→ =（空欄）／「区分が東京以外」→ <>東京
-    Dim p As Long, s As String, 後 As String, e As Long, k As Long, w As Variant, 当 As String, h As String
+    Dim p As Long, s As String, 後 As String, E As Long, k As Long, w As Variant, 当 As String, h As String
     演 = ""
     h = ピボットの語ならし(見出し)
     p = InStr(1, 頼, h, vbBinaryCompare)
@@ -573,14 +575,14 @@ Private Function 基_絞る値(ByVal 頼 As String, ByVal 見出し As String, ByRef 演 
     For Each w In Array("の列で", "の列が", "の列は", "の列を", "の列の", "列で", "列が", "の欄が", "の欄で", "が", "は", "で", "を", "に", "=")
         If Left$(s, Len(w)) = w Then s = Mid$(s, Len(w) + 1): Exit For
     Next w
-    e = Len(s) + 1
+    E = Len(s) + 1
     For Each w In Array("の行", "だけ", "で絞", "に絞", "を絞", "で抽", "以上", "以下", "未満", "以降", "以前", "より", "以外", "を超", "超え", _
                         "を含", "が入", "を表示", "の物", "のもの", "を見", "で見", "にして", "にな", "で", "かつ", "、", "。", "|")
         k = InStr(1, s, w, vbBinaryCompare)
-        If k > 0 And k < e Then e = k
+        If k > 0 And k < E Then E = k
     Next w
-    後 = Mid$(s, e)
-    s = Left$(s, e - 1)
+    後 = Mid$(s, E)
+    s = Left$(s, E - 1)
     If 含む語(s, "空欄|空白|ブランク|未入力") Then
         基_絞る値 = ""
         演 = IIf(含む語(後, "以外|でない|じゃない"), "<>", "=")
@@ -604,6 +606,7 @@ Private Function 基_絞る値(ByVal 頼 As String, ByVal 見出し As String, ByRef 演 
     End If
     基_絞る値 = s
 End Function
+
 
 Sub 頼みの文でシートの表示と印刷を変える()
     ' 依頼の語: 枠の固定を解除|固定を解除|固定を外|目盛線を消|目盛線を表示|目盛り線を消|枠線を消|改ページプレビュー|標準表示|ページレイアウト表示|印刷の向き|用紙の向き|印刷範囲|余白を|用紙をA|用紙サイズ|ページ番号を|横向きに印刷|縦向きに印刷|横向きで印刷|縦向きで印刷|設定を横向き|設定を縦向き
@@ -837,11 +840,11 @@ Sub 頼みの文でシートの名前と色と並びを変える()
 
     ' 新しいシートを足す・複製する（名前の頼みがあれば、できたシートの名前にする）
     If 含む語(頼, "新しいシート|シートを追加|シートを足|シートを1枚|シートを一枚") Then
-        Set 新 = wb.Worksheets.Add(After:=ws)
+        Set 新 = wb.Worksheets.Add(after:=ws)
         Set ws = 新
         済 = 済 & "・新しいシートを追加"
     ElseIf 含む語(頼, "コピー|複製") Then
-        ws.Copy After:=ws
+        ws.Copy after:=ws
         Set ws = ActiveSheet
         済 = 済 & "・複製（" & ws.Name & "）"
     End If
@@ -891,7 +894,7 @@ Sub 頼みの文でシートの名前と色と並びを変える()
     ElseIf 含む語(頼, "先頭|一番前|一番左|最初に|はじめに") Then
         ws.Move Before:=wb.Sheets(1): 済 = 済 & "・先頭へ"
     ElseIf 含む語(頼, "末尾|一番後|一番右|最後に|最後へ|終わりに") Then
-        ws.Move After:=wb.Sheets(wb.Sheets.Count): 済 = 済 & "・末尾へ"
+        ws.Move after:=wb.Sheets(wb.Sheets.Count): 済 = 済 & "・末尾へ"
     End If
 
     ' 隠す（最後に。見えるシートが 1 枚だけなら隠せない）
@@ -911,11 +914,12 @@ Sub 頼みの文でシートの名前と色と並びを変える()
     Application.StatusBar = "シート「" & ws.Name & "」を変えました: " & Mid$(済, 2)
 End Sub
 
+
 Private Function 基_シートの新しい名(ByVal 元 As String) As String
     ' 頼みの文からシートの新しい名前を読む（「」『』“”の中を先に。無ければ「名前を〇〇に」「シート名を〇〇にして」の〇〇）。読めなければ ""
-    Dim 開 As Variant, 閉 As Variant, i As Long, p As Long, q As Long, s As String, w As Variant, e As Long
-    開 = Array("「", "『", "“", """")
-    閉 = Array("」", "』", "”", """")
+    Dim 開 As Variant, 閉 As Variant, i As Long, p As Long, q As Long, s As String, w As Variant, E As Long
+    開 = Array("「", "『", ChrW(&H201C), """")    ' “” は VBA の中では引用符に読まれるので ChrW で
+    閉 = Array("」", "』", ChrW(&H201D), """")
     For i = 0 To UBound(開)
         p = InStr(1, 元, 開(i), vbBinaryCompare)
         If p > 0 Then
@@ -928,16 +932,15 @@ Private Function 基_シートの新しい名(ByVal 元 As String) As String
         If p > 0 Then s = Mid$(元, p + Len(w)): Exit For
     Next w
     If Len(s) = 0 Then Exit Function
-    e = Len(s) + 1
+    E = Len(s) + 1
     For Each w In Array("に変え", "に変更", "にして", "にする", "にし", "へ変え", "と付け", "とつけ", "に直", "にかえ", "に", "、", "。")
         q = InStr(1, s, w, vbBinaryCompare)
-        If q > 1 And q < e Then e = q
+        If q > 1 And q < E Then E = q
     Next w
-    基_シートの新しい名 = Trim$(Left$(s, e - 1))
+    基_シートの新しい名 = Trim$(Left$(s, E - 1))
 End Function
 
 ' ---- 6 本の共通（Private＝棚の目録に出ない） ----
-
 Private Function 基_頼み() As String
     ' 頼みの文（全角の英数を半角に、空白と括弧の中を落とす＝見出しの語と同じならし）
     基_頼み = ピボットの語ならし(先撃ちの頼みの文())
@@ -996,6 +999,7 @@ Private Function 基_表を読む(ByVal ws As Worksheet, ByRef 見r As Long, ByRef 左 
     基_表を読む = True
 End Function
 
+
 Private Function 基_表のテーブル(ByVal ws As Worksheet) As ListObject
     ' 選んでいるセルのテーブル。選んでいる所がテーブルの外で、シートにテーブルが 1 つだけならそれ
     Dim lo As ListObject
@@ -1016,6 +1020,7 @@ Private Function 基_場所の語を外す(ByVal 頼 As String) As String
     Next w
     基_場所の語を外す = 頼
 End Function
+
 
 Private Function 基_頼みの列(ByVal ws As Worksheet, ByVal 頼 As String, ByVal 見r As Long, ByVal 左 As Long, ByVal 右 As Long) As Collection
     ' 頼みの文に名前の出てくる見出しの列番号。字のとおりに出てくる見出しを先に見て（長い見出しに含まれる短い見出しは外す）、
@@ -1123,6 +1128,7 @@ Private Function 基_指した所(ByVal ws As Worksheet, ByVal 頼 As String, ByVal 見
     Set 基_指した所 = out
 End Function
 
+
 Private Function 基_節に分ける(ByVal 頼 As String) As Variant
     ' 「見出しの文字を大きくして赤にして」→ 大きく／赤に。色を文字と背景のどちらに付けるかを節ごとに読む
     Dim w As Variant
@@ -1138,6 +1144,7 @@ Private Function 基_やめか(ByVal s As String, ByVal 語 As String) As Boolean
                         語 & "をなくし|" & 語 & "を無くし|" & 語 & "なし|" & 語 & "はいらな|" & 語 & "をしな")
 End Function
 
+
 Private Function 基_色の名(ByVal s As String) As String
     ' 節の中の色の名前（長い名前を先に見る）。無ければ ""
     Dim w As Variant
@@ -1148,6 +1155,7 @@ Private Function 基_色の名(ByVal s As String) As String
         If InStr(1, s, w, vbBinaryCompare) > 0 Then 基_色の名 = w: Exit Function
     Next w
 End Function
+
 
 Private Function 基_色(ByVal 名 As String, ByVal 塗り As Boolean) As Long
     ' 色の名前 → RGB。リボンの「標準の色」に合わせ、薄い色は背景に使う淡い色。灰色の背景は文字が読める明るさにする
@@ -1195,5 +1203,5 @@ Private Function 基_数(ByVal s As String, Optional ByVal 後 As String = "") As D
             Exit For
         End If
     Next i
-    If Len(t) > 0 Then 基_数 = Val(t)
+    If Len(t) > 0 Then 基_数 = val(t)
 End Function
