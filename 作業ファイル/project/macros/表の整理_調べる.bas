@@ -167,7 +167,7 @@ NextRow:
             End If
         Next i
 
-        ws.Range(ws.Cells(hdrRow + 1, outCol), ws.Cells(hdrRow + dupCount, outCol + 2)).Value2 = outArr ' 書き戻し: 新しい所
+        表の整理_下請け.文字を守って書く ws.Range(ws.Cells(hdrRow + 1, outCol), ws.Cells(hdrRow + dupCount, outCol + 2)), outArr ' 書き戻し: 新しい所
         Set m仕上げ範囲 = ws.Range(ws.Cells(hdrRow, outCol), ws.Cells(hdrRow + dupCount, outCol + 2))
         Call 表の仕上げ
     End If
@@ -633,7 +633,7 @@ NextRow:
     For ci = 0 To colCount - 1
         hdrOutArr(1, ci + 2) = セルの字(urArr(relHdr, relTblLeft + ci))
     Next ci
-    ws.Range(ws.Cells(hdrRow, outStartCol), ws.Cells(hdrRow, outStartCol + colCount)).Value2 = hdrOutArr ' 書き戻し: 新しい所
+    表の整理_下請け.文字を守って書く ws.Range(ws.Cells(hdrRow, outStartCol), ws.Cells(hdrRow, outStartCol + colCount)), hdrOutArr ' 書き戻し: 新しい所
 
     ' 重複組をメモリ配列に一括パッキング
     Dim outArr() As Variant
@@ -667,7 +667,7 @@ NextRow:
     ws.Range(ws.Cells(hdrRow + 1, amtColRelOut), ws.Cells(hdrRow + totalDupRows, amtColRelOut)).NumberFormat = "#,##0"
 
     ' 一撃代入
-    ws.Range(ws.Cells(hdrRow + 1, outStartCol), ws.Cells(hdrRow + totalDupRows, outStartCol + colCount)).Value2 = outArr ' 書き戻し: 新しい所
+    表の整理_下請け.文字を守って書く ws.Range(ws.Cells(hdrRow + 1, outStartCol), ws.Cells(hdrRow + totalDupRows, outStartCol + colCount)), outArr ' 書き戻し: 新しい所
 
     ' 見た目は棚の共通の下請けに任せる
     Set m仕上げ範囲 = ws.Range(ws.Cells(hdrRow, outStartCol), ws.Cells(hdrRow + totalDupRows, outStartCol + colCount))

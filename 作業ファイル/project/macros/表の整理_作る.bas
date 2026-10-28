@@ -2600,11 +2600,11 @@ NextCheckSheet:
                             ElseIf IsNumeric(rawStr) Then
                                 destWs.Cells(destRow, colFirst + matchColsInDest(i) - 1).Value = CDbl(rawStr)
                             Else
-                                destWs.Cells(destRow, colFirst + matchColsInDest(i) - 1).Value = cv
+                                表の整理_下請け.文字を守って書く destWs.Cells(destRow, colFirst + matchColsInDest(i) - 1), cv ' 文字のコード 00123・1-2 が数・日付に化けないように（2026-10-28 点検）
                             End If
                         End If
                     Else
-                        destWs.Cells(destRow, colFirst + matchColsInDest(i) - 1).Value = cv
+                        表の整理_下請け.文字を守って書く destWs.Cells(destRow, colFirst + matchColsInDest(i) - 1), cv ' 文字のコード 00123・1-2 が数・日付に化けないように（2026-10-28 点検）
                     End If
                 End If
             Next i
@@ -10800,7 +10800,7 @@ Sub 選んだ値に合う行を抜き出す()
     For c = 1 To nCols
         hdrArr(1, c) = urArr(relHdr, c)
     Next c
-    sh.Range(sh.Cells(2, 1), sh.Cells(2, nCols)).Value2 = hdrArr ' 書き戻し: 新しい所
+    表の整理_下請け.文字を守って書く sh.Range(sh.Cells(2, 1), sh.Cells(2, nCols)), hdrArr ' 書き戻し: 新しい所
 
     ' 合致データをメモリ配列にパッキングして一撃代入
     If 当たり > 0 Then
@@ -10813,7 +10813,7 @@ Sub 選んだ値に合う行を抜き出す()
                 outArr(i, c) = urArr(srcR, c)
             Next c
         Next i
-        sh.Range(sh.Cells(3, 1), sh.Cells(当たり + 2, nCols)).Value2 = outArr ' 書き戻し: 新しい所
+        表の整理_下請け.文字を守って書く sh.Range(sh.Cells(3, 1), sh.Cells(当たり + 2, nCols)), outArr ' 書き戻し: 新しい所
         sh.Range(sh.Cells(2, 1), sh.Cells(当たり + 2, nCols)).Borders.LineStyle = xlContinuous
     End If
 
@@ -13093,7 +13093,7 @@ Sub 選んだ2列を1列につなげる()
     ws.Columns(outCol).Insert Shift:=xlToRight
 
     ws.Cells(hdrRow, outCol).Value = newHdr
-    ws.Range(ws.Cells(hdrRow + 1, outCol), ws.Cells(lastRow, outCol)).Value2 = outArr ' 書き戻し: 新しい所
+    表の整理_下請け.文字を守って書く ws.Range(ws.Cells(hdrRow + 1, outCol), ws.Cells(lastRow, outCol)), outArr ' 書き戻し: 新しい所
 
     ' 見た目の仕上げ
     Set m仕上げ手本 = ws.Cells(hdrRow, col1)
