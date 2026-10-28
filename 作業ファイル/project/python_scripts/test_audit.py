@@ -325,6 +325,16 @@ def test_apply_audit_fixes_logic():
     assert ws.Range("F5").Value == " 12 "
     assert len(res["skipped"]) == 2
 
+    # 見出しが番号の列（社員番号など）は、0 で始まらない番号も文字のまま（照合のキーの型をそろえる・2026-10-28 点検）
+    ws.Range("G2").Value = "1001"
+    res2 = va.apply_audit_fixes(ws, [{"cell": "G2", "type": "text_number", "value": "1001"}], {"G": "社員番号"})
+    assert ws.Range("G2").Value == "1001" and res2["fixed_counts"]["text_number"] == 0
+    assert any("社員番号" in s_ for s_ in res2["skipped"])
+    # 見出しの読み取り: 上から 5 行のうち最初の文字。番号の語（番号・ID・コード・No）がある列だけ
+    vals = [["社員番号", "氏名", "金額", "商品ID", "キーボード"], ["1001", "佐藤", "1200", "A1", "3"]]
+    assert va.id_columns_of(vals, 0) == {"A": "社員番号", "D": "商品ID"}
+    assert va.id_columns_of(vals, 2) == {"C": "社員番号", "F": "商品ID"}     # 範囲が C 列から始まるとき
+
 
 def test_text_number_safe_to_convert():
     assert va._text_number_safe_to_convert("12345")
@@ -555,3 +565,13 @@ def test_seiri_hints_point_to_shelf_macros():
     assert names.index("選んだ列の途切れた式を戻す") < names.index("表の中の空行を削除して詰める")
     sel = [h[2] for h in hints if h[1] == "選んだ列の途切れた式を戻す"][0]
     assert sel.startswith("F2:F")
+
+
+def test_diagnose_fix_does_not_write_without_a_backup():
+    """「--fix は -y と控えを要る」なのに、控えに失敗しても書き換えていた（2026-10-28 点検）。控えが無ければ診断だけ。"""
+    import inspect
+    src = inspect.getsource(va.cmd_diagnose)
+    i_backup = src.index("_diagnose_backup(wb)")
+    i_guard = src.index("if not backup:", i_backup)
+    i_apply = src.index("apply_audit_fixes(", i_backup)
+    assert i_backup < i_guard < i_apply and "else:" in src[i_guard:i_apply]
