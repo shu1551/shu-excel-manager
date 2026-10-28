@@ -6336,3 +6336,87 @@ def test_dirt_notes_phone_area_longest_code_20261027():
     assert vbam_view._area_of("0827221111") == ("0827", ("山口県", "岩国"))
     assert vbam_view._area_of("0823221111")[0] == "082"
     assert vbam_view._area_of("0181234567") is None
+
+
+# ----------------------------------------------------------------
+# 2026-10-28 点検: find-replace が数式を黙って飛ばしていた・シート名の大文字小文字で残骸が残った
+# ----------------------------------------------------------------
+class _FRCell:
+    def __init__(self, book, r, c):
+        self._b, self._k = book, (r, c)
+        self.Address = f"$B${r}"
+
+    def _set(self, v):
+        if isinstance(v, str) and v.startswith('=') and 'BAD' in v:
+            raise Exception("式として成り立ちません")
+        self._b[self._k] = v
+
+    Value = property(lambda s: s._b[s._k], _set)
+    Formula2 = property(lambda s: s._b[s._k], _set)
+    Formula = property(lambda s: s._b[s._k], _set)
+
+
+def test_find_replace_also_rewrites_formulas_when_the_new_text_contains_the_old(monkeypatch, capsys):
+    """B1→B10 のように置き換え後が探す字を含むとき、数式のセルを黙って飛ばして「0セル」で終わっていた。"""
+    import inspect
+    import vbam_edit as ve
+    book = {(1, 2): "=B1*2", (2, 2): "=B10*2", (3, 2): "B1 の注記", (4, 2): "=BAD(B1)"}
+
+    class Rng:
+        Row, Column, Address = 1, 2, "$B$1:$B$4"
+        Value = tuple((("値" if isinstance(book[(r, 2)], str) and book[(r, 2)].startswith('=') else book[(r, 2)]),)
+                      for r in range(1, 5))
+        Formula2 = tuple((book[(r, 2)],) for r in range(1, 5))
+
+        def Find(self, *a):
+            return _FRCell(book, 1, 2)
+
+        def FindNext(self, cell):
+            return _FRCell(book, 1, 2)
+
+        def Cells(self, n):
+            return _FRCell(book, n, 2)
+    Rng.Cells.Count = 4
+
+    class WS:
+        Name = "表"
+
+        def Cells(self, r, c):
+            return _FRCell(book, r, c)
+
+    monkeypatch.setattr(ve, "get_workbook", lambda t=None: (None, None))
+    monkeypatch.setattr(ve, "_resolve_range", lambda xl, wb, spec, sh=None: (WS(), Rng()))
+    args = type("A", (), {"posargs": ["B1", "B10", "B1:B4"], "wildcard": False, "whole": False,
+                          "match_case": False, "sheet_opt": None})()
+    assert inspect.unwrap(ve.cmd_find_replace)(args) is True
+    out = capsys.readouterr().out
+    assert book[(1, 2)] == "=B10*2"            # 数式も置き換える
+    assert book[(2, 2)] == "=B10*2"            # もとから B10 を含む式は二重にしない（=B100*2 にしない）
+    assert book[(3, 2)] == "B10 の注記"
+    assert book[(4, 2)] == "=BAD(B1)"          # 式として成り立たないものは元のまま・言う
+    assert "2セル" in out and "元の式のまま残したセル: B4" in out
+
+
+def test_sheet_add_and_copy_see_names_that_differ_only_in_case(monkeypatch, capsys):
+    """Excel のシート名は大文字と小文字を区別しない。'Data' がある所に 'data' を足すと、名前付けで落ちて残骸が残っていた。"""
+    import inspect
+    import vbam_edit as ve
+
+    class Sh:
+        def __init__(self, name):
+            self.Name = name
+
+    class Sheets(list):
+        def Add(self, *a):
+            raise AssertionError("足してはいけない")
+
+    sheets = Sheets([Sh("Data")])
+    wb = type("WB", (), {"Sheets": sheets})()
+    monkeypatch.setattr(ve, "get_workbook", lambda t=None: (None, wb))
+    cmd = inspect.unwrap(ve.cmd_sheet)
+    mk = lambda *p: type("A", (), {"posargs": list(p), "before": None, "after": None})()
+    assert cmd(mk("add", "Data")) is True                       # 完全に同じ名前は「もうある」で通す（従来どおり）
+    assert cmd(mk("add", "data")) is False
+    assert "シート 'Data' があるので 'data' は作れません" in capsys.readouterr().out
+    assert cmd(mk("copy", "Data", "DATA")) is False
+    assert "大文字と小文字を区別しません" in capsys.readouterr().out
