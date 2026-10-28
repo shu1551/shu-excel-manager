@@ -1270,6 +1270,57 @@ Function 文字のまま書く字(ByVal s As String) As String
     If InStr("=+-@#'", 頭) > 0 Or IsNumeric(s) Or IsDate(s) Or UCase$(s) = "TRUE" Or UCase$(s) = "FALSE" Then 文字のまま書く字 = "'" & s
 End Function
 
+' セルが動的配列の式（スピル）の元なら、広がった範囲を返す。スピルでない・広がった側のセル・古い Excel（HasSpill が無い）は Nothing（2026-10-28）
+Function スピルの元なら範囲(ByVal c As Range) As Range
+    Dim 広がる As Boolean
+    On Error Resume Next
+    広がる = c.HasSpill
+    If Err.Number <> 0 Or Not 広がる Then Exit Function
+    If c.SpillParent.Address <> c.Address Then Exit Function
+    Set スピルの元なら範囲 = c.SpillingToRange
+End Function
+
+' 範囲の .Value（配列か 1 つの値）の文字を、数・日付に化けないよう文字のまま書く字にした写し（まとめて書くとき用・2026-10-28）。
+' 配列で読んで配列で書くと、文字の 00123・1-2・16 桁の番号を Excel が数・日付に読み替える。書き先は表示形式が @ でない所
+Function 文字を守った配列(ByVal v As Variant) As Variant
+    Dim i As Long, j As Long
+    If Not IsArray(v) Then
+        If VarType(v) = vbString Then 文字を守った配列 = 文字のまま書く字(CStr(v)) Else 文字を守った配列 = v
+        Exit Function
+    End If
+    For i = LBound(v, 1) To UBound(v, 1)
+        For j = LBound(v, 2) To UBound(v, 2)
+            If VarType(v(i, j)) = vbString Then v(i, j) = 文字のまま書く字(CStr(v(i, j)))
+        Next j
+    Next i
+    文字を守った配列 = v
+End Function
+
+' 値（配列か 1 つ）を rng に、文字は文字のまま書く（2026-10-28 点検）。表の値を別の所へ写すとき・新しい列へ書くときに使う。
+' 書き先が文字列の表示形式（@）なら Excel は読み替えないのでそのまま書く（@ のセルに ' を付けると ' まで文字になる）。
+' 表示形式がまちまちなら ' を付ける側に倒す
+Sub 文字を守って書く(ByVal rng As Range, ByVal v As Variant)
+    Dim 形 As Variant
+    形 = rng.NumberFormat
+    If Not IsNull(形) Then
+        If 形 = "@" Then
+            rng.Value = v ' 書き戻し: 新しい所（呼び手が書く先を決めている）
+            Exit Sub
+        End If
+    End If
+    rng.Value = 文字を守った配列(v) ' 書き戻し: 新しい所（呼び手が書く先を決めている）
+End Sub
+
+' 値の並び（範囲の .Value）を、文字は文字のまま書き戻す（2026-10-28）。
+' スピルの範囲を値にするとき、元のセルを書いた時点で広がった側が消えるので、値は先に控えたものを渡す
+Sub 値を書き戻す(ByVal rng As Range, ByVal v As Variant)
+    If IsArray(v) Then
+        文字を守って書く rng.Cells(1, 1).Resize(UBound(v, 1) - LBound(v, 1) + 1, UBound(v, 2) - LBound(v, 2) + 1), v
+    Else
+        文字を守って書く rng.Cells(1, 1), v
+    End If
+End Sub
+
 ' 1 セル・1 行だけの範囲の値（スカラー）も、2 次元の配列にそろえる（2026-10-22）
 Function 二次元にする(ByVal v As Variant) As Variant
     Dim 箱() As Variant

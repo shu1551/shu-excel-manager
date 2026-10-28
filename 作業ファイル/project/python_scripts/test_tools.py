@@ -6336,3 +6336,376 @@ def test_dirt_notes_phone_area_longest_code_20261027():
     assert vbam_view._area_of("0827221111") == ("0827", ("山口県", "岩国"))
     assert vbam_view._area_of("0823221111")[0] == "082"
     assert vbam_view._area_of("0181234567") is None
+
+
+# ----------------------------------------------------------------
+# 2026-10-28 点検: find-replace が数式を黙って飛ばしていた・シート名の大文字小文字で残骸が残った
+# ----------------------------------------------------------------
+class _FRCell:
+    def __init__(self, book, r, c):
+        self._b, self._k = book, (r, c)
+        self.Address = f"$B${r}"
+
+    def _set(self, v):
+        if isinstance(v, str) and v.startswith('=') and 'BAD' in v:
+            raise Exception("式として成り立ちません")
+        self._b[self._k] = v
+
+    Value = property(lambda s: s._b[s._k], _set)
+    Formula2 = property(lambda s: s._b[s._k], _set)
+    Formula = property(lambda s: s._b[s._k], _set)
+
+
+def test_find_replace_also_rewrites_formulas_when_the_new_text_contains_the_old(monkeypatch, capsys):
+    """B1→B10 のように置き換え後が探す字を含むとき、数式のセルを黙って飛ばして「0セル」で終わっていた。"""
+    import inspect
+    import vbam_edit as ve
+    book = {(1, 2): "=B1*2", (2, 2): "=B10*2", (3, 2): "B1 の注記", (4, 2): "=BAD(B1)"}
+
+    class Rng:
+        Row, Column, Address = 1, 2, "$B$1:$B$4"
+        Value = tuple((("値" if isinstance(book[(r, 2)], str) and book[(r, 2)].startswith('=') else book[(r, 2)]),)
+                      for r in range(1, 5))
+        Formula2 = tuple((book[(r, 2)],) for r in range(1, 5))
+
+        def Find(self, *a):
+            return _FRCell(book, 1, 2)
+
+        def FindNext(self, cell):
+            return _FRCell(book, 1, 2)
+
+        def Cells(self, n):
+            return _FRCell(book, n, 2)
+    Rng.Cells.Count = 4
+
+    class WS:
+        Name = "表"
+
+        def Cells(self, r, c):
+            return _FRCell(book, r, c)
+
+    monkeypatch.setattr(ve, "get_workbook", lambda t=None: (None, None))
+    monkeypatch.setattr(ve, "_resolve_range", lambda xl, wb, spec, sh=None: (WS(), Rng()))
+    args = type("A", (), {"posargs": ["B1", "B10", "B1:B4"], "wildcard": False, "whole": False,
+                          "match_case": False, "sheet_opt": None})()
+    assert inspect.unwrap(ve.cmd_find_replace)(args) is True
+    out = capsys.readouterr().out
+    assert book[(1, 2)] == "=B10*2"            # 数式も置き換える
+    assert book[(2, 2)] == "=B10*2"            # もとから B10 を含む式は二重にしない（=B100*2 にしない）
+    assert book[(3, 2)] == "B10 の注記"
+    assert book[(4, 2)] == "=BAD(B1)"          # 式として成り立たないものは元のまま・言う
+    assert "2セル" in out and "元の式のまま残したセル: B4" in out
+
+
+def test_sheet_add_and_copy_see_names_that_differ_only_in_case(monkeypatch, capsys):
+    """Excel のシート名は大文字と小文字を区別しない。'Data' がある所に 'data' を足すと、名前付けで落ちて残骸が残っていた。"""
+    import inspect
+    import vbam_edit as ve
+
+    class Sh:
+        def __init__(self, name):
+            self.Name = name
+
+    class Sheets(list):
+        def Add(self, *a):
+            raise AssertionError("足してはいけない")
+
+    sheets = Sheets([Sh("Data")])
+    wb = type("WB", (), {"Sheets": sheets})()
+    monkeypatch.setattr(ve, "get_workbook", lambda t=None: (None, wb))
+    cmd = inspect.unwrap(ve.cmd_sheet)
+    mk = lambda *p: type("A", (), {"posargs": list(p), "before": None, "after": None})()
+    assert cmd(mk("add", "Data")) is True                       # 完全に同じ名前は「もうある」で通す（従来どおり）
+    assert cmd(mk("add", "data")) is False
+    assert "シート 'Data' があるので 'data' は作れません" in capsys.readouterr().out
+    assert cmd(mk("copy", "Data", "DATA")) is False
+    assert "大文字と小文字を区別しません" in capsys.readouterr().out
+
+
+def test_code_replace_refuses_characters_vbe_cannot_hold(monkeypatch, capsys):
+    """VBE は CP932 でコードを持つ。code-replace だけ検査が無く、— ✓ 絵文字が ReplaceLine で黙って「?」に化けていた（2026-10-28 点検）。"""
+    import inspect
+    import vbam_vba as vv
+
+    class CM:
+        def __init__(self):
+            self.lines = ['Sub 終わり()', '    MsgBox "完了"', 'End Sub']
+            self.replaced = []
+
+        CountOfLines = property(lambda s: len(s.lines))
+
+        def Lines(self, a, n):
+            return '\r\n'.join(self.lines[a - 1:a - 1 + n])
+
+        def ReplaceLine(self, i, t):
+            self.replaced.append((i, t))
+            self.lines[i - 1] = t
+
+    cm = CM()
+    comp = type("C", (), {"Name": "Module1", "CodeModule": cm})()
+    wb = type("WB", (), {"VBProject": type("P", (), {"VBComponents": [comp]})(), "FullName": "x.xlsm",
+                         "Save": lambda self: None})()
+    monkeypatch.setattr(vv, "get_workbook", lambda t=None, **k: (None, wb))
+    monkeypatch.setattr(vv, "make_backup", lambda *a, **k: "bk")
+    monkeypatch.setattr(vv, "make_module_backup", lambda *a, **k: "bk")
+    cmd = inspect.unwrap(vv.cmd_code_replace)
+    mk = lambda new, force=False: type("A", (), {"posargs": ["完了", new], "needle_file": None, "repl_file": None,
+                                                 "regex": False, "module_opt": None, "yes": True, "force": force})()
+    assert cmd(mk("完了✓")) is False
+    out = capsys.readouterr().out
+    assert "CP932" in out and "✓" in out and cm.replaced == []
+    assert cmd(mk("完了！")) is True                          # CP932 で書ける文字は今まで通り
+    assert cm.replaced == [(2, '    MsgBox "完了！"')]
+
+
+def test_display_alerts_is_put_back_to_its_previous_value():
+    """DisplayAlerts は前の値に戻す（無条件に True へ戻すと、呼び出し元が切っていた設定まで変える＝_alerts_off の説明・2026-10-28 点検）。
+    無条件に True へ戻してよいのは、人のマクロを走らせた後（マクロが False のまま落ちることがある）の run-macro と test だけ。"""
+    import glob
+    import re as _re
+    here = os.path.dirname(os.path.abspath(__file__))
+    bad = []
+    for path in sorted(glob.glob(os.path.join(here, "vbam_*.py"))):
+        func = None
+        with open(path, encoding="utf-8") as f:
+            for n, line in enumerate(f, 1):
+                m = _re.match(r"def (\w+)", line)
+                if m:
+                    func = m.group(1)
+                if _re.search(r"\.DisplayAlerts\s*=\s*True\b", line) and func not in ("cmd_run_macro", "cmd_test"):
+                    bad.append(f"{os.path.basename(path)}:{n} ({func})")
+    assert bad == []
+
+
+def test_pivots_with_the_same_name_on_two_sheets_are_not_mixed_up(monkeypatch, capsys):
+    """ピボットの名前はシートごとに一意なだけ。--undo の後始末と pivot delete が、別のシートの同名ピボットを消しえた（2026-10-28 点検）。"""
+    import inspect
+    import vbam_heavy as vh
+    import vbam_undo as vu
+
+    class PT:
+        def __init__(self, name):
+            self.Name, self.cleared = name, False
+            self.TableRange2 = type("R", (), {"Clear": lambda r, s=self: setattr(s, "cleared", True)})()
+
+    class Sh:
+        def __init__(self, name, pts):
+            self.Name, self._pts = name, pts
+
+        def PivotTables(self):
+            return self._pts
+
+    mine, made = PT("ピボットテーブル1"), PT("ピボットテーブル1")
+    wb = type("WB", (), {"Worksheets": [Sh("人の集計", [mine]), Sh("集計", [made])]})()
+    # --undo の後始末は、作ったシートの中だけを探す
+    done, failed = vu._delete_created(None, wb, [{'kind': 'pivot', 'sheet': '集計', 'name': 'ピボットテーブル1'}])
+    assert made.cleared and not mine.cleared and failed == []
+    # pivot delete は、同名が 2 枚にあれば消さずに止める。--sheet で選べば、そのシートのだけを消す
+    made.cleared = False
+    monkeypatch.setattr(vh, "get_workbook", lambda t=None, **k: (None, wb))
+    cmd = inspect.unwrap(vh.cmd_pivot)
+    mk = lambda sheet=None: type("A", (), {"posargs": ["delete", "ピボットテーブル1"], "sheet": sheet})()
+    assert cmd(mk()) is False and not mine.cleared and not made.cleared
+    assert "複数のシートにあります: 人の集計, 集計" in capsys.readouterr().out
+    assert cmd(mk("集計")) is True and made.cleared and not mine.cleared
+
+
+def test_form_builder_backs_up_a_form_once_before_breaking_it(monkeypatch, tmp_path):
+    """スキルの手順どおり FormBuilder を直に使うと、clear_controls・inject_vba が控え無しで既存のフォームを壊していた（2026-10-28 点検）。"""
+    import vba_manager
+    from form_builder import FormBuilder
+    calls = []
+    monkeypatch.setattr(vba_manager, "make_module_backup", lambda wb, name: calls.append(name) or "bk.frm")
+
+    class CM:
+        def __init__(self, n):
+            self.CountOfLines, self.added = n, []
+
+        def DeleteLines(self, a, n):
+            self.CountOfLines = 0
+
+        def AddFromString(self, s):
+            self.added.append(s)
+
+    class Controls(list):
+        Count = property(lambda s: len(s))
+
+        def Remove(self, n):
+            self[:] = [c for c in self if c.Name != n]
+
+    def form(name, n_lines, ctl_names):
+        ctls = Controls(type("C", (), {"Name": c})() for c in ctl_names)
+        return type("F", (), {"Name": name, "CodeModule": CM(n_lines), "Designer": type("D", (), {"Controls": ctls})()})()
+
+    fb = FormBuilder(None, object())
+    old = form("既存フォーム", 30, ["BtnOK", "TxtName"])
+    code = tmp_path / "c.vba"
+    code.write_text("Private Sub BtnOK_Click()\nEnd Sub\n", encoding="utf-8")
+    fb.clear_controls(old)
+    fb.inject_vba(old, str(code))
+    assert calls == ["既存フォーム"]                         # 壊す前に 1 回だけ（2 回目は壊した後の姿）
+    fb.inject_vba(form("今作った", 0, []), str(code))         # 空のフォームは控えない
+    assert calls == ["既存フォーム"]
+    # CP932 で書けない文字は、既存コードを消す前に止める
+    bad = tmp_path / "bad.vba"
+    bad.write_text('Private Sub BtnOK_Click()\n    MsgBox "完了✓"\nEnd Sub\n', encoding="utf-8")
+    other = form("別のフォーム", 12, [])
+    with pytest.raises(ValueError, match="CP932"):
+        fb.inject_vba(other, str(bad))
+    assert other.CodeModule.CountOfLines == 12
+    # 控えを取れなければ壊さずに止める
+    monkeypatch.setattr(vba_manager, "make_module_backup", lambda wb, name: None)
+    third = form("三つ目", 5, ["X"])
+    with pytest.raises(RuntimeError, match="控えを取れない"):
+        fb.clear_controls(third)
+    assert len(third.Designer.Controls) == 1
+
+
+def test_module_backups_in_the_same_second_do_not_overwrite_each_other(monkeypatch, tmp_path):
+    """モジュールの控えは秒までの名前で、同じ秒の 2 本目が 1 本目（壊す前の姿）を上書きしていた。フォームは .frm で出す（2026-10-28 点検）。"""
+    import vbam_core as vc
+    monkeypatch.setattr(vc, "BACKUP_DIR", str(tmp_path))
+    monkeypatch.setattr(vc.time, "strftime", lambda fmt, *a: "20261028_120000")
+
+    def comp(name, typ):
+        return type("C", (), {"Name": name, "Type": typ,
+                              "Export": lambda self, p: open(p, "w").write("x")})()
+    wb = type("WB", (), {"FullName": r"C:\a\秀.xlsm",
+                         "VBProject": type("P", (), {"VBComponents": [comp("Module1", 1), comp("フォーム", 3)]})()})()
+    p1 = vc.make_module_backup(wb, "Module1")
+    p2 = vc.make_module_backup(wb, "Module1")
+    assert p1 != p2 and os.path.basename(p2).endswith("_2.bas")
+    assert vc.make_module_backup(wb, "フォーム").endswith(".frm")
+
+
+def test_numbers_of_16_digits_or_more_are_written_as_text():
+    """Excel の数値は 15 桁まで。write-range・write-cells が 16 桁以上を数にして、カード・口座・伝票番号の下の桁を黙って変えていた（2026-10-28 点検）。"""
+    import vba_manager as vm
+    assert vm._coerce_cell("4111111111111111") == "4111111111111111"
+    assert vm._coerce_cell("-1234567890123456") == "-1234567890123456"
+    assert vm._coerce_cell("123456789012345") == 123456789012345          # 15 桁までは今まで通り数
+    assert vm._coerce_cell("42") == 42 and vm._coerce_cell("007") == "007"
+    # 読み戻した大きな数（1,200 兆など）は、書き戻しても数のまま（小数の形で出す）
+    for v in (1.2e15, 1e16, -4.5e18):
+        assert vm._coerce_cell(vm._cell_str(v)) == v
+    assert vm._cell_str(123456789012345.0) == "123456789012345"
+
+
+def test_a_backslash_string_inside_an_excel_formula_survives_the_splitter():
+    """=SUBSTITUTE(A1,"\\","/") を Excel の書き方（"" で引用符）で渡すと、\\" を引用符と読んで =SUBSTITUTE(A1,"",/) に化け、
+    後ろの「C1 次」まで値に飲み込んでいた（2026-10-28 点検）。"""
+    from vbam_core import split_command_line as sp
+    assert sp(r'write-cells B1 "=SUBSTITUTE(A1,""\"",""/"")" C1 次') == \
+        ['write-cells', 'B1', '=SUBSTITUTE(A1,"\\","/")', 'C1', '次']
+    assert sp(r'write-cells B1 "=A1&""\"""') == ['write-cells', 'B1', '=A1&"\\"']
+    # JSON の書き方（\" が引用符）は今まで通り
+    assert sp(r'grep "Like \"function *\"" --module X') == ['grep', 'Like "function *"', '--module', 'X']
+    assert sp(r'open "C:\data\" x') == ['open', 'C:\\data\\', 'x']
+
+
+def test_delete_control_stops_when_the_form_cannot_be_backed_up(monkeypatch):
+    """backup_form は「退避できなければ --force が無い限り中止」の約束なのに、delete-control は「退避なしで続行」して消していた（2026-10-28 点検）。"""
+    import form_tool as ft
+    removed = []
+    comp = type("C", (), {"Name": "F", "Designer": type("D", (), {"Controls": type("Cs", (), {"Remove": lambda s, n: removed.append(n)})()})()})()
+    monkeypatch.setattr(ft, "connect_form", lambda name: (None, None, comp))
+    monkeypatch.setattr(ft, "backup_form", lambda wb, c: False)
+    args = type("A", (), {"control": "BtnOK", "form": "F", "save": False, "force": False})()
+    with pytest.raises(SystemExit):
+        ft.cmd_delete(args)
+    assert removed == []
+
+
+def test_build_sheet_ask_does_not_wipe_a_sheet_because_the_ai_said_overwrite(monkeypatch, capsys):
+    """build-sheet --ask は、AI が設計図に "overwrite": true と書くだけで中身のあるシートを Cells.Clear していた
+    （agent の run_build は 2026-09-04 に塞いでいた・2026-10-28 点検）。消すのは人の --overwrite だけ。"""
+    import inspect
+    import vbam_build as vb
+    spec = dict(vb.SAMPLE_SPEC, overwrite=True)
+    monkeypatch.setattr(vb, "ask_design", lambda *a, **k: spec)
+    cleared = []
+    ur = type("U", (), {"Rows": type("R", (), {"Count": 5})(), "Columns": type("C", (), {"Count": 3})(), "Row": 1, "Column": 1})()
+    ws = type("WS", (), {"Name": spec["sheet"], "UsedRange": ur,
+                         "Cells": type("Cs", (), {"Clear": lambda s: cleared.append(1)})()})()
+    wb = type("WB", (), {"Worksheets": [ws], "Sheets": [ws], "Name": "人の.xlsx"})()
+    monkeypatch.setattr(vb, "get_workbook", lambda *a, **k: (None, wb))
+    monkeypatch.setattr(vb, "_book_materials", lambda wb: None)
+    monkeypatch.setattr(vb, "_find_sheet", lambda wb, name: ws)
+    cmd = inspect.unwrap(vb.cmd_build_sheet)
+    args = type("A", (), {"posargs": [], "ask": "名簿を作り直して", "overwrite": False, "dry_run": False,
+                          "new_book": False, "sample": False, "recipe": None, "recipes": False, "ai": None, "model": None})()
+    assert cmd(args) is False
+    assert cleared == [] and "既に中身があります" in capsys.readouterr().out
+
+
+def test_blanks_inside_a_vertical_merge_over_two_columns_are_not_reported():
+    """帳票の縦結合が 2 列にまたがる（A2:B3）と、左端の列しか除外せず B 列を「表の中の空欄」と言っていた。
+    材料側（vbam_hands._table_blanks）は結合を渡しておらず、除外が一度も効いていなかった（2026-10-28 点検）。"""
+    import vbam_view
+    import vbam_hands as vh
+    grid = [["番号", "品名", "数量"],
+            ["1", "ノートPC", "1"],
+            [None, None, "1"],
+            ["2", "プロジェクター", "1"],
+            [None, None, "2"],
+            ["3", "マウス", "1"]]
+    merged = ["A2:B3", "A4:B5"]
+    blanks = vh._table_blanks(grid, 1, 1, 0, merged)
+    assert blanks == []
+    assert vh._table_blanks(grid, 1, 1, 0) == ["A3", "B3", "A5", "B5"]          # 結合を知らなければ数える
+    assert vh._table_blanks(grid, 1, 1, 0, ["$A$2:$B$3", "$A$4:$B$5"]) == []     # $ 付きの番地でも
+    notes = " ".join(vbam_view.dirt_notes(grid, r0=1, c0=1, header_idx=0, merged_areas=merged))
+    assert "B3" not in notes and "B5" not in notes
+
+
+def test_find_replace_keeps_text_that_excel_would_turn_into_a_date(monkeypatch, capsys):
+    """Excel の Replace は置き換えた結果を打ち込んだのと同じに読み直す＝「1番-2」から「番」を消すと 1-2 が日付になる。
+    文字だったセルが文字でなくなったら、置き換え後の文字で書き直す（2026-10-28 点検）。"""
+    import datetime
+    import inspect
+    import vbam_edit as ve
+    book = {(1, 2): "1番-2"}
+
+    class Cell(_FRCell):
+        HasFormula = False
+        NumberFormat = "General"
+
+    class Rng:
+        Row, Column, Address = 1, 2, "$B$1"
+
+        def Find(self, *a):
+            return Cell(book, 1, 2)
+
+        def FindNext(self, cell):
+            return Cell(book, 1, 2)
+
+        def Cells(self, n):
+            return Cell(book, 1, 2)
+
+        def Replace(self, *a):
+            book[(1, 2)] = datetime.datetime(2026, 1, 2)       # Excel が「1-2」を日付に読み直した
+    Rng.Cells.Count = 1
+    monkeypatch.setattr(ve, "get_workbook", lambda t=None: (None, None))
+    monkeypatch.setattr(ve, "_resolve_range", lambda xl, wb, spec, sh=None: (type("W", (), {"Name": "表"})(), Rng()))
+    args = type("A", (), {"posargs": ["番", "", "B1"], "wildcard": False, "whole": False,
+                          "match_case": False, "sheet_opt": None})()
+    assert inspect.unwrap(ve.cmd_find_replace)(args) is True
+    assert book[(1, 2)] == "1-2" and "文字列として保持" in capsys.readouterr().out
+
+
+def test_save_as_puts_a_bare_name_next_to_the_workbook(monkeypatch, tmp_path):
+    """save-as 新名.xlsx は、道具のフォルダ（python_scripts）ではなく、そのブックのフォルダに置く（2026-10-28 点検）。"""
+    import vbam_edit as ve
+    saved = []
+    wb = type("WB", (), {"Name": "売上.xlsx", "FullName": str(tmp_path / "売上.xlsx"), "Path": str(tmp_path),
+                         "Sheets": type("S", (), {"Count": 1})(),
+                         "SaveAs": lambda self, p, FileFormat=None: saved.append(p)})()
+    xl = type("XL", (), {"DisplayAlerts": True})()
+    monkeypatch.setattr(ve, "get_workbook", lambda t=None: (xl, wb))
+    args = type("A", (), {"posargs": ["売上_控え.xlsx"], "overwrite": False})()
+    assert ve.cmd_save_as(args) is True
+    assert saved == [str(tmp_path / "売上_控え.xlsx")]
+    # 絶対パスは今まで通りそのまま
+    saved.clear()
+    args = type("A", (), {"posargs": [str(tmp_path / "別" / "x.xlsx")], "overwrite": False})()
+    assert ve.cmd_save_as(args) is True and saved == [str(tmp_path / "別" / "x.xlsx")]

@@ -3945,8 +3945,17 @@ Sub 外部リンクを値に変えて切る()
                "_リンク解消前_" & Format$(Now, "yyyymmdd_hhnnss") & Mid$(wb.Name, InStrRev(wb.Name, "."))
         On Error Resume Next
         wb.SaveCopyAs 控え
-        If Err.Number <> 0 Then 控え = ""
-        Err.Clear
+        If Err.Number <> 0 Then
+            ' 保存してあるブックで控えが作れないときは切らない（式が値に変わって戻せない・ブックの式を全部値にすると同じ・2026-10-28 点検）
+            Err.Clear
+            On Error GoTo 0
+            sh.Cells(outRow, 1).Value = "結果"
+            sh.Cells(outRow, 2).Value = "ブック全体"
+            sh.Cells(outRow, 3).Value = "控えが作れなかったので、リンクは切っていません（" & 控え & "）"
+            Application.ScreenUpdating = True
+            Application.StatusBar = "外部リンクの解消: 控えが作れなかったので止めました（" & 控え & "）。"
+            Exit Sub
+        End If
         On Error GoTo 0
     End If
 
@@ -5987,6 +5996,19 @@ Sub 表の合計と小計の行を消す()
 
     If urBottom <= hdrRow Then Exit Sub
 
+    ' 本体の表の列＝見出しの行で、最初の見出しから空の見出しの手前まで（2026-10-28 点検）。
+    ' 前は使用範囲の全列で「合計」を探していたので、表の右の集計表の「合計」の行が本体の明細の行と同じ行だと、明細の行ごと消していた
+    Dim hc1 As Long, hc2 As Long, 外の値 As Long, 残した As Long
+    For c = urLeft To urRight
+        If 表の整理_下請け.見出しの字(ws.Cells(hdrRow, c)) <> "" Then
+            If hc1 = 0 Then hc1 = c
+            hc2 = c
+        ElseIf hc1 > 0 Then
+            Exit For
+        End If
+    Next c
+    If hc1 = 0 Then Exit Sub
+
     Dim nRows As Long
     nRows = urBottom - hdrRow
     Dim delFlags() As Boolean, hasDel As Boolean
@@ -5994,11 +6016,21 @@ Sub 表の合計と小計の行を消す()
     hasDel = False
 
     For r = urBottom To hdrRow + 1 Step -1
-        If 集計の行か(ws, r, urLeft, urRight) Then
-            delFlags(r) = True
-            hasDel = True
+        If 集計の行か(ws, r, hc1, hc2) Then
+            ' 行ごと消すので、同じ行の表の外（右・左の別の表やメモ）に値があれば消さずに数える（重複行の棚と同じ守り）
+            外の値 = Application.WorksheetFunction.CountA(ws.Range(ws.Cells(r, urLeft), ws.Cells(r, urRight))) _
+                   - Application.WorksheetFunction.CountA(ws.Range(ws.Cells(r, hc1), ws.Cells(r, hc2)))
+            If 外の値 = 0 Then
+                delFlags(r) = True
+                hasDel = True
+            Else
+                残した = 残した + 1
+            End If
         End If
     Next r
+    If 残した > 0 Then
+        Application.StatusBar = "表の合計と小計の行を消す: 表の外の同じ行に値がある " & 残した & " 行は、巻き込まないよう消していません"
+    End If
 
     ' 事前高速判定: 集計行が0件なら即終了（0秒判定）
     If Not hasDel Then Exit Sub
@@ -6208,6 +6240,7 @@ Sub 選んだ列の式を値にする()
     If formulaRng Is Nothing Then Exit Sub
 
     Dim cell As Range, errCount As Long, convertedCount As Long
+    Dim spillRng As Range
     errCount = 0
     convertedCount = 0
 
@@ -6215,7 +6248,11 @@ Sub 選んだ列の式を値にする()
             If IsError(cell.Value) Then
                 errCount = errCount + 1
             Else
-                If VarType(cell.Value) = vbString Then
+                Set spillRng = 表の整理_下請け.スピルの元なら範囲(cell)
+                If Not spillRng Is Nothing Then
+                    ' 動的配列の式（スピル）は広がった範囲ごと値にする。元のセルだけ値にすると、広がった側の値が消えていた（2026-10-28 点検）
+                    表の整理_下請け.値を書き戻す spillRng, spillRng.Value
+                ElseIf VarType(cell.Value) = vbString Then
                     cell.Value = 表の整理_下請け.文字のまま書く字(CStr(cell.Value))
                 Else
                     cell.Value = cell.Value
@@ -6411,7 +6448,7 @@ NextSheet:
         End If
     Next i
 
-    ws.Range(ws.Cells(headerRow + 1, selCol + 1), ws.Cells(lastRow, selCol + 1)).Value2 = vName ' 書き戻し: 新しい所
+    表の整理_下請け.文字を守って書く ws.Range(ws.Cells(headerRow + 1, selCol + 1), ws.Cells(lastRow, selCol + 1)), vName ' 書き戻し: 新しい所
     ws.Columns(selCol + 1).AutoFit
 
 CleanUp:
@@ -6675,7 +6712,7 @@ Sub 横持ちマトリクス表を一撃で縦持ちデータベースにする()
     End With
 
     ' データ一撃代入
-    newWs.Range(newWs.Cells(2, 1), newWs.Cells(recIdx + 1, nFixedCols + 2)).Value = vDest ' 書き戻し: 新しい所
+    表の整理_下請け.文字を守って書く newWs.Range(newWs.Cells(2, 1), newWs.Cells(recIdx + 1, nFixedCols + 2)), vDest ' 書き戻し: 新しい所
 
     ' 数値列の書式と列幅調整
     newWs.Columns(nFixedCols + 2).NumberFormatLocal = "#,##0"
@@ -6864,7 +6901,7 @@ Sub 表記ゆれをあいまい判定してマスタを引き当てる()
     Next i
 
     ' 5. データ代入とハイライト（最速・Union）
-    ws.Range(ws.Cells(headerRow + 1, selCol + 1), ws.Cells(lastRow, selCol + 1)).Value = vName ' 書き戻し: 新しい所
+    表の整理_下請け.文字を守って書く ws.Range(ws.Cells(headerRow + 1, selCol + 1), ws.Cells(lastRow, selCol + 1)), vName ' 書き戻し: 新しい所
 
     Dim rngFuzzy As Range
     For i = 1 To cnt
@@ -7051,7 +7088,7 @@ Sub 選んだ列の値ごとにシートを分割する(Optional ByVal 知らせる As Boolean = True
         棚のシートの印 wsNew
 
         ' 見出し転記と書式復元
-        wsNew.Range(wsNew.Cells(1, 1), wsNew.Cells(1, nCols)).Value2 = headerArr ' 書き戻し: 新しい所
+        表の整理_下請け.文字を守って書く wsNew.Range(wsNew.Cells(1, 1), wsNew.Cells(1, nCols)), headerArr ' 書き戻し: 新しい所
         For c = 1 To nCols
             If Len(hdrFmts(c)) > 0 Then wsNew.Cells(1, c).NumberFormat = hdrFmts(c)
         Next c
@@ -7067,7 +7104,7 @@ Sub 選んだ列の値ごとにシートを分割する(Optional ByVal 知らせる As Boolean = True
                     outArr(outR, c) = dataArr(srcR, c)
                 Next c
             Next outR
-            wsNew.Range(wsNew.Cells(2, 1), wsNew.Cells(matchCount + 1, nCols)).Value2 = outArr ' 書き戻し: 新しい所
+            表の整理_下請け.文字を守って書く wsNew.Range(wsNew.Cells(2, 1), wsNew.Cells(matchCount + 1, nCols)), outArr ' 書き戻し: 新しい所
             For c = 1 To nCols
                 If Len(colFmts(c)) > 0 Then
                     wsNew.Range(wsNew.Cells(2, c), wsNew.Cells(matchCount + 1, c)).NumberFormat = colFmts(c)
@@ -7537,6 +7574,8 @@ Public Sub ブックの式を全部値にする()
     Dim wb As Workbook, 対象シート As Worksheet, 式域 As Range
     Dim 控え As String, 処理シート数 As Long, 式の数 As Long
     Dim 一区 As Range, 一つ As Range, 文字の式 As Collection, 組 As Variant
+    Dim スピル As Collection, 広がり As Range
+    Dim 前の計算 As XlCalculation
 
     Set wb = ActiveWorkbook
     If wb.path = "" Then
@@ -7556,6 +7595,7 @@ Public Sub ブックの式を全部値にする()
     On Error GoTo Catch
 
     Application.ScreenUpdating = False
+    前の計算 = Application.Calculation           ' 終わりに前の値へ戻す（手動計算にしていた人を自動に変えない・2026-10-28 点検）
     Application.Calculation = xlCalculationManual
     For Each 対象シート In wb.Worksheets
         Set 式域 = Nothing
@@ -7567,8 +7607,12 @@ Public Sub ブックの式を全部値にする()
             ' 式のセルだけを値にする（使用範囲を丸ごと書き戻すと、式でない 00123 や文字の日付まで数・日付に化けた・2026-10-22）。
             ' 式の結果が文字のセルは、数や日付に化けないよう文字のまま書き直す
             Set 文字の式 = New Collection
+            Set スピル = New Collection
             For Each 一つ In 式域.Cells
                 If VarType(一つ.Value) = vbString Then 文字の式.Add Array(一つ, CStr(一つ.Value))
+                ' 動的配列の式（スピル）は広がった範囲と値を先に控える。式のセルだけ値にすると、広がった側の値が消えていた（2026-10-28 点検）
+                Set 広がり = 表の整理_下請け.スピルの元なら範囲(一つ)
+                If Not 広がり Is Nothing Then スピル.Add Array(広がり, 広がり.Value)
             Next 一つ
             For Each 一区 In 式域.Areas
                 一区.Value = 一区.Value ' 書き戻し: 新しい所（式のセルだけ）
@@ -7576,15 +7620,19 @@ Public Sub ブックの式を全部値にする()
             For Each 組 In 文字の式
                 組(0).Value = "'" & 組(1)
             Next 組
+            For Each 組 In スピル
+                表の整理_下請け.値を書き戻す 組(0), 組(1)
+            Next 組
             処理シート数 = 処理シート数 + 1
         End If
     Next 対象シート
-    Application.Calculation = xlCalculationAutomatic
+    Application.Calculation = 前の計算
     Application.ScreenUpdating = True
     Application.StatusBar = "ブックの式を全部値にする: " & 処理シート数 & " 枚のシートの式 " & 式の数 & " か所を値にしました。控え: " & 控え
     Exit Sub
 Catch:
-    Application.Calculation = xlCalculationAutomatic
+    If 前の計算 = 0 Then 前の計算 = xlCalculationAutomatic
+    Application.Calculation = 前の計算
     Application.ScreenUpdating = True
     Application.StatusBar = "ブックの式を全部値にする: 途中で止まりました（" & Err.Description & "）。控え: " & 控え
 End Sub
@@ -7627,7 +7675,8 @@ Public Sub 同じ形のシートを縦につなぐ()
                 データ行数 = UBound(シートデータ, 1)
                 データ列数 = UBound(シートデータ, 2)
                 If Not 見出しコピー済 Then
-                    統合シート.Range(統合シート.Cells(1, 1), 統合シート.Cells(データ行数, データ列数)).Value = シートデータ ' 書き戻し: 新しい所
+                    ' 文字の 00123・1-2・16 桁の番号が数・日付に化けないよう、文字は文字のまま書く（2026-10-28 点検）
+                    統合シート.Range(統合シート.Cells(1, 1), 統合シート.Cells(データ行数, データ列数)).Value = 表の整理_下請け.文字を守った配列(シートデータ) ' 書き戻し: 新しい所
                     書き込み行 = データ行数 + 1
                     見出しコピー済 = True
                 ElseIf データ行数 >= 2 Then
@@ -7639,7 +7688,7 @@ Public Sub 同じ形のシートを縦につなぐ()
                         Next 列オフセット
                     Next 行オフセット
                     Set 貼付範囲 = 統合シート.Range(統合シート.Cells(書き込み行, 1), 統合シート.Cells(書き込み行 + コピー行数 - 1, データ列数))
-                    貼付範囲.Value = 部分データ ' 書き戻し: 新しい所
+                    貼付範囲.Value = 表の整理_下請け.文字を守った配列(部分データ) ' 書き戻し: 新しい所
                     書き込み行 = 書き込み行 + コピー行数
                 End If
             End If
@@ -7721,7 +7770,7 @@ Public Sub 二つの表の片方だけの行を抜く()
     Set 出力シート = Worksheets.Add(, ActiveSheet)
     出力シート.Name = "表Aのみ差分_" & Format(Now, "hhnnss")
 
-    出力シート.Range(出力シート.Cells(1, 1), 出力シート.Cells(差分行数, 列数A)).Value = 差分データ ' 書き戻し: 新しい所
+    表の整理_下請け.文字を守って書く 出力シート.Range(出力シート.Cells(1, 1), 出力シート.Cells(差分行数, 列数A)), 差分データ ' 書き戻し: 新しい所
     Application.StatusBar = "二つの表の片方だけの行を抜く: 表A にしか無い行 " & 差分行数 & " 件をシート「" & 出力シート.Name & "」に出しました。"
     Exit Sub
 Catch:

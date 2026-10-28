@@ -3054,7 +3054,8 @@ def cmd_replace_procedure(args):
         with open(tmp_bas, 'wb') as f:
             f.write(encoded_bas)
 
-        # Remove + Import（例外時も DisplayAlerts を戻し、一時ファイルを残さない）
+        # Remove + Import（例外時も DisplayAlerts を前の値に戻し、一時ファイルを残さない）
+        prev_alerts = xl.DisplayAlerts
         xl.DisplayAlerts = False
         removed = False
         imported = False
@@ -3102,7 +3103,7 @@ def cmd_replace_procedure(args):
                         print(f"  または backups のバックアップを手動で Import: {module_backup}")
             return False
         finally:
-            xl.DisplayAlerts = True
+            xl.DisplayAlerts = prev_alerts  # 前の値に戻す（無条件に True へ戻すと、呼び出し元が切っていた設定まで変える＝_alerts_off と同じ・2026-10-28 点検）
             if os.path.exists(tmp_bas):
                 _remove_export_artifacts(tmp_bas)
         # ここまで来たら Import 済み・実名検証済み（黙って成功と報告しない、の実装）
@@ -3773,6 +3774,7 @@ def cmd_replace_module(args):
 
     for comp in wb.VBProject.VBComponents:
         if comp.Name.lower() == module_name.lower():
+            prev_alerts = xl.DisplayAlerts
             xl.DisplayAlerts = False
             removed = False
             imported = False
@@ -3818,7 +3820,7 @@ def cmd_replace_module(args):
                             print(f"  または backups のバックアップを手動で Import: {module_backup}")
                 return False
             finally:
-                xl.DisplayAlerts = True
+                xl.DisplayAlerts = prev_alerts  # 前の値に戻す（無条件に True へ戻すと、呼び出し元が切っていた設定まで変える＝_alerts_off と同じ・2026-10-28 点検）
                 if tmp_norm and os.path.exists(tmp_norm):
                     _remove_export_artifacts(tmp_norm)
             print(f"置換完了: モジュール '{module_name}' → 保存しました")
@@ -3897,6 +3899,7 @@ def cmd_import_module(args):
             make_module_backup(wb, cname)
 
     imported_names = []
+    prev_alerts = xl.DisplayAlerts
     xl.DisplayAlerts = False
     try:
         wb.Save()
@@ -3919,7 +3922,7 @@ def cmd_import_module(args):
         print(f"エラー: 取り込み中に失敗しました: {ex}")
         return False
     finally:
-        xl.DisplayAlerts = True
+        xl.DisplayAlerts = prev_alerts  # 前の値に戻す（無条件に True へ戻すと、呼び出し元が切っていた設定まで変える＝_alerts_off と同じ・2026-10-28 点検）
 
     print(f"取り込み完了: {', '.join(imported_names)}（{len(imported_names)}本）→ 保存しました")
     note_if_macro_free_book(wb)
@@ -4140,6 +4143,7 @@ def cmd_reorder_macro(args):
     print(f"並べ替え中: [{module_name}] '{macro_name}' を {direction}")
 
     # replace-module と同じ安定化手順（sleep + PumpWaitingMessages）に揃える
+    prev_alerts = xl.DisplayAlerts
     xl.DisplayAlerts = False
     removed = False
     imported = False
@@ -4194,7 +4198,7 @@ def cmd_reorder_macro(args):
             print(f"エラー: 並べ替えに失敗しました: {ex}", file=sys.stderr)
         return False
     finally:
-        xl.DisplayAlerts = True
+        xl.DisplayAlerts = prev_alerts  # 前の値に戻す（無条件に True へ戻すと、呼び出し元が切っていた設定まで変える＝_alerts_off と同じ・2026-10-28 点検）
         # 「Remove 済みで Import 失敗」のときだけ復旧用に残し、それ以外は掃除する。
         # Import 済み（保存だけ失敗）はブック側に新コードが入っているので残す必要はない
         if not (removed and not imported) and os.path.exists(tmp_bas):
@@ -6571,6 +6575,16 @@ def cmd_code_replace(args):
                         print(f"  [{comp.Name}] {i}行目: {new_line.splitlines()[0]} …")
                         print("  （code-replace は行単位置換です。複数行への展開は replace-procedure を使ってください）")
                         return None, 0, 0
+                    # VBE は CP932 で持つので、書けない文字（— ✓ 絵文字など）は ReplaceLine で黙って「?」に化ける。
+                    # replace-procedure・add-procedure と同じく書く前に止める（2026-10-28 点検）
+                    if not getattr(args, 'force', False):
+                        try:
+                            new_line.encode('cp932')
+                        except UnicodeEncodeError as e:
+                            print(f"エラー: 置換結果に CP932（Shift_JIS）で書けない文字 '{new_line[e.start:e.end]}' があるため中止しました。")
+                            print(f"  [{comp.Name}] {i}行目: {new_line.strip()}")
+                            print("  VBE はこの文字を「?」に変えてしまいます。別の文字に置き換えてください（--force で強行）")
+                            return None, 0, 0
                     changes.append((i, line, new_line))
             if changes:
                 plans.append((comp, changes))

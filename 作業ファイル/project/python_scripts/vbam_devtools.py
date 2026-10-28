@@ -721,13 +721,14 @@ def cmd_copy_modules(args):
             old = _find_comp(dst, name)
             if old is not None:
                 make_module_backup(dst, name)
+                prev_alerts = xl.DisplayAlerts
                 xl.DisplayAlerts = False
                 try:
                     dst.VBProject.VBComponents.Remove(old)
                     time.sleep(1.0)
                     pythoncom.PumpWaitingMessages()
                 finally:
-                    xl.DisplayAlerts = True
+                    xl.DisplayAlerts = prev_alerts  # 前の値に戻す（無条件に True へ戻すと、呼び出し元が切っていた設定まで変える＝_alerts_off と同じ・2026-10-28 点検）
             try:
                 _import_module_verified(dst, path, name)
             except ModuleNameCollisionError as ex:

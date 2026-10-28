@@ -158,3 +158,21 @@ def test_approx_note_wording():
     n = vl.approx_note([('S!A1', '=VLOOKUP(B1,D:E,2)'), ('S!A2', '=VLOOKUP(B2,D:E,2,0)'), ('S!A3', 5)])
     assert 'S!A1' in n and 'S!A2' not in n and 'FALSE' in n and '別の行の値' in n
     assert vl.approx_note([('S!A2', '=VLOOKUP(B2,D:E,2,0)')]) == ''
+
+
+def test_a_lookup_whose_range_became_ref_keeps_the_numbering_aligned():
+    """列を消して 1 本目の検索の範囲が #REF! になると、その検索が並びから抜けて番号の対応が 1 つずれ、
+    2 本目は直らず 3 本目に 2 本目の番号を書いていた＝どちらも黙って別の列を返す（2026-10-28 点検）。"""
+    before = '=VLOOKUP(x,B:B,1,0)&VLOOKUP(y,A:F,5,0)&VLOOKUP(z,A:F,6,0)'
+    changes, broken = vl.plan_formula(before, 'S', 'S', 'col', 'delete', 2, 1)
+    assert broken == 1 and changes == {1: (5, 4), 2: (6, 5)}
+    after = '=VLOOKUP(x,#REF!,1,0)&VLOOKUP(y,A:E,5,0)&VLOOKUP(z,A:E,6,0)'
+    new = vl.apply_values(after, {k: v[1] for k, v in changes.items()}, {k: v[0] for k, v in changes.items()})
+    assert new == '=VLOOKUP(x,#REF!,1,0)&VLOOKUP(y,A:E,4,0)&VLOOKUP(z,A:E,5,0)'
+    # もとから #REF! の検索があっても、計画と直す側の数え方は同じ
+    changes2, _ = vl.plan_formula('=VLOOKUP(x,#REF!,2,0)+VLOOKUP(y,A:F,5,0)', 'S', 'S', 'col', 'insert', 3, 1)
+    assert changes2 == {1: (5, 6)}
+    # 対応が取れない（直す前の番号が並びの番号と違う）ときは 1 つも書き換えない
+    assert vl.apply_values('=VLOOKUP(y,A:E,9,0)', {0: 4}, {0: 5}) is None
+    # 既定の scan_lookups は今まで通り #REF! の検索を返さない
+    assert vl.scan_lookups(after)[0]['val'] == 5 and len(vl.scan_lookups(after)) == 2

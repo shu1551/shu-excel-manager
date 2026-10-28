@@ -511,14 +511,22 @@ def cmd_pivot(args):
         if len(rest) < 2:
             print("使い方: pivot delete <name>"); return False
         name = rest[1]
-        for sh in wb.Worksheets:   # グラフシートは PivotTables を持たないため除外
-            for pt in sh.PivotTables():
-                if pt.Name == name:
-                    pt.TableRange2.Clear()
-                    print(f"ピボット削除: [{sh.Name}] {name}")
-                    print("（保存はしていません）")
-                    return True
-        print(f"エラー: ピボット '{name}' が見つかりません")
+        want = getattr(args, 'sheet', None)
+        hits = [(sh, pt) for sh in wb.Worksheets   # グラフシートは PivotTables を持たないため除外
+                for pt in sh.PivotTables() if pt.Name == name and (not want or str(sh.Name) == want)]
+        if len(hits) > 1:
+            # ピボットの名前はシートごとに一意なだけ（シートの複写で同名ができる）。先に見つかった方を消すと、
+            # 別のシートのピボットを消しうる（2026-10-28 点検）
+            print(f"エラー: ピボット '{name}' が複数のシートにあります: {', '.join(str(sh.Name) for sh, _ in hits)}")
+            print(f"  --sheet で消すシートを指定してください（例: pivot delete {name} --sheet {hits[0][0].Name}）")
+            return False
+        if hits:
+            sh, pt = hits[0]
+            pt.TableRange2.Clear()
+            print(f"ピボット削除: [{sh.Name}] {name}")
+            print("（保存はしていません）")
+            return True
+        print(f"エラー: ピボット '{name}' が見つかりません" + (f"（シート '{want}'）" if want else ""))
         return False
 
     if action == 'create':
@@ -549,11 +557,12 @@ def cmd_pivot(args):
                 except Exception as ex:
                     # 禁止文字(/ 等)・31文字超で失敗すると無名シートが残骸になる
                     print(f"エラー: シート名 '{sheet_opt}' を設定できません: {ex}")
+                    prev_alerts = xl.DisplayAlerts
                     xl.DisplayAlerts = False
                     try:
                         dws.Delete()
                     finally:
-                        xl.DisplayAlerts = True
+                        xl.DisplayAlerts = prev_alerts  # 前の値に戻す（無条件に True へ戻すと、呼び出し元が切っていた設定まで変える＝_alerts_off と同じ・2026-10-28 点検）
                     return False
             dest = dws.Range(at) if at else dws.Range("A3")
         elif at:
@@ -642,11 +651,12 @@ def cmd_pivot(args):
                 print("  データモデルのピボットは テーブル名.列名（例 T売上.地域）、値は --measures メジャー名（datamodel list で確認）。")
             try:
                 if created_sheet is not None:
+                    prev_alerts = xl.DisplayAlerts
                     xl.DisplayAlerts = False
                     try:
                         created_sheet.Delete()
                     finally:
-                        xl.DisplayAlerts = True
+                        xl.DisplayAlerts = prev_alerts
                     print("  作成途中のシート（このコマンドが作ったもの）は片づけました。")
                 elif pt is not None:
                     # TableRange2 はこのピボット自身の出力範囲。作成途中の空ピボットを
@@ -689,8 +699,15 @@ def cmd_pivot(args):
     return False
 
 
-def _find_pivot(wb, name):
+def _find_pivot(wb, name, sheet=None):
+    """名前でピボットを探す → (シート, ピボット)。sheet を渡すとそのシートの中だけ。
+
+    ピボットの名前はシートごとに一意なだけで、シートを複写すると別のシートに同じ「ピボットテーブル1」ができる。
+    シートが分かっているとき（作った物の記録など）は必ず渡す（2026-10-28 点検: --undo の後始末が、前からあった
+    別のシートの同名ピボットを消しえた）。"""
     for sh in wb.Worksheets:   # グラフシートは PivotTables を持たないため除外
+        if sheet and str(sh.Name) != str(sheet):
+            continue
         for pt in sh.PivotTables():
             if pt.Name == name:
                 return sh, pt
@@ -2023,11 +2040,12 @@ def cmd_powerquery(args):
                     except Exception as ex:
                         # 禁止文字(/ 等)・31文字超で失敗すると無名シートが残骸になる
                         print(f"エラー: シート名 '{sheet_name}' を設定できません: {ex}")
+                        prev_alerts = xl.DisplayAlerts
                         xl.DisplayAlerts = False
                         try:
                             ws.Delete()
                         finally:
-                            xl.DisplayAlerts = True
+                            xl.DisplayAlerts = prev_alerts
                         return False
             else:
                 ws = wb.ActiveSheet
@@ -2072,13 +2090,14 @@ def cmd_powerquery(args):
                 except Exception:
                     pass
                 if created_ws is not None:
+                    prev_alerts = xl.DisplayAlerts
                     xl.DisplayAlerts = False
                     try:
                         created_ws.Delete()
                     except Exception:
                         pass
                     finally:
-                        xl.DisplayAlerts = True
+                        xl.DisplayAlerts = prev_alerts
                 print("  追加途中のテーブル・接続は片づけました。")
                 return False
             # リネームの失敗を握りつぶすと、成功メッセージだけ出て
