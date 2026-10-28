@@ -7183,3 +7183,23 @@ def test_one_formula_gate_counts_new_formula_cells():
     one = ((None,) * 9, (None,) * 4 + ('=GROUPBY(B2:B19,C2:C19,SUM)', None, None, '=GROUPBY(x)', None))
     assert vg._one_formula_misfits(WS(one), before, 'S', req) == []
     assert vg._one_formula_misfits(WS(two), before, 'S', "E2 に名前別の合計") == []
+
+
+def test_values_starting_with_a_dash_reach_the_tool_as_values():
+    """値が '-' で始まると argparse がオプションと読み、入力規則「-1,0,1」・条件付き書式「-5 より小さい」が落ち、
+    名前「--force」は強行の印になっていた（2026-10-28 点検）。値は --opt=値 で渡し、名前は断る。"""
+    import vbam_agent as va
+    import vba_manager as vm
+    p = vm.build_parser()
+    _l, toks = va._action_to_tokens({"op": "validation", "range": "A1:A9", "list": ["-1", "0", "1"]}, "S")
+    assert p.parse_known_args(toks)[0].list == "-1,0,1"
+    _l, toks = va._action_to_tokens({"op": "cond_format", "range": "A1:A9", "lt": "-5", "bg": "#FF0000"}, "S")
+    assert p.parse_known_args(toks)[0].lt == "-5"
+    _l, toks = va._action_to_tokens({"op": "pivot", "action": "create", "range": "A1:D9", "rows": ["-区分"],
+                                     "values": ["金額"], "sheet": "集計"}, "S")
+    assert p.parse_known_args(toks)[0].rows == "-区分"
+    with pytest.raises(ValueError, match="'-' で始まっています"):
+        va._action_to_tokens({"op": "powerquery", "action": "load", "name": "--force", "to": "model"}, "S")
+    # '-' で始まらない値は今まで通り分けて渡す
+    _l, toks = va._action_to_tokens({"op": "validation", "range": "A1:A9", "list": ["相談中", "受注済み"]}, "S")
+    assert toks[-2:] == ["--list", "相談中,受注済み"]
