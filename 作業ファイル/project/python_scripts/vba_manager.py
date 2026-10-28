@@ -714,6 +714,8 @@ def build_parser():
                    help="焼く前の先撃ちの照合（問題集を VBA と Python の写しに撃って食い違いを止める）を飛ばす")
     p.add_argument("--no-test", action="store_true", dest="no_test",
                    help="焼く前の gate（コピーでテスト Sub を全部撃つ）を飛ばす")
+    p.add_argument("--why", dest="burn_why", default=None,
+                   help="読むべき警告（train の誤爆・当たり先の変化）を読んだうえで焼く理由（台帳に残る・2026-10-28）")
     p = sub.add_parser("shelf",
                        help="棚（表の整理）の目録を1手で返す。--grep 語で絞る（2026-09-23）")
     p.add_argument("posargs", nargs="*")

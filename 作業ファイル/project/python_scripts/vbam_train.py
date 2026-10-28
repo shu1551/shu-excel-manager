@@ -344,6 +344,24 @@ def no_check_burns(since, log_path=None):
     return out
 
 
+def wrong_afters_since(since_ts, root=None):
+    """since_ts（エポック秒・前に焼いた時刻）より後に撃った after.tsv のうち、誤爆のある物 → [(名前, 誤爆の数)]。
+    register-addin が --why 無しで焼かない理由に使う（警告を読まずに焼かない・2026-10-28 番頭点検）。"""
+    root = root or train_root()
+    out = []
+    if not os.path.isdir(root):
+        return out
+    for n in sorted(os.listdir(root)):
+        p = os.path.join(root, n, 'after.tsv')
+        if not os.path.isfile(p) or os.path.getmtime(p) <= since_ts:
+            continue
+        res = read_results(p)
+        w = summarize(res)['wrong'] if res else 0
+        if w:
+            out.append((n, w))
+    return out
+
+
 # ---- 帳尻の台帳 ----
 def ledger_path(root=None):
     return os.path.join(root or train_root(), 'ledger.tsv')

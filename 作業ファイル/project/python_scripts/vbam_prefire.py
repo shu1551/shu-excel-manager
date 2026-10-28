@@ -203,6 +203,62 @@ _BULK_SINGLE_RANGE = re.compile(
 )
 _BULK_OK_MARK_RE = re.compile(r"'\s*書き戻し\s*[:：]\s*新しい所")
 
+# 税率らしい率の直書き（*1.1・*1.08・*0.1・*0.08 等）。「列の 6 割」の *0.6 のような閾値は数えない（2026-10-28 番頭点検）
+_RATE_RE = re.compile(r'\*\s*(?:1\.(?:10?|08|05)|0\.(?:10?|08|05))(?![\d.])')
+_published_rate_lines_cache = None
+
+
+def _rate_lines(text):
+    """棚の本文 → 率の直書きのあるコードの行（コメントを外して前後の空白を詰めた物）の並び（純 Python）。"""
+    out = []
+    for ln in str(text or '').splitlines():
+        s = ln.strip()
+        if not s or s.startswith("'"):
+            continue
+        c = s.find("'")
+        code = (s[:c] if c >= 0 else s).strip()
+        if _RATE_RE.search(code):
+            out.append(re.sub(r'\s+', ' ', code))
+    return out
+
+
+def _published_rate_lines():
+    """前の公開の棚（publish\\addin\\macros、無ければ公開の写しの macros）にある率の直書きの行。見つからなければ None。"""
+    global _published_rate_lines_cache
+    if _published_rate_lines_cache is not None:
+        return _published_rate_lines_cache
+    here = os.path.dirname(os.path.abspath(__file__))
+    for d in (os.path.join(here, '..', 'publish', 'addin', 'macros'), os.path.join(here, '..', 'macros')):
+        if not os.path.isdir(d):
+            continue
+        lines = []
+        for fn in sorted(os.listdir(d)):
+            if fn.startswith('表の整理') and fn.endswith('.bas'):
+                try:
+                    with open(os.path.join(d, fn), encoding='cp932', errors='replace') as f:
+                        lines += _rate_lines(f.read())
+                except OSError:
+                    continue
+        _published_rate_lines_cache = lines
+        return lines
+    return None
+
+
+def new_rate_lines(text, base_lines=None):
+    """前の公開に無かった率の直書きの行（同じ行が増えた分も数える）。base_lines=None なら前の公開を読む（純 Python に近い）。"""
+    if base_lines is None:
+        base_lines = _published_rate_lines() or []
+    left = {}
+    for b in base_lines:
+        left[b] = left.get(b, 0) + 1
+    out = []
+    for ln in _rate_lines(text):
+        if left.get(ln, 0) > 0:
+            left[ln] -= 1
+        else:
+            out.append(ln)
+    return out
+
 
 def _only_general(word):
     """語が一般の語と助詞だけでできているか（「青で美化」は 美化 が残る＝固有、「見出しを青に」も 見出し が残る）。"""
@@ -212,12 +268,13 @@ def _only_general(word):
     return not rest.strip()
 
 
-def shelf_lint(text):
+def shelf_lint(text, base_rate_lines=None):
     """棚の本文 → 当たり方の問題 [(重さ, 棚の名前, 中身)]（純 Python）。重さ＝'止める'（register-addin で焼かない）か '注意'。
     - 依頼の語が一般の語 1 つ（「表」「グラフ」）            → 止める
     - 依頼の組を一般の語 1 つで満たせる（グラフ＋グラフ）     → 止める
     - 依頼の組の全部の組を一般の語で満たせる（この＋にして）  → 止める。ただし ' 階級: 基本 の棚は通す（表＋整え など）
     - ' 階級: 作り替え の棚が依頼の組を持つ・依頼の語が一般の語だけ → 止める
+    - 率の直書き（*1.1・*1.08・*0.1・*0.08 等）が前の公開より増えた → 止める（base_rate_lines＝比べ元の行。None なら前の公開を読む）
     - 依頼の語が 1 字（「削」「取」）・正規表現の記号入り（「(空白」「.*」） → 止める
     - 階級の綴りが違う・同じ依頼の語が 2 本以上の棚にある    → 注意"""
     out, seen = [], {}
@@ -275,11 +332,9 @@ def shelf_lint(text):
         code = ln[:c_idx].strip() if c_idx >= 0 else stripped
         comment = ln[c_idx:] if c_idx >= 0 else ""
 
-        # 2026-10-27 番頭点検: 試験の表の語（返却・貸出中）や税率 1.1/0.1 倍の決め打ち式を止める
+        # 2026-10-27 番頭点検: 試験の表の語（返却・貸出中）の決め打ちを止める（率の直書きは下で前の公開と比べる）
         if re.search(r'"[^"]*(?:返却|貸出中)[^"]*"', code):
             out.append(('止める', curr_sub, f"試験の表の語の決め打ち「{code}」（未知の表でも動く汎用形にし、試験の表の語を本体に書かない）"))
-        if re.search(r'(?:\*\s*(?:1\.1|0\.1)\b|"\s*\*\s*(?:1\.1|0\.1)")', code):
-            out.append(('止める', curr_sub, f"税率（1.1倍・0.1倍）の決め打ち「{code}」（指示書に無い決め打ち計算を本体に足さない）"))
 
         if _BULK_OK_MARK_RE.search(comment):
             continue
@@ -301,6 +356,10 @@ def shelf_lint(text):
             continue
 
         out.append(('止める', curr_sub, f"範囲への丸ごと代入「{code}」（既存の範囲なら変えたセルだけ書く、新しい所なら末尾に ' 書き戻し: 新しい所）"))
+
+    # 率の直書き（*1.1・*1.08・*0.1・*0.08 等）が前の公開より増えたら止める（2026-10-28 番頭点検・10/27 試験の表に合わせた税 1.1 倍の式）
+    for code in new_rate_lines(text, base_rate_lines):
+        out.append(('止める', '率の直書き', f"前の公開に無かった率の直書き「{code}」（指示書に無い決め打ちの計算を本体に足さない）"))
 
     return out
 
@@ -1806,16 +1865,19 @@ def check_hardcoded_shelf_names(xl, owner, text):
     return stops
 
 
-def shelf_check(xl, owner, text, write_snapshot=False):
+def shelf_check(xl, owner, text, write_snapshot=False, warn=None, hold_changed=False):
     """棚の当たり方の検査を 1 回で（2026-10-14 段 2）。(焼いてよいか, 報告の行) を返す。
     1. 一般の語の検査（shelf_lint）の「止める」
     2. 問題集（entry_phrases*.tsv＝ありがちな頼み集を含む）を VBA（正本）に撃ち、写し（shelf_pick）と食い違えば止める
     3. 問題集の期待と違う答え＝横取り（または当たらなくなった頼み）があれば止める
     4. 外れた依頼（Excelコンボが AI に回した頼み）の当たり先が前の検査から変わった物を並べる（止めない。新しく棚に当たるのが正しいかは人が見る）
-    通ったら VBA の答えを控える（write_snapshot）＝make_public が配る棚で写しと突き合わせる・次の検査の 4 の比べ元"""
+    通ったら VBA の答えを控える（write_snapshot）＝make_public が配る棚で写しと突き合わせる・次の検査の 4 の比べ元。
+    warn（並び）を渡すと 4 の「当たり先が変わった」を足す。hold_changed=True なら、変わった物がある間は控えを書かない
+    （register-addin が --why 無しで止まったのに、控えだけ進んで次の検査で消えないように・2026-10-28 番頭点検）"""
     import time as _t
     t0 = _t.time()
     lines, ok = [], True
+    changed = []
     # 2026-10-22 指示書041: 判定コードの中の棚名決め打ち検査
     hardcoded_stops = check_hardcoded_shelf_names(xl, owner, text)
     stops = [x for x in shelf_lint(text) if x[0] == '止める'] + hardcoded_stops
@@ -1888,7 +1950,9 @@ def shelf_check(xl, owner, text, write_snapshot=False):
         lines += [f"  「{q[:60]}」 前={p or '(AIへ)'} → 今={a or '(AIへ)'}" for q, p, a in changed[:12]]
         if changed and not write_snapshot:
             lines.append(f"⚠ 【報告前停止】前の検査から当たり先が変わった頼みが {len(changed)} 種あります。報告の前に止まって理由を確認してください")
-    if ok and write_snapshot:
+        if changed and warn is not None:
+            warn.append(f"外れた依頼の当たり先が前の検査から変わった: {len(changed)} 種（上の「前 → 今」が正しいか見る）")
+    if ok and write_snapshot and not (hold_changed and changed):
         if qa and ans is not None:
             write_vba_snapshot([q for _e, q in qa], ans)
         if miss_ans is not None:

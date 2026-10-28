@@ -4911,6 +4911,59 @@ End Sub
     assert any(n == '数式代入の穴' and '範囲への丸ごと代入' in m for n, m in stops)
 
 
+def test_shelf_lint_stops_rate_literals_only_when_new_20261028():
+    """率の直書き（*1.1・*1.08・*0.1・*0.08）は前の公開より増えたときだけ止める。閾値の *0.6 は数えない（10/27 税 1.1 倍の式）。"""
+    import vbam_prefire as vp
+    old = "Sub 既存()\n    ' 依頼の語: 既存の棚\n    税込 = 金額 * 1.08\nEnd Sub\n"
+    new = old + ("Sub 足した()\n    ' 依頼の語: 足した棚\n    c.Value = c.Offset(0, -1).Value * 1.1  ' 税込\n"
+                 "    税 = 金額 *0.08\n    If n >= cnt * 0.6 Then x = 1\nEnd Sub\n")
+    base = vp._rate_lines(old)
+    assert base == ['税込 = 金額 * 1.08']
+    assert vp.new_rate_lines(new, base) == ['c.Value = c.Offset(0, -1).Value * 1.1', '税 = 金額 *0.08']
+    assert vp.new_rate_lines(old, base) == []
+    stops = [m for lv, n, m in vp.shelf_lint(new, base) if lv == '止める' and n == '率の直書き']
+    assert len(stops) == 2
+    assert not [1 for lv, n, _m in vp.shelf_lint(old, base) if n == '率の直書き']
+
+
+def test_register_addin_needs_why_for_unread_warnings_20261028(monkeypatch, capsys):
+    """警告を読まずに焼かない: 当たり先が変わった／train の after に誤爆があれば、--why が無い限り焼かない。
+    --why が無いときは控えを進めない（hold_changed）＝撃ち直しても警告が消えない。"""
+    import vbam_core
+    import vbam_prefire as vp
+    import vbam_train as vt
+    import vbam_vba as vv
+
+    class Comps:
+        def __call__(self, name):
+            return object()
+
+    class WB:
+        Name = '秀コンボ.xlsm'
+
+        class VBProject:
+            VBComponents = Comps()
+
+    seen = {}
+
+    def fake_check(xl, owner, text, write_snapshot=False, warn=None, hold_changed=False):
+        seen['hold'] = hold_changed
+        warn.append('外れた依頼の当たり先が前の検査から変わった: 2 種')
+        return True, ['問題集: 一致']
+
+    monkeypatch.setattr(vbam_core, 'shelf_text', lambda vbp: '棚の本文')
+    monkeypatch.setattr(vp, 'shelf_check', fake_check)
+    monkeypatch.setattr(vt, 'wrong_afters_since', lambda since: [('lap4', 3)])
+    assert vv._shelf_parity_gate(None, WB()) is False
+    out = capsys.readouterr().out
+    assert '--why' in out and '誤爆 3 件' in out and '2 種' in out
+    assert seen['hold'] is True
+    assert vv._shelf_parity_gate(None, WB(), why='lap4 の誤爆は見せない頼みの言い換え・棚は正しい') is True
+    assert seen['hold'] is False
+    assert '理由: lap4' in capsys.readouterr().out
+    assert vbam_core._CALL_LOG_OPTS['burn_why'] == 'why'
+
+
 def test_register_addin_runs_test_gate_before_burn_20261021(monkeypatch, capsys):
     """焼く前の関所その 2: テスト Sub のあるブックは gate を撃ち、落ちたら焼かない。テスト Sub の無いブックは飛ばす。
     10/16〜20 にテストが回されず 2 本落ちたまま焼かれていた。"""

@@ -236,6 +236,17 @@ def _held_results(cats):
     return out
 
 
+def test_wrong_afters_since_lists_only_new_afters_with_wrong(tmp_path):
+    """register-addin の --why の元: 前に焼いた後に撃った after で誤爆のある物だけ（2026-10-28 番頭点検）。"""
+    root = str(tmp_path)
+    for name, cats in (('lap1', ['正しく当たった', '誤爆', '誤爆']), ('lap2', ['正しく当たった']), ('lap0', ['誤爆'])):
+        os.makedirs(os.path.join(root, name))
+        vt.write_results(os.path.join(root, name, 'after.tsv'), _held_results(cats))
+    os.utime(os.path.join(root, 'lap0', 'after.tsv'), (1000, 1000))     # 前に焼いたより古い
+    assert vt.wrong_afters_since(2000, root) == [('lap1', 2)]
+    assert vt.wrong_afters_since(2000, str(tmp_path / 'none')) == []
+
+
 def test_close_stops_when_held_out_gets_worse():
     before = _held_results(['正しく当たった', '取りこぼし', '取りこぼし'])
     better = _held_results(['正しく当たった', '正しく当たった', '取りこぼし'])
