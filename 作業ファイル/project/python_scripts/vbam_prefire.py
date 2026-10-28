@@ -683,6 +683,7 @@ def current_columns(ws):
 
 
 _REG_BY_REQUEST_RE = re.compile(r"^\s*'\s*列は頼みから\s*[:：]")
+_SELECTION_WORDS_RE = re.compile(r"選んだ|選択した|選択範囲|この範囲|このセル|この列|この行")
 
 
 def request_column_macros(text):
@@ -713,11 +714,13 @@ def fire_with_request(xl, owner, ws, name, request):
     q = str(owner).replace("'", "''")
     xl.Run(f"'{q}'!コンボ道具.頼みの文を入れる", str(request or ''))
     try:
-        try:
-            anchor = _table_anchor(ws)
-            ws.Range(anchor or 'A1').Select()
-        except Exception:
-            pass
+        # 「選んだ範囲を斜体にして」「この列を…」は人の選んだ所が相手なので選び直さない（2026-10-29 072: B3:C5 を選んで撃つと 1 セルだけ変わった）
+        if not _SELECTION_WORDS_RE.search(str(request or '')):
+            try:
+                anchor = _table_anchor(ws)
+                ws.Range(anchor or 'A1').Select()
+            except Exception:
+                pass
         shelf_refusal(xl, owner, clear=True)       # 前の棚の断りが残っていると、撃てた棚まで断ったと読む（2026-10-14）
         note_shot(xl, owner, None)
         with contextlib.suppress(Exception):
