@@ -10293,7 +10293,8 @@ Sub ピボットを値だけの表に変える()
 
         Dim destCell As Range
         Set destCell = ws.Cells(rng.row, rng.Column)
-        destCell.Resize(UBound(arr, 1), UBound(arr, 2)).Value = arr ' 書き戻し: 新しい所
+        ' 行の見出しの文字（コード 00123・1-2）が数・日付に化けないよう、文字は文字のまま書く（2026-10-28 点検）
+        destCell.Resize(UBound(arr, 1), UBound(arr, 2)).Value = 表の整理_下請け.文字を守った配列(arr) ' 書き戻し: 新しい所
         For i2 = 1 To UBound(arr, 1)
             For j2 = 1 To UBound(arr, 2)
                 destCell.Cells(i2, j2).NumberFormat = 形(i2, j2)
