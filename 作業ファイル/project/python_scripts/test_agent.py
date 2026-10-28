@@ -6970,7 +6970,7 @@ def test_delete_created_removes_each_kind_in_reverse_and_reports_what_it_could_n
     ws.ListObjects = _XmColl([_InvObj(Name="T会員", Delete=gone("table"))])
     pt = _InvObj(Name="P集計", TableRange2=_InvObj(Clear=gone("pivot")),
                  CalculatedFields=lambda: _XmColl([_InvObj(Name="単価", Delete=gone("calc_field"))]))
-    monkeypatch.setattr(vbam_heavy, "_find_pivot", lambda wb_, name: (ws, pt) if name == "P集計" else (None, None))
+    monkeypatch.setattr(vbam_heavy, "_find_pivot", lambda wb_, name, sheet=None: (ws, pt) if name == "P集計" else (None, None))
     wb.SlicerCaches = _XmColl([_InvObj(Slicers=[_InvObj(Name="地域", Delete=gone("slicer"))])])
     _XmCharts(ws).Add(0, 0, 10, 10)                                           # グラフ 1
     wb.Queries = _XmColl([_InvObj(Name="売上取込", Delete=gone("query"))])

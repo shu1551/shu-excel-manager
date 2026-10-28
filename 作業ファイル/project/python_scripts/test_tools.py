@@ -6475,3 +6475,36 @@ def test_display_alerts_is_put_back_to_its_previous_value():
                 if _re.search(r"\.DisplayAlerts\s*=\s*True\b", line) and func not in ("cmd_run_macro", "cmd_test"):
                     bad.append(f"{os.path.basename(path)}:{n} ({func})")
     assert bad == []
+
+
+def test_pivots_with_the_same_name_on_two_sheets_are_not_mixed_up(monkeypatch, capsys):
+    """ピボットの名前はシートごとに一意なだけ。--undo の後始末と pivot delete が、別のシートの同名ピボットを消しえた（2026-10-28 点検）。"""
+    import inspect
+    import vbam_heavy as vh
+    import vbam_undo as vu
+
+    class PT:
+        def __init__(self, name):
+            self.Name, self.cleared = name, False
+            self.TableRange2 = type("R", (), {"Clear": lambda r, s=self: setattr(s, "cleared", True)})()
+
+    class Sh:
+        def __init__(self, name, pts):
+            self.Name, self._pts = name, pts
+
+        def PivotTables(self):
+            return self._pts
+
+    mine, made = PT("ピボットテーブル1"), PT("ピボットテーブル1")
+    wb = type("WB", (), {"Worksheets": [Sh("人の集計", [mine]), Sh("集計", [made])]})()
+    # --undo の後始末は、作ったシートの中だけを探す
+    done, failed = vu._delete_created(None, wb, [{'kind': 'pivot', 'sheet': '集計', 'name': 'ピボットテーブル1'}])
+    assert made.cleared and not mine.cleared and failed == []
+    # pivot delete は、同名が 2 枚にあれば消さずに止める。--sheet で選べば、そのシートのだけを消す
+    made.cleared = False
+    monkeypatch.setattr(vh, "get_workbook", lambda t=None, **k: (None, wb))
+    cmd = inspect.unwrap(vh.cmd_pivot)
+    mk = lambda sheet=None: type("A", (), {"posargs": ["delete", "ピボットテーブル1"], "sheet": sheet})()
+    assert cmd(mk()) is False and not mine.cleared and not made.cleared
+    assert "複数のシートにあります: 人の集計, 集計" in capsys.readouterr().out
+    assert cmd(mk("集計")) is True and made.cleared and not mine.cleared

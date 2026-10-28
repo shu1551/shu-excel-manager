@@ -511,14 +511,22 @@ def cmd_pivot(args):
         if len(rest) < 2:
             print("使い方: pivot delete <name>"); return False
         name = rest[1]
-        for sh in wb.Worksheets:   # グラフシートは PivotTables を持たないため除外
-            for pt in sh.PivotTables():
-                if pt.Name == name:
-                    pt.TableRange2.Clear()
-                    print(f"ピボット削除: [{sh.Name}] {name}")
-                    print("（保存はしていません）")
-                    return True
-        print(f"エラー: ピボット '{name}' が見つかりません")
+        want = getattr(args, 'sheet', None)
+        hits = [(sh, pt) for sh in wb.Worksheets   # グラフシートは PivotTables を持たないため除外
+                for pt in sh.PivotTables() if pt.Name == name and (not want or str(sh.Name) == want)]
+        if len(hits) > 1:
+            # ピボットの名前はシートごとに一意なだけ（シートの複写で同名ができる）。先に見つかった方を消すと、
+            # 別のシートのピボットを消しうる（2026-10-28 点検）
+            print(f"エラー: ピボット '{name}' が複数のシートにあります: {', '.join(str(sh.Name) for sh, _ in hits)}")
+            print(f"  --sheet で消すシートを指定してください（例: pivot delete {name} --sheet {hits[0][0].Name}）")
+            return False
+        if hits:
+            sh, pt = hits[0]
+            pt.TableRange2.Clear()
+            print(f"ピボット削除: [{sh.Name}] {name}")
+            print("（保存はしていません）")
+            return True
+        print(f"エラー: ピボット '{name}' が見つかりません" + (f"（シート '{want}'）" if want else ""))
         return False
 
     if action == 'create':
@@ -691,8 +699,15 @@ def cmd_pivot(args):
     return False
 
 
-def _find_pivot(wb, name):
+def _find_pivot(wb, name, sheet=None):
+    """名前でピボットを探す → (シート, ピボット)。sheet を渡すとそのシートの中だけ。
+
+    ピボットの名前はシートごとに一意なだけで、シートを複写すると別のシートに同じ「ピボットテーブル1」ができる。
+    シートが分かっているとき（作った物の記録など）は必ず渡す（2026-10-28 点検: --undo の後始末が、前からあった
+    別のシートの同名ピボットを消しえた）。"""
     for sh in wb.Worksheets:   # グラフシートは PivotTables を持たないため除外
+        if sheet and str(sh.Name) != str(sheet):
+            continue
         for pt in sh.PivotTables():
             if pt.Name == name:
                 return sh, pt
