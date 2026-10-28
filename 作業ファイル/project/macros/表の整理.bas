@@ -6416,7 +6416,7 @@ NextSheet:
         End If
     Next i
 
-    ws.Range(ws.Cells(headerRow + 1, selCol + 1), ws.Cells(lastRow, selCol + 1)).Value2 = vName ' 書き戻し: 新しい所
+    表の整理_下請け.文字を守って書く ws.Range(ws.Cells(headerRow + 1, selCol + 1), ws.Cells(lastRow, selCol + 1)), vName ' 書き戻し: 新しい所
     ws.Columns(selCol + 1).AutoFit
 
 CleanUp:
@@ -6680,7 +6680,7 @@ Sub 横持ちマトリクス表を一撃で縦持ちデータベースにする()
     End With
 
     ' データ一撃代入
-    newWs.Range(newWs.Cells(2, 1), newWs.Cells(recIdx + 1, nFixedCols + 2)).Value = vDest ' 書き戻し: 新しい所
+    表の整理_下請け.文字を守って書く newWs.Range(newWs.Cells(2, 1), newWs.Cells(recIdx + 1, nFixedCols + 2)), vDest ' 書き戻し: 新しい所
 
     ' 数値列の書式と列幅調整
     newWs.Columns(nFixedCols + 2).NumberFormatLocal = "#,##0"
@@ -6869,7 +6869,7 @@ Sub 表記ゆれをあいまい判定してマスタを引き当てる()
     Next i
 
     ' 5. データ代入とハイライト（最速・Union）
-    ws.Range(ws.Cells(headerRow + 1, selCol + 1), ws.Cells(lastRow, selCol + 1)).Value = vName ' 書き戻し: 新しい所
+    表の整理_下請け.文字を守って書く ws.Range(ws.Cells(headerRow + 1, selCol + 1), ws.Cells(lastRow, selCol + 1)), vName ' 書き戻し: 新しい所
 
     Dim rngFuzzy As Range
     For i = 1 To cnt
@@ -7056,7 +7056,7 @@ Sub 選んだ列の値ごとにシートを分割する(Optional ByVal 知らせる As Boolean = True
         棚のシートの印 wsNew
 
         ' 見出し転記と書式復元
-        wsNew.Range(wsNew.Cells(1, 1), wsNew.Cells(1, nCols)).Value2 = headerArr ' 書き戻し: 新しい所
+        表の整理_下請け.文字を守って書く wsNew.Range(wsNew.Cells(1, 1), wsNew.Cells(1, nCols)), headerArr ' 書き戻し: 新しい所
         For c = 1 To nCols
             If Len(hdrFmts(c)) > 0 Then wsNew.Cells(1, c).NumberFormat = hdrFmts(c)
         Next c
@@ -7072,7 +7072,7 @@ Sub 選んだ列の値ごとにシートを分割する(Optional ByVal 知らせる As Boolean = True
                     outArr(outR, c) = dataArr(srcR, c)
                 Next c
             Next outR
-            wsNew.Range(wsNew.Cells(2, 1), wsNew.Cells(matchCount + 1, nCols)).Value2 = outArr ' 書き戻し: 新しい所
+            表の整理_下請け.文字を守って書く wsNew.Range(wsNew.Cells(2, 1), wsNew.Cells(matchCount + 1, nCols)), outArr ' 書き戻し: 新しい所
             For c = 1 To nCols
                 If Len(colFmts(c)) > 0 Then
                     wsNew.Range(wsNew.Cells(2, c), wsNew.Cells(matchCount + 1, c)).NumberFormat = colFmts(c)
@@ -7735,7 +7735,7 @@ Public Sub 二つの表の片方だけの行を抜く()
     Set 出力シート = Worksheets.Add(, ActiveSheet)
     出力シート.Name = "表Aのみ差分_" & Format(Now, "hhnnss")
 
-    出力シート.Range(出力シート.Cells(1, 1), 出力シート.Cells(差分行数, 列数A)).Value = 差分データ ' 書き戻し: 新しい所
+    表の整理_下請け.文字を守って書く 出力シート.Range(出力シート.Cells(1, 1), 出力シート.Cells(差分行数, 列数A)), 差分データ ' 書き戻し: 新しい所
     Application.StatusBar = "二つの表の片方だけの行を抜く: 表A にしか無い行 " & 差分行数 & " 件をシート「" & 出力シート.Name & "」に出しました。"
     Exit Sub
 Catch:
