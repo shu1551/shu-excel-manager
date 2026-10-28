@@ -483,3 +483,10 @@ def test_lint_stops_hidden_shelf_with_argument_20261029():
     ]) + "\n"
     hits = [(lv, n) for lv, n, msg in vp.shelf_lint(text) if '引数' in msg]
     assert hits == [('止める', '隠し棚')]
+
+def test_fire_keeps_selection_when_request_names_it_20261029():
+    """「選んだ範囲を斜体にして」「この列を…」は撃つ前に表の左上を選び直さない（2026-10-29 072: B3:C5 を選んで撃つと 1 セルだけ変わった）"""
+    for q in ('選んだ範囲を斜体にして', 'この列を太字にして', '選択範囲を右寄せにして', 'このセルを赤にして'):
+        assert vp._SELECTION_WORDS_RE.search(q), q
+    for q in ('見出しの文字を赤にして', '金額の列を3桁区切りにして', '区分が東京の行だけ表示して'):
+        assert not vp._SELECTION_WORDS_RE.search(q), q
