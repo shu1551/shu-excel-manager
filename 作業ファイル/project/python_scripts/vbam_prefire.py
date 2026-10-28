@@ -275,6 +275,12 @@ def shelf_lint(text):
         code = ln[:c_idx].strip() if c_idx >= 0 else stripped
         comment = ln[c_idx:] if c_idx >= 0 else ""
 
+        # 2026-10-27 番頭点検: 試験の表の語（返却・貸出中）や税率 1.1/0.1 倍の決め打ち式を止める
+        if re.search(r'"[^"]*(?:返却|貸出中)[^"]*"', code):
+            out.append(('止める', curr_sub, f"試験の表の語の決め打ち「{code}」（未知の表でも動く汎用形にし、試験の表の語を本体に書かない）"))
+        if re.search(r'(?:\*\s*(?:1\.1|0\.1)\b|"\s*\*\s*(?:1\.1|0\.1)")', code):
+            out.append(('止める', curr_sub, f"税率（1.1倍・0.1倍）の決め打ち「{code}」（指示書に無い決め打ち計算を本体に足さない）"))
+
         if _BULK_OK_MARK_RE.search(comment):
             continue
 
@@ -1776,6 +1782,25 @@ def check_hardcoded_shelf_names(xl, owner, text):
                             stops.append(('止める', f"コンボ道具.{proc}", f"判定コードの中に棚名「{name}」の決め打ちがあります"))
                 except Exception:
                     pass
+            # 2026-10-27 番頭点検: modMacroUchi 等への試験の表の語（単価・税・返却・貸出中）や 1.1/0.1 倍決め打ち検査
+            for comp in wb.VBProject.VBComponents:
+                cname = str(comp.Name)
+                if not cname.startswith('modMacroUchi'):
+                    continue
+                cm_u = comp.CodeModule
+                n_u = cm_u.CountOfLines
+                if not n_u:
+                    continue
+                for ln_u in cm_u.Lines(1, n_u).splitlines():
+                    s_u = ln_u.strip()
+                    if not s_u or s_u.startswith("'"):
+                        continue
+                    c_i = ln_u.find("'")
+                    code_u = (ln_u[:c_i] if c_i >= 0 else ln_u).strip()
+                    if re.search(r'"[^"]*(?:返却|貸出中)[^"]*"', code_u):
+                        stops.append(('止める', cname, f"試験の表の語の決め打ち「{code_u}」（本体に試験の表の語を書かない）"))
+                    if re.search(r'(?:\*\s*(?:1\.1|0\.1)\b|"\s*\*\s*(?:1\.1|0\.1)")', code_u):
+                        stops.append(('止める', cname, f"税率（1.1倍・0.1倍）の決め打ち「{code_u}」（指示書に無い決め打ち処理を足さない）"))
         except Exception:
             pass
     return stops
@@ -1801,6 +1826,8 @@ def shelf_check(xl, owner, text, write_snapshot=False):
         lines += [f"  {n}: {m}" for _lv, n, m in stops[:20]]
     else:
         lines.append("語の検査: 止める物なし" + (f"（注意 {len(notes)} 件・shelf --check で見る）" if notes else ""))
+    entries = shelf_entries_from_text(text)
+    valid_shelf_names = {e['name'] for e in entries}
     qa = exam_questions()
     ans = None
     if qa:
@@ -1809,7 +1836,15 @@ def shelf_check(xl, owner, text, write_snapshot=False):
         if ans is None:
             lines.append("問題集: VBA の 先撃ち候補の一括 を呼べませんでした（照合していません）")
         else:
-            diffs = parity_diffs(qs, ans, shelf_entries_from_text(text))
+            # 2026-10-27 番頭点検: 「棚の名前」か「空（＝AIへ）」以外の第3の返却値（「AIへ: …」等）を止める
+            bad_vba = [(q, a) for q, a in zip(qs, ans) if a and a not in valid_shelf_names]
+            bad_py = [(q, shelf_pick(q, entries)) for q in qs if shelf_pick(q, entries) and shelf_pick(q, entries) not in valid_shelf_names]
+            if bad_vba or bad_py:
+                ok = False
+                lines.append(f"約束違反の返却値（棚の名前でも空でもない第3の答え）: VBA {len(bad_vba)} 問 / Python写し {len(bad_py)} 問")
+                for q, a in (bad_vba or bad_py)[:12]:
+                    lines.append(f"  「{q}」 返却値={a!r}（返せるのは棚の名前か空文字だけ）")
+            diffs = parity_diffs(qs, ans, entries)
             if diffs:
                 ok = False
                 lines.append(f"VBA と Python の写しの食い違い: {len(diffs)} 問（{len(qs)} 問中）")
@@ -1821,10 +1856,9 @@ def shelf_check(xl, owner, text, write_snapshot=False):
                 for q, e, a in miss[:12]:
                     why = vba_peek(xl, owner, q).split('\n')[1:2]
                     lines.append(f"  「{q}」 期待={e or '(AIへ)'}  今={a or '(AIへ)'}" + (f"  ← {why[0].strip()}" if why and why[0].strip() else ''))
-            if not diffs and not miss:
+            if not diffs and not miss and not bad_vba and not bad_py:
                 # 2026-10-22 指示書039: 入口の照合（Excelコンボ判定 vs seiri判定 plan_full）
                 reg = registry_from_text(text)
-                entries = shelf_entries_from_text(text)
                 entry_diffs = []
                 for q, v_ans in zip(qs, ans):
                     pf = plan_full(q, reg, entries=entries)
@@ -1841,12 +1875,19 @@ def shelf_check(xl, owner, text, write_snapshot=False):
     miss_ans = vba_answers(xl, owner, misses) if misses else None
     snap_miss = vba_snapshot_path().replace('vba_answers.tsv', 'vba_answers_miss.tsv')
     if miss_ans is not None:
+        bad_miss = [(q, a) for q, a in zip(misses, miss_ans) if a and a not in valid_shelf_names]
+        if bad_miss:
+            ok = False
+            lines.append(f"外れた依頼で約束違反の返却値（棚の名前でも空でもない第3の答え）: {len(bad_miss)} 種")
+            lines += [f"  「{q[:60]}」 返却値={a!r}" for q, a in bad_miss[:12]]
         prev = dict(read_vba_snapshot_file(snap_miss) or [])
         changed = [(q, prev.get(q, ''), a) for q, a in zip(misses, miss_ans) if prev and prev.get(q, '') != a]
         hit = sum(1 for a in miss_ans if a)
         lines.append(f"外れた依頼: {len(misses)} 種のうち、今は棚に当たる {hit} 種" +
                      (f"・前の検査から当たり先が変わった {len(changed)} 種（正しいか見る）" if changed else ""))
         lines += [f"  「{q[:60]}」 前={p or '(AIへ)'} → 今={a or '(AIへ)'}" for q, p, a in changed[:12]]
+        if changed and not write_snapshot:
+            lines.append(f"⚠ 【報告前停止】前の検査から当たり先が変わった頼みが {len(changed)} 種あります。報告の前に止まって理由を確認してください")
     if ok and write_snapshot:
         if qa and ans is not None:
             write_vba_snapshot([q for _e, q in qa], ans)

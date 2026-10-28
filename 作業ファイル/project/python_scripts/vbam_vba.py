@@ -2898,6 +2898,29 @@ def cmd_replace_procedure(args):
         for line in diff:
             print(line)
         print("----------------------\n")
+        # 2026-10-27 番頭点検: 書き換えのついでに「なぜそうしたか」の経緯コメント（日付入り）や
+        # 失敗時のステータスバー通知（StatusBar = "..."）を消していないか機械検査する
+        if not getattr(args, 'force', False):
+            removed_lines = [ln[1:] for ln in diff if ln.startswith('-') and not ln.startswith('---')]
+            added_lines = [ln[1:] for ln in diff if ln.startswith('+') and not ln.startswith('+++')]
+            added_blob = '\n'.join(added_lines)
+            _hist_re = re.compile(r"'.*(?:202\d[-/]\d+|\b(?:[1-9]|1[0-2])/[0-3]?\d\b|指示書\d+|総点検)")
+            _sb_re = re.compile(r'\bStatusBar\s*=\s*"[^"]+"', re.I)
+            dropped_important = []
+            for rln in removed_lines:
+                m_hist = _hist_re.search(rln)
+                if m_hist:
+                    tok = re.search(r'(?:202\d[-/]\d+|\b(?:[1-9]|1[0-2])/[0-3]?\d\b|指示書\d+|総点検)', m_hist.group(0))
+                    if tok and tok.group(0) not in added_blob:
+                        dropped_important.append(('経緯コメント', rln.strip()))
+                if _sb_re.search(rln) and not _sb_re.search(added_blob):
+                    dropped_important.append(('ステータスバーの知らせ', rln.strip()))
+            if dropped_important:
+                print("エラー: 書き換えのついでに「経緯コメント」または「ステータスバーの知らせ」が消えています（差分の - 行を確認）:")
+                for kind, txt in dropped_important[:8]:
+                    print(f"  - [{kind}] {txt}")
+                print("  元の行を残して書き直すか、意図して消す場合は --force を付けてください。")
+                return False
     else:
         # 変更ゼロなら置換しない（Attribute経路だと無変更でも Remove+Import が走り、
         # 無用なリスクを負うだけのため）
@@ -7604,6 +7627,41 @@ def _test_gate_before_burn(wb):
     return False
 
 
+def _addin_shape_gate(wb):
+    """焼く前の関所その 3（2026-10-27 番頭点検）: シート上のボタン・図形の重なりと目次シートの図形数を検査する。
+    秀コンボの目次のボタンが同じ位置に 2 つずつ重なっていた事故を機械で止める。True＝焼いてよい"""
+    overlaps = []
+    try:
+        for ws in wb.Worksheets:
+            seen_pos = {}
+            for sp in ws.Shapes:
+                try:
+                    pos = (round(float(sp.Left), 1), round(float(sp.Top), 1))
+                    nm = str(sp.Name)
+                    if pos in seen_pos:
+                        overlaps.append(f"{ws.Name}: 「{seen_pos[pos]}」と「{nm}」が同じ位置 (Left={pos[0]}, Top={pos[1]}) に重なっています")
+                    else:
+                        seen_pos[pos] = nm
+                except Exception:
+                    continue
+        if str(wb.Name) == '秀コンボ.xlsm':
+            try:
+                mokuji = wb.Worksheets('目次')
+                cnt = int(mokuji.Shapes.Count)
+                if cnt != 3:
+                    overlaps.append(f"目次シートの図形数が 3 個ではありません（現在 {cnt} 個・shape --list --sheet 目次 で確認）")
+            except Exception:
+                pass
+    except Exception:
+        return True
+    if overlaps:
+        print("エラー: シート上の図形・ボタンの検査で止まりました。焼きません")
+        for ov in overlaps:
+            print(f"  - {ov}")
+        return False
+    return True
+
+
 def cmd_register_addin(args):
     """`register-addin [ブック]`: 開いているブックを .xlam に焼き直してアドインに登録し直す（2026-09-23）。
 
@@ -7647,6 +7705,8 @@ def cmd_register_addin(args):
         # 表示中のフォームがあると Designer を取れず、マクロが MsgBox を出して止まる。人に頼まず自分で閉じる
         print(f"表示中のフォームを閉じます（{len(shown)} 件）")
         cmd_close_form(argparse.Namespace(posargs=[], list_flag=False))
+    if not getattr(args, 'no_check', False) and not _addin_shape_gate(wb):
+        return False
     if not getattr(args, 'no_check', False) and not _shelf_parity_gate(xl, wb):
         return False
     if not getattr(args, 'no_test', False) and not _test_gate_before_burn(wb):

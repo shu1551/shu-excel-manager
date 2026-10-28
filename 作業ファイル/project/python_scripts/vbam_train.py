@@ -367,13 +367,16 @@ def close_verdict(before, after):
     """見せない頼みの前後 → (止める理由の並び, 見る点の並び)。"""
     stops, notes = [], []
     b, a = summarize(before, True), summarize(after, True)
+    all_a = summarize(after)
+    if all_a['wrong'] > 0:
+        stops.append(f"誤爆が 0 ではありません（全体で {all_a['wrong']} 個・うち見せない頼み {a['wrong']} 個）。誤爆を 0 にしてから閉じてください")
     if a['wrong'] > b['wrong']:
         stops.append(f"見せない頼みで誤爆が増えました（{b['wrong']} → {a['wrong']}）。足した語・除外を外してください")
     if a['cats']['正しく当たった'] < b['cats']['正しく当たった']:
         stops.append(f"見せない頼みで正しく当たった数が減りました（{b['cats']['正しく当たった']} → {a['cats']['正しく当たった']}）")
     if a['cats']['取りこぼし'] > b['cats']['取りこぼし']:
         stops.append(f"見せない頼みで取りこぼしが増えました（{b['cats']['取りこぼし']} → {a['cats']['取りこぼし']}）")
-    parity = summarize(after)['parity']              # 学習用も見せない頼みも（写しの食い違いは道具の穴で、どちらの頼みでも起こる）
+    parity = all_a['parity']              # 学習用も見せない頼みも（写しの食い違いは道具の穴で、どちらの頼みでも起こる）
     if parity:
         stops.append(f"VBA と Python の写しの答えが食い違う頼みが {parity} 個あります（register-addin で写しを揃える）")
     if not a['n']:
