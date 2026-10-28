@@ -9838,7 +9838,7 @@ Sub 一覧を1件1枚でひな形に差し込む()
             exactMatch = False
             For c = firstCol To lastCol
                 If cellVal = "{" & headers(c) & "}" Then
-                    newCel.Value = listWs.Cells(r, c).Value
+                    表の整理_下請け.文字を守って書く newCel, listWs.Cells(r, c).Value ' 会員番号 00123 などが数に化けないように（2026-10-28 点検）
                     exactMatch = True
                     Exit For
                 End If
