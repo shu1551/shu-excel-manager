@@ -6508,3 +6508,71 @@ def test_pivots_with_the_same_name_on_two_sheets_are_not_mixed_up(monkeypatch, c
     assert cmd(mk()) is False and not mine.cleared and not made.cleared
     assert "複数のシートにあります: 人の集計, 集計" in capsys.readouterr().out
     assert cmd(mk("集計")) is True and made.cleared and not mine.cleared
+
+
+def test_form_builder_backs_up_a_form_once_before_breaking_it(monkeypatch, tmp_path):
+    """スキルの手順どおり FormBuilder を直に使うと、clear_controls・inject_vba が控え無しで既存のフォームを壊していた（2026-10-28 点検）。"""
+    import vba_manager
+    from form_builder import FormBuilder
+    calls = []
+    monkeypatch.setattr(vba_manager, "make_module_backup", lambda wb, name: calls.append(name) or "bk.frm")
+
+    class CM:
+        def __init__(self, n):
+            self.CountOfLines, self.added = n, []
+
+        def DeleteLines(self, a, n):
+            self.CountOfLines = 0
+
+        def AddFromString(self, s):
+            self.added.append(s)
+
+    class Controls(list):
+        Count = property(lambda s: len(s))
+
+        def Remove(self, n):
+            self[:] = [c for c in self if c.Name != n]
+
+    def form(name, n_lines, ctl_names):
+        ctls = Controls(type("C", (), {"Name": c})() for c in ctl_names)
+        return type("F", (), {"Name": name, "CodeModule": CM(n_lines), "Designer": type("D", (), {"Controls": ctls})()})()
+
+    fb = FormBuilder(None, object())
+    old = form("既存フォーム", 30, ["BtnOK", "TxtName"])
+    code = tmp_path / "c.vba"
+    code.write_text("Private Sub BtnOK_Click()\nEnd Sub\n", encoding="utf-8")
+    fb.clear_controls(old)
+    fb.inject_vba(old, str(code))
+    assert calls == ["既存フォーム"]                         # 壊す前に 1 回だけ（2 回目は壊した後の姿）
+    fb.inject_vba(form("今作った", 0, []), str(code))         # 空のフォームは控えない
+    assert calls == ["既存フォーム"]
+    # CP932 で書けない文字は、既存コードを消す前に止める
+    bad = tmp_path / "bad.vba"
+    bad.write_text('Private Sub BtnOK_Click()\n    MsgBox "完了✓"\nEnd Sub\n', encoding="utf-8")
+    other = form("別のフォーム", 12, [])
+    with pytest.raises(ValueError, match="CP932"):
+        fb.inject_vba(other, str(bad))
+    assert other.CodeModule.CountOfLines == 12
+    # 控えを取れなければ壊さずに止める
+    monkeypatch.setattr(vba_manager, "make_module_backup", lambda wb, name: None)
+    third = form("三つ目", 5, ["X"])
+    with pytest.raises(RuntimeError, match="控えを取れない"):
+        fb.clear_controls(third)
+    assert len(third.Designer.Controls) == 1
+
+
+def test_module_backups_in_the_same_second_do_not_overwrite_each_other(monkeypatch, tmp_path):
+    """モジュールの控えは秒までの名前で、同じ秒の 2 本目が 1 本目（壊す前の姿）を上書きしていた。フォームは .frm で出す（2026-10-28 点検）。"""
+    import vbam_core as vc
+    monkeypatch.setattr(vc, "BACKUP_DIR", str(tmp_path))
+    monkeypatch.setattr(vc.time, "strftime", lambda fmt, *a: "20261028_120000")
+
+    def comp(name, typ):
+        return type("C", (), {"Name": name, "Type": typ,
+                              "Export": lambda self, p: open(p, "w").write("x")})()
+    wb = type("WB", (), {"FullName": r"C:\a\秀.xlsm",
+                         "VBProject": type("P", (), {"VBComponents": [comp("Module1", 1), comp("フォーム", 3)]})()})()
+    p1 = vc.make_module_backup(wb, "Module1")
+    p2 = vc.make_module_backup(wb, "Module1")
+    assert p1 != p2 and os.path.basename(p2).endswith("_2.bas")
+    assert vc.make_module_backup(wb, "フォーム").endswith(".frm")
