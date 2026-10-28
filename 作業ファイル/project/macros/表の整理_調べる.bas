@@ -995,7 +995,7 @@ Sub エラー値のセルを一覧にする()
                 ws.Cells(outRow, outCol + 1).Value = ws.Cells(hdrRow, c).Value
                 ' 項目
                 If textCol > 0 Then
-                    ws.Cells(outRow, outCol + 2).Value = ws.Cells(r, textCol).Value
+                    表の整理_下請け.文字を守って書く ws.Cells(outRow, outCol + 2), ws.Cells(r, textCol).Value ' 項目のコード 00123 などが数に化けないように（2026-10-28 点検）
                 End If
                 outRow = outRow + 1
             End If
