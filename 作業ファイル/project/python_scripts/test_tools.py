@@ -6576,3 +6576,12 @@ def test_module_backups_in_the_same_second_do_not_overwrite_each_other(monkeypat
     p2 = vc.make_module_backup(wb, "Module1")
     assert p1 != p2 and os.path.basename(p2).endswith("_2.bas")
     assert vc.make_module_backup(wb, "フォーム").endswith(".frm")
+
+
+def test_numbers_of_16_digits_or_more_are_written_as_text():
+    """Excel の数値は 15 桁まで。write-range・write-cells が 16 桁以上を数にして、カード・口座・伝票番号の下の桁を黙って変えていた（2026-10-28 点検）。"""
+    import vba_manager as vm
+    assert vm._coerce_cell("4111111111111111") == "4111111111111111"
+    assert vm._coerce_cell("-1234567890123456") == "-1234567890123456"
+    assert vm._coerce_cell("123456789012345") == 123456789012345          # 15 桁までは今まで通り数
+    assert vm._coerce_cell("42") == 42 and vm._coerce_cell("007") == "007"
