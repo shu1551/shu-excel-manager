@@ -6601,3 +6601,16 @@ def test_a_backslash_string_inside_an_excel_formula_survives_the_splitter():
     # JSON の書き方（\" が引用符）は今まで通り
     assert sp(r'grep "Like \"function *\"" --module X') == ['grep', 'Like "function *"', '--module', 'X']
     assert sp(r'open "C:\data\" x') == ['open', 'C:\\data\\', 'x']
+
+
+def test_delete_control_stops_when_the_form_cannot_be_backed_up(monkeypatch):
+    """backup_form は「退避できなければ --force が無い限り中止」の約束なのに、delete-control は「退避なしで続行」して消していた（2026-10-28 点検）。"""
+    import form_tool as ft
+    removed = []
+    comp = type("C", (), {"Name": "F", "Designer": type("D", (), {"Controls": type("Cs", (), {"Remove": lambda s, n: removed.append(n)})()})()})()
+    monkeypatch.setattr(ft, "connect_form", lambda name: (None, None, comp))
+    monkeypatch.setattr(ft, "backup_form", lambda wb, c: False)
+    args = type("A", (), {"control": "BtnOK", "form": "F", "save": False, "force": False})()
+    with pytest.raises(SystemExit):
+        ft.cmd_delete(args)
+    assert removed == []
