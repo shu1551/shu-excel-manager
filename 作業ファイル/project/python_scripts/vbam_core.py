@@ -2341,6 +2341,10 @@ def _cell_str(v):
         # 「D31 = -2146826281」と出て、#DIV/0! だと読めなかった（2026-09-23 のテスト）
         return _XL_ERROR_TEXT[v]
     if isinstance(v, float) and v.is_integer():
+        if abs(v) >= 1e15:
+            # 16 桁以上の数を 1200000000000000 と出すと、書き戻しで「16 桁以上の番号＝文字」と読まれる（_coerce_cell）。
+            # 数として往復するよう小数の形で出す（1200000000000000.0・1e+16・2026-10-28 点検）
+            return repr(v)
         return str(int(v))
     if isinstance(v, datetime.datetime):
         # pywintypes の日時は str() だと "+00:00"（TZ）が付き、TSV 往復の

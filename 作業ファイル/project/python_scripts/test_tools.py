@@ -6585,6 +6585,10 @@ def test_numbers_of_16_digits_or_more_are_written_as_text():
     assert vm._coerce_cell("-1234567890123456") == "-1234567890123456"
     assert vm._coerce_cell("123456789012345") == 123456789012345          # 15 桁までは今まで通り数
     assert vm._coerce_cell("42") == 42 and vm._coerce_cell("007") == "007"
+    # 読み戻した大きな数（1,200 兆など）は、書き戻しても数のまま（小数の形で出す）
+    for v in (1.2e15, 1e16, -4.5e18):
+        assert vm._coerce_cell(vm._cell_str(v)) == v
+    assert vm._cell_str(123456789012345.0) == "123456789012345"
 
 
 def test_a_backslash_string_inside_an_excel_formula_survives_the_splitter():
