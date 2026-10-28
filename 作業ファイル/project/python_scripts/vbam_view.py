@@ -16,6 +16,7 @@ import pythoncom
 import pywintypes
 import win32com.client
 import win32com.client.dynamic
+from typing import Optional
 
 from vbam_core import *  # noqa: F401,F403
 from vbam_vba import *  # noqa: F401,F403
@@ -1077,8 +1078,10 @@ def dirt_notes(grid, r0=1, c0=1, header_idx=None, col_formats=None, limit=12, lo
                     chohyo_merges += 1
                     for r_abs in range(mr1, mr2 + 1):
                         chohyo_rows.add(r_abs)
+                    # 結合にかかる列を全部（前は左端の列だけで、B3:C4 の C 列を空欄と数えていた・2026-10-28 点検）
                     for r_abs in range(mr1, mr2 + 1):
-                        chohyo_cells.add(f"{c1_str}{r_abs}")
+                        for c_abs in range(_col_num_of(c1_str), _col_num_of(c2_str) + 1):
+                            chohyo_cells.add(f"{_col_letter(c_abs)}{r_abs}")
 
     # 意味のある空欄（未記入の段: 例 返却日・返却担当がそろって空で備考に「貸出中」など）
     meaningful_blanks = set()

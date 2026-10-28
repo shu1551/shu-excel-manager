@@ -233,6 +233,7 @@ class FormBuilder:
     def __init__(self, xl, wb):
         self._xl = xl
         self._wb = wb
+        self._backed_up = set()      # この接続で控えを取ったフォーム（壊す前に 1 回だけ）
 
     # ---- ファクトリ ----
 
@@ -410,10 +411,32 @@ class FormBuilder:
 
         return frm_comp
 
+    def _backup_form_once(self, frm_comp):
+        """壊す前（コントロールを消す・コードを入れ替える・フォームを消す）に、既存のフォームを .frm/.frx で backups へ控える。
+
+        この接続で 1 回だけ（2 回目は壊した後の姿になるため）。空のフォーム（今作ったもの）は控えない。
+        控えを取れなければ止める＝元に戻す手段の無いまま壊さない（2026-10-28 点検: build_form は退避していたが、
+        スキルの手順どおり FormBuilder を直に使う流れには控えが無く、inject_vba が既存のコードを全部消していた）。
+        """
+        name = frm_comp.Name
+        if name in self._backed_up:
+            return
+        try:
+            empty = frm_comp.CodeModule.CountOfLines == 0 and frm_comp.Designer.Controls.Count == 0
+        except Exception:
+            empty = False
+        if not empty:
+            import vba_manager
+            if vba_manager.make_module_backup(self._wb, name) is None:
+                raise RuntimeError(f"フォーム '{name}' の控えを取れないので中止しました（何も変えていません）。"
+                                   "backups フォルダに書けるか確認してください")
+        self._backed_up.add(name)
+
     def delete_form(self, form_name):
         """指定名のフォームを削除する (存在しない場合は何もしない)"""
         for comp in self.vbproject.VBComponents:
             if comp.Name == form_name:
+                self._backup_form_once(comp)
                 # 削除前にデザインウィンドウを閉じて参照を解放
                 self._close_vbe_designer_windows()
                 self.vbproject.VBComponents.Remove(comp)
@@ -434,6 +457,7 @@ class FormBuilder:
         生んでいた）。1個でも本当に残れば後段の Controls.Add が名前衝突で落ちるため、
         残存の報告自体は必要。
         """
+        self._backup_form_once(frm_comp)
         f = frm_comp.Designer
         names = [c.Name for c in f.Controls]
         for n in names:
@@ -472,6 +496,14 @@ class FormBuilder:
             for ln, _nm, reason in bad:
                 print(f"エラー: 行{ln}: プロシージャ名が VBA の識別子規則に反しています: {reason}")
             raise ValueError("VBA 識別子規則違反のため注入を中止しました（フォームの既存コードは残っています）")
+        # VBE は CP932 でコードを持つ。書けない文字（— ✓ 絵文字など）は黙って「?」に化けるので、既存コードを消す前に止める
+        # （replace-procedure・code-replace と同じ・2026-10-28 点検）
+        try:
+            code.encode('cp932')
+        except UnicodeEncodeError as e:
+            raise ValueError(f"CP932（Shift_JIS）で書けない文字 '{code[e.start:e.end]}' があるため注入を中止しました"
+                             "（フォームの既存コードは残っています）")
+        self._backup_form_once(frm_comp)
         cm = frm_comp.CodeModule
         if cm.CountOfLines > 0:
             cm.DeleteLines(1, cm.CountOfLines)

@@ -688,7 +688,24 @@ def _text_number_safe_to_convert(trimmed: str) -> bool:
     return True
 
 
-def apply_audit_fixes(ws: Any, issues: List[Dict[str, Any]]) -> Dict[str, Any]:
+def id_columns_of(values: List[List[Any]], start_col: int, head_rows: int = 5) -> Dict[str, str]:
+    """見出しが番号の列（番号・コード・ID・No・品番…）→ {列文字: 見出し}（純 Python）。
+
+    見出しは列の上から head_rows 行のうち、最初の文字のセル。番号の定義は tidy と同じ _is_id_header 1 つ。
+    文字で持っている番号（社員番号 1001 など）は、照合のキーの型をそろえるためにわざと文字のことがある＝数にしない（2026-10-28 点検）。"""
+    import unicodedata
+    from vbam_edit import _is_id_header
+    out = {}
+    n_cols = max((len(r) for r in values or []), default=0)
+    for c in range(n_cols):
+        head = next((values[r][c] for r in range(min(head_rows, len(values)))
+                     if c < len(values[r]) and isinstance(values[r][c], str) and values[r][c].strip()), None)
+        if head is not None and _is_id_header(unicodedata.normalize('NFKC', head)):
+            out[re.sub(r'\d+$', '', _rowcol_to_a1(0, start_col + c))] = head.strip()
+    return out
+
+
+def apply_audit_fixes(ws: Any, issues: List[Dict[str, Any]], id_cols: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     """診断で見つけた物のうち、機械が判断なしに直せる 2 種類だけを書き戻す。
 
     - 隠れ空白 (hidden_whitespace): 前後の空白・改行を除いて書き戻す
@@ -759,6 +776,10 @@ def apply_audit_fixes(ws: Any, issues: List[Dict[str, Any]]) -> Dict[str, Any]:
                 continue
             if _col_of(cell_addr) in code_cols:
                 skipped.append(f"  ・{cell_addr}: '{trimmed}' は先頭ゼロの番号と同じ列＝文字のまま残す（列の型を揃える）")
+                continue
+            if id_cols and _col_of(cell_addr) in id_cols:
+                skipped.append(f"  ・{cell_addr}: '{trimmed}' は番号の列（見出し「{id_cols[_col_of(cell_addr)]}」）＝文字のまま残す"
+                               "（照合のキーの型をそろえるため、わざと文字のことがある）")
                 continue
             try:
                 num_val = float(trimmed) if "." in trimmed else int(trimmed)
@@ -1133,9 +1154,12 @@ def cmd_diagnose(args):
                   "今回は診断だけ出します。")
         else:
             backup = _diagnose_backup(wb)
-            if backup:
+            if not backup:
+                # 「-y と控えを要る」の約束どおり、控えが無ければ書き換えない（前は控えに失敗しても書き換えていた・2026-10-28 点検）
+                print("⚠ 控えを取れなかったので、--fix は撃っていません（診断だけ出します）。backups フォルダに書けるか確認してください")
+            else:
                 print(f"控え: {backup}")
-            fix_result = apply_audit_fixes(ws, all_issues)
+                fix_result = apply_audit_fixes(ws, all_issues, id_columns_of(values, start_col))
 
     if getattr(args, 'json', False):
         import json

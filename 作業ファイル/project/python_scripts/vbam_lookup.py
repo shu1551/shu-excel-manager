@@ -98,10 +98,22 @@ def _lit(arg_text):
     return int(t) if re.fullmatch(r'\d+', t) else None
 
 
-def scan_lookups(formula):
+_BROKEN_REF = (None, None, None, None, None)      # #REF! になった範囲（番号の並びをずらさないための置き場）
+
+
+def _ref_or_broken(text, keep_broken):
+    ref = parse_ref(text)
+    if ref is None and keep_broken and '#REF!' in text.upper():
+        return _BROKEN_REF
+    return ref
+
+
+def scan_lookups(formula, keep_broken=False):
     """式の中の、直書きの番号を持つ VLOOKUP（列番号）・HLOOKUP（行番号）・INDEX（行・列番号）を位置順に返す。
 
-    [{'fn', 'kind': 'col'|'row', 'sheet', 'c1','c2','r1','r2', 'val', 'pos': (開始, 終了)}]。範囲が読めない（名前・INDIRECT・表の構造化参照）は返さない。"""
+    [{'fn', 'kind': 'col'|'row', 'sheet', 'c1','c2','r1','r2', 'val', 'pos': (開始, 終了)}]。範囲が読めない（名前・INDIRECT・表の構造化参照）は返さない。
+    keep_broken=True は、範囲が #REF! になった検索も（範囲 None で）並びに残す。列・行を消すと Excel が範囲を #REF! に書き換え、
+    その検索が並びから抜けて番号の対応が 1 つずれ、後ろの検索に別の番号を書いていた（2026-10-28 点検）。直す側は常に True で数える"""
     s = formula or ''
     masked = _mask_strings(s)
     out = []
@@ -111,19 +123,19 @@ def scan_lookups(formula):
         if not args:
             continue
         if fn == 'VLOOKUP' and len(args) >= 3:
-            ref, idx, kind = parse_ref(args[1][0]), args[2], 'col'
+            ref, idx, kind = _ref_or_broken(args[1][0], keep_broken), args[2], 'col'
             lit = _lit(idx[0])
             if ref and lit and lit >= 1:
                 out.append({'fn': fn, 'kind': kind, 'sheet': ref[0], 'c1': ref[1], 'c2': ref[2], 'r1': ref[3], 'r2': ref[4],
                             'val': lit, 'pos': _lit_span(s, idx)})
         elif fn == 'HLOOKUP' and len(args) >= 3:
-            ref, idx, kind = parse_ref(args[1][0]), args[2], 'row'
+            ref, idx, kind = _ref_or_broken(args[1][0], keep_broken), args[2], 'row'
             lit = _lit(idx[0])
             if ref and lit and lit >= 1:
                 out.append({'fn': fn, 'kind': kind, 'sheet': ref[0], 'c1': ref[1], 'c2': ref[2], 'r1': ref[3], 'r2': ref[4],
                             'val': lit, 'pos': _lit_span(s, idx)})
         elif fn == 'INDEX' and len(args) >= 2:
-            ref = parse_ref(args[0][0])
+            ref = _ref_or_broken(args[0][0], keep_broken)
             if not ref:
                 continue
             rows_only_one = ref[3] is not None and ref[3] == ref[4] and ref[1] != ref[2]
@@ -176,9 +188,14 @@ def plan_adjust(item, own_sheet, target_sheet, axis, op, start, count):
     return (val, val - before, 'ok') if before > 0 else None
 
 
-def apply_values(formula, new_by_k):
-    """scan_lookups の k 番目の番号を new_by_k[k] に書き換えた式（位置は後ろから直す）。"""
-    items = scan_lookups(formula)
+def apply_values(formula, new_by_k, old_by_k=None):
+    """scan_lookups の k 番目の番号を new_by_k[k] に書き換えた式（位置は後ろから直す）。
+
+    old_by_k（k → 直す前の番号）を渡すと、並びの k 番目の番号がそれと違えば（式の形が変わって対応が取れない）
+    1 つも書き換えずに None を返す＝別の検索に番号を書かない（2026-10-28 点検）。"""
+    items = scan_lookups(formula, keep_broken=True)
+    if old_by_k is not None and any(k >= len(items) or items[k]['val'] != old for k, old in old_by_k.items()):
+        return None
     out = formula
     for k in sorted(new_by_k, reverse=True):
         if k >= len(items):
@@ -191,7 +208,7 @@ def apply_values(formula, new_by_k):
 def plan_formula(formula, own_sheet, target_sheet, axis, op, start, count):
     """1 つの式 → ({k: (旧, 新)}, 壊れる数)。影響が無ければ ({}, 0)。"""
     changes, broken = {}, 0
-    for k, it in enumerate(scan_lookups(formula)):
+    for k, it in enumerate(scan_lookups(formula, keep_broken=True)):   # apply_values と同じ数え方（#REF! の検索も並びに残す）
         r = plan_adjust(it, own_sheet, target_sheet, axis, op, start, count)
         if not r:
             continue
@@ -335,7 +352,11 @@ def apply_plan(wb, plan, target_sheet, axis, op, start, count):
             except Exception:
                 now = cell.Formula
                 prop = 'Formula'
-            new = apply_values(now, {k: v[1] for k, v in e['changes'].items()})
+            new = apply_values(now, {k: v[1] for k, v in e['changes'].items()},
+                               {k: v[0] for k, v in e['changes'].items()})
+            if new is None:
+                skipped.append((e['sheet'], _addr(*pos), '操作のあとで式の形が変わり、どの検索の番号か対応が取れないので直していません'))
+                continue
             if new != now:
                 setattr(cell, prop, new)
                 fixed.append((e['sheet'], _addr(*pos), now, new))

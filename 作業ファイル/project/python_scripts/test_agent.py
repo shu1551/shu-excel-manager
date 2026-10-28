@@ -2658,6 +2658,50 @@ def test_undo_restores_formulas_so_they_do_not_become_external_links():
     assert "_restore_formulas(ws, addr, src_snap)" in src and "_drop_backup_link(wb, path)" in src
 
 
+def test_undo_restores_spilling_formulas_through_formula2():
+    """控えの式を入れ直すとき、.Formula で書くと FILTER などに @ が付き 1 セルに潰れる。Formula2 で写せていればそれで書く（2026-10-28 点検）。"""
+    import vbam_agent as va
+
+    class Cell:
+        def __init__(self, ws, key):
+            self.ws, self.key, self.Row, self.Column = ws, key, 1, 1
+
+        @property
+        def Formula2(self):
+            return self.ws.cur
+
+        @Formula2.setter
+        def Formula2(self, v):
+            self.ws.writes.append(("Formula2", self.key, v))
+
+        @property
+        def Formula(self):
+            return self.ws.cur
+
+        @Formula.setter
+        def Formula(self, v):
+            self.ws.writes.append(("Formula", self.key, v))
+
+    class Ws:
+        def __init__(self, cur):
+            self.cur, self.writes = cur, []
+
+        def Range(self, a, b=None):
+            return Cell(self, a)
+
+        def Cells(self, r, c):
+            return Cell(self, (r, c))
+
+    ws = Ws("=FILTER('C:\\b\\[控え.xlsx]明細'!A2:A9,'C:\\b\\[控え.xlsx]明細'!B2:B9>0)")
+    snap = {'formulas': [["=@FILTER(明細!A2:A9,明細!B2:B9>0)"]], 'formulas2': [["=FILTER(明細!A2:A9,明細!B2:B9>0)"]]}
+    assert va._restore_formulas(ws, "A1", snap) is True
+    assert ws.writes == [("Formula2", (1, 1), "=FILTER(明細!A2:A9,明細!B2:B9>0)")]
+    # Formula2 の無い Excel（formulas2 を写せなかった）は従来どおり .Formula
+    ws_old = Ws("='C:\\b\\[控え.xlsx]明細'!B2")
+    assert va._restore_formulas(ws_old, "A1", {'formulas': [["=明細!B2"]]}) is True
+    assert ws_old.writes == [("Formula", (1, 1), "=明細!B2")]
+
+
 def test_formula_blocks_rewrite_only_formula_cells_and_fold_them_into_rectangles_20260923():
     """undo の入れ直しは数式のセルだけ・長方形に畳んで COM の書き込みを減らす（純 Python）。"""
     import vbam_undo as vu
@@ -3756,6 +3800,48 @@ def test_the_gate_counts_only_the_cells_write_grid_will_actually_write():
     assert va._overwrite_hits(dict(act, overwrite=True), "名簿", wb) == []
 
 
+def test_cont_answer_is_read_by_itself_not_from_the_head_of_the_request():
+    """--cont の返事は返事だけで読む（2026-10-28 点検）。依頼文とつないだ文の先頭で読んでいたので、
+    「はい」が承認にならず、依頼文が「全部」「お願い」で始まると「やめて」も承認になっていた。"""
+    import vbam_agent as va
+    old = dict(va._APPROVAL_CTX)
+    try:
+        for req, ans, want in (("B列の重複を整理したい", "はい", True),
+                               ("B列の重複を整理したい", "お願いします", True),
+                               ("全部のシートの重複を見て", "やめて", False),
+                               ("お願い、B列の重複を見て", "消さないで", False),
+                               ("B列の重複を整理したい", "", False)):
+            va._approval_set(va._approval_scope(req) + ' ' + ans, ans)
+            assert va._approved() is want, (req, ans)
+        va._approval_set("はい", True)                  # True は文全体が返事（古い呼び方）
+        assert va._approved()
+    finally:
+        va._APPROVAL_CTX.clear()
+        va._APPROVAL_CTX.update(old)
+
+
+def test_copy_range_is_refused_when_it_would_overwrite_someone_elses_value():
+    """copy_range もコピー先に人の値があれば実行前に止める（2026-10-28 点検・門が write_cells／write_grid にしか無かった）。"""
+    import vbam_agent as va
+
+    class WS:
+        cells = {'A1': '元1', 'A2': '元2', 'D1': '', 'D2': '人の値', 'F1': '元1', 'F2': '元2'}
+
+        def Range(self, box):
+            (c1, r1), (c2, r2) = [(p[0], int(p[1:])) for p in box.split(':')]
+            return type("R", (), {"Formula": tuple((self.cells.get(f"{c1}{r}", ''),) for r in range(r1, r2 + 1))})()
+
+    wb = _GateWB(WS())
+    va._own_reset()
+    act = {"op": "copy_range", "src": "A1:A2", "dst": "D1"}
+    assert va._overwrite_hits(act, "名簿", wb) == ['D2']
+    assert va._overwrite_hits(dict(act, overwrite=True), "名簿", wb) == []
+    assert va._overwrite_hits(dict(act, dst="F1"), "名簿", wb) == []       # 同じ値の書き直しは破壊ではない
+    va._approval_set("")
+    res = va._execute([act], "名簿", wb)
+    assert res[0][1] is False and 'もとからある値が 1 セル' in res[0][2]
+
+
 def test_plan_can_hold_a_question_for_the_human_without_blocking_done():
     """②: 「要判断」＝人に聞かないと決められない項目。安全側で仮処理して done は塞がない（2026-09-06）。
 
@@ -4016,6 +4102,17 @@ def test_approval_words_are_checked_by_the_tool():
     # --cont の答えは「はい」「お願いします」も承認（道具が聞いた問いへの返事）
     assert va._has_approval("はい、消してください", answer_mode=True)
     assert va._has_approval("お願いします", answer_mode=True) and not va._has_approval("お願いします")
+    assert va._has_approval("問題ないです", answer_mode=True)
+    # 人が聞いている形は承認ではない（2026-10-28 点検）
+    assert not ok("重複行って消してもいいのかな？見て判断して")
+    assert not ok("この列、削除していいか教えて")
+    assert not ok("上書きしてよいかどうか確認してから進めて")
+    assert not ok("消しても大丈夫ですか")
+    assert ok("消してもいいから、重複を整理して")
+    assert ok("消していいのか迷ったけど、重複は消してよい")
+    # 返事の中の断りは承認ではない（2026-10-28 点検）
+    for no in ("それでは困る", "全部消さないで", "大丈夫じゃない、やめて", "うん、でも消さないで", "進めてはだめ"):
+        assert not va._has_approval(no, answer_mode=True), no
     # 手順書は補足だけを見る（本文の説明に「置き換えてよい」が出ても承認ではない）
     body = "手順書「値を直す」\n承認: 補足に「置き換えてよい」があるときだけ\n補足: なし"
     assert not ok(va._approval_scope(body))
@@ -6873,7 +6970,7 @@ def test_delete_created_removes_each_kind_in_reverse_and_reports_what_it_could_n
     ws.ListObjects = _XmColl([_InvObj(Name="T会員", Delete=gone("table"))])
     pt = _InvObj(Name="P集計", TableRange2=_InvObj(Clear=gone("pivot")),
                  CalculatedFields=lambda: _XmColl([_InvObj(Name="単価", Delete=gone("calc_field"))]))
-    monkeypatch.setattr(vbam_heavy, "_find_pivot", lambda wb_, name: (ws, pt) if name == "P集計" else (None, None))
+    monkeypatch.setattr(vbam_heavy, "_find_pivot", lambda wb_, name, sheet=None: (ws, pt) if name == "P集計" else (None, None))
     wb.SlicerCaches = _XmColl([_InvObj(Slicers=[_InvObj(Name="地域", Delete=gone("slicer"))])])
     _XmCharts(ws).Add(0, 0, 10, 10)                                           # グラフ 1
     wb.Queries = _XmColl([_InvObj(Name="売上取込", Delete=gone("query"))])
@@ -7086,3 +7183,40 @@ def test_one_formula_gate_counts_new_formula_cells():
     one = ((None,) * 9, (None,) * 4 + ('=GROUPBY(B2:B19,C2:C19,SUM)', None, None, '=GROUPBY(x)', None))
     assert vg._one_formula_misfits(WS(one), before, 'S', req) == []
     assert vg._one_formula_misfits(WS(two), before, 'S', "E2 に名前別の合計") == []
+
+
+def test_values_starting_with_a_dash_reach_the_tool_as_values():
+    """値が '-' で始まると argparse がオプションと読み、入力規則「-1,0,1」・条件付き書式「-5 より小さい」が落ち、
+    名前「--force」は強行の印になっていた（2026-10-28 点検）。値は --opt=値 で渡し、名前は断る。"""
+    import vbam_agent as va
+    import vba_manager as vm
+    p = vm.build_parser()
+    _l, toks = va._action_to_tokens({"op": "validation", "range": "A1:A9", "list": ["-1", "0", "1"]}, "S")
+    assert p.parse_known_args(toks)[0].list == "-1,0,1"
+    _l, toks = va._action_to_tokens({"op": "cond_format", "range": "A1:A9", "lt": "-5", "bg": "#FF0000"}, "S")
+    assert p.parse_known_args(toks)[0].lt == "-5"
+    _l, toks = va._action_to_tokens({"op": "pivot", "action": "create", "range": "A1:D9", "rows": ["-区分"],
+                                     "values": ["金額"], "sheet": "集計"}, "S")
+    assert p.parse_known_args(toks)[0].rows == "-区分"
+    with pytest.raises(ValueError, match="'-' で始まっています"):
+        va._action_to_tokens({"op": "powerquery", "action": "load", "name": "--force", "to": "model"}, "S")
+    # '-' で始まらない値は今まで通り分けて渡す
+    _l, toks = va._action_to_tokens({"op": "validation", "range": "A1:A9", "list": ["相談中", "受注済み"]}, "S")
+    assert toks[-2:] == ["--list", "相談中,受注済み"]
+
+
+def test_a_run_whose_backup_failed_blocks_undo_to_the_previous_backup(tmp_path, monkeypatch):
+    """控えを取れなかった走行の後、直前の覚書は前の走行のまま＝ --undo が前の控えに戻り、その後の変更を黙って消していた（2026-10-28 点検）。"""
+    import vbam_undo as vu
+    monkeypatch.setattr(vu, "_LAST_AGENT_UNDO_FILE", str(tmp_path / "undo.json"))
+    monkeypatch.setattr(vu, "BACKUP_DIR", str(tmp_path / "bk"))
+    vu._save_undo_meta({'book': '名簿.xlsx', 'sheet': '名簿', 'sheets': ['名簿'], 'path': 'old.xlsx', 'time': '2026-10-28 09:00:00'})
+
+    def fail(path):
+        raise OSError("ディスクがいっぱい")
+    wb = type("WB", (), {"Name": "名簿.xlsx", "SaveCopyAs": staticmethod(fail)})()
+    assert vu._agent_backup(wb, None, '名簿', '重複を消して') is None
+    meta = vu._load_undo_meta()
+    assert meta['path'] == 'old.xlsx' and '控えを取れなかった' in meta.get('stale', '')
+    # 印があれば --undo は止まる（--force で越える）
+    assert vu.undo_agent() is False

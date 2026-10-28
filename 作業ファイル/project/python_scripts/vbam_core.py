@@ -508,8 +508,10 @@ def load_excel_addins_and_personal(xl):
     import os
     import time
 
-    # 警告を非表示にする
+    # 警告を非表示にする（終わりに前の値へ戻す）
+    prev_alerts = True
     try:
+        prev_alerts = bool(xl.DisplayAlerts)
         xl.DisplayAlerts = False
     except Exception:
         pass
@@ -561,7 +563,7 @@ def load_excel_addins_and_personal(xl):
         time.sleep(1.0)
 
     try:
-        xl.DisplayAlerts = True
+        xl.DisplayAlerts = prev_alerts  # 前の値に戻す（無条件に True へ戻すと、呼び出し元が切っていた設定まで変える＝_alerts_off と同じ・2026-10-28 点検）
     except Exception:
         pass
 
@@ -1517,11 +1519,18 @@ def make_module_backup(wb, module_name):
     os.makedirs(BACKUP_DIR, exist_ok=True)
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     base_wb_name = os.path.splitext(os.path.basename(wb.FullName))[0]
-    backup_filename = f"{base_wb_name}_{module_name}_{timestamp}.bas"
-    backup_path = os.path.join(BACKUP_DIR, backup_filename)
 
     for comp in wb.VBProject.VBComponents:
         if comp.Name.lower() == module_name.lower():
+            # 拡張子はモジュールの種類に合わせる（フォームは .frm＝.frx も一緒に出る・クラスは .cls）。
+            # 同じ秒の 2 本目が 1 本目の控えを上書きしない（make_backup と同じ・2026-10-28 点検）
+            ext = {2: '.cls', 3: '.frm'}.get(_comp_type(comp), '.bas')
+            backup_filename = f"{base_wb_name}_{module_name}_{timestamp}{ext}"
+            seq = 1
+            while os.path.exists(os.path.join(BACKUP_DIR, backup_filename)):
+                seq += 1
+                backup_filename = f"{base_wb_name}_{module_name}_{timestamp}_{seq}{ext}"
+            backup_path = os.path.join(BACKUP_DIR, backup_filename)
             try:
                 comp.Export(backup_path)
                 print(f"モジュールバックアップ作成: backups/{backup_filename}")
@@ -1529,6 +1538,14 @@ def make_module_backup(wb, module_name):
             except Exception as e:
                 print(f"警告: モジュールバックアップ失敗 ({e})")
     return None
+
+
+def _comp_type(comp):
+    """VBComponent の種類（1 標準・2 クラス・3 フォーム・100 ブック/シート）。読めなければ 1。"""
+    try:
+        return int(comp.Type)
+    except Exception:
+        return 1
 
 
 class ModuleNameCollisionError(Exception):
@@ -2278,6 +2295,13 @@ def split_command_line(line):
                 # \" は " 1 つ（JSON に慣れた AI の書き方・2026-09-24 台帳: grep "Like \"function *\"" が切れて 0 秒で落ちた）。
                 # ただし直後が空白・行末の \" は、\ で終わるパス（"C:\out\"）の閉じとして読む
                 if line[i] == '\\' and i + 1 < n and line[i + 1] == '"' and i + 2 < n and not line[i + 2].isspace():
+                    # \"" の後ろに文字が続くなら、\ はそのまま・"" は " 1 つ（Excel の式の "\"＝=SUBSTITUTE(A1,""\"",""/"")）。
+                    # \" を引用符と読むと、式が =SUBSTITUTE(A1,"",/) に化けて後ろの引数まで飲み込んでいた（2026-10-28 点検）。
+                    # \"" の後ろが空白・行末なら JSON の書き方（\" が " 1 つ、最後の " で閉じる）
+                    if line[i + 2] == '"' and i + 3 < n and not line[i + 3].isspace():
+                        cur.append('\\')
+                        i += 1
+                        continue
                     cur.append('"')
                     i += 2
                     continue
@@ -2317,6 +2341,10 @@ def _cell_str(v):
         # 「D31 = -2146826281」と出て、#DIV/0! だと読めなかった（2026-09-23 のテスト）
         return _XL_ERROR_TEXT[v]
     if isinstance(v, float) and v.is_integer():
+        if abs(v) >= 1e15:
+            # 16 桁以上の数を 1200000000000000 と出すと、書き戻しで「16 桁以上の番号＝文字」と読まれる（_coerce_cell）。
+            # 数として往復するよう小数の形で出す（1200000000000000.0・1e+16・2026-10-28 点検）
+            return repr(v)
         return str(int(v))
     if isinstance(v, datetime.datetime):
         # pywintypes の日時は str() だと "+00:00"（TZ）が付き、TSV 往復の
@@ -2653,6 +2681,11 @@ def _coerce_cell(s):
     if re.fullmatch(r'0\d+', s):
         # 先頭が 0 の数字（伝票番号 0004・郵便番号 007）は番号＝文字のまま書く。数にすると 0 が消え、
         # 書いた後の「化けたら文字に戻す」も「意図した変換」と見て戻さなかった（2026-09-23 通しの実測 2 の A5）
+        return s
+    if re.fullmatch(r'-?\d{16,}', s):
+        # Excel の数値は 15 桁まで。16 桁以上（カード・口座・伝票番号）を数にすると下の桁が黙って 0 に変わる
+        # （4111111111111111 → 4111111111111110）。文字のまま返す＝書いた後の「化けたら文字に戻す」が守る
+        # （normalize の number と同じ線・2026-10-28 点検）
         return s
     if re.fullmatch(r'-?\d+', s):
         try:

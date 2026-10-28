@@ -177,6 +177,7 @@ def _keep_grid_text(ws, row0, col0, grid, skip_cols=()):
 
 
 _KEPT_NOTE = "文字列として保持（Excel が日付・数値に読み替えたので文字列で書き直した）: "
+_FR_KEEP_MAX = 5000              # find-replace で置き換え後の読み替えを見るセルの上限（それより多い当たりは見ない）
 
 # 動的配列の関数。.Value（＝.Formula）で書くと暗黙の交差 @ が付いて 1 セルに潰れる（FILTER が 1 件しか出ない・
 # 2026-09-04 の手順書の実射で発覚）。これらを含む数式は Formula2 で書く
@@ -468,10 +469,20 @@ def _report_write_result(ws, rng):
     n_err = 0
     err_samples = []
     spill_cells = []
+    # 単セルの SpecialCells は使用範囲全体に化ける（write-cells と同じ）。書いていない所のエラーを
+    # 「書き込み結果」と言うと AI が関係ないセルを直しに行くので、そのセルだけを数える（2026-10-28 点検）
+    single = None
+    try:
+        if int(rng.Cells.CountLarge) == 1:
+            single = next(iter(rng.Cells)).Address
+    except Exception:
+        single = None
     for typ in (-4123, 2):          # xlCellTypeFormulas / xlCellTypeConstants
         try:
             sp = rng.SpecialCells(typ, 16)   # 16 = xlErrors
             for c in sp:
+                if single is not None and c.Address != single:
+                    continue
                 n_err += 1
                 try:
                     txt0 = str(c.Text or '')
@@ -2473,6 +2484,15 @@ def cmd_sheet(args):
                 return sh
         return None
 
+    def find_sheet_any_case(name):
+        # Excel のシート名は大文字と小文字を区別しない（'Data' があると 'data' は作れない）。完全一致だけで先に確かめると、
+        # Add・Copy の後の名前付けで落ちて「Sheet3」「Data (2)」の残骸が残る（2026-10-28 点検）
+        low = str(name).lower()
+        for sh in wb.Sheets:
+            if sh.Name.lower() == low:
+                return sh
+        return None
+
     if action == 'add':
         new_name = rest[1] if len(rest) >= 2 else None
         before = getattr(args, 'before', None)
@@ -2490,6 +2510,9 @@ def cmd_sheet(args):
         if new_name and find_sheet(new_name) is not None:
             print(f"シート '{new_name}' は既にあります（作らずにそのまま使います）")
             return True
+        if new_name and find_sheet_any_case(new_name) is not None:
+            print(f"エラー: シート '{find_sheet_any_case(new_name).Name}' があるので '{new_name}' は作れません"
+                  "（Excel のシート名は大文字と小文字を区別しません）"); return False
         if before:
             sh = wb.Sheets.Add(find_sheet(before))
         elif after:
@@ -2524,8 +2547,9 @@ def cmd_sheet(args):
             print(f"エラー: シート '{rest[1]}' が見つかりません"); return False
         # 名前重複は Copy 後の rename で例外になり、「Sheet1 (2)」等の複製シートが
         # 残骸として残る（add と同じく先に弾く）
-        if len(rest) >= 3 and find_sheet(rest[2]) is not None:
-            print(f"エラー: シート '{rest[2]}' は既に存在します"); return False
+        if len(rest) >= 3 and find_sheet_any_case(rest[2]) is not None:
+            print(f"エラー: シート '{find_sheet_any_case(rest[2]).Name}' は既に存在します"
+                  "（Excel のシート名は大文字と小文字を区別しません）"); return False
         sh.Copy(None, sh)
         newsh = wb.ActiveSheet
         if len(rest) >= 3:
@@ -3619,6 +3643,7 @@ def cmd_find_replace(args):
     # MatchCase, MatchByte, SearchFormat
     cell = rng.Find(needle, rng.Cells(rng.Cells.Count), -4123, look_at, 1, 1,
                     bool(match_case), True, False)
+    hits = []                        # 当たったセル（置き換え後に日付・数に化けたら文字に戻すため）
     while cell is not None:
         addr = cell.Address
         if first is None:
@@ -3626,6 +3651,8 @@ def cmd_find_replace(args):
         elif addr == first:
             break
         count += 1
+        if len(hits) < _FR_KEEP_MAX:
+            hits.append(cell)
         cell = rng.FindNext(cell)
     if count == 0:
         print(f"'{needle}' は {ws.Name}!{rng.Address} に見つかりませんでした（置換なし）")
@@ -3634,31 +3661,84 @@ def cmd_find_replace(args):
     if (look_at == 2 and not getattr(args, 'wildcard', False) and raw and raw != repl
             and (raw in repl if match_case else raw.lower() in repl.lower())):
         # 置き換え後が探す文字を含む（受注済→受注済み）。Excel の Replace は、もとから「受注済み」のセルにも当たって
-        # 「受注済みみ」にする（2026-09-11）。セルごとに見て、置き換え後の文字をもとから含むセルは飛ばす
-        vals, fmls = rng.Value, rng.Formula
+        # 「受注済みみ」にする（2026-09-11）。セルごとに見て、置き換え後の文字をもとから含むセルは飛ばす。
+        # 数式のセルも式の字で同じに見る（2026-10-28 点検: 数式を黙って飛ばしていて、B1→B10 が「0セル」で終わっていた。
+        # Excel の Replace は式の中も置き換える）。式は Formula2 で読んで書く（@ の付け外しで式が変わらないように）
+        vals = rng.Value
+        try:
+            fmls = rng.Formula2
+        except Exception:
+            fmls = rng.Formula
         vals = vals if isinstance(vals, tuple) else ((vals,),)
         fmls = fmls if isinstance(fmls, tuple) else ((fmls,),)
         r0, c0 = int(rng.Row), int(rng.Column)
         pat = re.compile(re.escape(raw), 0 if match_case else re.I)
         done = skipped = 0
+        failed, kept = [], []
         for i, row in enumerate(vals):
             for j, v in enumerate(row):
                 f = fmls[i][j] if i < len(fmls) and j < len(fmls[i]) else None
-                if not isinstance(v, str) or (isinstance(f, str) and f.startswith('=')) or not pat.search(v):
+                is_formula = isinstance(f, str) and f.startswith('=')
+                s = f if is_formula else v
+                if not isinstance(s, str) or not pat.search(s):
                     continue
-                if (repl in v) if match_case else (repl.lower() in v.lower()):
+                if (repl in s) if match_case else (repl.lower() in s.lower()):
                     skipped += 1
                     continue
-                ws.Cells(r0 + i, c0 + j).Value = pat.sub(lambda m: repl, v)
+                cell = ws.Cells(r0 + i, c0 + j)
+                new = pat.sub(lambda m: repl, s)
+                if not is_formula:
+                    cell.Value = new
+                    if _kept_as_text(cell, new):     # 「1番-2」の「番」を消した「1-2」が日付に化けたら文字に戻す
+                        kept.append(cell.Address.replace('$', ''))
+                else:
+                    try:
+                        try:
+                            cell.Formula2 = new
+                        except Exception:
+                            cell.Formula = new
+                    except Exception:
+                        failed.append(cell.Address.replace('$', ''))   # 置き換えると式として成り立たない＝元の式のまま
+                        continue
                 done += 1
         print(f"置換: {ws.Name}!{rng.Address}  '{raw}' → '{repl}'  （{done}セル。置き換え後の「{repl}」を"
               f"もとから含む {skipped} セルは、二重にならないよう飛ばしました）")
+        if failed:
+            print(f"⚠ 置き換えると式として成り立たないので、元の式のまま残したセル: {' '.join(failed[:8])}"
+                  + ("…" if len(failed) > 8 else ""))
+        if kept:
+            print(_KEPT_NOTE + " ".join(kept[:20]) + ("…" if len(kept) > 20 else ""))
         print("（保存はしていません）")
         return True
+    # Excel の Replace は、置き換えた結果を打ち込んだのと同じに読み直す＝「1番-2」から「番」を消すと「1-2」が日付に、
+    # 「No.0012」から「No.」を消すと 12 になる。文字だったセルが文字でなくなったら、置き換え後の文字で書き直す
+    # （write-range の _kept_as_text と同じ・2026-10-28 点検）。--wildcard は置き換え後の字を道具が作れないので見ない
+    watch = []
+    if not getattr(args, 'wildcard', False):
+        for c in hits:
+            try:
+                v = c.Value
+                if isinstance(v, str) and not c.HasFormula:
+                    watch.append((c, v))
+            except Exception:
+                continue
     # 位置で全部渡す（What, Replacement, LookAt, SearchOrder, MatchCase, MatchByte, SearchFormat, ReplaceFormat）。
     # SearchOrder を省くと環境によって MatchCase が届かず、大文字小文字の違うセルまで置き換わる
     rng.Replace(needle, repl, look_at, 1, bool(match_case), True, False, False)
+    kept = []
+    for c, v in watch:
+        if look_at == 1:
+            new = repl if ((v == raw) if match_case else (v.lower() == raw.lower())) else v
+        else:
+            new = re.sub(re.escape(raw), lambda m: repl, v, flags=0 if match_case else re.I)
+        try:
+            if new != v and _kept_as_text(c, new):
+                kept.append(c.Address.replace('$', ''))
+        except Exception:
+            continue
     print(f"置換: {ws.Name}!{rng.Address}  '{needle}' → '{repl}'  （{count}セルにヒット）")
+    if kept:
+        print(_KEPT_NOTE + " ".join(kept[:20]) + ("…" if len(kept) > 20 else ""))
     print("（保存はしていません）")
     return True
 
@@ -3692,11 +3772,9 @@ def cmd_save_as(args):
         target_file, out_arg = rest[0], rest[1]
     else:
         target_file, out_arg = None, rest[0]
-    out = os.path.abspath(out_arg)
-
     FMT = {'.xlsx': 51, '.xlsm': 52, '.xlsb': 50, '.xls': 56,
            '.csv': 6, '.txt': -4158}
-    ext = os.path.splitext(out)[1].lower()
+    ext = os.path.splitext(out_arg)[1].lower()
     if ext not in FMT:
         # 未知拡張子を黙って xlsx にフォールバックすると「中身xlsxの .pdf」等の壊れファイルになる
         print(f"エラー: 対応していない拡張子です: '{ext or '(なし)'}'")
@@ -3704,12 +3782,22 @@ def cmd_save_as(args):
         return False
     fmt = FMT[ext]
 
+    xl, wb = get_workbook(target_file)
+    # 名前だけ（新名.xlsx）・相対のパスは、そのブックのフォルダに置く（前は道具のフォルダ python_scripts に保存していた・2026-10-28 点検）。
+    # 未保存のブック（フォルダが無い）は今まで通りカレントから
+    base_dir = ''
+    if not os.path.isabs(out_arg):
+        try:
+            base_dir = str(wb.Path or '')
+        except Exception:
+            base_dir = ''
+    out = os.path.abspath(os.path.join(base_dir, out_arg) if base_dir else out_arg)
+
     if os.path.exists(out) and not getattr(args, 'overwrite', False):
         print(f"エラー: 出力先が既に存在します: {out}")
         print("  上書きするなら --overwrite を付けてください。")
         return False
 
-    xl, wb = get_workbook(target_file)
     try:
         old_full = wb.FullName
     except Exception:
