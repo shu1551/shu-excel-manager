@@ -600,6 +600,9 @@ def _agent_backup(wb, ws, sheet, request, run_id=None):
         wb.SaveCopyAs(path)
     except Exception as ex:
         print(f"⚠ 控えを作れませんでした（--undo で戻せません）: {ex}")
+        # 直前の覚書は前の走行のまま残る＝そのまま --undo すると前の控えに戻り、その後の変更（人の手直しも）が黙って消える。
+        # 「この後に控えなしの走行があった」印を付け、--undo を --force 無しでは止める（2026-10-28 点検）
+        _mark_undo_stale(f"控えを取れなかった agent の走行「{(request or '')[:40]}」", str(wb.Name))
         return None
     meta = {'book': str(wb.Name), 'sheet': sheet, 'sheets': [sheet], 'path': path,
             'request': (request or '')[:300], 'time': time.strftime('%Y-%m-%d %H:%M:%S'),

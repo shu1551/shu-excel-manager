@@ -7203,3 +7203,20 @@ def test_values_starting_with_a_dash_reach_the_tool_as_values():
     # '-' で始まらない値は今まで通り分けて渡す
     _l, toks = va._action_to_tokens({"op": "validation", "range": "A1:A9", "list": ["相談中", "受注済み"]}, "S")
     assert toks[-2:] == ["--list", "相談中,受注済み"]
+
+
+def test_a_run_whose_backup_failed_blocks_undo_to_the_previous_backup(tmp_path, monkeypatch):
+    """控えを取れなかった走行の後、直前の覚書は前の走行のまま＝ --undo が前の控えに戻り、その後の変更を黙って消していた（2026-10-28 点検）。"""
+    import vbam_undo as vu
+    monkeypatch.setattr(vu, "_LAST_AGENT_UNDO_FILE", str(tmp_path / "undo.json"))
+    monkeypatch.setattr(vu, "BACKUP_DIR", str(tmp_path / "bk"))
+    vu._save_undo_meta({'book': '名簿.xlsx', 'sheet': '名簿', 'sheets': ['名簿'], 'path': 'old.xlsx', 'time': '2026-10-28 09:00:00'})
+
+    def fail(path):
+        raise OSError("ディスクがいっぱい")
+    wb = type("WB", (), {"Name": "名簿.xlsx", "SaveCopyAs": staticmethod(fail)})()
+    assert vu._agent_backup(wb, None, '名簿', '重複を消して') is None
+    meta = vu._load_undo_meta()
+    assert meta['path'] == 'old.xlsx' and '控えを取れなかった' in meta.get('stale', '')
+    # 印があれば --undo は止まる（--force で越える）
+    assert vu.undo_agent() is False
