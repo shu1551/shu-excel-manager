@@ -53,6 +53,8 @@
   （`--force` のような名前が強行の印に化けないように）
 - **delete-control が控え無しで消していた。** `form_tool.py delete-control` は、フォームの退避に失敗しても「退避なしで続行」と出してコントロールを消していました
   （`backup_form` の約束は「退避できなければ中止」）。`scale` と同じく止め、強行は `--force` にしました。フォームの退避も同じ秒の 2 本目で上書きしないようにしました
+- **build-sheet --ask が AI の一言で人のシートを消していた。** AI に書かせた設計図に `"overwrite": true` があると、中身のあるシートを控え無しに `Cells.Clear` していました
+  （agent の build は 2026-09-04 に塞いでいた）。`--ask` のときは設計図の overwrite を数えず、消すのは人の `--overwrite` だけにしました。人が書いた設計図ファイルの overwrite は今まで通りです
 
 ## 直し（2026-10-28）— Python 3.13 以前で vba_manager.py が起動しなかった欠陥
 
