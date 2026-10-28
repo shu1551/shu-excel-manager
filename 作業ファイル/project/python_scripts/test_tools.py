@@ -6585,3 +6585,15 @@ def test_numbers_of_16_digits_or_more_are_written_as_text():
     assert vm._coerce_cell("-1234567890123456") == "-1234567890123456"
     assert vm._coerce_cell("123456789012345") == 123456789012345          # 15 桁までは今まで通り数
     assert vm._coerce_cell("42") == 42 and vm._coerce_cell("007") == "007"
+
+
+def test_a_backslash_string_inside_an_excel_formula_survives_the_splitter():
+    """=SUBSTITUTE(A1,"\\","/") を Excel の書き方（"" で引用符）で渡すと、\\" を引用符と読んで =SUBSTITUTE(A1,"",/) に化け、
+    後ろの「C1 次」まで値に飲み込んでいた（2026-10-28 点検）。"""
+    from vbam_core import split_command_line as sp
+    assert sp(r'write-cells B1 "=SUBSTITUTE(A1,""\"",""/"")" C1 次') == \
+        ['write-cells', 'B1', '=SUBSTITUTE(A1,"\\","/")', 'C1', '次']
+    assert sp(r'write-cells B1 "=A1&""\"""') == ['write-cells', 'B1', '=A1&"\\"']
+    # JSON の書き方（\" が引用符）は今まで通り
+    assert sp(r'grep "Like \"function *\"" --module X') == ['grep', 'Like "function *"', '--module', 'X']
+    assert sp(r'open "C:\data\" x') == ['open', 'C:\\data\\', 'x']

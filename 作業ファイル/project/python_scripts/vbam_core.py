@@ -2295,6 +2295,13 @@ def split_command_line(line):
                 # \" は " 1 つ（JSON に慣れた AI の書き方・2026-09-24 台帳: grep "Like \"function *\"" が切れて 0 秒で落ちた）。
                 # ただし直後が空白・行末の \" は、\ で終わるパス（"C:\out\"）の閉じとして読む
                 if line[i] == '\\' and i + 1 < n and line[i + 1] == '"' and i + 2 < n and not line[i + 2].isspace():
+                    # \"" の後ろに文字が続くなら、\ はそのまま・"" は " 1 つ（Excel の式の "\"＝=SUBSTITUTE(A1,""\"",""/"")）。
+                    # \" を引用符と読むと、式が =SUBSTITUTE(A1,"",/) に化けて後ろの引数まで飲み込んでいた（2026-10-28 点検）。
+                    # \"" の後ろが空白・行末なら JSON の書き方（\" が " 1 つ、最後の " で閉じる）
+                    if line[i + 2] == '"' and i + 3 < n and not line[i + 3].isspace():
+                        cur.append('\\')
+                        i += 1
+                        continue
                     cur.append('"')
                     i += 2
                     continue
