@@ -1975,17 +1975,17 @@ def _content_findings(values, formulas, r0, c0, formulas_r1c1=None):
     if body_idx:
         blanks_all = []
         meaningful_blanks = set()
-        # 返却日・返却担当など未記入の段の検出
-        for j in range(width):
-            h_str = str(head(j) or "")
-            if "返却" in h_str:
-                ret_cols = [k for k in range(width) if "返却" in str(head(k) or "")]
-                if len(ret_cols) >= 2:
-                    for i in body_idx:
-                        if all(_is_blank_value(rows[i][k]) for k in ret_cols):
-                            for k in ret_cols:
-                                meaningful_blanks.add(addr(i, k))
-                break
+        # 未記入の段の検出（返却日・返却担当／承認日・承認者など、見出しの頭の語が同じ列の組がそろって空）
+        # 2026-10-29: 「返却」の決め打ち（10/24 試験の貸出簿の語）を止め、materials の気づき（vbam_view.dirt_notes）と同じ基準にそろえた
+        from vbam_view import _head_prefix_groups
+        for _key, cols in _head_prefix_groups([head(j) for j in range(width)]):
+            empty = [i for i in body_idx if all(_is_blank_value(rows[i][k]) for k in cols)]
+            full = [i for i in body_idx if not any(_is_blank_value(rows[i][k]) for k in cols)]
+            if not empty or len(full) < 2 or len(full) * 2 < len(body_idx):
+                continue
+            for i in empty:
+                for k in cols:
+                    meaningful_blanks.add(addr(i, k))
 
         for j in range(width):
             h = head(j)
