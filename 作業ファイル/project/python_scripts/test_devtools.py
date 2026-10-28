@@ -886,3 +886,68 @@ def test_restore_after_register_makes_excel_visible_and_reopens_book(tmp_path):
     assert xl.ScreenUpdating is True and xl.EnableEvents is True
     assert [b.Name for b in xl.Workbooks] == ["秀コンボ.xlsm"]
     assert xl.Workbooks("秀コンボ.xlsm").active
+
+
+class _FakeTab:
+    def __init__(self):
+        self.ColorIndex, self.Color = -4142, 0
+
+
+class _FakeSheet:
+    def __init__(self, wb, code, name, visible=-1):
+        self._wb, self.CodeName, self.Name, self.Visible = wb, code, name, visible
+        self.Tab, self.ProtectContents = _FakeTab(), False
+
+    @property
+    def Index(self):
+        return self._wb._sheets.index(self) + 1
+
+    def Move(self, Before=None):
+        self._wb._sheets.remove(self)
+        self._wb._sheets.insert(self._wb._sheets.index(Before), self)
+
+    def Delete(self):
+        self._wb._sheets.remove(self)
+
+    def Unprotect(self):
+        self.ProtectContents = False
+
+
+class _FakeBook:
+    def __init__(self):
+        self._sheets, self.Application = [], type('A', (), {'DisplayAlerts': True})()
+
+    @property
+    def Sheets(self):
+        wb = self
+
+        class _S(list):
+            def __call__(self, i):
+                return wb._sheets[i - 1]
+        return _S(self._sheets)
+
+
+def test_undo_restores_sheet_layout_20261029():
+    """agent --undo がシートの名前・並び・増えたシート・表示・保護を戻す（2026-10-29 072: 名前を変える・写す・並べ替える棚が戻らなかった）"""
+    import vbam_undo as u
+    wb = _FakeBook()
+    wb._sheets = [_FakeSheet(wb, 'Sheet1', '売上表'), _FakeSheet(wb, 'Sheet2', '月次'), _FakeSheet(wb, 'Sheet3', 'メモ', 0)]
+    layout = u._sheet_layout(wb)
+    assert [e['name'] for e in layout] == ['売上表', '月次', 'メモ']
+    # 棚が名前を変え・写し・名前順に並べ・隠したシートを出し・保護した
+    wb._sheets[0].Name = '売上'
+    wb._sheets.insert(1, _FakeSheet(wb, 'Sheet4', '売上 (2)'))
+    wb._sheets.reverse()
+    wb._sheets[0].Visible = -1
+    wb._sheets[1].ProtectContents = True
+    u._restore_layout(wb, layout)
+    assert [(s.Name, s.Visible, s.ProtectContents) for s in wb._sheets] == [('売上表', -1, False), ('月次', -1, False), ('メモ', 0, False)]
+    assert wb.Application.DisplayAlerts is True
+
+
+def test_undo_layout_skipped_without_code_names_20261029():
+    """コード名が読めないブックでは並びを控えない（戻すときの目印が無い）"""
+    import vbam_undo as u
+    wb = _FakeBook()
+    wb._sheets = [_FakeSheet(wb, '', 'Sheet1')]
+    assert u._sheet_layout(wb) == []
