@@ -549,11 +549,12 @@ def cmd_pivot(args):
                 except Exception as ex:
                     # 禁止文字(/ 等)・31文字超で失敗すると無名シートが残骸になる
                     print(f"エラー: シート名 '{sheet_opt}' を設定できません: {ex}")
+                    prev_alerts = xl.DisplayAlerts
                     xl.DisplayAlerts = False
                     try:
                         dws.Delete()
                     finally:
-                        xl.DisplayAlerts = True
+                        xl.DisplayAlerts = prev_alerts  # 前の値に戻す（無条件に True へ戻すと、呼び出し元が切っていた設定まで変える＝_alerts_off と同じ・2026-10-28 点検）
                     return False
             dest = dws.Range(at) if at else dws.Range("A3")
         elif at:
@@ -642,11 +643,12 @@ def cmd_pivot(args):
                 print("  データモデルのピボットは テーブル名.列名（例 T売上.地域）、値は --measures メジャー名（datamodel list で確認）。")
             try:
                 if created_sheet is not None:
+                    prev_alerts = xl.DisplayAlerts
                     xl.DisplayAlerts = False
                     try:
                         created_sheet.Delete()
                     finally:
-                        xl.DisplayAlerts = True
+                        xl.DisplayAlerts = prev_alerts
                     print("  作成途中のシート（このコマンドが作ったもの）は片づけました。")
                 elif pt is not None:
                     # TableRange2 はこのピボット自身の出力範囲。作成途中の空ピボットを
@@ -2023,11 +2025,12 @@ def cmd_powerquery(args):
                     except Exception as ex:
                         # 禁止文字(/ 等)・31文字超で失敗すると無名シートが残骸になる
                         print(f"エラー: シート名 '{sheet_name}' を設定できません: {ex}")
+                        prev_alerts = xl.DisplayAlerts
                         xl.DisplayAlerts = False
                         try:
                             ws.Delete()
                         finally:
-                            xl.DisplayAlerts = True
+                            xl.DisplayAlerts = prev_alerts
                         return False
             else:
                 ws = wb.ActiveSheet
@@ -2072,13 +2075,14 @@ def cmd_powerquery(args):
                 except Exception:
                     pass
                 if created_ws is not None:
+                    prev_alerts = xl.DisplayAlerts
                     xl.DisplayAlerts = False
                     try:
                         created_ws.Delete()
                     except Exception:
                         pass
                     finally:
-                        xl.DisplayAlerts = True
+                        xl.DisplayAlerts = prev_alerts
                 print("  追加途中のテーブル・接続は片づけました。")
                 return False
             # リネームの失敗を握りつぶすと、成功メッセージだけ出て

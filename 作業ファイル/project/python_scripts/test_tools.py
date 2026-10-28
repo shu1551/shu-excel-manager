@@ -6420,3 +6420,58 @@ def test_sheet_add_and_copy_see_names_that_differ_only_in_case(monkeypatch, caps
     assert "シート 'Data' があるので 'data' は作れません" in capsys.readouterr().out
     assert cmd(mk("copy", "Data", "DATA")) is False
     assert "大文字と小文字を区別しません" in capsys.readouterr().out
+
+
+def test_code_replace_refuses_characters_vbe_cannot_hold(monkeypatch, capsys):
+    """VBE は CP932 でコードを持つ。code-replace だけ検査が無く、— ✓ 絵文字が ReplaceLine で黙って「?」に化けていた（2026-10-28 点検）。"""
+    import inspect
+    import vbam_vba as vv
+
+    class CM:
+        def __init__(self):
+            self.lines = ['Sub 終わり()', '    MsgBox "完了"', 'End Sub']
+            self.replaced = []
+
+        CountOfLines = property(lambda s: len(s.lines))
+
+        def Lines(self, a, n):
+            return '\r\n'.join(self.lines[a - 1:a - 1 + n])
+
+        def ReplaceLine(self, i, t):
+            self.replaced.append((i, t))
+            self.lines[i - 1] = t
+
+    cm = CM()
+    comp = type("C", (), {"Name": "Module1", "CodeModule": cm})()
+    wb = type("WB", (), {"VBProject": type("P", (), {"VBComponents": [comp]})(), "FullName": "x.xlsm",
+                         "Save": lambda self: None})()
+    monkeypatch.setattr(vv, "get_workbook", lambda t=None, **k: (None, wb))
+    monkeypatch.setattr(vv, "make_backup", lambda *a, **k: "bk")
+    monkeypatch.setattr(vv, "make_module_backup", lambda *a, **k: "bk")
+    cmd = inspect.unwrap(vv.cmd_code_replace)
+    mk = lambda new, force=False: type("A", (), {"posargs": ["完了", new], "needle_file": None, "repl_file": None,
+                                                 "regex": False, "module_opt": None, "yes": True, "force": force})()
+    assert cmd(mk("完了✓")) is False
+    out = capsys.readouterr().out
+    assert "CP932" in out and "✓" in out and cm.replaced == []
+    assert cmd(mk("完了！")) is True                          # CP932 で書ける文字は今まで通り
+    assert cm.replaced == [(2, '    MsgBox "完了！"')]
+
+
+def test_display_alerts_is_put_back_to_its_previous_value():
+    """DisplayAlerts は前の値に戻す（無条件に True へ戻すと、呼び出し元が切っていた設定まで変える＝_alerts_off の説明・2026-10-28 点検）。
+    無条件に True へ戻してよいのは、人のマクロを走らせた後（マクロが False のまま落ちることがある）の run-macro と test だけ。"""
+    import glob
+    import re as _re
+    here = os.path.dirname(os.path.abspath(__file__))
+    bad = []
+    for path in sorted(glob.glob(os.path.join(here, "vbam_*.py"))):
+        func = None
+        with open(path, encoding="utf-8") as f:
+            for n, line in enumerate(f, 1):
+                m = _re.match(r"def (\w+)", line)
+                if m:
+                    func = m.group(1)
+                if _re.search(r"\.DisplayAlerts\s*=\s*True\b", line) and func not in ("cmd_run_macro", "cmd_test"):
+                    bad.append(f"{os.path.basename(path)}:{n} ({func})")
+    assert bad == []

@@ -2658,6 +2658,50 @@ def test_undo_restores_formulas_so_they_do_not_become_external_links():
     assert "_restore_formulas(ws, addr, src_snap)" in src and "_drop_backup_link(wb, path)" in src
 
 
+def test_undo_restores_spilling_formulas_through_formula2():
+    """控えの式を入れ直すとき、.Formula で書くと FILTER などに @ が付き 1 セルに潰れる。Formula2 で写せていればそれで書く（2026-10-28 点検）。"""
+    import vbam_agent as va
+
+    class Cell:
+        def __init__(self, ws, key):
+            self.ws, self.key, self.Row, self.Column = ws, key, 1, 1
+
+        @property
+        def Formula2(self):
+            return self.ws.cur
+
+        @Formula2.setter
+        def Formula2(self, v):
+            self.ws.writes.append(("Formula2", self.key, v))
+
+        @property
+        def Formula(self):
+            return self.ws.cur
+
+        @Formula.setter
+        def Formula(self, v):
+            self.ws.writes.append(("Formula", self.key, v))
+
+    class Ws:
+        def __init__(self, cur):
+            self.cur, self.writes = cur, []
+
+        def Range(self, a, b=None):
+            return Cell(self, a)
+
+        def Cells(self, r, c):
+            return Cell(self, (r, c))
+
+    ws = Ws("=FILTER('C:\\b\\[控え.xlsx]明細'!A2:A9,'C:\\b\\[控え.xlsx]明細'!B2:B9>0)")
+    snap = {'formulas': [["=@FILTER(明細!A2:A9,明細!B2:B9>0)"]], 'formulas2': [["=FILTER(明細!A2:A9,明細!B2:B9>0)"]]}
+    assert va._restore_formulas(ws, "A1", snap) is True
+    assert ws.writes == [("Formula2", (1, 1), "=FILTER(明細!A2:A9,明細!B2:B9>0)")]
+    # Formula2 の無い Excel（formulas2 を写せなかった）は従来どおり .Formula
+    ws_old = Ws("='C:\\b\\[控え.xlsx]明細'!B2")
+    assert va._restore_formulas(ws_old, "A1", {'formulas': [["=明細!B2"]]}) is True
+    assert ws_old.writes == [("Formula", (1, 1), "=明細!B2")]
+
+
 def test_formula_blocks_rewrite_only_formula_cells_and_fold_them_into_rectangles_20260923():
     """undo の入れ直しは数式のセルだけ・長方形に畳んで COM の書き込みを減らす（純 Python）。"""
     import vbam_undo as vu
