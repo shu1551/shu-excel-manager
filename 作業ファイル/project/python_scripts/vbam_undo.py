@@ -640,11 +640,34 @@ def _sheet_layout(wb):
     return out
 
 
-def _restore_layout(wb, layout):
+def _keep_sheets_before_delete(xl, sheets, keep_dir, book):
+    """消す前のシートを別のブックに写して keep_dir に保存する → 保存先のパス（取れなければ None）。
+    控えの後に人が手で足したシートも「増えたシート」に入り、控えに無いので --undo では戻らなかった（2026-10-29 総点検 3）"""
+    if not sheets or not keep_dir:
+        return None
+    nb = None
+    try:
+        nb = xl.Workbooks.Add()
+        for sh in sheets:
+            sh.Copy(None, nb.Sheets(nb.Sheets.Count))
+        stem = os.path.splitext(str(book))[0]
+        p = os.path.join(keep_dir, f"{stem}_undoで消したシート_{time.strftime('%Y%m%d_%H%M%S')}.xlsx")
+        nb.SaveAs(os.path.abspath(p), 51)
+        return p
+    except Exception:
+        return None
+    finally:
+        if nb is not None:
+            with contextlib.suppress(Exception):
+                nb.Close(False)
+
+
+def _restore_layout(wb, layout, keep_dir=None):
     """控えを取ったときのシートの並びに戻す → 報告の行（2026-10-29）。
     072: 棚の「シート名を売上にして」「このシートをコピーして」「シートを名前順に並べて」が agent --undo で戻らなかった
     （戻しは同じ名前のシートに中身を貼り戻すだけで、名前・並び・増えたシートは見ていなかった）。
-    名前・表示・タブの色・並びを戻し、控えの後に増えたシートは消す。後から付いた保護（パスワードなし）は外す"""
+    名前・表示・タブの色・並びを戻し、控えの後に増えたシートは消す（keep_dir があれば、消す前に写しをそこへ保存する）。
+    後から付いた保護（パスワードなし）は外す"""
     lines = []
     if not layout:
         return lines
@@ -664,6 +687,21 @@ def _restore_layout(wb, layout):
             with contextlib.suppress(Exception):
                 sh.Visible = -1
     xl = wb.Application
+    added = [sh for code, sh in by_code.items() if code not in want]
+    if added and keep_dir:
+        alerts = None
+        try:
+            alerts = bool(xl.DisplayAlerts)
+            xl.DisplayAlerts = False
+            kept = _keep_sheets_before_delete(xl, added, keep_dir, wb.Name)
+        finally:
+            if alerts is not None:
+                with contextlib.suppress(Exception):
+                    xl.DisplayAlerts = alerts
+        if kept:
+            lines.append(f"消す前に増えたシートの写しを取りました（人が足したシートなら、ここから戻せます）: {kept}")
+        else:
+            lines.append("⚠ 増えたシートの写しを取れませんでした（消したシートは --undo では戻りません）")
     for code, sh in list(by_code.items()):
         if code not in want:
             nm = str(sh.Name)
@@ -1380,8 +1418,21 @@ def undo_agent(target_file=None, dry_run=False, force=False, which=None):
               "そのブックを開いてアクティブにしてから、もう一度 --undo してください")
         return False
     layout = meta.get('layout') or []
+    # 戻す先のシートがそろっているかを、何かを変える前に確かめる（前はシートを消して名前を戻した後で「ありません」と止まり、
+    # 半端な状態が残っていた・2026-10-29 総点検 3）。名前を変えられたシートは、控えのコード名から戻せるので数に入れる
+    if layout:
+        now_codes, now_names = set(), set()
+        for sh in list(wb.Sheets):
+            now_names.add(str(sh.Name))
+            with contextlib.suppress(Exception):
+                now_codes.add(str(sh.CodeName or ''))
+        restorable = {e['name'] for e in layout if e.get('code') in now_codes}
+        missing0 = [s for s in sheets if s not in now_names and s not in restorable]
+        if missing0:
+            print(f"エラー: シート {'・'.join(missing0)} がこのブックにありません（消した？）。何も変えていません")
+            return False
     if layout and not dry_run:
-        for ln in _restore_layout(wb, layout):       # 名前・並び・増えたシートを先に戻す（同じ名前のシートに貼り戻すため）
+        for ln in _restore_layout(wb, layout, keep_dir=os.path.dirname(os.path.abspath(path))):   # 名前・並び・増えたシートを先に戻す（同じ名前のシートに貼り戻すため）
             print("  " + ln)
     have_sheets = [sh.Name for sh in wb.Sheets]
     missing = [s for s in sheets if s not in have_sheets]
