@@ -4839,19 +4839,13 @@ Sub 横持ちの表をクエリで縦持ちにする(Optional ByVal 勇退 As Boolean = True)
     ' クエリ追加
     wb.Queries.Add qName, mCode
 
-    ' 既存シートを削除
-    Application.DisplayAlerts = False
-    For Each ws2 In wb.Sheets
-        If ws2.Name = sheetName Then
-            ws2.Delete
-            Exit For
-        End If
-    Next ws2
-    Application.DisplayAlerts = True
+    ' 同じ名前の人のシートは消さない（棚が作ったシートなら作り直し・人のシートなら (2) を付けて別に作る＝下請けの 棚のシート名・2026-10-28 点検）
+    sheetName = 表の整理_下請け.棚のシート名(wb, sheetName)
 
     ' 新シート追加
     Set destWs = wb.Sheets.Add(after:=wb.Sheets(wb.Sheets.Count))
     destWs.Name = sheetName
+    表の整理_下請け.棚のシートの印 destWs
 
     ' ListObject でクエリを読み込む
     Set newLo = destWs.ListObjects.Add( _
@@ -5491,15 +5485,8 @@ FoundMaster:
     Next qExist
     On Error GoTo 0
 
-    Application.DisplayAlerts = False
-    On Error Resume Next
-    Set wsExist = wb.Worksheets(destSheetName)
-    If Not wsExist Is Nothing Then
-        wsExist.Delete
-        Set wsExist = Nothing
-    End If
-    On Error GoTo 0
-    Application.DisplayAlerts = True
+    ' 同じ名前の人のシートは消さない（棚が作ったシートなら作り直し・人のシートなら (2) を付けて別に作る＝下請けの 棚のシート名・2026-10-28 点検）
+    destSheetName = 表の整理_下請け.棚のシート名(wb, destSheetName)
 
     On Error Resume Next
     wb.Queries.Add Name:=qryName, Formula:=mFormula
@@ -5507,6 +5494,7 @@ FoundMaster:
 
     Set wsDest = wb.Worksheets.Add(after:=wb.Worksheets(wb.Worksheets.Count))
     wsDest.Name = destSheetName
+    表の整理_下請け.棚のシートの印 wsDest
 
     connStr = "OLEDB;Provider=Microsoft.Mashup.OleDb.1;Data Source=$Workbook$;Location=" & qryName & ";Extended Properties="""""
     On Error Resume Next
@@ -5686,18 +5674,12 @@ Sub 選んだ2列で構成比ピボットを作る(Optional ByVal 勇退 As Boolean = True)
     ' 新シート名
     sheetName = シート名にできる字(itemHeader & "別構成比")
 
-    ' 既存シート削除
-    Application.DisplayAlerts = False
-    For Each ws2 In wb.Worksheets
-        If ws2.Name = sheetName Then
-            ws2.Delete
-            Exit For
-        End If
-    Next ws2
-    Application.DisplayAlerts = True
+    ' 同じ名前の人のシートは消さない（棚が作ったシートなら作り直し・人のシートなら (2) を付けて別に作る＝下請けの 棚のシート名・2026-10-28 点検）
+    sheetName = 表の整理_下請け.棚のシート名(wb, sheetName)
 
     Set ptSheet = wb.Worksheets.Add(after:=ws)
     ptSheet.Name = sheetName
+    表の整理_下請け.棚のシートの印 ptSheet
 
     On Error Resume Next
     Set pc = wb.PivotCaches.Create(SourceType:=xlDatabase, SourceData:=srcRange)
@@ -6177,15 +6159,8 @@ Sub 選んだ3列でクエリ月別集計を作る(Optional ByVal 勇退 As Boolean = True)
         End If
     Next q
 
-    Application.DisplayAlerts = False
-    Dim wsDel As Worksheet
-    For Each wsDel In wb.Sheets
-        If wsDel.Name = sheetName Then
-            wsDel.Delete
-            Exit For
-        End If
-    Next wsDel
-    Application.DisplayAlerts = True
+    ' 同じ名前の人のシートは消さない（棚が作ったシートなら作り直し・人のシートなら (2) を付けて別に作る＝下請けの 棚のシート名・2026-10-28 点検）
+    sheetName = 表の整理_下請け.棚のシート名(wb, sheetName)
 
     Dim nl As String
     nl = Chr(10)
@@ -6210,6 +6185,7 @@ Sub 選んだ3列でクエリ月別集計を作る(Optional ByVal 勇退 As Boolean = True)
     Dim newWs As Worksheet
     Set newWs = wb.Sheets.Add(after:=wb.Sheets(wb.Sheets.Count))
     newWs.Name = sheetName
+    表の整理_下請け.棚のシートの印 newWs
 
     Dim connStr As String
     connStr = "OLEDB;Provider=Microsoft.Mashup.OleDb.1;Data Source=$Workbook$;Location=" & qryName
@@ -6555,15 +6531,9 @@ Sub 同じ見出しの表をクエリで集計する()
     Next q
     On Error GoTo 0
 
-    ' 既存シート削除
-    Dim ws As Object
-    For Each ws In wb.Sheets
-        If ws.Name = wsNewName Then
-            ws.Delete
-            Exit For
-        End If
-    Next ws
     Application.DisplayAlerts = True
+    ' 同じ名前の人のシートは消さない（棚が作ったシートなら作り直し・人のシートなら (2) を付けて別に作る＝下請けの 棚のシート名・2026-10-28 点検）
+    wsNewName = 表の整理_下請け.棚のシート名(wb, wsNewName)
 
     ' 同じ見出しのテーブルを全シートから収集
     Dim tableNames() As String
@@ -6642,6 +6612,7 @@ NextLO:
     Dim wsNew As Worksheet
     Set wsNew = wb.Sheets.Add(after:=wb.Sheets(wb.Sheets.Count))
     wsNew.Name = wsNewName
+    表の整理_下請け.棚のシートの印 wsNew
 
     Dim loNew As ListObject
     Set loNew = wsNew.ListObjects.Add( _
