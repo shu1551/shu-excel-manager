@@ -957,7 +957,7 @@ def _delete_created(xl, wb, items):
         try:
             if kind == 'pivot':
                 from vbam_heavy import _find_pivot
-                _psh, pt = _find_pivot(wb, name)
+                _psh, pt = _find_pivot(wb, name, sh)       # 作ったシートの中だけ（別のシートの同名ピボットを消さない）
                 if pt is None:
                     continue
                 pt.TableRange2.Clear()
