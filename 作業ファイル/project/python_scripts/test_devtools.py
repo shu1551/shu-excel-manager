@@ -729,6 +729,17 @@ def test_report_write_result_error_and_hash_detection(capsys):
     out = capsys.readouterr().out
     assert "⚠ 【表示崩れ】列幅不足により '###' 表示になっているセルがあります: 1件 （C1(幅不足)）" in out
 
+    # 4. 1 セルだけ書いたときの SpecialCells はシート全体に化ける。書いていない所のエラーは数えない（2026-10-28 点検）
+    elsewhere = DummyCell("$Z$9", "#N/A")
+    r_one = DummyRange([DummyCell("$A$1", "100")], errors=[elsewhere])
+    ve._report_write_result(None, r_one)
+    out = capsys.readouterr().out
+    assert "要修正" not in out
+    r_one_err = DummyRange([DummyCell("$A$1", "#REF!")], errors=[elsewhere, DummyCell("$A$1", "#REF!")])
+    ve._report_write_result(None, r_one_err)
+    out = capsys.readouterr().out
+    assert "数式エラーがあります: 1件 （A1=#REF!）" in out
+
 
 # ================================================================
 # unstick（Excel の詰まり判定テスト）

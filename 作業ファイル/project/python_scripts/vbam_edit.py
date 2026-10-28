@@ -468,10 +468,20 @@ def _report_write_result(ws, rng):
     n_err = 0
     err_samples = []
     spill_cells = []
+    # 単セルの SpecialCells は使用範囲全体に化ける（write-cells と同じ）。書いていない所のエラーを
+    # 「書き込み結果」と言うと AI が関係ないセルを直しに行くので、そのセルだけを数える（2026-10-28 点検）
+    single = None
+    try:
+        if int(rng.Cells.CountLarge) == 1:
+            single = next(iter(rng.Cells)).Address
+    except Exception:
+        single = None
     for typ in (-4123, 2):          # xlCellTypeFormulas / xlCellTypeConstants
         try:
             sp = rng.SpecialCells(typ, 16)   # 16 = xlErrors
             for c in sp:
+                if single is not None and c.Address != single:
+                    continue
                 n_err += 1
                 try:
                     txt0 = str(c.Text or '')

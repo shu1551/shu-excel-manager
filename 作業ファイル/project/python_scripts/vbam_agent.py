@@ -1479,7 +1479,7 @@ def _stop_rest(results, actions, idx):
 # 「どこまで書けたか」を AI が追えない。
 # ----------------------------------------------------------------
 
-_OVERWRITE_OPS = ('write_cells', 'write_grid')
+_OVERWRITE_OPS = ('write_cells', 'write_grid', 'copy_range')   # copy_range は 2026-10-28 点検で足した（コピー先の人の値を黙って上書きできた）
 _OVERWRITE_SHOW = 8            # エラー文に並べる番地の数
 _OVERWRITE_MARK = 'もとからある値が'      # 門で止めた結果の目印（往復の枠を 1 回足すため）
 
@@ -1505,7 +1505,7 @@ def _cell_taken(cur, new_text):
 
 
 def _overwrite_hits(act, sheet, wb):
-    """write_cells / write_grid の書き先にある「人の値」の番地。空なら書いてよい（COM は 1〜2 回）。"""
+    """write_cells / write_grid / copy_range の書き先にある「人の値」の番地。空なら書いてよい（COM は 1〜2 回）。"""
     op = str((act or {}).get('op') or '')
     if op not in _OVERWRITE_OPS or not isinstance(act, dict) or act.get('overwrite') or wb is None:
         return []
@@ -1523,6 +1523,28 @@ def _overwrite_hits(act, sheet, wb):
                 continue
             if _cell_taken(cur, _cell_text(v)) and not _own_has(target, a):    # 自分が書いたセルは人の値ではない
                 hits.append(str(a).replace('$', ''))
+        return hits
+    if op == 'copy_range':
+        sbox = _range_box(act.get('src'))
+        dst = _a1_to_rc(str(act.get('dst') or '').replace('$', '').split(':')[0])
+        if not sbox or not dst:
+            return []
+        r1, c1, r2, c2 = sbox
+        tr, tc = dst
+        try:
+            src = _rows_of(ws.Range(f"{_col_letter(c1)}{r1}:{_col_letter(c2)}{r2}").Formula)
+            cur = _rows_of(ws.Range(f"{_col_letter(tc)}{tr}:{_col_letter(tc + c2 - c1)}{tr + r2 - r1}").Formula)
+        except Exception:
+            return []
+        for i, line in enumerate(cur):
+            for j, f in enumerate(line):
+                a = f"{_col_letter(tc + j)}{tr + i}"
+                try:
+                    new = src[i][j]
+                except (IndexError, TypeError):
+                    new = None
+                if _cell_taken(f, new) and not _own_has(target, a):
+                    hits.append(a)
         return hits
     rows = act.get('rows')
     if not isinstance(rows, list) or not rows:
@@ -1580,6 +1602,11 @@ _APPROVAL_NEG = re.compile(r'^(はいけ|はだめ|はダメ|は駄目|はいや
 _APPROVAL_WORDS = re.compile(r'上書き(可|OK|ＯＫ)|削除(可|OK|ＯＫ)|置換(可|OK|ＯＫ)|承認します|承認済|許可します|直接書い')
 _APPROVAL_ANSWER = re.compile(r'^\s*(はい|うん|ええ|OK|ＯＫ|お願い|進めて|やって|それで|いいよ|いいです|大丈夫|問題ない|了解|承知|'
                               r'どうぞ|頼む|続けて|全部)')
+# 「消してもいいのかな」「削除していいか教えて」は人が聞いている＝承認ではない（2026-10-28 点検）。許可の語の直後が問いなら数えない
+_APPROVAL_QUESTION = re.compile(r'^\s*(?:です|でしょう|んです|のです|の|ん)?\s*(?:か(?!ら)|\?|？)')
+# 返事の中の断り（「それでは困る」「全部消さないで」「うん、でも消さないで」）。「問題ない」「構わない」は断りではないので先に除く
+_APPROVAL_REFUSE = re.compile(r'ない|ません|だめ|ダメ|駄目|困|やめ|止め|いや|嫌|待って|まって|違|いいえ|ストップ|中止|保留')
+_APPROVAL_FINE = re.compile(r'問題ない|問題ありません|構わない|構いません|かまわない|かまいません|差し支えない|差し支えありません')
 _APPROVAL_STANDING = 'この手順書が承認'
 _APPROVAL_MARK = '承認の言葉が見つかりません'      # 承認なしで止めた結果の目印（関所として数えるため）
 
@@ -1589,14 +1616,19 @@ def _has_approval(text, answer_mode=False):
     s = str(text or '')
     if not s.strip():
         return False
-    if _APPROVAL_STANDING in s or _APPROVAL_WORDS.search(s):
+    if _APPROVAL_STANDING in s:
         return True
-    if re.search(_APPROVAL_STRONG + _APPROVAL_PERMIT, s) or re.search(_APPROVAL_SOFT + _APPROVAL_PERMIT, s):
-        return True
+    for pat in (_APPROVAL_WORDS, re.compile(_APPROVAL_STRONG + _APPROVAL_PERMIT), re.compile(_APPROVAL_SOFT + _APPROVAL_PERMIT)):
+        for m in pat.finditer(s):
+            if not _APPROVAL_QUESTION.match(s[m.end():m.end() + 8]):
+                return True
     for m in re.finditer(_APPROVAL_STRONG + r'(て|ちゃって)', s):
-        if not _APPROVAL_NEG.match(s[m.end():m.end() + 8]):
+        after = s[m.end():m.end() + 8]
+        if re.match(r'(?:も)?' + _APPROVAL_PERMIT, after):
+            continue                                  # 「消してもいい」の形は上で見た（問いなら承認ではない）
+        if not _APPROVAL_NEG.match(after):
             return True
-    if answer_mode and _APPROVAL_ANSWER.match(s):
+    if answer_mode and _APPROVAL_ANSWER.match(s) and not _APPROVAL_REFUSE.search(_APPROVAL_FINE.sub('', s)):
         return True
     return False
 
@@ -1612,16 +1644,21 @@ def _approval_scope(request):
     return s
 
 
-_APPROVAL_CTX = {'text': '', 'answer': False}        # run_agent が走行のあいだ置く（無人の往復＝1 走行 1 つ）
+_APPROVAL_CTX = {'text': '', 'answer': ''}        # run_agent が走行のあいだ置く（無人の往復＝1 走行 1 つ）
 
 
-def _approval_set(text, answer_mode=False):
+def _approval_set(text, answer=''):
+    """text＝承認の言葉を探す文。answer＝道具の問いへの返事（--cont の補足）。True は text 全体が返事。
+
+    返事の「はい」は返事だけで読む（2026-10-28 点検）。依頼文とつないだ文の先頭で読んでいたので、
+    「はい」が承認にならず、逆に依頼文が「全部」「お願い」で始まると「やめて」も承認になっていた。"""
     _APPROVAL_CTX['text'] = str(text or '')
-    _APPROVAL_CTX['answer'] = bool(answer_mode)
+    _APPROVAL_CTX['answer'] = str(text or '') if answer is True else str(answer or '')
 
 
 def _approved():
-    return _has_approval(_APPROVAL_CTX['text'], _APPROVAL_CTX['answer'])
+    text, answer = _APPROVAL_CTX['text'], _APPROVAL_CTX['answer']
+    return _has_approval(text) or (bool(answer) and _has_approval(answer, answer_mode=True))
 
 
 def _column_space_kind(ws, addr):
@@ -2389,7 +2426,8 @@ def run_agent(request, sheet, wb, ai=_CC_AI, model=None, max_turns=_DEFAULT_MAX_
     採点する（--grade）。既定はその回だけ採点を省く（採点役は別プロセスで 8 秒・2026-09-11 午後）。
 
     approval_text＝承認の言葉を探す文（省略時は依頼文から道具が決める。手順書なら補足だけ）。
-    approval_answer＝その文が道具の問いへの答え（--cont）＝「はい」「お願いします」も承認と読む（2026-09-06 夜）。
+    approval_answer＝道具の問いへの答え（--cont の補足の文）＝「はい」「お願いします」も承認と読む（2026-09-06 夜）。
+        答えだけで読む（2026-10-28）。True は approval_text 全体が答え。
 
     resume に前回の往復（[(role, text) …]）を渡すと、その続きとして回す（--continue）。
     base＝終わりの検査の基準 (エラーセル, ###)。渡さなければ「始める前の材料」から数える（元からある
@@ -3519,7 +3557,7 @@ def _cmd_agent_body(args):
         rest = [" ".join(rest)]          # 後ろの文は補足＝承認の言葉（空でもよい＝「そのまま続けて」）
         # 承認の言葉は元の依頼文＋この答えで探す。答えは道具の問いへの返事なので「はい」も承認（2026-09-06 夜）
         approval_kw = {'approval_text': _approval_scope((resume_meta or {}).get('request')) + ' ' + rest[0],
-                       'approval_answer': True}
+                       'approval_answer': rest[0]}
     req_file = getattr(args, 'request_file', None)
     if req_file:
         # 注文をファイルで受ける（Excelコンボの python エンジンが使う。コマンドラインの引用符事故を避ける）
