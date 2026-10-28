@@ -751,18 +751,33 @@ def _sheet_range(sheet, rng):
     return "'" + str(sheet).replace("'", "''") + "'!" + rng
 
 
+_NAME_KEYS = ('name', 'column', 'field', 'pivot', 'table', 'source', 'style',
+              'fk_table', 'fk_column', 'pk_table', 'pk_column')
+
+
 def _need(act, key, what=None):
     v = act.get(key)
     if v in (None, ''):
         raise ValueError(f"{act.get('op')} {act.get('action')} には {key}（{what or key}）が要ります")
+    if key in _NAME_KEYS and str(v).startswith('-'):
+        # 名前は引数列にそのまま並ぶ＝'-' で始まると argparse がオプションと読む（"--force" が強行の印になる・2026-10-28 点検）
+        raise ValueError(f"{act.get('op')} {act.get('action')} の {key} が '-' で始まっています（{v!r}）。名前は '-' で始めません")
     return str(v)
+
+
+def _kv(opt, v):
+    """オプションと値 → 引数列。値が '-' で始まるときは「--opt=値」の 1 つにする（2026-10-28 点検）。
+    分けて渡すと argparse が値をオプションと読み、入力規則の「-1,0,1」などが「引数の形が違います」で落ちていた
+    （format は前から = の形で渡していた）。"""
+    v = str(v)
+    return [f"{opt}={v}"] if v.startswith('-') else [opt, v]
 
 
 def _opt(toks, act, key, opt=None):
     v = act.get(key)
     # 0 は値（0 == False なので `not in (None, '', False)` だと "decimals": 0 を黙って落としていた・2026-09-10）
     if v is not None and v != '' and v is not False:
-        toks += [opt or ('--' + key.replace('_', '-')), str(v)]
+        toks += _kv(opt or ('--' + key.replace('_', '-')), v)
 
 
 def _values_of(act, key='values'):
@@ -842,15 +857,15 @@ def _heavy_action_to_tokens(act, sheet):
         if measures and not is_model:
             raise ValueError('measures はデータモデルのピボット（"model": true）だけ')
         if rows:
-            toks += ['--rows', rows]
+            toks += _kv('--rows', rows)
         if cols:
-            toks += ['--cols', cols]
+            toks += _kv('--cols', cols)
         if filters:
-            toks += ['--filter', filters]
+            toks += _kv('--filter', filters)
         if values:
-            toks += ['--values', values]
+            toks += _kv('--values', values)
         if measures:
-            toks += ['--measures', measures]
+            toks += _kv('--measures', measures)
         f = _pivot_func(act)
         if f:
             toks += ['--func', f]
@@ -1057,7 +1072,7 @@ def _table_action_to_tokens(act, sheet):
             n += 1
         for k, opt in _CF_KEYS.items():
             if act.get(k) not in (None, ''):
-                toks += [opt, _cell_text(act[k])]
+                toks += _kv(opt, _cell_text(act[k]))
                 n += 1
         if act.get('between'):
             bt = act['between']
@@ -1107,7 +1122,7 @@ def _table_action_to_tokens(act, sheet):
         items = str(items or '').strip().replace('、', ',')
         if not items:
             raise ValueError("validation には list（ドロップダウンの候補。配列かカンマ区切り）が要ります")
-        return f"validation {rng}", ['validation', _sheet_range(sheet, rng), '--list', items]
+        return f"validation {rng}", ['validation', _sheet_range(sheet, rng)] + _kv('--list', items)
     if op in ('row', 'col') or op in _ROWCOL_SPLIT:
         if op in _ROWCOL_SPLIT:
             op, action = _ROWCOL_SPLIT[op]            # row_insert 等（2026-09-06 夜・消す手を名前に出した）
