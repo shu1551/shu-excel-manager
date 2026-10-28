@@ -2483,6 +2483,15 @@ def cmd_sheet(args):
                 return sh
         return None
 
+    def find_sheet_any_case(name):
+        # Excel のシート名は大文字と小文字を区別しない（'Data' があると 'data' は作れない）。完全一致だけで先に確かめると、
+        # Add・Copy の後の名前付けで落ちて「Sheet3」「Data (2)」の残骸が残る（2026-10-28 点検）
+        low = str(name).lower()
+        for sh in wb.Sheets:
+            if sh.Name.lower() == low:
+                return sh
+        return None
+
     if action == 'add':
         new_name = rest[1] if len(rest) >= 2 else None
         before = getattr(args, 'before', None)
@@ -2500,6 +2509,9 @@ def cmd_sheet(args):
         if new_name and find_sheet(new_name) is not None:
             print(f"シート '{new_name}' は既にあります（作らずにそのまま使います）")
             return True
+        if new_name and find_sheet_any_case(new_name) is not None:
+            print(f"エラー: シート '{find_sheet_any_case(new_name).Name}' があるので '{new_name}' は作れません"
+                  "（Excel のシート名は大文字と小文字を区別しません）"); return False
         if before:
             sh = wb.Sheets.Add(find_sheet(before))
         elif after:
@@ -2534,8 +2546,9 @@ def cmd_sheet(args):
             print(f"エラー: シート '{rest[1]}' が見つかりません"); return False
         # 名前重複は Copy 後の rename で例外になり、「Sheet1 (2)」等の複製シートが
         # 残骸として残る（add と同じく先に弾く）
-        if len(rest) >= 3 and find_sheet(rest[2]) is not None:
-            print(f"エラー: シート '{rest[2]}' は既に存在します"); return False
+        if len(rest) >= 3 and find_sheet_any_case(rest[2]) is not None:
+            print(f"エラー: シート '{find_sheet_any_case(rest[2]).Name}' は既に存在します"
+                  "（Excel のシート名は大文字と小文字を区別しません）"); return False
         sh.Copy(None, sh)
         newsh = wb.ActiveSheet
         if len(rest) >= 3:
@@ -3644,25 +3657,49 @@ def cmd_find_replace(args):
     if (look_at == 2 and not getattr(args, 'wildcard', False) and raw and raw != repl
             and (raw in repl if match_case else raw.lower() in repl.lower())):
         # 置き換え後が探す文字を含む（受注済→受注済み）。Excel の Replace は、もとから「受注済み」のセルにも当たって
-        # 「受注済みみ」にする（2026-09-11）。セルごとに見て、置き換え後の文字をもとから含むセルは飛ばす
-        vals, fmls = rng.Value, rng.Formula
+        # 「受注済みみ」にする（2026-09-11）。セルごとに見て、置き換え後の文字をもとから含むセルは飛ばす。
+        # 数式のセルも式の字で同じに見る（2026-10-28 点検: 数式を黙って飛ばしていて、B1→B10 が「0セル」で終わっていた。
+        # Excel の Replace は式の中も置き換える）。式は Formula2 で読んで書く（@ の付け外しで式が変わらないように）
+        vals = rng.Value
+        try:
+            fmls = rng.Formula2
+        except Exception:
+            fmls = rng.Formula
         vals = vals if isinstance(vals, tuple) else ((vals,),)
         fmls = fmls if isinstance(fmls, tuple) else ((fmls,),)
         r0, c0 = int(rng.Row), int(rng.Column)
         pat = re.compile(re.escape(raw), 0 if match_case else re.I)
         done = skipped = 0
+        failed = []
         for i, row in enumerate(vals):
             for j, v in enumerate(row):
                 f = fmls[i][j] if i < len(fmls) and j < len(fmls[i]) else None
-                if not isinstance(v, str) or (isinstance(f, str) and f.startswith('=')) or not pat.search(v):
+                is_formula = isinstance(f, str) and f.startswith('=')
+                s = f if is_formula else v
+                if not isinstance(s, str) or not pat.search(s):
                     continue
-                if (repl in v) if match_case else (repl.lower() in v.lower()):
+                if (repl in s) if match_case else (repl.lower() in s.lower()):
                     skipped += 1
                     continue
-                ws.Cells(r0 + i, c0 + j).Value = pat.sub(lambda m: repl, v)
+                cell = ws.Cells(r0 + i, c0 + j)
+                new = pat.sub(lambda m: repl, s)
+                if not is_formula:
+                    cell.Value = new
+                else:
+                    try:
+                        try:
+                            cell.Formula2 = new
+                        except Exception:
+                            cell.Formula = new
+                    except Exception:
+                        failed.append(cell.Address.replace('$', ''))   # 置き換えると式として成り立たない＝元の式のまま
+                        continue
                 done += 1
         print(f"置換: {ws.Name}!{rng.Address}  '{raw}' → '{repl}'  （{done}セル。置き換え後の「{repl}」を"
               f"もとから含む {skipped} セルは、二重にならないよう飛ばしました）")
+        if failed:
+            print(f"⚠ 置き換えると式として成り立たないので、元の式のまま残したセル: {' '.join(failed[:8])}"
+                  + ("…" if len(failed) > 8 else ""))
         print("（保存はしていません）")
         return True
     # 位置で全部渡す（What, Replacement, LookAt, SearchOrder, MatchCase, MatchByte, SearchFormat, ReplaceFormat）。
