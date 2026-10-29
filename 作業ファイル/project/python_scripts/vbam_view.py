@@ -5231,6 +5231,44 @@ def _excel_color_to_hex(color_val) -> Optional[str]:
         return None
 
 
+def _double_bottom_rows(ur, lo, hi):
+    """ur の先頭列で、下罫線が二重（xlDouble=-4119）の行（ur の中の 1 始まりの番号）。
+
+    1 行ずつ Borders(9) を聞くと 300 行で COM 900 往復・1.5 秒（2026-10-29 materials の 3 分の 2）。
+    Value(11)（XML スプレッドシート）なら 1 往復で全セルの罫線が来る＝0.01 秒。Borders(9) と同じく、
+    下の行の上罫線が二重でも二重と数える（同じ 1 本の線）。読めなければ 1 行ずつ聞く（前の動き）。
+    ※ 範囲の Borders(12)（内側の横線）は、混ざっていても先頭の線の種類を返す＝使えない。"""
+    import xml.etree.ElementTree as ET
+    if lo > hi:
+        return []
+    ns = '{urn:schemas-microsoft-com:office:spreadsheet}'
+    try:
+        root = ET.fromstring(ur.Worksheet.Range(ur.Cells(lo, 1), ur.Cells(hi + 1, 1)).GetValue(11))
+        dbl = {st.get(ns + 'ID'): {b.get(ns + 'Position') for b in st.iter(ns + 'Border')
+                                   if b.get(ns + 'LineStyle') == 'Double'}
+               for st in root.iter(ns + 'Style')}
+        bottom, top, i = set(), set(), 0
+        for row in root.iter(ns + 'Row'):
+            i = int(row.get(ns + 'Index') or i + 1)
+            cell = next(row.iter(ns + 'Cell'), None)
+            pos = dbl.get((cell if cell is not None else row).get(ns + 'StyleID'), set())
+            if 'Bottom' in pos:
+                bottom.add(i)
+            if 'Top' in pos:
+                top.add(i)
+        return [lo + k - 1 for k in range(1, hi - lo + 2) if k in bottom or k + 1 in top]
+    except Exception:
+        pass
+    out = []
+    for i in range(lo, hi + 1):
+        try:
+            if ur.Cells(i, 1).Borders(9).LineStyle == -4119:
+                out.append(i)
+        except Exception:
+            continue
+    return out
+
+
 def style_summary(ws, ur, nr, nc, areas=None, max_rows=300, texts=True):
     """書式の目の要約（materials／seiri 用・COM は数回〜行数回）。行のリストを返す。
 
@@ -5282,13 +5320,7 @@ def style_summary(ws, ur, nr, nc, areas=None, max_rows=300, texts=True):
         pass
     # 合計行（二重の下罫線）
     try:
-        totals = []
-        for i in range(1, min(nr, max_rows) + 1):
-            try:
-                if ur.Cells(i, 1).Borders(9).LineStyle == -4119:
-                    totals.append(r0 + i - 1)
-            except Exception:
-                continue
+        totals = [r0 + i - 1 for i in _double_bottom_rows(ur, 1, min(nr, max_rows))]
         if totals:
             out.append("合計行（下罫線が二重）: 行 " + ", ".join(str(t) for t in totals[:10])
                        + (" …" if len(totals) > 10 else ""))

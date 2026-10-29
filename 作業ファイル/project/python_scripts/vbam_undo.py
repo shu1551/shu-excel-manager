@@ -280,13 +280,30 @@ def _changes_of(before, ws, sheet_name=None):
     name = sheet_name or str(getattr(ws, 'Name', '') or '')
     r0b, c0b = before['row'], before['col']
     r0a, c0a = after['row'], after['col']
-    seen = set()
-    for src, (r0, c0) in ((before, (r0b, c0b)), (after, (r0a, c0a))):
-        for i, row in enumerate(src.get('values') or []):
-            for j, _v in enumerate(row):
-                seen.add((r0 + i, c0 + j))
+    if (r0b, c0b) == (r0a, c0a):
+        # 表の位置が同じ（ほとんど）: 行を丸ごと比べ、値も式も型も同じ行は飛ばす。3 万行で 1 セルずつ文字にして
+        # 比べると 1.2 秒かかった（2026-10-29 seiri の 3 分の 1）。型も見るのは "12" → 12 と 1 → TRUE を落とさないため
+        vb, va = before.get('values') or [], after.get('values') or []
+        fb, fa = before.get('formulas') or [], after.get('formulas') or []
+        seen = []
+        def same(x, y):
+            return x == y and (x is None or list(map(type, x)) == list(map(type, y)))
+
+        for i in range(max(len(vb), len(va))):
+            rb = vb[i] if i < len(vb) else []
+            ra = va[i] if i < len(va) else []
+            if same(rb, ra) and same(fb[i] if i < len(fb) else None, fa[i] if i < len(fa) else None):
+                continue
+            seen.extend((r0b + i, c0b + j) for j in range(max(len(rb), len(ra))))
+    else:
+        seen = set()
+        for src, (r0, c0) in ((before, (r0b, c0b)), (after, (r0a, c0a))):
+            for i, row in enumerate(src.get('values') or []):
+                for j, _v in enumerate(row):
+                    seen.add((r0 + i, c0 + j))
+        seen = sorted(seen)
     rows = []
-    for (r, c) in sorted(seen):
+    for (r, c) in seen:
         b = _cell_pair(before, 'values', r - r0b, c - c0b) if r >= r0b and c >= c0b else None
         a = _cell_pair(after, 'values', r - r0a, c - c0a) if r >= r0a and c >= c0a else None
         bf = _cell_pair(before, 'formulas', r - r0b, c - c0b) if before.get('formulas') and r >= r0b and c >= c0b else None
