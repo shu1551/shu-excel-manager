@@ -4443,6 +4443,8 @@ def test_mcp_retired_worker_releases_its_own_com_refs(monkeypatch):
     t.start()
     t.join(5)
     assert not t.is_alive() and released == ["old-worker"]
+    ms.vbam_core.unregister_deferred_saver()
+    ms.vbam_core._deferred_save_books.clear()
 
 
 # ================================================================
@@ -7368,4 +7370,269 @@ def test_dispatch_invalidates_shelf_cache_between_commands_20261029(monkeypatch)
     assert "Sub 棚2()" in text, f"コマンド振り分けでキャッシュが無効化されておらず古い棚を読んでいる: {text}"
 
 
+def test_project_code_cache_reflects_patch_new_identifier_20261030():
+    """091の2 (1): patch で新しい変数 myNewVar を足す → 次の patch で MYNEWVAR と書く → myNewVar にそろう。"""
+    from vbam_vba import _project_code_fn, invalidate_project_code_cache, auto_align_code_case
+    invalidate_project_code_cache()
 
+    class MockCodeModule:
+        def __init__(self, code):
+            self.lines = [ln for ln in code.replace("\r\n", "\n").split("\n")]
+        @property
+        def CountOfLines(self):
+            return len(self.lines)
+        def Lines(self, start, count):
+            return "\r\n".join(self.lines[start - 1 : start - 1 + count])
+
+    class MockComp:
+        def __init__(self, name, code):
+            self.Name = name
+            self.CodeModule = MockCodeModule(code)
+
+    class MockVBProject:
+        def __init__(self, comps):
+            self.VBComponents = comps
+
+    class MockWorkbook:
+        def __init__(self, comps):
+            self.FullName = r"C:\fake\test_case_reflect.xlsm"
+            self.Name = "test_case_reflect.xlsm"
+            self.VBProject = MockVBProject(comps)
+
+    c1 = MockComp("Module1", "Sub Test1()\r\n    Dim x As Long\r\nEnd Sub")
+    c2 = MockComp("Module2", "Sub Test2()\r\n    Dim y As Long\r\nEnd Sub")
+    wb = MockWorkbook([c1, c2])
+
+    fn = _project_code_fn("test_case_reflect.xlsm", wb_hint=wb)
+    code0 = fn()
+    assert "Dim x As Long" in code0
+
+    # patch で Module1 に新しい変数 myNewVar を足す（changed_module="Module1" でキャッシュ無効化）
+    c1.CodeModule = MockCodeModule("Sub Test1()\r\n    Dim myNewVar As String\r\nEnd Sub")
+    invalidate_project_code_cache(wb, changed_module="Module1")
+
+    # 次の patch で MYNEWVAR と書かれたコードを auto_align_code_case に通す
+    latest_code = fn()
+    aligned, diffs = auto_align_code_case("Sub Test3()\r\n    s = MYNEWVAR\r\nEnd Sub", latest_code)
+    assert "myNewVar" in aligned, f"myNewVar にそろっていない: {aligned}"
+    assert any("myNewVar" in d[2] for d in diffs), f"差分に myNewVar が含まれること: {diffs}"
+
+
+def test_project_code_cache_detects_external_vbe_edit_20261030():
+    """091の2 (2): VBE 側（道具を通さず CodeModule に直接）で 1 行足す → 次の patch の全コードにその行が入っている。"""
+    from vbam_vba import _project_code_fn, invalidate_project_code_cache
+    invalidate_project_code_cache()
+
+    class MockCodeModule:
+        def __init__(self, code):
+            self.lines = [ln for ln in code.replace("\r\n", "\n").split("\n")]
+        @property
+        def CountOfLines(self):
+            return len(self.lines)
+        def Lines(self, start, count):
+            return "\r\n".join(self.lines[start - 1 : start - 1 + count])
+
+    class MockComp:
+        def __init__(self, name, code):
+            self.Name = name
+            self.CodeModule = MockCodeModule(code)
+
+    class MockVBProject:
+        def __init__(self, comps):
+            self.VBComponents = comps
+
+    class MockWorkbook:
+        def __init__(self, comps):
+            self.FullName = r"C:\fake\test_vbe_edit.xlsm"
+            self.Name = "test_vbe_edit.xlsm"
+            self.VBProject = MockVBProject(comps)
+
+    c1 = MockComp("Module1", "Sub Test1()\r\n    Dim a As Long\r\nEnd Sub")
+    c2 = MockComp("Module2", "Sub Test2()\r\n    Dim b As Long\r\nEnd Sub")
+    wb = MockWorkbook([c1, c2])
+
+    fn = _project_code_fn("test_vbe_edit.xlsm", wb_hint=wb)
+    code0 = fn()
+    assert "Dim a As Long" in code0
+    assert "Dim b As Long" in code0
+
+    # 人が VBE 側で直接 Module2 に 1 行書き足す（道具の invalidate は呼ばれない）
+    c2.CodeModule = MockCodeModule("Sub Test2()\r\n    Dim b As Long\r\n    Dim vbeAddedLine As String\r\nEnd Sub")
+
+    # 次の patch が _project_code_fn を呼んだとき、全コードにその行が入っていること（CountOfLines の差で自動検知）
+    latest_code = fn()
+    assert "vbeAddedLine" in latest_code, f"VBE で足した行が全コードに含まれていない: {latest_code}"
+
+
+def test_deferred_save_flow_mcp_and_cli_20261030(monkeypatch, tmp_path):
+    """091の3・091の4: 登録時は返事の後ろで保存待ちが回ること、未登録時はその場で保存されること、台帳に save(後ろ) が残ること。"""
+    import vbam_core as vc
+    import vba_mcp_server as vms
+    from unittest.mock import MagicMock
+
+    # 1. 未登録（CLI モード相当）のテスト
+    vc.unregister_deferred_saver()
+    saved_calls = []
+    wb_cli = MagicMock()
+    wb_cli.Name = "TestCLI.xlsm"
+    wb_cli.FullName = r"C:\fake\TestCLI.xlsm"
+    wb_cli.Save.side_effect = lambda: saved_calls.append("cli_saved")
+    wb_cli.Application.DisplayAlerts = True
+    wb_cli.Application.ScreenUpdating = True
+    wb_cli.Application.EnableEvents = True
+    wb_cli.Application.CalculateBeforeSave = True
+    wb_cli.Application.Calculation = -4135
+
+    vc.save_vba_book(wb_cli)
+    assert "cli_saved" in saved_calls, "未登録時はその場で保存が実行されること"
+    assert not vc._deferred_save_books, "未登録時は保存待ちキューに積まれないこと"
+
+    # 2. 登録済み（MCP サーバー相当）のテスト
+    vc.register_deferred_saver(vms._run_deferred_saves)
+    vc._deferred_save_books.clear()
+    saved_mcp = []
+    wb_mcp = MagicMock()
+    wb_mcp.Name = "TestMCP.xlsm"
+    wb_mcp.FullName = r"C:\fake\TestMCP.xlsm"
+    wb_mcp.Save.side_effect = lambda: saved_mcp.append("mcp_saved")
+    wb_mcp.Application.DisplayAlerts = True
+    wb_mcp.Application.ScreenUpdating = True
+    wb_mcp.Application.EnableEvents = True
+    wb_mcp.Application.CalculateBeforeSave = True
+    wb_mcp.Application.Calculation = -4135
+
+    # 2回 save_vba_book を呼ぶ（同じブックの保存待ちが重なったら 1 回にまとめる）
+    vc.save_vba_book(wb_mcp)
+    vc.save_vba_book(wb_mcp)
+    assert not saved_mcp, "登録時はその場では保存されないこと"
+    assert len(vc._deferred_save_books) == 1, "同じブックの保存待ちは 1 回にまとまること"
+
+    # _run_deferred_saves を呼ぶ
+    call_logs = []
+    monkeypatch.setattr(vc, "call_log_write", lambda cmd, args, sec, ok, via, why=None: call_logs.append((cmd, ok)))
+    vms._run_deferred_saves()
+
+    assert saved_mcp == ["mcp_saved"], "後ろ保存で 1 回だけ保存が実行されたこと"
+    assert not vc._deferred_save_books, "保存後にキューが空になること"
+    assert any(cmd == "save(後ろ)" and ok is True for cmd, ok in call_logs), "台帳に save(後ろ) が残ること"
+    vc.unregister_deferred_saver()
+
+
+def test_deferred_save_failure_reported_on_next_command_20261030(monkeypatch):
+    """091の3・091の4: 後ろ保存が失敗したとき、次の手の返事の頭に失敗の警告が出ること。"""
+    import vbam_core as vc
+    import vba_mcp_server as vms
+    from unittest.mock import MagicMock
+
+    vc.register_deferred_saver(vms._run_deferred_saves)
+    vc._deferred_save_books.clear()
+    vc._last_deferred_save_error = None
+
+    wb_fail = MagicMock()
+    wb_fail.Name = "ReadOnly.xlsm"
+    wb_fail.FullName = r"C:\fake\ReadOnly.xlsm"
+    wb_fail.Save.side_effect = RuntimeError("読み取り専用のため保存できません")
+
+    vc.save_vba_book(wb_fail)
+    vms._run_deferred_saves()
+
+    assert vc._last_deferred_save_error is not None
+    assert vc._last_deferred_save_error[0] == "ReadOnly.xlsm"
+    assert "読み取り専用" in vc._last_deferred_save_error[1]
+
+    # 次のコマンド実行時に err_buf に警告が入ること
+    import io
+    out_buf = io.StringIO()
+    err_buf = io.StringIO()
+    vms._ThreadRouted.bind(out_buf, err_buf, io.StringIO(""))
+    try:
+        if getattr(vc, '_last_deferred_save_error', None):
+            _prev_bname, _prev_err = vc._last_deferred_save_error
+            vc._last_deferred_save_error = None
+            err_buf.write(f"前の直しの保存に失敗しました（{_prev_bname}: {_prev_err}）\n")
+    finally:
+        vms._ThreadRouted.unbind()
+
+    msg = err_buf.getvalue()
+    assert "前の直しの保存に失敗しました（ReadOnly.xlsm: 読み取り専用のため保存できません）" in msg
+    assert vc._last_deferred_save_error is None, "一度出したらクリアされること"
+    vc.unregister_deferred_saver()
+
+
+def test_deferred_save_explicit_registration_and_reload_20261030():
+    """091の4: 登録が無いと即時保存、登録があると待ちに積まれて runner で保存、reload 後は登録が無いこと。"""
+    import importlib
+    import vbam_core as vc
+    from unittest.mock import MagicMock
+
+    # 1. 登録が無い状態: 即時保存される
+    vc.unregister_deferred_saver()
+    assert not vc.is_deferred_save_enabled(), "未登録状態であること"
+    saved = []
+    wb = MagicMock()
+    wb.Name = "TestBook.xlsm"
+    wb.FullName = r"C:\fake\TestBook.xlsm"
+    wb.Save.side_effect = lambda: saved.append("saved_now")
+    wb.Application.DisplayAlerts = True
+    wb.Application.ScreenUpdating = True
+    wb.Application.EnableEvents = True
+    wb.Application.CalculateBeforeSave = True
+    wb.Application.Calculation = -4135
+
+    vc.save_vba_book(wb)
+    assert saved == ["saved_now"], "登録が無い状態では即時保存されること"
+    assert not vc._deferred_save_books, "保存待ちキューに積まれないこと"
+
+    # 2. 登録がある状態: 待ちに積まれ、runner で保存される
+    runner_log = []
+    def fake_runner():
+        books = list(vc._deferred_save_books.values())
+        vc._deferred_save_books.clear()
+        for b in books:
+            b.Save()
+        runner_log.append(len(books))
+
+    vc.register_deferred_saver(fake_runner)
+    assert vc.is_deferred_save_enabled(), "登録状態であること"
+
+    saved.clear()
+    vc.save_vba_book(wb)
+    assert saved == [], "登録があるときはその場で保存されないこと"
+    assert len(vc._deferred_save_books) == 1, "保存待ちに積まれていること"
+
+    fake_runner()
+    assert saved == ["saved_now"], "runner で保存されたこと"
+    assert not vc._deferred_save_books, "runner 実行後に保存待ちが空になること"
+    assert runner_log == [1], "runner が呼ばれたこと"
+
+    # 3. vbam_core を reload した後は登録が無いこと（古いサーバーで保存が消える事故の防止）
+    importlib.reload(vc)
+    assert not vc.is_deferred_save_enabled(), "reload 後は登録が無いこと"
+    assert vc._deferred_saver_runner is None
+
+
+
+
+
+
+
+def test_real_save_refuses_readonly_and_unsaved_after_20261030():
+    """読み取り専用のブックは Save が黙って何もしない＝失敗として返す。Save の後も未保存なら失敗（091の5 の点検）。"""
+    import types
+    import vbam_core
+
+    app = types.SimpleNamespace(DisplayAlerts=False, CalculateBeforeSave=False, ScreenUpdating=False,
+                                EnableEvents=False, Calculation=-4135)
+    ro = types.SimpleNamespace(Name="ro.xlsm", ReadOnly=True, Saved=False, Application=app, Save=lambda: None)
+    with pytest.raises(RuntimeError, match="読み取り専用"):
+        vbam_core._execute_real_save(ro)
+
+    still = types.SimpleNamespace(Name="still.xlsm", ReadOnly=False, Saved=False, Application=app, Save=lambda: None)
+    with pytest.raises(RuntimeError, match="未保存"):
+        vbam_core._execute_real_save(still)
+
+    def _save():
+        ok.Saved = True
+    ok = types.SimpleNamespace(Name="ok.xlsm", ReadOnly=False, Saved=False, Application=app, Save=_save)
+    vbam_core._execute_real_save(ok)
+    assert ok.Saved is True

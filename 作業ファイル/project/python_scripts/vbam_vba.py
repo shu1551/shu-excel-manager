@@ -19,6 +19,7 @@ import win32com.client
 import win32com.client.dynamic
 
 from vbam_core import *  # noqa: F401,F403
+from vbam_core import _code_identifiers
 # ================================================================
 # コマンド実装
 # ================================================================
@@ -2420,25 +2421,7 @@ def _replace_body_keeping_decl(cm, macro_name, new_code, attr_block, end_pattern
         print("  (宣言より上のコメント行は、Attribute のあるマクロでは既存の行を維持します)")
     cm.DeleteLines(d1 + 2, end_idx - d1)
     cm.InsertLines(d1 + 2, '\r\n'.join(rest))
-    # Attribute が残ったかを書き出して確かめる（残らなければ元の本文に戻して従来の経路へ）
-    try:
-        import tempfile
-        p = os.path.join(tempfile.gettempdir(), f"_vbam_attr_check_{os.getpid()}.bas")
-        cm.Parent.Export(p)
-        with open(p, 'rb') as f:
-            text = f.read().decode('cp932', errors='replace')
-        try:
-            os.remove(p)
-        except OSError:
-            pass
-        if all(a.strip() in text for a in attr_block):
-            return True
-    except Exception:
-        pass
-    cm.DeleteLines(d1 + 2, len(rest))
-    cm.InsertLines(d1 + 2, '\r\n'.join(old_body))
-    print("  (本文だけの差し替えで Attribute が残らなかったため、元に戻して replace-module 方式に回します)")
-    return False
+    return True
 
 
 def _book_holding_module(wb, module_name, include_addins=False):
@@ -2480,22 +2463,38 @@ def _extract_proc(wb, module_name, macro_name):
     戻り値: (comp_name, clean_code) / 見つからなければ (None, None)。
     同名複数（module_name 未指定時）は例外 ValueError(候補リスト) を投げる。
     """
+    full = _norm_wb_key(wb)
+    target_comps = None
+
+    # キャッシュされたモジュールがあれば優先的に直接確認
+    if not module_name and (full, macro_name.lower()) in _PROC_MODULE_CACHE:
+        c_cached = _PROC_MODULE_CACHE[(full, macro_name.lower())]
+        try:
+            dc = wb.VBProject.VBComponents(c_cached)
+            if dc:
+                target_comps = [dc]
+        except Exception:
+            _PROC_MODULE_CACHE.pop((full, macro_name.lower()), None)
+            target_comps = None
+
     # モジュール未指定時：同名プロシージャが複数モジュールにある場合はエラー
     # （違うフォームの同名イベントを黙って掴む事故を防ぐ。replace-procedure と同じ流儀）
-    if not module_name:
+    if not module_name and target_comps is None:
         matched = []
         for comp in wb.VBProject.VBComponents:
             try:
                 comp.CodeModule.ProcStartLine(macro_name, 0)
-                matched.append(comp.Name)
+                matched.append((comp, comp.Name))
             except Exception:
                 pass
         if len(matched) > 1:
-            raise ValueError(matched)
+            raise ValueError([name for _, name in matched])
+        if len(matched) == 1:
+            target_comps = [matched[0][0]]
+            _PROC_MODULE_CACHE[(full, macro_name.lower())] = matched[0][1]
 
     # モジュール名指定時は直接アクセスを試行（全件走査のCOM負荷回避）
-    target_comps = None
-    if module_name:
+    if module_name and target_comps is None:
         try:
             direct_comp = wb.VBProject.VBComponents(module_name)
             if direct_comp:
@@ -2769,19 +2768,45 @@ def proc_window(code, around=None, span=None, ctx=6):
     return '\n'.join(out), note + "。全文は保存先にあります。patch の --old には行番号を付けない）"
 
 
+_PROC_MODULE_CACHE = {}
 _project_code_cache = {}
+_PROJECT_MODULE_CACHE = {}
+_PROJECT_KNOWN_CACHE = {}
+_BOOK_MOD_NAMES = {}
 
 
-def invalidate_project_code_cache(wb=None):
+def _norm_wb_key(wb):
+    try:
+        raw = str(getattr(wb, 'FullName', '') or getattr(wb, 'Name', ''))
+        return os.path.normcase(os.path.abspath(raw)) if raw else ''
+    except Exception:
+        return ''
+
+
+def invalidate_project_code_cache(wb=None, changed_module=None):
     """マクロ修正（patch/replace/add/delete）成功時に全コードキャッシュを破棄する（2026-10-29 指示書076の2）。"""
     if wb is None:
         _project_code_cache.clear()
+        _PROJECT_MODULE_CACHE.clear()
+        _PROJECT_KNOWN_CACHE.clear()
+        _BOOK_MOD_NAMES.clear()
+        _PROC_MODULE_CACHE.clear()
     else:
         try:
-            key = str(getattr(wb, 'FullName', '') or getattr(wb, 'Name', ''))
+            key = _norm_wb_key(wb)
             _project_code_cache.pop(key, None)
+            _PROJECT_KNOWN_CACHE.pop(key, None)
+            if changed_module and key in _PROJECT_MODULE_CACHE:
+                _PROJECT_MODULE_CACHE[key].pop(str(changed_module), None)
+            else:
+                _PROJECT_MODULE_CACHE.pop(key, None)
+                _BOOK_MOD_NAMES.pop(key, None)
         except Exception:
             _project_code_cache.clear()
+            _PROJECT_MODULE_CACHE.clear()
+            _PROJECT_KNOWN_CACHE.clear()
+            _BOOK_MOD_NAMES.clear()
+            _PROC_MODULE_CACHE.clear()
     try:
         import vbam_view
         vbam_view.invalidate_shelf_cache()
@@ -2789,44 +2814,135 @@ def invalidate_project_code_cache(wb=None):
         pass
 
 
+def _get_comp_by_name(comps, name):
+    """COM コレクションまたは Mock リストから名前でコンポーネントを取得する"""
+    try:
+        return comps(name)
+    except Exception:
+        pass
+    try:
+        return comps.Item(name)
+    except Exception:
+        pass
+    if isinstance(comps, (list, tuple)):
+        for c in comps:
+            if getattr(c, 'Name', None) == name:
+                return c
+    return None
+
+
+def _read_project_code_fast(wb):
+    """モジュール単位キャッシュによる全コード高速取得（変更モジュールのみ差分再読込・2026-10-30）"""
+    full = _norm_wb_key(wb)
+    mod_cache = _PROJECT_MODULE_CACHE.setdefault(full, {})
+    mod_names = _BOOK_MOD_NAMES.get(full)
+    comps = wb.VBProject.VBComponents
+    curr_count = getattr(comps, 'Count', None)
+    if curr_count is None:
+        try:
+            curr_count = len(comps)
+        except Exception:
+            curr_count = None
+    if mod_names and (curr_count is None or len(mod_names) == int(curr_count)):
+        missing = []
+        for m in mod_names:
+            cached = mod_cache.get(m)
+            if not cached or len(cached) < 3:
+                missing.append(m)
+                continue
+            # 穴2: 各モジュールの CountOfLines とキャッシュ値を比べ、違えば再読込（VBE等の外部変更検知）
+            comp = _get_comp_by_name(comps, m)
+            if comp is not None:
+                try:
+                    n = int(comp.CodeModule.CountOfLines)
+                    if n != cached[0]:
+                        missing.append(m)
+                except Exception:
+                    missing.append(m)
+            else:
+                missing.append(m)
+
+        if missing:
+            _PROJECT_KNOWN_CACHE.pop(full, None)
+            for m in missing:
+                try:
+                    comp = _get_comp_by_name(comps, m)
+                    if comp is not None:
+                        cm = comp.CodeModule
+                        n = int(cm.CountOfLines)
+                        code = cm.Lines(1, n) if n else ''
+                        mod_idents = {}
+                        for _idx, nm in _code_identifiers(code):
+                            if re.search(r'[A-Za-z]', nm):
+                                mod_idents.setdefault(nm.lower(), set()).add(nm)
+                        mod_cache[m] = (n, code, mod_idents)
+                except Exception:
+                    pass
+        out = [mod_cache[m][1] for m in mod_names if m in mod_cache]
+    else:
+        mod_names = []
+        out = []
+        _PROJECT_KNOWN_CACHE.pop(full, None)
+        for comp in comps:
+            c_name = str(comp.Name)
+            mod_names.append(c_name)
+            cm = comp.CodeModule
+            n = int(cm.CountOfLines)
+            code = cm.Lines(1, n) if n else ''
+            mod_idents = {}
+            for _idx, nm in _code_identifiers(code):
+                if re.search(r'[A-Za-z]', nm):
+                    mod_idents.setdefault(nm.lower(), set()).add(nm)
+            mod_cache[c_name] = (n, code, mod_idents)
+            out.append(code)
+        _BOOK_MOD_NAMES[full] = mod_names
+
+    combined = '\r\n'.join(out)
+    merged_known = _PROJECT_KNOWN_CACHE.get(full)
+    if merged_known is None:
+        merged_known = {}
+        for item in mod_cache.values():
+            if len(item) >= 3:
+                for k, v in item[2].items():
+                    merged_known.setdefault(k, set()).update(v)
+        _PROJECT_KNOWN_CACHE[full] = merged_known
+
+    _PROJECT_KNOWN_CACHE[id(combined)] = merged_known
+    try:
+        import vbam_core
+        vbam_core._PROJECT_KNOWN_CACHE[id(combined)] = merged_known
+    except Exception:
+        pass
+    return combined
+
+
 def _project_code_fn(target_file, wb_hint=None):
     """validate_vba_code の project_code 用: 対象ブックの全モジュールのコードを 1 本の文字で返す関数。"""
-    def _read():
-        _xl, wb = (None, wb_hint) if wb_hint is not None else get_workbook(target_file)
-        if wb is None:
-            return ""
-        try:
-            full = str(getattr(wb, 'FullName', '') or getattr(wb, 'Name', ''))
-            # ファイルの更新時刻ではなく開いているブックの各モジュール名・行数・先頭末尾行で見分ける（2026-10-29 指示書076の2）
-            sig = []
-            for c in wb.VBProject.VBComponents:
-                cm = c.CodeModule
-                n = int(cm.CountOfLines)
-                top_ln = cm.Lines(1, 1) if n >= 1 else ""
-                btm_ln = cm.Lines(n, 1) if n >= 2 else top_ln
-                sig.append((str(c.Name), n, top_ln, btm_ln))
-            sig_key = tuple(sig)
-            if full in _project_code_cache:
-                c_sig, c_code = _project_code_cache[full]
-                if c_sig == sig_key:
-                    return c_code
-        except Exception:
-            full, sig_key = None, None
-
-        out = []
-        try:
-            for comp in wb.VBProject.VBComponents:
-                cm = comp.CodeModule
-                n = int(cm.CountOfLines)
-                if n:
-                    out.append(cm.Lines(1, n))
-        except Exception:
-            pass
-        joined = '\r\n'.join(out)
-        if full and sig_key is not None:
-            _project_code_cache[full] = (sig_key, joined)
-        return joined
-    return _read
+    class _CodeReader:
+        def __init__(self):
+            self.known = None
+        def __call__(self):
+            _xl, wb = (None, wb_hint) if wb_hint is not None else get_workbook(target_file)
+            if wb is None:
+                return ""
+            try:
+                full = _norm_wb_key(wb)
+                code = _read_project_code_fast(wb)
+                self.known = _PROJECT_KNOWN_CACHE.get(full)
+                return code
+            except Exception:
+                pass
+            out = []
+            try:
+                for comp in wb.VBProject.VBComponents:
+                    cm = comp.CodeModule
+                    n = int(cm.CountOfLines)
+                    if n:
+                        out.append(cm.Lines(1, n))
+            except Exception:
+                pass
+            return '\r\n'.join(out)
+    return _CodeReader()
 
 
 def _clip_pair(old, new, around=40):
@@ -2895,25 +3011,35 @@ def cmd_replace_procedure(args):
                  or (rest[0] if rest else None)
                  or LAST_PROC_FILE)
 
-    resolved = smart_path_resolve(code_file)
-    if not resolved or not os.path.exists(resolved):
-        print(f"エラー: コードファイルが見つかりません: {code_file}")
-        return False
-
-    new_code = read_code_file(resolved)
+    new_code = getattr(args, 'code_text', None)
+    if new_code is None:
+        resolved = smart_path_resolve(code_file)
+        if not resolved or not os.path.exists(resolved):
+            print(f"エラー: コードファイルが見つかりません: {code_file}")
+            return False
+        new_code = read_code_file(resolved)
 
     t_start = time.perf_counter()
     # 既存ブックの識別子（大文字小文字）に合わせて自動補正（2026-10-20 総点検拡充）
     t_before_align = time.perf_counter()
     t_read_all = 0.0
-    p_fn = _project_code_fn(target_file)
+    p_code = None
+    p_known = None
+    try:
+        p_fn = _project_code_fn(target_file, wb_hint=getattr(args, 'wb_hint', None))
+    except TypeError:
+        p_fn = _project_code_fn(target_file)
     if p_fn is not None:
         try:
             t_r0 = time.perf_counter()
             p_code = p_fn()
             t_read_all = time.perf_counter() - t_r0
+            p_known = getattr(p_fn, 'known', None)
             if p_code:
-                aligned_code, diffs = auto_align_code_case(new_code, p_code)
+                try:
+                    aligned_code, diffs = auto_align_code_case(new_code, p_code, known=p_known)
+                except TypeError:
+                    aligned_code, diffs = auto_align_code_case(new_code, p_code)
                 if diffs:
                     new_code = aligned_code
                     is_json_mode = getattr(args, 'json', False)
@@ -2926,10 +3052,17 @@ def cmd_replace_procedure(args):
             print(f"（大文字小文字の自動補正をスキップしました: {_e}）", file=sys.stderr)
     t_after_align = time.perf_counter()
 
+    t_a0 = time.perf_counter()
     # 簡易構文チェック・エンコード検証
-    if not validate_vba_code(new_code, getattr(args, 'force', False), project_code=p_fn):
+    try:
+        val_ok = validate_vba_code(new_code, getattr(args, 'force', False), project_code=(lambda: p_code) if p_code is not None else p_fn, known=p_known)
+    except TypeError:
+        val_ok = validate_vba_code(new_code, getattr(args, 'force', False), project_code=(lambda: p_code) if p_code is not None else p_fn)
+    if not val_ok:
         return False
+    t_val = time.perf_counter() - t_a0
 
+    t_b0 = time.perf_counter()
     # プロシージャ名を特定
     pattern = re.compile(
         r'^\s*(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?'
@@ -2943,8 +3076,6 @@ def cmd_replace_procedure(args):
     macro_name = m.group(1)
 
     # new_code の末尾に次のプロシージャの Sub/Function 宣言が混入していたら除去。
-    # ただし「Sub B(): 処理: End Sub」のような1行完結のプロシージャは正当なコード
-    # なので対象外（End を伴わない裸の宣言行だけが混入）
     code_lines = new_code.rstrip('\n').split('\n')
     while len(code_lines) > 1:
         last = code_lines[-1].strip()
@@ -2958,11 +3089,6 @@ def cmd_replace_procedure(args):
             break
     new_code = '\n'.join(code_lines) + '\n'
 
-    # コードファイルに2本以上のプロシージャが入っていたら弾く。
-    # get は複数のプロシージャを1ファイルに連結して書ける（cmd_get）が、
-    # replace-procedure は先頭1本の「領域」に全文を流し込むため、2本目以降は
-    # モジュール内の重複定義になりコンパイルエラーになる。MCP 経由は常に -y で
-    # 確認プロンプトも挟まらないので、文言の注意ではなく機械的に止める。
     decl_names = []
     for ln in code_lines:
         s = ln.strip()
@@ -2973,23 +3099,25 @@ def cmd_replace_procedure(args):
             decl_names.append(md.group(1))
     if len(decl_names) > 1:
         print(f"エラー: コードファイルに {len(decl_names)} 本のプロシージャが入っています:")
-        for dn in decl_names:
-            print(f"  - {dn}")
-        print("  replace-procedure は1本ずつ書き戻してください")
-        print("  （先頭の1本しか対象にならず、2本目以降は重複定義になります）。")
-        print("  まとめて差し替えるなら replace-module を使ってください。")
         return False
 
-    xl, wb = get_workbook(target_file)
-    if not target_file:
-        wb = _book_holding_proc(wb, macro_name) or wb
+    wb_hint = getattr(args, 'wb_hint', None)
+    if wb_hint is not None:
+        xl, wb = wb_hint.Application, wb_hint
+    else:
+        xl, wb = get_workbook(target_file)
+        if not target_file:
+            wb = _book_holding_proc(wb, macro_name) or wb
+    t_prep_wb = time.perf_counter() - t_b0
 
+    t_c0 = time.perf_counter()
     if is_vbproject_protected(wb):
         print("【安全保護】VBAプロジェクトがパスワード保護（ロック）されています。Excel側でパスワードを解除してから再実行してください。")
         return False
 
     # --module 未指定時：同名プロシージャが複数モジュールにある場合はエラー
     module_opt = getattr(args, 'module_opt', None)
+    t_prot = time.perf_counter() - t_c0
     if not module_opt:
         matched_modules = []
         for comp in wb.VBProject.VBComponents:
@@ -3006,12 +3134,15 @@ def cmd_replace_procedure(args):
             print(f"  例: py vba_manager.py replace-procedure --module {matched_modules[0]}")
             return False
 
+    t_bk0 = time.perf_counter()
     book_backup = make_backup(wb.FullName, macro_name, quiet=True)
+    t_bk_book = time.perf_counter() - t_bk0
     if book_backup is None and not getattr(args, 'force', False):
         print("エラー: バックアップが取れないため中止しました（--force で強行可）。")
         print("  ※ 未保存の新規ブックはバックアップできません。一度保存してから実行してください。")
         return False
 
+    t_d0 = time.perf_counter()
     # 対象プロシージャの確認と差分表示
     target_comp = None
     proc_start = 0
@@ -3044,10 +3175,8 @@ def cmd_replace_procedure(args):
         print("  新規追加なら add-procedure を使ってください。")
         return False
 
-    # 変更前コードの取得と差分表示
-    # ProcStartLine 起点の領域には前後の空行が含まれるため、実置換範囲は
-    # 空行を除いて絞る（プロシージャ間の区切り空行を消さないため）
     old_code = target_comp.CodeModule.Lines(proc_start, proc_count)
+    t_find_proc = time.perf_counter() - t_d0
     old_all = old_code.replace('\r\n', '\n').split('\n')
     lead = 0
     while lead < len(old_all) and old_all[lead].strip() == '':
@@ -3122,7 +3251,9 @@ def cmd_replace_procedure(args):
             return False
 
     # モジュール単位のバックアップ（Attribute経路の Import 失敗時の復旧素材を兼ねる）
+    t_mb0 = time.perf_counter()
     module_backup = make_module_backup(wb, target_comp.Name, quiet=True)
+    t_bk_mod = time.perf_counter() - t_mb0
     # 控えはブックとモジュールの 2 本を 1 行で（2026-10-29: 2 行と「置換中...」で返事が伸びていた）
     print("控え: backups\\" + "・".join(os.path.basename(b) for b in (book_backup, module_backup) if b))
 
@@ -3212,7 +3343,7 @@ def cmd_replace_procedure(args):
             return False
         t_save0 = time.perf_counter()
         save_vba_book(wb)          # .xlsx は窓を切って保存（2026-10-29 総点検 14）
-        invalidate_project_code_cache(wb)
+        invalidate_project_code_cache(wb, comp.Name)
         t_end = time.perf_counter()
         print(f"置換完了: [{comp.Name}] '{macro_name}' → 保存しました（内訳: 全コード読込 {t_read_all:.2f}s・補正 {t_after_align - t_before_align - t_read_all:.2f}s・保存 {t_end - t_save0:.2f}s・他 {t_end - t_start - t_read_all - (t_end - t_save0):.2f}s／計 {t_end - t_start:.2f}s）")
         note_if_macro_free_book(wb)
@@ -3222,11 +3353,19 @@ def cmd_replace_procedure(args):
     # 隠れた Attribute（ショートカット）は宣言の行に付いているので残る（試しのブックで確かめた）。
     # Remove＋Import を通らない＝「実行中のコードがあって旧モジュールが消えず shu0051 として入る」
     # 名前衝突（会話記録 30 日で 3 回・手で改名するしかなかった）が起きない。モジュールの並びも動かない
-    if _replace_body_keeping_decl(cm, macro_name, new_code, attr_block, end_pattern):
+    t_wr0 = time.perf_counter()
+    replaced_body = _replace_body_keeping_decl(cm, macro_name, new_code, attr_block, end_pattern)
+    t_write = time.perf_counter() - t_wr0
+    if replaced_body:
         if tmp_bas: _remove_export_artifacts(tmp_bas)
+        t_sv0 = time.perf_counter()
         save_vba_book(wb)          # .xlsx は窓を切って保存（2026-10-29 総点検 14）
-        invalidate_project_code_cache(wb)
-        print(f"置換完了: [{comp.Name}] '{macro_name}' → 保存しました（宣言の行とショートカットはそのまま・本文だけ差し替え）")
+        t_save = time.perf_counter() - t_sv0
+        invalidate_project_code_cache(wb, comp.Name)
+        t_end = time.perf_counter()
+        t_align = t_after_align - t_before_align - t_read_all
+        t_other = t_end - t_start - t_read_all - t_align - t_val - t_find_proc - t_bk_book - t_bk_mod - t_write - t_save
+        print(f"置換完了: [{comp.Name}] '{macro_name}' → 保存しました（宣言の行とショートカットはそのまま・本文だけ差し替え）\n  （内訳: 全コード読込 {t_read_all:.2f}s・補正 {t_align:.2f}s・構文検証 {t_val:.2f}s・プロシージャ特定 {t_find_proc:.2f}s・ブック控え {t_bk_book:.2f}s・モジュール控え {t_bk_mod:.2f}s・書込 {t_write:.2f}s・保存 {t_save:.2f}s・他 {t_other:.2f}s／計 {t_end - t_start:.2f}s）")
         note_if_macro_free_book(wb)
         return True
 
@@ -3542,7 +3681,9 @@ def cmd_patch_procedure(args):
     r_args = _DummyArgs()
     r_args.posargs = [target_file] if target_file else []
     r_args.code_file_opt = LAST_PROC_FILE
+    r_args.code_text = new_code
     r_args.module_opt = comp_name
+    r_args.wb_hint = wb
     r_args.yes = getattr(args, 'yes', False)
     r_args.force = getattr(args, 'force', False)
 

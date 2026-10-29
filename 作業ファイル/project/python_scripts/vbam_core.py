@@ -1397,7 +1397,7 @@ def normalize_bas_newlines(path):
     return fixed, raw, (fixed != raw)
 
 
-def validate_vba_code(code, force=False, old_code='', project_code=None):
+def validate_vba_code(code, force=False, old_code='', project_code=None, known=None):
     """VBAコードの簡易バリデーション（構文・エンコード・ブックを汚す小文字の宣言）。
 
     old_code: 置き換え前のコード（同じ綴りの宣言が既にあれば、今回増やすわけではないので止めない）。
@@ -1447,16 +1447,16 @@ def validate_vba_code(code, force=False, old_code='', project_code=None):
 
     # 4. 小文字の宣言（`Dim value` など）が、ブック全体の `.Value` を小文字にし、消しても戻らない（2026-10-01）
     proj_txt = None
-    if project_code is not None:
+    if known is None and project_code is not None:
         try:
             proj_txt = str(project_code() or '')
         except Exception:
             proj_txt = None
-    pollution = find_case_pollution(code, old_code, project_text=((old_code or '') + ('\n' + proj_txt if proj_txt else '')) if proj_txt else None)
+    pollution = find_case_pollution(code, old_code, project_text=proj_txt, known=known)
     # 5. ブックに既にある名前と大小文字だけ違う綴り（`t` があるのに `T` と書く）は止める（2026-10-03 実害・何度も繰り返した）
-    if project_code is not None:
+    if proj_txt or known:
         try:
-            clash = find_project_case_clash(code, (old_code or '') + '\n' + str(project_code() or ''))
+            clash = find_project_case_clash(code, proj_txt or '', old_code=old_code, known=known)
         except Exception:
             clash = []
         if clash:
@@ -1859,29 +1859,132 @@ def remembers_unsaved(cmd_func):
     return wrapper
 
 
-def save_vba_book(wb):
-    """VBA を書き換えたブックを保存する。.xlsx などマクロを持てない形式は「マクロなしで保存しますか」の窓が出て COM が戻らなく
-    なる（MCP では 600 秒で時間切れ）ので、その形式のときだけ窓を切って保存する。マクロはファイルに残らない＝
-    note_if_macro_free_book が知らせる（2026-10-29 総点検 14）。道具が触る前から未保存の変更があったブックは、そう言う（総点検 9）"""
-    say_unsaved(wb)
+_deferred_save_books = {}
+_last_deferred_save_error = None
+_deferred_saver_runner = None
+
+
+def register_deferred_saver(runner=None):
+    """サーバー本体が『後ろで保存を回せる』と登録する（2026-10-30 指示書091の4）。"""
+    global _deferred_saver_runner
+    _deferred_saver_runner = runner if runner is not None else True
+
+
+def unregister_deferred_saver():
+    """後ろ保存の登録を解除する（試験・初期化用）。"""
+    global _deferred_saver_runner
+    _deferred_saver_runner = None
+
+
+def is_deferred_save_enabled():
+    """後ろで保存が登録されているか。"""
+    return _deferred_saver_runner is not None
+
+
+def _get_deferred_saver_runner():
+    """登録されている runner を返す（呼び出し用）。"""
+    return _deferred_saver_runner if callable(_deferred_saver_runner) else None
+
+
+def _execute_real_save(wb):
+    """Excel ブックの物理保存を実行する（COM プロパティ設定・wb.Save・復元）。"""
     try:
         name = str(wb.Name).lower()
     except Exception:
         name = ''
-    if not name.endswith(('.xlsx', '.xltx', '.csv')):
-        return com_retry(wb.Save, op_name="保存")
-    xl = wb.Application
-    prev = None
+    xl = None
+    prev_screen = None
+    prev_events = None
+    prev_calc = None
+    prev_cbs = None
+    prev_alerts = None
+    t_prop0 = time.perf_counter()
     try:
-        prev = bool(xl.DisplayAlerts)
-        xl.DisplayAlerts = False
-        return com_retry(wb.Save, op_name="保存")
+        xl = wb.Application
+        try:
+            prev_alerts = bool(xl.DisplayAlerts)
+            if prev_alerts:
+                xl.DisplayAlerts = False
+        except Exception:
+            pass
+        try:
+            prev_cbs = bool(xl.CalculateBeforeSave)
+            if prev_cbs:
+                xl.CalculateBeforeSave = False  # 保存前の自動再計算による遅延を防止
+        except Exception:
+            pass
+        try:
+            prev_screen = bool(xl.ScreenUpdating)
+            if prev_screen:
+                xl.ScreenUpdating = False
+        except Exception:
+            pass
+        try:
+            prev_events = bool(xl.EnableEvents)
+            if prev_events:
+                xl.EnableEvents = False
+        except Exception:
+            pass
+        try:
+            prev_calc = int(xl.Calculation)
+            if prev_calc != -4135:
+                xl.Calculation = -4135  # xlCalculationManual: 保存時の自動再計算による遅延を防止
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+    try:
+        # 確認の窓を切っていると、読み取り専用のブックの Save は黙って何もしない＝「保存した」と言って
+        # 保存していない。前と後で確かめて失敗として返す（2026-10-30 091の5 の点検）
+        try:
+            if wb.ReadOnly is True:
+                raise RuntimeError(f"{wb.Name} は読み取り専用で開いているので保存できません（マクロの直しはブックの中だけにあります）")
+        except RuntimeError:
+            raise
+        except Exception:
+            pass
+        t_s0 = time.perf_counter()
+        res = com_retry(wb.Save, op_name="保存")
+        t_s1 = time.perf_counter()
+        try:
+            if wb.Saved is False:
+                raise RuntimeError(f"{wb.Name} を保存したはずが、まだ未保存のままです")
+        except RuntimeError:
+            raise
+        except Exception:
+            pass
+        return res
     finally:
-        if prev is not None:
+        t_f0 = time.perf_counter()
+        if xl is not None:
             try:
-                xl.DisplayAlerts = prev
+                if prev_cbs is not None:
+                    xl.CalculateBeforeSave = prev_cbs
+                if prev_calc is not None:
+                    xl.Calculation = prev_calc
+                if prev_events is not None:
+                    xl.EnableEvents = prev_events
+                if prev_alerts is not None:
+                    xl.DisplayAlerts = prev_alerts
+                if prev_screen is not None:
+                    xl.ScreenUpdating = prev_screen
             except Exception:
                 pass
+
+
+def save_vba_book(wb):
+    """VBA を書き換えたブックを保存する。後ろ保存が登録されていれば待ちに積む。無ければその場で保存。
+
+    .xlsx などマクロを持てない形式は「マクロなしで保存しますか」の窓が出て COM が戻らなくなる（MCP では 600 秒で時間切れ）
+    ので、その形式のときだけ窓を切って保存する。道具が触る前から未保存の変更があったブックは、そう言う（総点検 9）
+    """
+    say_unsaved(wb)
+    if is_deferred_save_enabled():
+        k = _book_key(wb) or str(getattr(wb, 'FullName', id(wb)))
+        _deferred_save_books[k] = wb
+        return True
+    return _execute_real_save(wb)
 
 
 def _save_with_retry(wb, attempts=5, delay=0.6):
@@ -2058,7 +2161,7 @@ def declared_names(code):
     return out
 
 
-def find_case_pollution(code, old_code='', project_text=None):
+def find_case_pollution(code, old_code='', project_text=None, known=None):
     """VBE がブック全体の綴りを書き換える宣言を列挙 → [(行番号(1始まり), 宣言の綴り, 本来の綴り)]（純 Python）。
 
     宣言した名前が、Excel・VBA の既存の名前と大小文字だけ違う（`value` ↔ `Value`）ものを返す。本来の綴りと同じ（`Value`）なら
@@ -2067,11 +2170,10 @@ def find_case_pollution(code, old_code='', project_text=None):
     ブックを汚す新規の食い違いではないため除外する。
     """
     already = declared_names(old_code)
-    proj_known = {}
-    if project_text:
-        for _idx, pnm in _code_identifiers(project_text):
-            if re.search(r'[A-Za-z]', pnm):
-                proj_known.setdefault(pnm.lower(), set()).add(pnm)
+    if known is not None:
+        proj_known = known
+    else:
+        proj_known = _get_project_known_identifiers(project_text) if project_text else {}
 
     hits, seen = [], set()
     for idx, ln in enumerate((code or '').replace('\r\n', '\n').split('\n'), 1):
@@ -2106,17 +2208,42 @@ def _code_identifiers(code):
     return out
 
 
-def find_project_case_clash(code, project_text):
+_PROJECT_KNOWN_CACHE = {}
+
+def _get_project_known_identifiers(project_text):
+    """project_text 内の英字識別子の辞書 {小文字: {元の綴り}} を返す（同一テキストはキャッシュで即答）"""
+    if not project_text:
+        return {}
+    txt_id = id(project_text)
+    if txt_id in _PROJECT_KNOWN_CACHE:
+        return _PROJECT_KNOWN_CACHE[txt_id]
+    if len(_PROJECT_KNOWN_CACHE) > 10:
+        _PROJECT_KNOWN_CACHE.clear()
+    known = {}
+    for _idx, nm in _code_identifiers(project_text):
+        if re.search(r'[A-Za-z]', nm):
+            known.setdefault(nm.lower(), set()).add(nm)
+    _PROJECT_KNOWN_CACHE[txt_id] = known
+    return known
+
+
+def find_project_case_clash(code, project_text, old_code='', known=None):
     """ブックに既にある名前と大小文字だけ違う綴りを、新しいコードが持ち込むか → [(行番号, 書いた綴り, ブックの綴り)]（純 Python）。
 
     VBE は名前の綴りをプロジェクトで 1 つに保つので、`Dim T As String` を 1 行書くだけで、別のモジュールの `t` が全部 `T` に
     書き換わる（2026-10-03 実害: 倍率回転フォームを足したら公開している棚のマクロ 3 本で t→T・x→X・y→Y・cB→cb・val→Val）。
     宣言だけでなく、使った所（`Val(`）でも書き換わる。英字を含む名前だけ見る（日本語だけの名前に大小は無い）。
     """
-    known = {}
-    for _idx, nm in _code_identifiers(project_text):
-        if re.search(r'[A-Za-z]', nm):
-            known.setdefault(nm.lower(), set()).add(nm)
+    if known is None:
+        known = _get_project_known_identifiers(project_text)
+    if old_code:
+        old_ids = _code_identifiers(old_code)
+        if any(re.search(r'[A-Za-z]', nm) for _, nm in old_ids):
+            merged = {k: set(v) for k, v in known.items()}
+            for _idx, nm in old_ids:
+                if re.search(r'[A-Za-z]', nm):
+                    merged.setdefault(nm.lower(), set()).add(nm)
+            known = merged
     ids = _code_identifiers(code)
     mine = {}
     for _idx, nm in ids:
@@ -2148,7 +2275,7 @@ def project_case_clash_message(hits, limit=10):
             + '\n'.join(lines))
 
 
-def auto_align_code_case(code, project_text):
+def auto_align_code_case(code, project_text, known=None):
     """code 内の識別子を、project_text（既存ブック）で確定している大文字小文字の綴りに自動補正する（2026-10-20）。
 
     AI が `multiline` や `X`、`typename` のように既存ブックと異なる大小文字で書いてきても、
@@ -2156,11 +2283,9 @@ def auto_align_code_case(code, project_text):
     不必要なエラー停止やブック汚染を手戻りゼロで防ぐ。
     文字列リテラルおよびコメント行・行末コメントは保護する。
     """
-    known = {}
-    for _idx, nm in _code_identifiers(project_text):
-        if re.search(r'[A-Za-z]', nm):
-            known.setdefault(nm.lower(), set()).add(nm)
-    
+    if known is None:
+        known = _get_project_known_identifiers(project_text)
+
     repl_map = {}
     for k, v in known.items():
         if len(v) == 1:
@@ -3632,6 +3757,7 @@ def cmd_close_vbe(args=None):
 
 
 __all__ = ['is_vbproject_protected',
+    'register_deferred_saver', 'unregister_deferred_saver', 'is_deferred_save_enabled',
     'save_vba_book', 'remember_unsaved', 'say_unsaved', 'save_before_vba_edit', 'remembers_unsaved',
     'cmd_close_vbe',
     'classify_unstick_dialog',
