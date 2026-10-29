@@ -5780,7 +5780,18 @@ def _nz_paste_special(self, kind):
                                          lambda m: f"'{book.Path}\\[{book.Name}]{m.group(1)}'!", f)
 
 
-def _nz_copy(self):
+def _nz_copy(self, dest=None):
+    if dest is not None:                                   # 行き先つきの写しはクリップボードを通さない
+        xl = dest.ws.xl
+        if getattr(xl, 'fail_dest_copy', False):
+            raise RuntimeError("写せません（偽の失敗）")
+        saved = xl.clip
+        xl.clip = self
+        try:
+            _nz_paste_special(dest, -4104)                 # xlPasteAll
+        finally:
+            xl.clip = saved
+        return
     if self.ws.xl.fail_copy:
         raise RuntimeError("コピーできません（偽の失敗）")
     self.ws.xl.clip = self
@@ -5975,10 +5986,26 @@ def test_undo_of_a_big_sheet_still_restores_and_drops_the_backup_link(tmp_path, 
 
 def test_undo_that_fails_midway_still_closes_the_backup_and_restores_events(tmp_path, monkeypatch, capsys):
     va, xl, wb, src, bk = _ud_world(tmp_path, monkeypatch)
-    xl.fail_copy = True
+    xl.fail_dest_copy = True
     assert va.undo_agent() is False
     assert "戻せませんでした" in capsys.readouterr().out
     assert src.closed == [False] and xl.EnableEvents is True and xl.DisplayAlerts is True
+
+
+def test_undo_survives_a_busy_clipboard_and_only_loses_the_column_widths(tmp_path, monkeypatch, capsys):
+    """他のアプリがクリップボードを掴んでいても中身は戻る（2026-10-29 総点検 4）。落ちるのは列幅だけ。"""
+    va, xl, wb, src, bk = _ud_world(tmp_path, monkeypatch)
+    xl.fail_copy = True
+    assert va.undo_agent() is True
+    assert "列幅は戻せませんでした（中身は戻しました）" in capsys.readouterr().out
+
+
+def test_undo_finds_formulas_on_other_sheets_that_point_at_the_restored_sheet():
+    """戻したシートを指す式だけを拾う（2026-10-29 総点検 32）。別名のシート・ブックをまたぐ参照は拾わない。"""
+    from vbam_undo import _sheet_ref_re
+    pat = _sheet_ref_re(["名簿", "売上 表"])
+    assert pat.search("=名簿!C8") and pat.search("=SUM('売上 表'!B2:B9)") and pat.search("=1+名簿!A1")
+    assert not pat.search("=別名簿!C8") and not pat.search("=[台帳.xlsx]名簿!C8") and not pat.search("=C8")
 
 
 def test_undo_refuses_before_opening_the_backup(tmp_path, monkeypatch, capsys):

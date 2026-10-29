@@ -12,6 +12,7 @@ import argparse
 import time
 import datetime
 import unicodedata
+import contextlib
 import pythoncom
 import pywintypes
 import win32com.client
@@ -3006,9 +3007,21 @@ def cmd_replace_procedure(args):
             # Attribute行なし → 従来の InsertLines 方式（高速・モジュール順維持）
             # InsertLines は末尾改行を余分な空行として挿入するため取り除く
             _remove_export_artifacts(tmp_bas)
+            old_text = cm.Lines(eff_start, eff_count)
             com_retry(lambda: cm.DeleteLines(eff_start, eff_count), op_name="行削除")
-            com_retry(lambda: cm.InsertLines(eff_start, new_code.rstrip('\n')), op_name="行挿入")
-            com_retry(wb.Save, op_name="保存")
+            try:
+                com_retry(lambda: cm.InsertLines(eff_start, new_code.rstrip('\n')), op_name="行挿入")
+            except Exception as ex:
+                # 消した後に入れるのが落ちると、プロシージャが消えたまま例外が抜けていた（2026-10-29 総点検 7）＝元のコードを入れ直して止まる
+                try:
+                    cm.InsertLines(eff_start, str(old_text).rstrip('\r\n'))
+                    print(f"エラー: 新しいコードを入れられなかったので、元のコードを入れ直しました（保存はしていません）: {ex}",
+                          file=sys.stderr)
+                except Exception:
+                    print(f"エラー: 新しいコードを入れられず、元のコードも入れ直せませんでした: {ex}\n"
+                          "  保存せずに閉じて開き直すか、backups の控えから restore で戻してください", file=sys.stderr)
+                return False
+            save_vba_book(wb)          # .xlsx は窓を切って保存（2026-10-29 総点検 14）
             print(f"置換完了: [{comp.Name}] '{macro_name}' → 保存しました")
             note_if_macro_free_book(wb)
             return True
@@ -3019,7 +3032,7 @@ def cmd_replace_procedure(args):
         # 名前衝突（会話記録 30 日で 3 回・手で改名するしかなかった）が起きない。モジュールの並びも動かない
         if _replace_body_keeping_decl(cm, macro_name, new_code, attr_block, end_pattern):
             _remove_export_artifacts(tmp_bas)
-            wb.Save()
+            save_vba_book(wb)          # .xlsx は窓を切って保存（2026-10-29 総点検 14）
             print(f"置換完了: [{comp.Name}] '{macro_name}' → 保存しました（宣言の行とショートカットはそのまま・本文だけ差し替え）")
             note_if_macro_free_book(wb)
             return True
@@ -3438,7 +3451,7 @@ def cmd_add_procedure(args):
     if cm.CountOfLines > 0:
         body = '\n' + body     # 既存コードとの区切りの空行
     cm.InsertLines(cm.CountOfLines + 1, body)
-    wb.Save()
+    save_vba_book(wb)          # .xlsx は窓を切って保存（2026-10-29 総点検 14）
     print(f"追加完了: [{comp.Name}] '{proc_name}' → 保存しました")
     note_if_macro_free_book(wb)
     return True
@@ -3499,7 +3512,7 @@ def cmd_add_module(args):
             print("警告: 追加途中のモジュールを撤去できませんでした"
                   "（既定名のモジュールが残っていたら手で削除してください）")
         return False
-    wb.Save()
+    save_vba_book(wb)          # .xlsx は窓を切って保存（2026-10-29 総点検 14）
     label = {1: '標準モジュール', 2: 'クラスモジュール', 3: 'ユーザーフォーム'}[comp_type]
     print(f"追加完了: {label} '{comp.Name}' → 保存しました")
     note_if_macro_free_book(wb)
@@ -3583,7 +3596,7 @@ def cmd_delete_procedure(args):
     for comp, macro_name in found:
         start, count = _range_of(comp, macro_name)      # 前の削除で行がずれるので、消す直前に位置を取り直す
         comp.CodeModule.DeleteLines(start, count)
-    wb.Save()
+    save_vba_book(wb)          # .xlsx は窓を切って保存（2026-10-29 総点検 14）
     for comp, macro_name in found:
         print(f"削除完了: [{comp.Name}] '{macro_name}'")
     print("→ 保存しました" + (f"（{len(found)} 本・控えは 1 冊）" if len(found) > 1 else ""))
@@ -3655,7 +3668,7 @@ def cmd_delete_module(args):
             print(f"  モジュールのバックアップ: {backup}", file=sys.stderr)
         return False
 
-    wb.Save()
+    save_vba_book(wb)          # .xlsx は窓を切って保存（2026-10-29 総点検 14）
     print(f"削除完了: モジュール '{module_name}' → 保存しました")
     if backup:
         print(f"  戻すには: py vba_manager.py restore {os.path.basename(backup)}")
@@ -6706,7 +6719,7 @@ def cmd_code_replace(args):
         for i, _, new_line in changes:
             cm.ReplaceLine(i, new_line)
         print(f"置換: [{comp.Name}] {len(changes)}行")
-    wb.Save()
+    save_vba_book(wb)          # .xlsx は窓を切って保存（2026-10-29 総点検 14）
     print(f"完了: {len(plans)}モジュール / {total_lines}行 を置換して保存しました")
     return True
 
@@ -7893,11 +7906,12 @@ def cmd_run_macro(args):
     # 実行前にアドインや個人用マクロをロードする
     xl, wb = get_workbook(target_file, load_addins=True)
 
-    # 警告を非表示にする
+    # 確認の窓は切らない。切ると人のマクロの Sheets.Delete・ThisWorkbook.Close・SaveAs の確認が既定の答えで黙って進んでいた
+    # （2026-10-29 総点検 2）。出た窓は下の窓の見張りが閉じる（既定はキャンセル優先・--auto-dialog で答えを決められる）
     try:
-        xl.DisplayAlerts = False
+        prev_alerts = bool(xl.DisplayAlerts)
     except Exception:
-        pass
+        prev_alerts = True
 
     full_macro_path = macro_name
 
@@ -8094,11 +8108,10 @@ def cmd_run_macro(args):
             _dlg_watcher.stop()
         if harness is not None:
             _remove_run_harness(harness)
-        # ツール側では切っていないが、実行したマクロが DisplayAlerts=False を立てたまま
-        # 落ちている場合がある。そのままだとユーザーの Excel セッションに残り、以後の
-        # 手動操作で保存確認などの警告が出なくなるため、必ず有効に戻す
+        # 実行したマクロが DisplayAlerts=False を立てたまま落ちている場合がある。そのままだとユーザーの Excel に残り、
+        # 以後の手動操作で保存確認などの警告が出なくなるため、撃つ前の値に戻す
         try:
-            xl.DisplayAlerts = True
+            xl.DisplayAlerts = prev_alerts
         except Exception:
             pass
 
@@ -8481,9 +8494,15 @@ def cmd_test(args):
             is_isolated = False
 
     # 本体で回すときだけ使う: テスト前のシート構成（テストが作って残したシートを後で消す）
+    # 名前でなくコード名で覚える。テストがシートの名前を変えると（Sheet1 → 集計）、元からのシートを「テストが作った」と
+    # 見て消していた（2026-10-29 総点検 5）。コード名が取れなければ名前で覚える（前の動き）
     initial_sheet_names = set()
+    initial_sheet_codes = set()
     try:
         initial_sheet_names = {ws.Name for ws in wb.Worksheets}
+        with contextlib.suppress(Exception):
+            _ = wb.VBProject.VBComponents.Count       # 写したシートにもコード名を付けさせる
+        initial_sheet_codes = {str(ws.CodeName or '') for ws in wb.Worksheets} - {''}
     except Exception:
         pass
 
@@ -8649,8 +8668,17 @@ def cmd_test(args):
                 prev_alerts = xl.DisplayAlerts
                 try:
                     xl.DisplayAlerts = False
+                    with contextlib.suppress(Exception):
+                        _ = wb.VBProject.VBComponents.Count
                     for cur_ws in list(wb.Worksheets):
-                        if cur_ws.Name not in initial_sheet_names:
+                        if initial_sheet_codes:
+                            try:
+                                is_new = str(cur_ws.CodeName or '') not in initial_sheet_codes
+                            except Exception:
+                                is_new = False                 # コード名が読めないシートは消さない（安全側）
+                        else:
+                            is_new = cur_ws.Name not in initial_sheet_names
+                        if is_new:
                             nm = cur_ws.Name
                             try:
                                 cur_ws.Visible = -1  # xlSheetVisible（隠れたシートは消せない）

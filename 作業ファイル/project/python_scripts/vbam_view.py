@@ -2355,6 +2355,19 @@ def _seiri_fire_request(xl, wb, ws, request, before_snap):
     return fired
 
 
+def _region_has_rows(ws, addr):
+    """番地の塊が見出し＋1 行以上あるか。空行で離れた合計の 1 行（=SUM の 1 セル）は表ではない＝仕上げに渡さない
+    （2026-10-29: 棚が行を詰めた後の合計 C6 を tidy に渡し「表の形をしていません」のエラーが seiri の返事に混じっていた）。
+    読めなければ渡す（tidy が自分で断る）。"""
+    try:
+        rg = ws.Range(addr)
+        if int(rg.Cells.CountLarge) == 1:
+            rg = rg.CurrentRegion
+        return int(rg.Rows.Count) >= 2
+    except Exception:
+        return True
+
+
 def _seiri_tidy(wb, ws, before_snap):
     """棚を撃った後の仕上げ（tidy）を、元の表と棚が書いた表にまとめて 1 回当てる。
 
@@ -2371,7 +2384,7 @@ def _seiri_tidy(wb, ws, before_snap):
     targets = []
     for a in [vp._table_anchor(ws)] + vp._written_anchors(ws, before_snap):
         a = _trim_to_header_cols(ws, a) if a else a
-        if a and a not in targets:
+        if a and a not in targets and _region_has_rows(ws, a):
             targets.append(a)
     if targets:
         ok, out = vp.va._run_cmd(['tidy', '--sheet', str(ws.Name)] + targets, wb)

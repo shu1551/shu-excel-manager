@@ -1818,6 +1818,30 @@ def com_retry(func, attempts=3, delay=0.4, op_name="COM操作"):
         raise last_ex
 
 
+def save_vba_book(wb):
+    """VBA を書き換えたブックを保存する。.xlsx などマクロを持てない形式は「マクロなしで保存しますか」の窓が出て COM が戻らなく
+    なる（MCP では 600 秒で時間切れ）ので、その形式のときだけ窓を切って保存する。マクロはファイルに残らない＝
+    note_if_macro_free_book が知らせる（2026-10-29 総点検 14）"""
+    try:
+        name = str(wb.Name).lower()
+    except Exception:
+        name = ''
+    if not name.endswith(('.xlsx', '.xltx', '.csv')):
+        return com_retry(wb.Save, op_name="保存")
+    xl = wb.Application
+    prev = None
+    try:
+        prev = bool(xl.DisplayAlerts)
+        xl.DisplayAlerts = False
+        return com_retry(wb.Save, op_name="保存")
+    finally:
+        if prev is not None:
+            try:
+                xl.DisplayAlerts = prev
+            except Exception:
+                pass
+
+
 def _save_with_retry(wb, attempts=5, delay=0.6):
     """Import 直後の保存だけはビジー拒否で諦めない。
 
@@ -3401,6 +3425,7 @@ def cmd_close_vbe(args=None):
 
 
 __all__ = ['is_vbproject_protected',
+    'save_vba_book',
     'cmd_close_vbe',
     'classify_unstick_dialog',
     'inspect_excel_unstick',

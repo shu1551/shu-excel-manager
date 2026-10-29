@@ -2551,7 +2551,9 @@ def cmd_sheet(args):
             print(f"エラー: シート '{find_sheet_any_case(rest[2]).Name}' は既に存在します"
                   "（Excel のシート名は大文字と小文字を区別しません）"); return False
         sh.Copy(None, sh)
-        newsh = wb.ActiveSheet
+        # 写しは元のすぐ後ろに置かれる。前に出ているシートで拾うと、隠れたシートの写し（隠れたまま・前に出ない）のとき
+        # 人のシートの名前を変えていた（2026-10-29 総点検 6）
+        newsh = wb.Sheets(int(sh.Index) + 1)
         if len(rest) >= 3:
             newsh.Name = rest[2]
         print(f"シート複製: {rest[1]} → {newsh.Name}")
