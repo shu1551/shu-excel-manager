@@ -977,3 +977,15 @@ def test_vba_save_says_when_the_book_had_unsaved_changes_before(monkeypatch, cap
     out = capsys.readouterr().out
     assert out.count("保存していない変更") == 1 and "売上.xlsm" in out and "台帳.xlsm" not in out
     assert vc._unsaved_before == {} and vc._unsaved_said == set()
+
+
+def test_open_tells_an_encrypted_book_from_a_plain_one(tmp_path):
+    """パスワード付きの .xlsx は OLE の箱（D0CF11E0）・ふだんは zip（2026-10-29 総点検 18）。.xls は見分けない。"""
+    import vbam_edit as ve
+    ole = bytes.fromhex('d0cf11e0a1b11ae1') + bytes(8)
+    enc, plain, xls = tmp_path / "a.xlsx", tmp_path / "b.xlsx", tmp_path / "c.xls"
+    enc.write_bytes(ole)
+    plain.write_bytes(bytes.fromhex('504b0304') + bytes(12))
+    xls.write_bytes(ole)
+    assert ve._is_encrypted_book(str(enc)) and not ve._is_encrypted_book(str(plain))
+    assert not ve._is_encrypted_book(str(xls)) and not ve._is_encrypted_book(str(tmp_path / "無い.xlsx"))

@@ -490,3 +490,35 @@ def test_fire_keeps_selection_when_request_names_it_20261029():
         assert vp._SELECTION_WORDS_RE.search(q), q
     for q in ('見出しの文字を赤にして', '金額の列を3桁区切りにして', '区分が東京の行だけ表示して'):
         assert not vp._SELECTION_WORDS_RE.search(q), q
+
+def test_release_instance_keeps_a_person_book_that_joined_the_hidden_excel(monkeypatch, capsys):
+    """試し撃ちの台に人のブックが合流していたら、閉じずに見えるようにして残す（2026-10-29 総点検 12）。"""
+    import vbam_core
+
+    class _WB:
+        Name = "見積.xlsx"
+
+        def Close(self, SaveChanges=False):
+            raise AssertionError("人のブックを閉じた")
+
+    class _WBs:
+        Count = 1
+
+        def Item(self, i):
+            return _WB()
+
+    class _XL:
+        Visible = False
+
+        def __init__(self):
+            self.Workbooks = _WBs()
+
+        def Quit(self):
+            raise AssertionError("人のブックごと畳んだ")
+    x = _XL()
+    monkeypatch.setattr(vbam_core, '_created_instances', [{'xl': x, 'pid': 999993}])
+    monkeypatch.setattr(vbam_core, '_created_xl', x)
+    monkeypatch.setattr(vbam_core, '_created_xl_pid', 999993)
+    assert vbam_core.release_instance(999993) == 0
+    assert x.Visible is True and vbam_core._created_instances == [] and vbam_core._created_xl is None
+    assert "見積.xlsx" in capsys.readouterr().err

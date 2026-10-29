@@ -353,6 +353,22 @@ def release_instance(pid):
     others = [i for i in _created_instances if i.get("pid") != pid]
     if not mine:
         return 0
+    # 呼び元は自分のブックを閉じてからここへ来る＝まだ残っているブックは、この台に合流した人のブック。
+    # 保存の確認なしに閉じていた（2026-10-29 総点検 12）＝閉じずに台ごと見えるようにして残し、道具の台の印だけ外す
+    joined = []
+    with contextlib.suppress(Exception):
+        wbs = mine[0]["xl"].Workbooks
+        joined = [str(wbs.Item(i).Name) for i in range(1, int(wbs.Count) + 1)]
+    if joined:
+        with contextlib.suppress(Exception):
+            mine[0]["xl"].Visible = True
+        print(f"⚠ 道具が起こした Excel（PID {pid}）に、人のブックが合流していました: {'・'.join(joined)}。"
+              "閉じずに見えるようにして残しました（保存はご自分で）", file=sys.stderr)
+        _created_instances = others
+        if _created_xl_pid == pid:
+            _created_xl = others[-1]["xl"] if others else None
+            _created_xl_pid = others[-1]["pid"] if others else None
+        return 0
     last_xl, last_pid = _created_xl, _created_xl_pid
     _created_instances = mine
     try:

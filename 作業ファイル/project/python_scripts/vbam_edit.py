@@ -3859,6 +3859,18 @@ def _open_csv_text_protected(xl, path, scan):
     return wb
 
 
+def _is_encrypted_book(path):
+    """パスワードで暗号化した .xlsx/.xlsm/.xlsb か（純 Python）。ふだんの形は zip（PK）で、暗号化すると OLE の箱（D0CF11E0）になる。
+    .xls はもとから OLE の箱なので見分けない（False）。"""
+    if os.path.splitext(path)[1].lower() not in ('.xlsx', '.xlsm', '.xlsb', '.xltx', '.xltm', '.xlam'):
+        return False
+    try:
+        with open(path, 'rb') as f:
+            return f.read(8) == bytes.fromhex('d0cf11e0a1b11ae1')
+    except OSError:
+        return False
+
+
 def cmd_open(args):
     """ブックを開く: open <path> [--excel-default]
 
@@ -3948,10 +3960,36 @@ def cmd_open(args):
             pass
 
     if xl is not None:
-        if risky:
-            wb = _open_csv_text_protected(xl, path, risky)
-        else:
-            wb = xl.Workbooks.Open(path)
+        # 同じ名前のブックが別のフォルダから開いていると、Excel は「同じ名前のブックは同時に開けません」の窓を出して
+        # Open が戻らない（2026-10-29 総点検 18）＝撃つ前に止める
+        base = os.path.basename(path).lower()
+        for other in _running_excel_workbooks():
+            try:
+                if str(other.Name).lower() == base:
+                    print(f"エラー: 同じ名前のブックがもう開いています: {other.FullName}"
+                          "（Excel は同じ名前のブックを同時に開けません）。そちらを閉じてから開いてください")
+                    return False
+            except Exception:
+                continue
+        # パスワード付きのブックは、Excel がパスワードの窓を出して Open が戻らない＝人が開くのと同じに開いて、
+        # 道具は待たずに戻る（入れるのは使う人）
+        if _is_encrypted_book(path):
+            os.startfile(path)
+            print(f"パスワード付きのブックなので、Excel の窓でパスワードを入れてください: {os.path.basename(path)}"
+                  "（道具は待たずに戻ります）")
+            return True
+        # リンクの更新・修復などの確認の窓は見張りが安全側で閉じ、何が出たかを言う
+        _dlg = _start_dialog_watcher(xl)
+        try:
+            if risky:
+                wb = _open_csv_text_protected(xl, path, risky)
+            else:
+                wb = xl.Workbooks.Open(path)
+        finally:
+            _dlg.stop()
+        _note = _dialog_watcher_note(_dlg, None)
+        if _note:
+            print(_note)
         try:
             wb.Activate()
         except Exception:

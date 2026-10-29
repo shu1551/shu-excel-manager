@@ -1748,11 +1748,13 @@ def test_log_call_swallows_write_errors(tmp_path, monkeypatch):
 # ---- GATE_COMMANDS / _gate_check（承認ゲート） ----
 
 @_needs_srv
-def test_gate_commands_are_exactly_the_irreversible_five():
+def test_gate_commands_are_exactly_the_irreversible_ones():
     # 線引きは「読み/書き」ではなく「戻せる/戻せない」。退避→restore で戻せる
-    # 置換系をここへ足すと、線引きが崩れたことに誰も気づけない
+    # 置換系をここへ足すと、線引きが崩れたことに誰も気づけない。
+    # 2026-10-29 総点検 20: 控えを取らずに書き換える write-cells・find-replace・clean-table・sheet/row/col delete を足した
     assert _srv.GATE_COMMANDS == {
-        "write-range", "clear-range", "delete-module", "save-as", "close"}
+        "write-range", "clear-range", "delete-module", "save-as", "close",
+        "write-cells", "find-replace", "clean-table", "sheet delete", "row delete", "col delete"}
     assert "replace-procedure" not in _srv.GATE_COMMANDS
     assert "add-procedure" not in _srv.GATE_COMMANDS
     assert "restore" not in _srv.GATE_COMMANDS
@@ -1773,6 +1775,7 @@ def test_gate_check_passes_non_gated_commands(tmp_path, monkeypatch):
     assert _srv._gate_check("read-range A1:B2") is None
     assert _srv._gate_check("replace-procedure --module shu003 -y") is None
     assert _srv._gate_check("list-modules") is None
+    assert _srv._gate_check("sheet add 集計") is None and _srv._gate_check("row insert 5") is None
 
 
 @_needs_srv
@@ -6762,3 +6765,26 @@ def test_save_as_puts_a_bare_name_next_to_the_workbook(monkeypatch, tmp_path):
     saved.clear()
     args = type("A", (), {"posargs": [str(tmp_path / "別" / "x.xlsx")], "overwrite": False})()
     assert ve.cmd_save_as(args) is True and saved == [str(tmp_path / "別" / "x.xlsx")]
+
+
+def test_mcp_holds_new_excel_commands_while_a_timed_out_one_still_runs(monkeypatch):
+    """時間切れで見捨てた仕事が動いている間は Excel に触る手を撃たない・詰まりを解く手は通す（2026-10-29 総点検 19）。"""
+    import threading
+    import vba_mcp_server as ms
+    still = threading.Event()
+    monkeypatch.setattr(ms, "_abandoned", [("replace-procedure -y", still, 0.0)])
+    note = ms._still_running_note("write-cells A1 1")
+    assert "replace-procedure -y" in note and "撃っていません" in note
+    assert ms._run("write-cells A1 1")[2] == note                     # キューに入れずに返す
+    assert ms._still_running_note("unstick") == "" and ms._still_running_note("close-form") == ""
+    still.set()                                                        # 古い仕事が終わった
+    assert ms._still_running_note("write-cells A1 1") == "" and ms._abandoned == []
+
+
+@_needs_srv
+def test_gate_check_asks_for_a_sub_command_that_deletes(tmp_path, monkeypatch):
+    """sheet delete・row delete は下位の手で決まる（2026-10-29 総点検 20）。"""
+    log = _aiwin(tmp_path, monkeypatch)
+    _answer_when_asked(log, "no")
+    msg = _srv._gate_check("sheet delete 集計 -y", wait=5)
+    assert msg is not None and "sheet delete" in msg and "却下" in msg

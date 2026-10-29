@@ -429,8 +429,35 @@ def _restart_worker():
         threading.Thread(target=_worker, args=(_jobs,), daemon=True).start()
 
 
+# 時間切れで見捨てたが、まだ Excel 側で動いている仕事（[(行, done, 見捨てた時刻)]）。スレッドは止めようがないので、
+# 走っている間は Excel に触る次のコマンドを撃たない（窓が閉じた瞬間に古い仕事が続きを走らせ、新しいワーカーの手と
+# 食い違っていた＝replace-procedure の Remove と Import の間に別の手が入る・2026-10-29 総点検 19）。
+# 詰まりを解く手・Excel の COM に触らない手だけは通す
+_abandoned = []
+_UNJAM_OK = ('status', 'unstick', 'close-form', 'process', 'stats', 'list-backups', 'capabilities', 'rules',
+             '__reload__')
+
+
+def _still_running_note(line):
+    """見捨てた仕事がまだ動いていれば、撃たずに返す文（無ければ空）。"""
+    _abandoned[:] = [a for a in _abandoned if not a[1].is_set()]
+    if not _abandoned:
+        return ''
+    head = (line or '').strip().split(' ', 1)[0]
+    if head in _UNJAM_OK:
+        return ''
+    old, _done, since = _abandoned[0]
+    return (f"エラー: 時間切れにした前のコマンド「{old[:60]}」が Excel 側でまだ動いています（{int(time.time() - since)} 秒）。"
+            "食い違いを避けるため、このコマンドは撃っていません。\n"
+            "  Excel に窓（確認・エラー・入力）が出ていないか見て閉じるか（unstick・close-form で閉じられます）、"
+            "終わるのを待ってから撃ち直してください")
+
+
 def _run(line, timeout=600):
     box, done = {}, threading.Event()
+    note = _still_running_note(line)
+    if note:
+        return False, "", note
     with _worker_lock:
         # _restart_worker と排他にする。参照と put の間に世代交代が挟まると、
         # ジョブが停止済みの旧キューに落ちて誰にも実行されない
@@ -448,11 +475,12 @@ def _run(line, timeout=600):
             return False, "", (f"タイムアウト（{timeout}秒）: {line}\n"
                                "前のコマンドが長引いているため、このコマンドは未実行のまま"
                                "取り下げました。しばらくしてから再実行してください")
+        _abandoned.append((line, done, time.time()))
         _restart_worker()
         return False, "", (f"タイムアウト（{timeout}秒）: {line}\n"
-                           "ワーカーを再起動しました。次の呼び出しから復旧します"
-                           "（実行中だったコマンドは Excel 側で続いている可能性があります。"
-                           "モーダルダイアログが開いていないか確認してください）")
+                           "ワーカーを再起動しました。実行中だったコマンドは Excel 側で続いている可能性があるので、"
+                           "それが終わるまで Excel に触るコマンドは撃たずに返します"
+                           "（モーダルダイアログが開いていないか確認してください。unstick・close-form は通ります）")
     return (box.get("ok", False),
             (box.get("out") or "").strip(),
             (box.get("err") or "").strip())
@@ -477,7 +505,10 @@ def _log_call(line):
 # AI作業窓の承認ゲート（第2段・2026-08-01）。
 # 線引きは「書き/読み」ではなく「戻せる/戻せない」——マクロ置換は退避→restore で
 # 戻せるので通し、シートやブックに退避の無い操作だけ人間の承認にかける。
-GATE_COMMANDS = {"write-range", "clear-range", "delete-module", "save-as", "close"}
+GATE_COMMANDS = {"write-range", "clear-range", "delete-module", "save-as", "close",
+                 # 2026-10-29 総点検 20: 同じく控えを取らずに値・行・シートを書き換える手が素通りしていた
+                 "write-cells", "find-replace", "clean-table",
+                 "sheet delete", "row delete", "col delete"}
 GATE_WAIT = 180  # 秒。フォームの確認ダイアログで人間が答えるまで待つ上限
 
 
@@ -494,10 +525,14 @@ def _gate_check(line, wait=GATE_WAIT):
     if not log:
         return None
     try:
-        head = _tokenize(line)[0]
+        toks = _tokenize(line)
     except Exception:
-        head = (line.strip().split() or [""])[0]
-    if head not in GATE_COMMANDS:
+        toks = line.strip().split()
+    head = toks[0] if toks else ""
+    two = f"{head} {toks[1].lower()}" if len(toks) >= 2 else ""
+    if two in GATE_COMMANDS:                 # 下位の手で決まるもの（sheet delete 等）
+        head = two
+    elif head not in GATE_COMMANDS:
         return None
     return _ask_user(log, line.strip(), head, wait)
 
@@ -676,6 +711,17 @@ def _submit_async(line):
     denial = _gate_check(line)
     if denial:
         return denial
+    try:
+        head = _tokenize(line)[0]
+    except Exception:
+        head = ""
+    if head == "replace-procedure":          # --bg でも差分の確認を飛ばさない（総点検 20）
+        denial = _diff_confirm(line)
+        if denial:
+            return denial
+    note = _still_running_note(line)
+    if note:
+        return note
     return _run_async(line)
 
 
