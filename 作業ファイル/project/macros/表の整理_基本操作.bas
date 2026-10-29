@@ -8,8 +8,8 @@ Attribute VB_Name = "表の整理_基本操作"
 '   AI に回っていた（10/25）。どれも値は書かない（書式・幅・絞り込み・設定・シートの名前だけを変える）
 '   1 操作 1 本の棚（表の整理_書式 の 中央揃え・3 桁区切り など）は選んだ範囲の頼みのまま残し、場所を言った頼みはこちらへ回す
 Sub 頼みの文で指した所の書式を変える()
-    ' 依頼の語: 見出しの文字|合計行の文字|見出しの背景|合計行の背景|見出しを中央|見出しを左寄せ|見出しを右寄せ|列の文字を
-    ' 依頼の組: 見出し,ヘッダー,項目名,項目の行,合計行,合計の行,総計の行,小計の行,選んだ範囲,選んだセル,選んだ所,選択範囲,選択した,この範囲,このセル,この列,この行,の列+大きく,小さく,文字サイズ,フォントサイズ,文字の大きさ,ポイント,太字,ボールド,細字,斜体,イタリック,下線,取り消し線,赤,青,緑,黄,黒,白,灰色,グレー,オレンジ,紫,紺,ピンク,水色,茶色,塗,背景,網掛,中央,真ん中,センター,左寄せ,左揃え,左詰め,右寄せ,右揃え,右詰め,上揃え,下揃え,上下中央,上に寄せ,下に寄せ,縦書き,横書き,折り返,セル内で改行,縮小して,字下げ,インデント,明朝,ゴシック,メイリオ,書体,フォント,罫線,二重線,太線,細線,線を引+-一覧,調べ,探して,どこ,確認,チェック,点検,条件付き,グラフ,ピボット,スパーク,マイナス,負の,以上,以下,未満,超え,下回,上回,より大き,より小さ,場合,なら,だけ,ごとに,重複,空欄,空白,エラー,表示形式,桁区切り,カンマ,通貨,円マーク,パーセント,小数,和暦,幅,高さ,隠,非表示,並べ,絞,フィルタ,印刷,シート見出し,シートの見出し,タブ,美化,デザイン,テーマ,ダッシュボード,KPI,行を足,列を足,挿入,色分け,交互,縞,教え
+    ' 依頼の語: 見出しの文字|合計行の文字|見出しの背景|合計行の背景|見出しを中央|見出しを左寄せ|見出しを右寄せ|列の文字を|セル内で改行|セルの中で改行|タイトル行の下|タイトル行の上
+    ' 依頼の組: 見出し,ヘッダー,項目名,項目の行,合計行,合計の行,総計の行,小計の行,選んだ範囲,選んだセル,選んだ所,選択範囲,選択した,この範囲,このセル,この列,この行,の列,タイトル行,タイトルの行+大きく,小さく,文字サイズ,フォントサイズ,文字の大きさ,ポイント,太字,ボールド,細字,斜体,イタリック,下線,取り消し線,赤,青,緑,黄,黒,白,灰色,グレー,オレンジ,紫,紺,ピンク,水色,茶色,塗,背景,網掛,中央,真ん中,センター,左寄せ,左揃え,左詰め,右寄せ,右揃え,右詰め,上揃え,下揃え,上下中央,上に寄せ,下に寄せ,縦書き,横書き,折り返,セル内で改行,縮小して,字下げ,インデント,明朝,ゴシック,メイリオ,書体,フォント,罫線,二重線,太線,細線,線を引,実線+-一覧,調べ,探して,どこ,確認,チェック,点検,条件付き,グラフ,ピボット,スパーク,マイナス,負の,以上,以下,未満,超え,下回,上回,より大き,より小さ,場合,なら,だけ,ごとに,重複,空欄,空白,エラー,表示形式,桁区切り,カンマ,通貨,円マーク,パーセント,小数,和暦,幅,高さ,隠,非表示,並べ,絞,フィルタ,印刷,シート見出し,シートの見出し,タブ,美化,デザイン,テーマ,ダッシュボード,KPI,行を足,列を足,挿入,色分け,交互,縞,教え
     ' 階級: 基本
     ' 扱う: 文字の大きさ 文字の色 塗りつぶし 太字 斜体 下線 配置 折り返し 書体 罫線
     ' 見出し: なし
@@ -25,6 +25,10 @@ Sub 頼みの文で指した所の書式を変える()
     Set ws = ActiveSheet
     If ws.ProtectContents Then 先撃ちに断る ws.Name & " は保護されているので変えられません（「シートの保護を解除して」と頼むか、校閲＞シート保護の解除）": Exit Sub
     Set rng = 基_指した所(ws, 頼, True, 何, なぜ)
+    ' 「どこを」を言わない頼み（セル内で改行して全体を見えるように）は選んでいる範囲に当てる＝リボンのボタンと同じ（2026-10-29）
+    If rng Is Nothing And TypeName(Selection) = "Range" And InStr(なぜ, "列の名前") = 0 And InStr(なぜ, "合計の行") = 0 Then
+        If Not 含む語(頼, "見出し|ヘッダー|項目名|項目の行|タイトル行|タイトルの行") Then Set rng = Selection: 何 = "選んだ範囲"
+    End If
     If rng Is Nothing Then 先撃ちに断る なぜ: Exit Sub
     Application.ScreenUpdating = False
     For Each 節 In 基_節に分ける(頼)
@@ -41,7 +45,7 @@ End Sub
 Private Function 基_文字の書式(ByVal rng As Range, ByVal s As String) As String
     ' 1 つの節（「見出しの文字を大きく」「背景を黄色に」）を rng に当てる。→ 変えた物（「・大きく・赤」）。何も読めなければ ""
     Dim out As String, n As Double, 名 As String, 塗り As Boolean, t As String, ar As Range, c As Range, f As String
-    If 含む語(s, "罫線|二重線|太線|細線|点線|破線|線で囲|に線|線を消|線をなくし|線を引") And Not 含む語(s, "下線を引|取り消し線") Then
+    If 含む語(s, "罫線|二重線|太線|細線|点線|破線|線で囲|に線|線を消|線をなくし|線を引|実線") And Not 含む語(s, "下線を引|取り消し線") Then
         基_文字の書式 = 基_罫線(rng, s)
         Exit Function
     End If
@@ -190,7 +194,7 @@ Private Function 基_罫線(ByVal rng As Range, ByVal s As String) As String
         種 = xlDouble: 太 = xlThick: 何 = "二重線"
     ElseIf InStr(s, "極太") > 0 Then
         太 = xlThick: 何 = "極太線"
-    ElseIf 含む語(s, "太線|太い線|太く") Then
+    ElseIf 含む語(s, "太線|太い線|太い実線|太く") Then
         太 = xlMedium: 何 = "太線"
     ElseIf 含む語(s, "点線") Then
         種 = xlDot: 何 = "点線"
@@ -329,8 +333,8 @@ Private Function 基_表示形式(ByVal 頼 As String, ByRef 名 As String) As String
 End Function
 
 Sub 頼みの文で指した列と行の幅と表示を変える()
-    ' 依頼の語: の列の幅|の列を隠|の列をグループ|の行をグループ
-    ' 依頼の組: の列,この列,選択した列,選択した行,選んだ列,見出しの行,見出し行,合計行,合計の行,この行,選んだ行,全部の列,すべての列,全ての列,表の列+幅,高さ,広げ,広く,狭く,狭め,高く,低く,自動調整,自動で合わせ,ぴったり,文字に合わせ,幅をそろえ,幅を揃え,高さをそろえ,高さを揃え,同じ幅,同じ高さ,隠して,隠す,非表示,グループ化,グループを解除,グループ解除,折りたた+-一覧,調べ,探して,どこ,確認,印刷,ページ,全シート,どのシート,シートごと,他のシート,前のシート,1枚目,一枚目,グラフ,ピボット,再表示,全部表示,表示に戻,見えるように,シートを,倍率,教え
+    ' 依頼の語: の列の幅|の列を隠|の列をグループ|の行をグループ|行目の高さ
+    ' 依頼の組: の列,この列,選択した列,選択した行,選んだ列,見出しの行,見出し行,合計行,合計の行,この行,選んだ行,全部の列,すべての列,全ての列,表の列,行目+幅,高さ,広げ,広く,狭く,狭め,高く,低く,自動調整,自動で合わせ,ぴったり,文字に合わせ,幅をそろえ,幅を揃え,高さをそろえ,高さを揃え,同じ幅,同じ高さ,隠して,隠す,非表示,グループ化,グループを解除,グループ解除,折りたた,倍,半分+-一覧,調べ,探して,どこ,確認,印刷,ページ,全シート,どのシート,シートごと,他のシート,前のシート,1枚目,一枚目,グラフ,ピボット,再表示,全部表示,表示に戻,見えるように,シートを,倍率,教え
     ' 階級: 基本
     ' 扱う: 列幅 行の高さ 非表示 グループ化
     ' 見出し: なし
@@ -342,6 +346,7 @@ Sub 頼みの文で指した列と行の幅と表示を変える()
     Dim 頼 As String, ws As Worksheet, 見r As Long, 左 As Long, 右 As Long, 末r As Long, 合r As Long, 下 As Long, 表あり As Boolean
     Dim 行の As Boolean, 対 As Range, 何 As String, 済 As String, cols As Collection, c As Variant, 最小 As Long, 最大 As Long
     Dim 選 As Boolean, 全部 As Boolean, n As Double, 足す As Double, 大 As Double, ar As Range, k As Long
+    Dim p As Long, q As Long, t As String, t1 As String, R1 As Long, r2 As Long, 区 As Long, ch As String
     頼 = 基_頼み()
     If Len(頼) = 0 Then 先撃ちに断る "この棚は頼みの文で動きます（例:「金額の列の幅を広げて」「見出しの行の高さを高くして」「備考の列を隠して」）": Exit Sub
     If TypeName(ActiveSheet) <> "Worksheet" Then 先撃ちに断る "ワークシートを前に出してから頼んでください": Exit Sub
@@ -351,7 +356,7 @@ Sub 頼みの文で指した列と行の幅と表示を変える()
     下 = 末r
     If 合r > 下 Then 下 = 合r
     選 = 含む語(頼, "選んだ|選択|この列|この行") And TypeName(Selection) = "Range"
-    行の = 含む語(頼, "高さ|高く|低く|行高|この行|選んだ行|見出しの行|見出し行|合計行|合計の行|全部の行|すべての行|表の行|行を")
+    行の = 含む語(頼, "高さ|高く|低く|行高|この行|選んだ行|見出しの行|見出し行|合計行|合計の行|全部の行|すべての行|表の行|行を|行目")
     If 含む語(頼, "列の幅|列幅|の列|列を|この列|選んだ列") Then 行の = 含む語(頼, "高さ|高く|低く|行高")
     全部 = 含む語(頼, "全部の列|すべての列|全ての列|表の列|列を全部|全列|全部の行|すべての行|表の行|行を全部")
     If 行の Then
@@ -359,6 +364,41 @@ Sub 頼みの文で指した列と行の幅と表示を変える()
         If 含む語(頼, "見出しの行|見出し行|見出し") And 表あり And Not 全部 Then Set 対 = 基_足す(対, ws.rows(見r)): 何 = 何 & "・見出しの行"
         If 含む語(頼, "合計行|合計の行") And 合r > 0 Then Set 対 = 基_足す(対, ws.rows(合r)): 何 = 何 & "・合計行"
         If 選 And 対 Is Nothing Then Set 対 = Selection.EntireRow: 何 = "選んだ行"
+        ' 「1行目」「3?5行目」「2から4行目」＝シートの行の番号で指す（2026-10-29 リボンの練習で AI に回っていた）
+        If 対 Is Nothing And InStr(頼, "行目") > 0 Then
+            p = InStr(頼, "行目")
+            Do While p > 0
+                q = p - 1: t = ""
+                Do While q >= 1
+                    ch = StrConv(Mid$(頼, q, 1), vbNarrow)
+                    If ch Like "[0-9]" Then t = ch & t: q = q - 1 Else Exit Do
+                Loop
+                If Len(t) > 0 And Len(t) <= 7 Then
+                    r2 = CLng(t): R1 = r2: 区 = 0
+                    If q >= 1 Then
+                        ch = Mid$(頼, q, 1)
+                        If ch = "-" Or ch = ChrW(&H301C) Or ch = ChrW(&HFF5E) Or ch = ChrW(&HFF0D) Then 区 = 1
+                    End If
+                    If 区 = 0 And q >= 2 Then
+                        If Mid$(頼, q - 1, 2) = "から" Then 区 = 2
+                    End If
+                    If 区 > 0 Then
+                        q = q - 区: t1 = ""
+                        Do While q >= 1
+                            ch = StrConv(Mid$(頼, q, 1), vbNarrow)
+                            If ch Like "[0-9]" Then t1 = ch & t1: q = q - 1 Else Exit Do
+                        Loop
+                        If Len(t1) > 0 And Len(t1) <= 7 Then R1 = CLng(t1)
+                    End If
+                    If R1 > r2 Then k = R1: R1 = r2: r2 = k
+                    If R1 >= 1 And r2 <= ws.rows.Count Then
+                        Set 対 = 基_足す(対, ws.Range(ws.rows(R1), ws.rows(r2)))
+                        何 = 何 & "・" & R1 & IIf(r2 > R1, "から" & r2, "") & "行目"
+                    End If
+                End If
+                p = InStr(p + 2, 頼, "行目")
+            Loop
+        End If
     Else
         If 全部 And 表あり Then Set 対 = ws.Range(ws.Columns(左), ws.Columns(右)): 何 = "表の列"
         If Not 全部 And 表あり Then
@@ -436,6 +476,34 @@ Sub 頼みの文で指した列と行の幅と表示を変える()
                 If 行の Then ar.RowHeight = 基_範囲内(大, 1, 409) Else ar.ColumnWidth = 基_範囲内(大, 1, 255)
             Next ar
             済 = " の" & IIf(行の, "高さ", "幅") & "を " & 大 & " にそろえました"
+        ElseIf InStr(頼, "倍") > 0 Or InStr(頼, "半分") > 0 Then
+            ' 「高さを2倍に」「幅を1.5倍」「半分に」（2026-10-29）
+            n = 2
+            If InStr(頼, "半分") > 0 Then n = 0.5
+            p = InStr(頼, "倍")
+            If p > 1 Then
+                q = p - 1: t = ""
+                Do While q >= 1
+                    ch = StrConv(Mid$(頼, q, 1), vbNarrow)
+                    If ch Like "[0-9.]" Then t = ch & t: q = q - 1 Else Exit Do
+                Loop
+                If Len(t) > 0 Then
+                    n = val(t)
+                ElseIf InStr("一二三四五", Mid$(頼, p - 1, 1)) > 0 Then
+                    n = InStr("一二三四五", Mid$(頼, p - 1, 1))
+                End If
+            End If
+            If n <= 0 Then n = 2
+            For Each ar In 対.Areas
+                For k = 1 To IIf(行の, ar.rows.Count, ar.Columns.Count)
+                    If 行の Then
+                        ar.rows(k).RowHeight = 基_範囲内(ar.rows(k).RowHeight * n, 1, 409)
+                    Else
+                        ar.Columns(k).ColumnWidth = 基_範囲内(ar.Columns(k).ColumnWidth * n, 1, 255)
+                    End If
+                Next k
+            Next ar
+            済 = " の" & IIf(行の, "高さ", "幅") & "を " & n & " 倍にしました"
         ElseIf n > 0 And 含む語(頼, "幅を|高さを|幅は|高さは") Then
             For Each ar In 対.Areas
                 If 行の Then ar.RowHeight = 基_範囲内(n, 1, 409) Else ar.ColumnWidth = 基_範囲内(n, 1, 255)
@@ -1080,7 +1148,7 @@ Private Function 基_指した所(ByVal ws As Worksheet, ByVal 頼 As String, ByVal 見
     Dim 見r As Long, 左 As Long, 右 As Long, 末r As Long, 合r As Long, 下 As Long, 表あり As Boolean
     Dim cols As Collection, c As Variant, out As Range, 見出し As Boolean, 合計 As Boolean, 列の印 As Boolean, 両方 As Boolean
     何 = "": なぜ = ""
-    見出し = 見出しも And 含む語(頼, "見出し|ヘッダー|項目名|項目の行") And Not 含む語(頼, "シート見出し|シートの見出し")
+    見出し = 見出しも And 含む語(頼, "見出し|ヘッダー|項目名|項目の行|タイトル行|タイトルの行") And Not 含む語(頼, "シート見出し|シートの見出し")
     合計 = 含む語(頼, "合計行|合計の行|総計の行|小計の行")
     列の印 = 含む語(頼, "の列|列を|列の|列は|列が|列で|の欄")
     両方 = 含む語(頼, "見出しと|と見出し|合計行と|と合計行")
