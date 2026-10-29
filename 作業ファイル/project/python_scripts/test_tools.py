@@ -5148,8 +5148,10 @@ def test_every_example_in_skill_docs_parses():
     if root is None:
         _pytest.skip("スキルの置き場が見つからない")
     docs = [r"excel-vba-manager\SKILL.md", r"excel-vba-manager\references\commands.md",
+            r"excel-vba-manager\references\sheet.md", r"excel-vba-manager\references\index.md",
             r"excel-vba-manager\references\agent.md", r"excel-vba-manager\references\userform.md",
-            r"excel-vba-manager\references\workflows.md", r"excel-userform-builder\SKILL.md", r"shu-addin-manager\SKILL.md"]
+            r"excel-vba-manager\references\workflows.md", r"excel-userform-builder\SKILL.md", r"shu-addin-manager\SKILL.md",
+            r"excel-userform-builder\references\design.md", r"excel-userform-builder\references\build.md"]
     p = vm.build_parser()
     cmds = set()
     for a in p._subparsers._group_actions:
@@ -6805,3 +6807,122 @@ def test_compact_diff_shows_only_around_the_change_of_a_long_line():
     assert "直した語" in plus[0] and "語151" in minus[0]
     assert len(plus[0]) < 160 and f"（{len(new[1])} 字の行）" in plus[0]
     assert all(len(ln) < 200 for ln in out)
+
+
+def test_proc_window_around_and_lines_20261029():
+    """get --around / --lines: 長いプロシージャを丸ごと返さず、語の前後・行の範囲だけを行番号つきで（宣言の行はいつも）。"""
+    import vbam_vba as vv
+    code = "\r\n".join(["Sub 集計(x)"] + [f"  y = {i}" for i in range(1, 60)] + ["  MsgBox \"合計\"", "End Sub"])
+    body, note = vv.proc_window(code, around="msgbox", ctx=1)
+    lines = body.split("\n")
+    assert lines[0].endswith("Sub 集計(x)") and lines[1] == "…"
+    assert any('MsgBox "合計"' in ln for ln in lines) and len(lines) <= 6
+    assert "全 62 行のうち" in note and "1 か所" in note
+    body, note = vv.proc_window(code, span="10-12")
+    assert [ln.split(":")[0].strip() for ln in body.split("\n") if ln != "…"] == ["1", "10", "11", "12"]
+    assert "見つかりません" in vv.proc_window(code, around="無い語")[1]
+    assert vv.proc_window(code, span="あ")[0] == ""
+    ns, msg, _n = vm.parse_command_tokens(vm.build_parser(), ["get", "集計", "--around", "MsgBox", "--context", "3"])
+    assert msg is None and ns.around_opt == "MsgBox" and ns.context_opt == 3
+
+
+def test_split_first_procedure_for_patch_20261029():
+    """patch の replacement に下請けの Function を書き足したら、先頭の 1 本と残りに分ける（説明のコメントは残りの側へ）。"""
+    import vbam_vba as vv
+    code = "Sub 本体()\n  x = 下請け(1)\nEnd Sub\n\n' 下請けの説明\nFunction 下請け(n)\n  下請け = n\nEnd Function\n"
+    head, rest = vv.split_first_procedure(code)
+    assert head.strip().endswith("End Sub") and "下請け(n)" not in head
+    assert rest.startswith("' 下請けの説明") and rest.strip().endswith("End Function")
+    assert vv.split_first_procedure("Sub A()\n  Exit Sub\nEnd Sub\n") == ("Sub A()\n  Exit Sub\nEnd Sub\n", "")
+
+
+def test_gate_changed_picks_tests_through_callers_20261029():
+    """gate --changed: 変わったモジュールのプロシージャを呼び元へたどり、その名前を含むテストだけ選ぶ。"""
+    import vbam_vba as vv
+    codes = {"計算": "Function 税込(x)\n  税込 = x * 1.1\nEnd Function\n",
+             "画面": "Sub 表示()\n  MsgBox 税込(100)\nEnd Sub\n",
+             "別件": "Sub 印刷()\nEnd Sub\n",
+             "試験": "Sub テスト表示()\n  表示\nEnd Sub\nSub テスト印刷()\n  印刷\nEnd Sub\nSub テスト税込みの綴り()\n  x = 税込み\nEnd Sub\n"}
+    tests = ["テスト表示", "テスト印刷", "テスト税込みの綴り"]
+    assert vv.related_tests(codes, ["計算"], tests) == ["テスト表示"]       # 税込み は 税込 の別の語
+    assert vv.related_tests(codes, ["別件"], tests) == ["テスト印刷"]
+    assert vv.related_tests(codes, ["試験"], tests) == tests                 # テストのモジュール自体が変わった
+    import zlib
+    marks = {"mods": {m: zlib.crc32(c.encode("utf-8")) for m, c in codes.items()}}
+    assert vv.changed_modules(marks, codes) == []
+    assert vv.changed_modules(marks, dict(codes, 計算=codes["計算"] + "'x\n", 新規="")) == ["新規", "計算"]
+    assert vv.changed_modules(marks, {k: v.replace("\n", "\r\n") for k, v in codes.items()}) == []   # 改行の違いは数えない
+
+
+def test_burn_marks_round_trip_and_recent_note_20261029(tmp_path):
+    """焼いた印を控えて読み戻せる／30 分のうちの焼き直しは知らせる（ほかのブック・失敗・古いものは数えない）。"""
+    import vbam_vba as vv
+    p = str(tmp_path / "marks.json")
+    assert vv.burn_marks_load("秀コンボ.xlsm", path=p) is None
+    vv.burn_marks_save("秀コンボ.xlsm", {"A": "Sub x()\nEnd Sub\n"}, path=p)
+    m = vv.burn_marks_load("秀コンボ.XLSM", path=p)
+    assert m and vv.changed_modules(m, {"A": "Sub x()\r\nEnd Sub\r\n"}) == []
+    now = 1_000_000.0
+    recs = [{"cmd": "register-addin", "ok": True, "book": "秀コンボ.xlsm", "_t": now - 600},
+            {"cmd": "register-addin", "ok": True, "book": "秀コンボ.xlsm", "_t": now - 7200},
+            {"cmd": "register-addin", "ok": False, "book": "秀コンボ.xlsm", "_t": now - 60},
+            {"cmd": "register-addin", "ok": True, "book": "別.xlsm", "_t": now - 60}]
+    note = vv.burn_recent_note(recs, "秀コンボ.xlsm", now=now)
+    assert "2 回目" in note and "gate --changed" in note
+    assert vv.burn_recent_note(recs[1:], "秀コンボ.xlsm", now=now) == ""
+
+
+def test_call_log_why_reads_failed_test_and_com_text_20261029():
+    """台帳の理由: test は通った行（○）でなく落ちた行（✗）と次の理由の行、COM の例外の組は本文だけ。"""
+    import vbam_core as vc
+    out = "○ テストA  [試験]  (0.10秒)\n✗ テストB  [試験]  (0.20秒)\n    実行時エラー 5: 期待 3 実際 4\n○ テストC  [試験]  (0.10秒)"
+    why = vc.call_log_why(out)
+    assert why.startswith("✗ テストB") and "期待 3 実際 4" in why and "秒" not in why.split("実行時")[0]
+    com = "エラー: マクロの実行に失敗しました: 実行時エラー 1004 - (-2147352567, '例外が発生しました。', (0, 'Microsoft Excel', 'シートが保護されています。', 'xlmain11.chm', 0, -2146827284), None)"
+    assert vc.call_log_why(com) == "エラー: マクロの実行に失敗しました: 実行時エラー 1004 - シートが保護されています。"
+
+
+def test_grep_short_module_option_alias_20261029():
+    """grep の -m は --module（台帳 10/21〜29: 「不明な引数/オプション: -m」）。"""
+    ns, msg, _n = vm.parse_command_tokens(vm.build_parser(), ["grep", "Range", "-m", "表の整理"])
+    assert msg is None and ns.module_opt == "表の整理"
+    ns, msg, _n = vm.parse_command_tokens(vm.build_parser(), ["gate", "--changed"])
+    assert msg is None and ns.changed
+    ns, msg, _n = vm.parse_command_tokens(vm.build_parser(), ["stats", "--cmd", "patch-procedure"])
+    assert msg is None and ns.cmd_filter == "patch-procedure"
+
+
+def test_grep_where_finds_def_uses_and_callers_20261029():
+    """grep 名前 --where: 定義・使っている所（文字列とコメントの中は数えない）・間接の呼び元を 1 回で。"""
+    import vbam_vba as vv
+    codes = {"計算": "Function 税込(x)\n  税込 = x * 1.1\nEnd Function\n",
+             "画面": "Sub 表示()\n  MsgBox 税込(100)  ' 税込 を見せる\n  s = \"税込\"\nEnd Sub\n",
+             "入口": "Sub ボタン()\n  表示\nEnd Sub\n"}
+    out = "\n".join(vv.where_name(codes, "税込"))
+    assert "[計算] Function 税込(x)" in out
+    assert "使っている所（1 か所・1 本のプロシージャ）" in out and "[画面] 表示:2:" in out
+    assert "間接の呼び元（1 本）: [入口] ボタン" in out
+    assert "定義なし" in "\n".join(vv.where_name(codes, "無い名前"))
+    ns, msg, _n = vm.parse_command_tokens(vm.build_parser(), ["grep", "税込", "--where"])
+    assert msg is None and ns.where
+
+
+def test_book_head_and_register_next_step_20261029(tmp_path):
+    """マクロを直す手の返事の頭に「対象: ブック」（この手が書き始めた所に）／焼けた後の次の手。"""
+    import io as _io
+    b = _io.StringIO()
+    b.write("前の手の行\n")
+    pos = len(b.getvalue())
+    b.write("置換しました\n")
+    vm._book_head("patch-procedure", (b, pos), "秀コンボ.xlsm")
+    b.write("後の行\n")
+    assert b.getvalue() == "前の手の行\n対象: 秀コンボ.xlsm\n置換しました\n後の行\n"
+    c = _io.StringIO("x\n")
+    vm._book_head("materials", (c, 0), "秀コンボ.xlsm")
+    vm._book_head("get", (c, 0), None)
+    assert c.getvalue() == "x\n"
+    import vbam_vba as vv
+    pub = tmp_path / "publish_all.py"
+    assert "使う Excel" in vv.register_next_step(publisher=str(pub))
+    pub.write_text("")
+    assert "publish_all.py -m" in vv.register_next_step(publisher=str(pub))

@@ -780,6 +780,9 @@ def vba(command: str) -> str:
       cond-format A6:D17 --formula "=$B6<$C6" --bg #FFC7CE（式の中の " は "" と重ねる）
     10 手を超える組み立ては一手ずつ撃たず VBA 1 本に: "add-module Module1 -y" → set_procedure_code(全文)
       → "add-procedure Module1 -y" → "compile" → "run-macro 名前"。直すのは replace_procedure / patch_procedure。
+    マクロの直し: 長いプロシージャは丸ごと取らず get_procedure(around="語")（--lines 40-80 も）→ patch_procedure →
+      "compile" と "run-macro 名前" を同じ返事に。名前の定義・使う所・呼び元は "grep 名前 --where" 1 回。
+      当たったブックは返事の頭の「対象:」（list-open は要らない）。確かめは "gate --changed"、register-addin は最後に 1 回。
     表示中のフォームは人に頼まず "close-form" で閉じてから直す。確認を出すコマンドは -y を付ける。長い手（checkup・gate・rehearse 等）は行末 "--bg" で job id
       → agent_status。"reload" は道具の .py を読み直す。引数は vba_help（外れれば使い方が返る）。
     """
@@ -807,11 +810,14 @@ def vba_help(command: str = "") -> str:
 
 
 @mcp.tool()
-def get_procedure(name: str = "", module: str = "", procedure: str = "", proc: str = "") -> str:
-    """プロシージャのコードを取得して返す（_last_proc.vba にも保存される）。
+def get_procedure(name: str = "", module: str = "", procedure: str = "", proc: str = "",
+                  around: str = "", lines: str = "") -> str:
+    """プロシージャのコードを取得して返す（_last_proc.vba には全文が保存される）。
 
+    長いプロシージャは丸ごと取らない: around="語" でその語の前後だけ、lines="40-80" で行の範囲だけを
+    行番号つきで返す（数行の直しはこれ → patch_procedure）。丸ごと要るのは過半を書き直すときだけ。
     同名プロシージャが複数モジュールにある場合は module を指定する。
-    修正の流れ: get_procedure → replace_procedure(code=修正後の全文)
+    修正の流れ: get_procedure(around=…) → patch_procedure（過半が変わるときだけ replace_procedure に全文）
     """
     if not name:
         if procedure:
@@ -821,6 +827,10 @@ def get_procedure(name: str = "", module: str = "", procedure: str = "", proc: s
         else:
             return "エラー: 引数 'name' が指定されていません。例: get_procedure(name='プロシージャ名')"
     cmd = f'get "{module}" "{name}"' if module else f'get "{name}"'
+    if around:
+        cmd += ' --around "' + around.replace('"', '""') + '"'
+    if lines:
+        cmd += f' --lines "{lines}"'
     ok, out, err = _run(cmd)
     # get のコード本文は stdout、情報行・警告は stderr。人が読むので両方返す
     body = "\n".join(p for p in (err, out) if p).strip()

@@ -53,10 +53,11 @@ VBA モジュールが破壊される。
 利用者が選ぶ。利用者がその場にいるなら検証は本人の実機テストが最速。
 
 1. `py vba_manager.py list` でマクロ一覧を確認
-2. `py vba_manager.py get <Sub名>` で対象コードを取得（_last_proc.vba に出力）
-3. `_last_proc.vba` を Read ツールで読み、修正内容を検討
-4. 修正後のコードを `_last_proc.vba` に Write
-5. `py vba_manager.py replace-procedure -y` で適用（非対話実行では -y 必須）
+2. `py vba_manager.py get <Sub名> --around 語`（語の前後だけ）か `--lines 40-80` で、直す所だけ読む
+   （長いプロシージャを丸ごと文脈に入れない。全文は _last_proc.vba に保存される）
+3. 数行の直しは `py vba_manager.py patch-procedure <モジュール> <Sub名> --old "旧" --new "新" -y`
+4. 過半が変わるときだけ、`_last_proc.vba` を書き直して `py vba_manager.py replace-procedure -y`（非対話実行では -y 必須）
+5. `compile` と `run-macro <Sub名>`（または `test 絞り込み`）を直しと同じ返事に並べて確かめる
 6. ユーザーに動作確認を依頼
 
 ## 取り込み前の検査（check-bas）
