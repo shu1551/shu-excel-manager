@@ -87,10 +87,136 @@ def _normalize_type(t):
 
 
 def find_component(wb, form_name):
+    """単一ブック内からコンポーネントを探す（「フォーム」有無の揺れも吸収）。"""
+    if not form_name:
+        return None
+    fn = form_name.lower()
+    # 1. 完全一致
     for c in wb.VBProject.VBComponents:
-        if c.Name.lower() == form_name.lower():
+        if c.Name.lower() == fn:
+            return c
+    # 2. 「フォーム」の有無の揺れ
+    for c in wb.VBProject.VBComponents:
+        cn = c.Name.lower()
+        if cn == fn + "フォーム" or (fn.endswith("フォーム") and cn == fn[:-4]):
             return c
     return None
+
+
+def find_component_extended(xl, wb, form_name):
+    """wb および開いている全ブック・アドインからコンポーネントを探す。
+    戻り値: (comp, owner_wb) または (None, None)
+    """
+    if not form_name:
+        return None, None
+    fn = form_name.lower()
+
+    # 対象ブックの一覧を集める（wb を先頭、次に開いている全ブック、アドイン）
+    books = []
+    seen_names = set()
+    if wb is not None:
+        try:
+            books.append(wb)
+            seen_names.add(str(wb.Name).lower())
+        except Exception:
+            pass
+    if xl is not None:
+        try:
+            for i in range(1, int(xl.Workbooks.Count) + 1):
+                b = xl.Workbooks.Item(i)
+                bn = str(b.Name).lower()
+                if bn not in seen_names:
+                    seen_names.add(bn)
+                    books.append(b)
+            for i in range(1, int(xl.AddIns.Count) + 1):
+                ad = xl.AddIns.Item(i)
+                if ad.Installed:
+                    bn = str(ad.Name).lower()
+                    if bn not in seen_names:
+                        try:
+                            wb_ad = xl.Workbooks(str(ad.Name))
+                            seen_names.add(bn)
+                            books.append(wb_ad)
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+    # 1. 完全一致
+    for b in books:
+        try:
+            for c in b.VBProject.VBComponents:
+                if int(c.Type) == 3 and c.Name.lower() == fn:
+                    return c, b
+        except Exception:
+            continue
+
+    # 2. 「フォーム」の有無の揺れ
+    for b in books:
+        try:
+            for c in b.VBProject.VBComponents:
+                if int(c.Type) == 3:
+                    cn = c.Name.lower()
+                    if cn == fn + "フォーム" or (fn.endswith("フォーム") and cn == fn[:-4]):
+                        return c, b
+        except Exception:
+            continue
+
+    # 3. 部分一致
+    for b in books:
+        try:
+            for c in b.VBProject.VBComponents:
+                if int(c.Type) == 3:
+                    cn = c.Name.lower()
+                    if (fn in cn) or (cn in fn):
+                        return c, b
+        except Exception:
+            continue
+
+    return None, None
+
+
+def find_all_forms_in_books(xl, wb=None):
+    """開いている全ブックの全フォーム一覧 → [(フォーム名, ブック名)]"""
+    books = []
+    seen_names = set()
+    if wb is not None:
+        try:
+            books.append(wb)
+            seen_names.add(str(wb.Name).lower())
+        except Exception:
+            pass
+    if xl is not None:
+        try:
+            for i in range(1, int(xl.Workbooks.Count) + 1):
+                b = xl.Workbooks.Item(i)
+                bn = str(b.Name).lower()
+                if bn not in seen_names:
+                    seen_names.add(bn)
+                    books.append(b)
+            for i in range(1, int(xl.AddIns.Count) + 1):
+                ad = xl.AddIns.Item(i)
+                if ad.Installed:
+                    bn = str(ad.Name).lower()
+                    if bn not in seen_names:
+                        try:
+                            wb_ad = xl.Workbooks(str(ad.Name))
+                            seen_names.add(bn)
+                            books.append(wb_ad)
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+    res = []
+    for b in books:
+        try:
+            b_name = str(b.Name)
+            for c in b.VBProject.VBComponents:
+                if int(c.Type) == 3:
+                    res.append((c.Name, b_name))
+        except Exception:
+            continue
+    return res
 
 
 def _round2(v):

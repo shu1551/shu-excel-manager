@@ -2139,8 +2139,11 @@ def project_case_clash_message(hits, limit=10):
              for idx, nm, canon in hits[:limit]]
     if len(hits) > limit:
         lines.append(f"  … 他 {len(hits) - limit} 件")
+    # 2026-10-30 指示書089の3: どの綴りをどちらにそろえれば通るかを1行で明示
+    align_summary = "そろえ方: " + "、".join(f"`{nm}` → `{canon}`" for _, nm, canon in hits[:limit]) + " にそろえてください"
     return ("ブックに既にある名前と大小文字だけ違う綴りがあります。VBE はプロジェクト全体の綴りを書き換え、"
             "ほかのモジュール（公開している棚のマクロなど）に無関係な差分が出ます。\n"
+            + align_summary + "\n"
             "  ブックの綴りに合わせるか、別の名前（日本語の名前など）にしてください（それでも書くなら --force）:\n"
             + '\n'.join(lines))
 

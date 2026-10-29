@@ -4346,6 +4346,95 @@ def _container_offset(c, form_name):
     return dx, dy
 
 
+def _find_form_show_macro(form_name, xl=None):
+    """form_name を表示するマクロ・ボタンを探して案内文を返す（2026-10-30 指示書089の3）。"""
+    if xl is None:
+        try:
+            import win32com.client
+            xl = win32com.client.GetActiveObject('Excel.Application')
+        except Exception:
+            return ""
+    fn_lower = form_name.lower()
+    fn_bare = fn_lower[:-4] if fn_lower.endswith("フォーム") else fn_lower
+
+    macro_hits = []
+    btn_hits = []
+    try:
+        for i in range(1, int(xl.Workbooks.Count) + 1):
+            b = xl.Workbooks.Item(i)
+            try:
+                for c in b.VBProject.VBComponents:
+                    if int(c.Type) in (1, 2):
+                        cm = c.CodeModule
+                        n = int(cm.CountOfLines)
+                        if n > 0:
+                            code = cm.Lines(1, n)
+                            for m in re.finditer(r'(?:Sub|Function)\s+([^\s\(\)]+)', code):
+                                proc_name = m.group(1)
+                                pn_lower = proc_name.lower()
+                                if (fn_bare in pn_lower) and any(w in pn_lower for w in ('表示', 'show', '開く', '起動')):
+                                    macro_hits.append(f"run-macro {proc_name}")
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    try:
+        wb = xl.ActiveWorkbook
+        if wb:
+            for ws in wb.Worksheets:
+                try:
+                    for shp in ws.Shapes:
+                        txt = ""
+                        try:
+                            txt = shp.TextFrame.Characters().Text
+                        except Exception:
+                            pass
+                        oa = str(shp.OnAction or '')
+                        if (fn_bare in txt.lower()) or (fn_bare in oa.lower()):
+                            name = txt.strip() or shp.Name
+                            btn_hits.append(f"シート「{ws.Name}」のボタン「{name}」")
+                except Exception:
+                    continue
+    except Exception:
+        pass
+
+    hints = []
+    if macro_hits:
+        hints.append(f"マクロ: {macro_hits[0]}")
+    if btn_hits:
+        hints.append(btn_hits[0])
+    return " または ".join(hints) if hints else f"マクロ: run-macro {form_name}_表示"
+
+
+def learn_all_forms_geometry(wb, xl=None):
+    """開いている全ブックの全 UserForm の位置を控える（2026-10-30 指示書089の3）。"""
+    learned = []
+    books = []
+    if wb is not None:
+        books.append(wb)
+    if xl is not None:
+        try:
+            for i in range(1, int(xl.Workbooks.Count) + 1):
+                b = xl.Workbooks.Item(i)
+                if b not in books:
+                    books.append(b)
+        except Exception:
+            pass
+    for b in books:
+        try:
+            for c in b.VBProject.VBComponents:
+                if int(c.Type) == 3:
+                    try:
+                        g = _learn_form_geometry(b, c.Name, xl)
+                        if g:
+                            learned.append(c.Name)
+                    except Exception:
+                        pass
+        except Exception:
+            continue
+    return learned
+
 def _form_designer(xl, wb, form_name):
     """form_name の Designer。前に出ているブックに無ければ、開いているブック・アドインの VBA から探す
     （試しのブックを前に出してフォームを試すと、前のブックにはフォームが無い・10/22）"""
@@ -4408,6 +4497,30 @@ def cmd_form_click(args):
     import ctypes
     rest = list(getattr(args, 'posargs', []) or [])
     learn = bool(getattr(args, 'learn_flag', False))
+    list_opt = bool(getattr(args, 'list_flag', False))
+
+    # 2026-10-30 指示書089の3: 引数の揺れ（form-click --list）
+    if list_opt:
+        form_name = rest[0] if rest else ""
+        if form_name:
+            path = _form_geometry_path(form_name)
+            if not os.path.isfile(path):
+                xl, wb = get_workbook(None)
+                _learn_form_geometry(wb, form_name, xl)
+            if os.path.isfile(path):
+                with open(path, encoding='utf-8') as f:
+                    g = json.load(f)
+                print(f"===== {form_name} のコントロール一覧（{len(g)} 個）=====")
+                for k, v in g.items():
+                    print(f"  {k}: Left={v[0]} Top={v[1]} W={v[2]} H={v[3]}" + (f" Caption='{v[4]}'" if v[4] else ""))
+                return True
+        import glob
+        files = glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), "_form_geometry_*.json"))
+        forms = [os.path.basename(f)[len("_form_geometry_"):-len(".json")] for f in files]
+        print(f"控えのあるフォーム一覧（{len(forms)} 件）: {', '.join(forms) if forms else 'なし'}")
+        print("  使い方: form-click <フォーム名> <コントロール名か見出し>")
+        return True
+
     if not rest or (len(rest) < 2 and not learn):
         print("使い方: form-click <フォーム名> <コントロール名か見出し> [--learn]")
         return False
@@ -4415,8 +4528,7 @@ def cmd_form_click(args):
     target = rest[1] if len(rest) > 1 else ''
     geo = None
     if not _list_form_windows():
-        # フォームが出ていないときだけ設計画面（Designer）から位置を控える。出ているときに Designer を触ると
-        # フォームがクリックを受けなくなる（2026-10-03 実機: Designer を取りに行った直後の押下が全部空振りした）
+        # フォームが出ていないときだけ設計画面（Designer）から位置を控える
         xl, wb = get_workbook(None)
         try:
             geo = _learn_form_geometry(wb, form_name, xl)
@@ -4435,11 +4547,19 @@ def cmd_form_click(args):
     if geo is None:
         path = _form_geometry_path(form_name)
         if not os.path.isfile(path):
+            # 2026-10-30 指示書089の3: 控えが無くても閉じているなら自動学習を試みる
+            try:
+                xl, wb = get_workbook(None)
+                geo = _learn_form_geometry(wb, form_name, xl)
+            except Exception:
+                geo = None
+        if geo is None and os.path.isfile(path):
+            with open(path, encoding='utf-8') as f:
+                geo = json.load(f)
+        if geo is None:
             print(f"エラー: {form_name} の位置の控えがありません。フォームを閉じた状態で `form-click {form_name} --learn` を先に撃ってください"
                   "（表示中は Designer が取れず位置を読めません）")
             return False
-        with open(path, encoding='utf-8') as f:
-            geo = json.load(f)
     if not getattr(args, 'here_flag', False) and _form_owner_is_active_book(form_name):
         # フォームの多くは前に出ているブックを書き換える（シートの削除・並べ替え・タブの色…）。フォームの持ち主
         # （アドインの元のブック）が前に出たまま押すと、道具自身のシートが壊れる（2026-10-22: ワークシート一覧の
@@ -4448,15 +4568,57 @@ def cmd_form_click(args):
               "試しは新しいブック（または試し用のブック）を前に出してから撃ってください"
               "（シートを書き換えないボタンだと分かっていて押すなら --here）")
         return False
-    hit = geo.get(target)
+    # 2026-10-30 指示書089の3: 名前の完全一致 → 見出しの完全一致 → 種類（ボタンを優先）の順で 1 つに決める
+    hit = None
+    target_lower = target.lower()
+
+    # 1. 名前の完全一致（大文字小文字無視含む）
+    if target in geo:
+        hit = geo[target]
+    else:
+        exact_name_cands = [k for k in geo if k.lower() == target_lower]
+        if len(exact_name_cands) == 1:
+            hit = geo[exact_name_cands[0]]
+
+    # 2. 見出し（Caption）の完全一致
     if hit is None:
-        cands = [k for k, v in geo.items() if v[4] == target] or [k for k, v in geo.items() if target and target in v[4]]
-        if len(cands) > 1:        # 見出し（Label）と同じ文字なら、押せる部品（ボタン）の方を選ぶ
-            cands = [k for k in cands if not k.lower().startswith(('label', 'lbl', 'sep'))] or cands
-        if len(cands) != 1:
-            print(f"エラー: '{target}' に当たるコントロールが{'ありません' if not cands else '複数あります: ' + '・'.join(cands)}")
-            return False
-        hit = geo[cands[0]]
+        exact_cap_cands = [k for k, v in geo.items() if (v[4] or '') == target]
+        if len(exact_cap_cands) == 1:
+            hit = geo[exact_cap_cands[0]]
+        elif len(exact_cap_cands) > 1:
+            # 3. 種類（ボタンを優先）
+            btn_cands = [k for k in exact_cap_cands if not k.lower().startswith(('label', 'lbl', 'sep', 'txt', 'lst', 'fra', 'box'))]
+            btn_only = [k for k in btn_cands if k.lower().startswith(('btn', 'cmd', 'commandbutton'))]
+            if len(btn_only) == 1:
+                hit = geo[btn_only[0]]
+            elif len(btn_cands) == 1:
+                hit = geo[btn_cands[0]]
+            else:
+                cands_to_show = btn_cands or exact_cap_cands
+                print(f"エラー: '{target}' に当たるコントロールが複数あります: {'・'.join(cands_to_show)}")
+                return False
+
+    # 4. 部分一致（名前または見出し）
+    if hit is None:
+        part_cands = [k for k, v in geo.items() if (target in k) or (target in (v[4] or ''))]
+        if len(part_cands) == 1:
+            hit = geo[part_cands[0]]
+        elif len(part_cands) > 1:
+            # ボタン優先
+            btn_cands = [k for k in part_cands if not k.lower().startswith(('label', 'lbl', 'sep', 'txt', 'lst', 'fra', 'box'))]
+            btn_only = [k for k in btn_cands if k.lower().startswith(('btn', 'cmd', 'commandbutton'))]
+            if len(btn_only) == 1:
+                hit = geo[btn_only[0]]
+            elif len(btn_cands) == 1:
+                hit = geo[btn_cands[0]]
+            else:
+                cands_to_show = btn_cands or part_cands
+                print(f"エラー: '{target}' に当たるコントロールが複数あります: {'・'.join(cands_to_show)}")
+                return False
+
+    if hit is None:
+        print(f"エラー: '{target}' に当たるコントロールがありません")
+        return False
     try:
         import win32gui
         import win32api
@@ -4476,7 +4638,12 @@ def cmd_form_click(args):
             picked = kids[0]
             break
     if picked is None:
-        print(f"エラー: 表示中のフォームが見つかりません（先に {form_name} を表示してください）")
+        # 2026-10-30 指示書089の3: 表示する手（どのマクロ・どのボタン）をそのまま返す
+        how_to_show = _find_form_show_macro(form_name, xl)
+        msg = f"エラー: 表示中のフォームが見つかりません（先に {form_name} を表示してください）"
+        if how_to_show:
+            msg += f"\n  表示する手: {how_to_show}"
+        print(msg)
         return False
     # 送り手が DPI 非対応だと、窓の DPI と食い違って Windows がクリックの位置をずらし、押下が空振りする
     # （2026-10-03 実機: DPI 対応にした送り手だけが効いた）。送っている間だけこのスレッドを DPI 対応にする
@@ -4580,7 +4747,7 @@ End Function
 
 
 def cmd_form_read(args):
-    """表示中の UserForm の中身を読む: form-read [フォーム名]
+    """表示中の UserForm の中身を読む: form-read [フォーム名] [--list]
 
     入力欄の文字・リスト（ComboBox/ListBox）の項目と選択・チェックの状態・ボタンの見出し・隠れた/使えない部品を
     1 部品 1 行で返す。表示中のフォームは設計画面（Designer）が取れないので、一時の読み取り用モジュールを
@@ -4590,6 +4757,14 @@ def cmd_form_read(args):
     """
     rest = list(getattr(args, 'posargs', []) or [])
     form_name = rest[0] if rest else ""
+    # 2026-10-30 指示書089の3: 引数の揺れ（form-read --list）
+    if getattr(args, 'list_flag', False):
+        wins = _list_form_windows()
+        if wins:
+            print(f"表示中のフォーム一覧（{len(wins)} 件）: {', '.join(cap for _, cap in wins)}")
+        else:
+            print("表示中のフォームはありません")
+        return True
     xl, wb = get_workbook(None)
     # 同じ名前のフォームを持つブックを全部候補にする。アドイン（.xlam）は Workbooks に並ばないので AddIns から足す
     # （秀コンボ.xlsm と 秀コンボ.xlam の両方に同じフォームがあり、表示しているのは xlam 側＝xlsm だけ見て「表示されていません」と
