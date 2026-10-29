@@ -6878,6 +6878,22 @@ def test_gate_changed_narrows_to_changed_procedures_20261029(tmp_path):
     assert vv.related_tests(t, ["試験"], tests, procs=vv.changed_procs(marks, t)) == ["テスト空行"]   # テスト自体を直した
 
 
+def test_gate_changed_uses_installed_addin_when_no_marks_20261029():
+    """焼いた印が無いときは、入っている同じ名のアドインを前に焼いた物として比べる（全部回して 30 秒待たない）。"""
+    import vbam_vba as vv
+    from types import SimpleNamespace as NS
+    comp = lambda name, code: NS(Name=name, CodeModule=NS(CountOfLines=code.count("\n") + 1, Lines=lambda a, b: code))
+    book = NS(VBProject=NS(VBComponents=[comp("棚", "Sub 合計()\nEnd Sub")]))
+    xl = NS(AddIns2=[NS(Name="別.xlam", Installed=True), NS(Name="秀コンボ.xlam", Installed=False),
+                     NS(Name="秀コンボ.xlam", Installed=True)],
+            Workbooks=lambda n: book if n == "秀コンボ.xlam" else None)
+    m = vv.marks_from_installed_addin(xl, "秀コンボ.xlsm")
+    assert m and "秀コンボ.xlam" in m["time"]
+    assert vv.changed_modules(m, {"棚": "Sub 合計()\r\nEnd Sub"}) == []
+    assert vv.changed_procs(m, {"棚": "Sub 合計()\n x = 1\nEnd Sub"}) == ["合計"]
+    assert vv.marks_from_installed_addin(xl, "無い.xlsm") is None
+
+
 def test_burn_marks_round_trip_and_recent_note_20261029(tmp_path):
     """焼いた印を控えて読み戻せる／30 分のうちの焼き直しは知らせる（ほかのブック・失敗・古いものは数えない）。"""
     import vbam_vba as vv

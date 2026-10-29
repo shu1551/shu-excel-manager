@@ -7869,10 +7869,8 @@ def burn_marks_save(book, codes, path=None):
             allm = json.load(f) or {}
     except (OSError, ValueError):
         allm = {}
-    allm[str(book).lower()] = {'time': time.strftime('%Y-%m-%d %H:%M:%S'),
-                               'mods': {m: zlib.crc32(c.replace('\r\n', '\n').encode('utf-8')) for m, c in codes.items()},
-                               # 2026-10-29: モジュールの単位だと「表の整理」の棚 1 本の直しで 135 本中 128 本が回った
-                               'procs': {m: proc_marks(c) for m, c in codes.items()}}
+    # 2026-10-29: プロシージャごとの印も控える。モジュールの単位だと「表の整理」の棚 1 本の直しで 135 本中 128 本が回った
+    allm[str(book).lower()] = marks_from_codes(codes, time.strftime('%Y-%m-%d %H:%M:%S'))
     try:
         with open(p, 'w', encoding='utf-8') as f:
             json.dump(allm, f, ensure_ascii=False)
@@ -7885,6 +7883,28 @@ def changed_modules(marks, codes):
     old = (marks or {}).get('mods') or {}
     return sorted(m for m, c in codes.items()
                   if old.get(m) != zlib.crc32(c.replace('\r\n', '\n').encode('utf-8')))
+
+
+def marks_from_codes(codes, label):
+    """本文 {モジュール名: 本文} から、焼いた印と同じ形の印を作る（純 Python）。"""
+    return {'time': label,
+            'mods': {m: zlib.crc32(c.replace('\r\n', '\n').encode('utf-8')) for m, c in codes.items()},
+            'procs': {m: proc_marks(c) for m, c in codes.items()}}
+
+
+def marks_from_installed_addin(xl, book_name):
+    """焼いた印が無いときの代わり＝入っている同じ名のアドイン（秀コンボ.xlsm → 秀コンボ.xlam）が前に焼いた物。
+    その VBA から印を作る。見つからなければ None（2026-10-29: 印が無いと 135 本を全部回して 30 秒待っていた）。"""
+    stem = os.path.splitext(str(book_name))[0].lower()
+    try:
+        for a in (xl.AddIns2 if hasattr(xl, 'AddIns2') else xl.AddIns):
+            name = str(a.Name)
+            if a.Installed and os.path.splitext(name)[0].lower() == stem and name.lower().endswith(('.xlam', '.xla')):
+                codes = _module_codes(xl.Workbooks(name))
+                return marks_from_codes(codes, f"入っているアドイン {name}") if codes else None
+    except Exception:
+        return None
+    return None
 
 
 def changed_procs(marks, codes):
@@ -9499,7 +9519,7 @@ def cmd_gate(args):
     only = None
     if getattr(args, 'changed', False):
         codes = _module_codes(wb_src)
-        marks = burn_marks_load(src_name)
+        marks = burn_marks_load(src_name) or marks_from_installed_addin(xl_src, src_name)
         if marks is None or not codes:
             print("変わったモジュール: 前に焼いた印が無いので、テストは全部回します")
         else:
