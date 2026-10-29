@@ -4485,7 +4485,7 @@ def _form_owner_is_active_book(form_name):
 
 
 def cmd_form_click(args):
-    """表示中の UserForm のボタンを外から押す: form-click <フォーム名> <コントロール名か見出し> [--learn]
+    """表示中の UserForm のボタンを外から押す: form-click [excel_file] <フォーム名> <コントロール名か見出し> [--learn]
 
     画面のクリック（マウスの合成）はフォームに届かないことがあるので、フォームの窓にクリックのメッセージ
     （WM_LBUTTONDOWN/UP）を直接送る。MSForms のコントロールは窓を持たない部品で、窓は 1 枚だけ
@@ -4495,17 +4495,18 @@ def cmd_form_click(args):
     押した結果は人が見る画面か、別の手（read-selection・材料の読み戻し）で確かめる。
     """
     import ctypes
-    rest = list(getattr(args, 'posargs', []) or [])
+    # 2026-10-30 指示書089の4: ブック名を先に書いたときも正しく解釈する（parse_target_and_rest）
+    target_file, rest = parse_target_and_rest(args.posargs)
     learn = bool(getattr(args, 'learn_flag', False))
     list_opt = bool(getattr(args, 'list_flag', False))
+    xl = None   # 表示中で控えがあると Excel を取らずに進む。見つからない案内の手前で未定義にしない
 
-    # 2026-10-30 指示書089の3: 引数の揺れ（form-click --list）
     if list_opt:
         form_name = rest[0] if rest else ""
         if form_name:
             path = _form_geometry_path(form_name)
             if not os.path.isfile(path):
-                xl, wb = get_workbook(None)
+                xl, wb = get_workbook(target_file)
                 _learn_form_geometry(wb, form_name, xl)
             if os.path.isfile(path):
                 with open(path, encoding='utf-8') as f:
@@ -4518,18 +4519,18 @@ def cmd_form_click(args):
         files = glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), "_form_geometry_*.json"))
         forms = [os.path.basename(f)[len("_form_geometry_"):-len(".json")] for f in files]
         print(f"控えのあるフォーム一覧（{len(forms)} 件）: {', '.join(forms) if forms else 'なし'}")
-        print("  使い方: form-click <フォーム名> <コントロール名か見出し>")
+        print("  使い方: form-click [excel_file] <フォーム名> <コントロール名か見出し>")
         return True
 
     if not rest or (len(rest) < 2 and not learn):
-        print("使い方: form-click <フォーム名> <コントロール名か見出し> [--learn]")
+        print("使い方: form-click [excel_file] <フォーム名> <コントロール名か見出し> [--learn]")
         return False
     form_name = rest[0]
     target = rest[1] if len(rest) > 1 else ''
     geo = None
     if not _list_form_windows():
         # フォームが出ていないときだけ設計画面（Designer）から位置を控える
-        xl, wb = get_workbook(None)
+        xl, wb = get_workbook(target_file)
         try:
             geo = _learn_form_geometry(wb, form_name, xl)
         except Exception:
@@ -4547,9 +4548,9 @@ def cmd_form_click(args):
     if geo is None:
         path = _form_geometry_path(form_name)
         if not os.path.isfile(path):
-            # 2026-10-30 指示書089の3: 控えが無くても閉じているなら自動学習を試みる
+            # 2026-10-30 指示書089の3/089の4: 控えが無くても閉じているなら自動学習を試みる（指定ブックから優先）
             try:
-                xl, wb = get_workbook(None)
+                xl, wb = get_workbook(target_file)
                 geo = _learn_form_geometry(wb, form_name, xl)
             except Exception:
                 geo = None
@@ -4617,7 +4618,33 @@ def cmd_form_click(args):
                 return False
 
     if hit is None:
-        print(f"エラー: '{target}' に当たるコントロールがありません")
+        # 2026-10-30 指示書089の4: 当たるコントロールが無いとき近い名前（btn続ける など）を返す
+        import difflib
+        cands = list(geo.keys())
+        cap_map = {k: (v[4] or '') for k, v in geo.items() if (v[4] or '')}
+        close_keys = difflib.get_close_matches(target, cands, n=3, cutoff=0.2)
+        close_caps = difflib.get_close_matches(target, list(cap_map.values()), n=3, cutoff=0.2)
+
+        cands_msg = []
+        seen_cand = set()
+        for k in close_keys:
+            if k not in seen_cand:
+                seen_cand.add(k)
+                cap = geo[k][4]
+                cands_msg.append(f"{k}（{cap}）" if cap else k)
+        for cap_val in close_caps:
+            k = next((k for k, v in cap_map.items() if v == cap_val), None)
+            if k and k not in seen_cand:
+                seen_cand.add(k)
+                cands_msg.append(f"{k}（{cap_val}）")
+
+        msg = f"エラー: '{target}' に当たるコントロールがありません"
+        if cands_msg:
+            msg += f"。 近い名前: {'・'.join(cands_msg)}"
+        elif cands:
+            sample = [f"{k}（{geo[k][4]}）" if geo[k][4] else k for k in cands[:5]]
+            msg += f"。 候補: {'・'.join(sample)}"
+        print(msg)
         return False
     try:
         import win32gui
