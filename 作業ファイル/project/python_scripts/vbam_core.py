@@ -2699,12 +2699,154 @@ def call_log_summary(recs, top=20, slow=8, why_top=8):
             "gap_mean": (sum(gaps) / len(gaps)) if gaps else None, "gap_sec": sum(gaps)}
 
 
-def cmd_stats(args):
-    """呼び出し台帳の集計: stats [--days N] [--top N] [--slow N] [--json]（Excel に触らない）"""
+SLOW_BENCHMARKS = {
+    'get': 1.0,
+    'grep': 1.0,
+    'compile': 1.0,
+    'sheet': 1.0,
+    'patch-procedure': 1.5,
+    'replace-procedure': 1.5,
+    'add-procedure': 1.5,
+    'delete-procedure': 1.5,
+    'shelf-run': 1.5,
+    'seiri': 1.5,
+    'register-addin': 8.0,
+    'test（全部）': 15.0,
+    'test（絞り込み）': 1.5,
+}
+
+
+def _categorize_cmd(cmd, args_str):
+    args_str = (args_str or "").strip()
+    if cmd == "test":
+        parts = args_str.split()
+        non_book_tokens = [p for p in parts if not p.lower().endswith(('.xlsm', '.xlam', '.xlsb', '.xlsx')) and not p.startswith('-')]
+        has_filter_opts = any(p in parts for p in ('--module', '-m', '--only')) or bool(non_book_tokens)
+        if has_filter_opts:
+            return "test（絞り込み）"
+        return "test（全部）"
+    elif cmd == "gate":
+        if "--changed" in args_str:
+            return "gate（--changed）"
+        return "gate（全部）"
+    return cmd
+
+
+def _disp_width(s):
+    import unicodedata
+    w = 0
+    for ch in str(s):
+        w += 2 if unicodedata.east_asian_width(ch) in ('F', 'W') else 1
+    return w
+
+
+def stats_slow_summary(days=14, file_path=None):
+    """期間内の成功した呼び出しを cmd ごとに集計し、遅い手を名指しする（2026-10-29 指示書079）。"""
     import json
+    log_file = file_path or _CALL_LOG_FILE
+    now = time.time()
+    since_curr = now - float(days) * 86400
+    since_prev = now - 2.0 * float(days) * 86400
+
+    curr_by = {}
+    prev_by = {}
+
+    try:
+        with open(log_file, 'r', encoding='utf-8') as f:
+            for ln in f:
+                ln = ln.strip()
+                if not ln:
+                    continue
+                try:
+                    r = json.loads(ln)
+                    t_str = r.get("time")
+                    if not t_str:
+                        continue
+                    t = time.mktime(time.strptime(t_str, '%Y-%m-%d %H:%M:%S'))
+                except Exception:
+                    continue
+
+                # 成功した呼び出しのみ（ok が False でないもの）
+                if r.get("ok") is False:
+                    continue
+
+                sec = float(r.get("sec") or 0)
+                cat_cmd = _categorize_cmd(r.get("cmd", "?"), r.get("args", ""))
+
+                if t >= since_curr:
+                    curr_by.setdefault(cat_cmd, []).append(sec)
+                elif t >= since_prev:
+                    prev_by.setdefault(cat_cmd, []).append(sec)
+    except OSError:
+        return []
+
+    rows = []
+    for cmd_name, secs in curr_by.items():
+        secs.sort()
+        cnt = len(secs)
+        med = secs[cnt // 2]
+        p90_idx = min(int(cnt * 0.9), cnt - 1)
+        p90 = secs[p90_idx]
+        max_sec = secs[-1]
+        tot = sum(secs)
+
+        prev_secs = prev_by.get(cmd_name, [])
+        prev_med = sorted(prev_secs)[len(prev_secs) // 2] if prev_secs else None
+
+        warn = False
+        # 条件1: 目安を超えた
+        bench = SLOW_BENCHMARKS.get(cmd_name)
+        if bench is not None and med > bench:
+            warn = True
+        # 条件2: 前期間より1.3倍以上遅くなった（両方10回以上）
+        if cnt >= 10 and len(prev_secs) >= 10 and prev_med is not None and med >= 1.3 * prev_med:
+            warn = True
+
+        rows.append({
+            'cmd': cmd_name,
+            'count': cnt,
+            'med': med,
+            'p90': p90,
+            'max': max_sec,
+            'total': tot,
+            'warn': warn,
+        })
+
+    rows.sort(key=lambda r: -r['total'])
+    return rows
+
+
+def cmd_stats(args):
+    """呼び出し台帳の集計: stats [--days N] [--top N] [--slow [N]] [--json]（Excel に触らない）"""
+    import json
+    slow_arg = getattr(args, 'slow', False)
+    is_slow_mode = (slow_arg is True) or (isinstance(slow_arg, str) and not slow_arg.isdigit())
+    if is_slow_mode:
+        days = int(getattr(args, 'days', None) or 14)
+        rows = stats_slow_summary(days=days)
+        if not rows:
+            print(f"呼び出し台帳に直近 {days} 日の成功記録がありません")
+            return True
+        top15 = rows[:15]
+        print(f"台帳の遅い手（直近 {days} 日・成功のみ・合計秒の多い順）:")
+        print("     手                     回数   中央値   9割値    最大    合計秒")
+        for r in top15:
+            mark = "⚠" if r['warn'] else " "
+            cmd_disp = r['cmd']
+            pad = 22 - _disp_width(cmd_disp)
+            pad_str = " " * max(pad, 1)
+            tot_str = f"{int(r['total'])}秒"
+            if r['total'] >= 60:
+                tot_str += f" (約{int(round(r['total']/60))}分)"
+            print(f"  {mark} {cmd_disp}{pad_str} {r['count']:>5}  {r['med']:>5.1f}秒  {r['p90']:>5.1f}秒  {r['max']:>5.1f}秒  {tot_str}")
+        top1 = rows[0]
+        mins = int(round(top1['total'] / 60))
+        print(f"\nいちばん合計の大きい手: {top1['cmd']} 合計 {mins} 分（中央値 {top1['med']:.1f} 秒 × {top1['count']} 回）")
+        return True
+
     days = int(getattr(args, 'days', None) or 7)
     top = int(getattr(args, 'top', None) or 20)
-    slow = int(getattr(args, 'slow', None) or 8)
+    slow = int(slow_arg) if isinstance(slow_arg, (int, str)) and str(slow_arg).isdigit() else 8
     recs = call_log_read(days)
     only = getattr(args, 'cmd_filter', None)
     if only:
@@ -3526,6 +3668,8 @@ __all__ = ['is_vbproject_protected',
     'call_log_read',
     'call_log_summary',
     'cmd_stats',
+    'stats_slow_summary',
+    'SLOW_BENCHMARKS',
     '_cell_str',
     '_coerce_cell',
     '_col_letter',

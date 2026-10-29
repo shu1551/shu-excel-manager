@@ -6161,7 +6161,7 @@ def test_shelf_dictionary_ledger_parse_and_copy_agree_20261023(heard_env):
             assert vp.parse_ledger(open(p, 'rb').read().decode('cp932')) == vp.parse_ledger(vp._LEDGER_DEFAULT)
     assert led['fillers'] == ['ええ', 'えー', 'えーと', 'えっと', 'あの', 'あのー', 'じゃあ', 'では', 'それでは', 'はい']
     pairs = {p['wrong']: p for p in led['pairs']}
-    assert set(pairs) == {'票', '産業ごと', '中央ドライ', '選択制度', '見出し尿', '気切り', '洗濯', '不倫仮名'}
+    assert set(pairs) == {'票', '産業ごと', '中央ドライ', '選択制度', '見出し尿', '気切り', '洗濯', '不倫仮名', '不倫がな', 'フリマナ'}
     assert pairs['票']['right'] == '表' and pairs['票']['stop'] == '伝投得帳開' and pairs['票']['need'] == ''
     assert pairs['産業ごと']['right'] == '3桁ごと' and pairs['産業ごと']['need'] == '気切,区切'
     assert pairs['中央ドライ']['right'] == '中央揃え'
@@ -6170,6 +6170,8 @@ def test_shelf_dictionary_ledger_parse_and_copy_agree_20261023(heard_env):
     assert pairs['気切り']['right'] == '区切り'
     assert pairs['洗濯']['right'] == '選択'
     assert pairs['不倫仮名']['right'] == 'ふりがな'
+    assert pairs['不倫がな']['right'] == 'ふりがな'
+    assert pairs['フリマナ']['right'] == 'ふりがな'
     # 既定（写しが無いときの最後の砦）は台帳と同じ中身
     assert vp.parse_ledger(vp._LEDGER_DEFAULT) == led
     # 説明のコメントや書式の違う行は読まない
@@ -6966,3 +6968,404 @@ def test_book_head_and_register_next_step_20261029(tmp_path):
     assert "使う Excel" in vv.register_next_step(publisher=str(pub))
     pub.write_text("")
     assert "publish_all.py -m" in vv.register_next_step(publisher=str(pub))
+
+
+def test_stats_slow_20261029(tmp_path):
+    """079: stats --slow の集計（合計順・test分割・目安名指し・1.3倍名指し・壊れた行スキップ）。"""
+    import json, time, datetime
+    from vbam_core import stats_slow_summary
+
+    now = datetime.datetime.now()
+    def _dt(days_ago):
+        return (now - datetime.timedelta(days=days_ago)).strftime('%Y-%m-%d %H:%M:%S')
+
+    lines = []
+    # 壊れた行
+    lines.append("THIS IS NOT JSON")
+    lines.append('{"broken": true}')
+    # 失敗行（集計対象外）
+    lines.append(json.dumps({"time": _dt(2), "cmd": "patch-procedure", "args": "", "sec": 10.0, "ok": False}))
+
+    # test（全部）と test（絞り込み）の分割
+    lines.append(json.dumps({"time": _dt(1), "cmd": "test", "args": "", "sec": 20.0, "ok": True}))
+    lines.append(json.dumps({"time": _dt(1), "cmd": "test", "args": "秀コンボ.xlsm", "sec": 18.0, "ok": True}))
+    lines.append(json.dumps({"time": _dt(1), "cmd": "test", "args": "テスト_加算", "sec": 0.5, "ok": True}))
+
+    # gate（全部）と gate（--changed）の分割
+    lines.append(json.dumps({"time": _dt(2), "cmd": "gate", "args": "", "sec": 5.0, "ok": True}))
+    lines.append(json.dumps({"time": _dt(2), "cmd": "gate", "args": "--changed", "sec": 2.0, "ok": True}))
+
+    # patch-procedure: 目安 1.5 秒を超えて警告 (sec=3.0)
+    for _ in range(5):
+        lines.append(json.dumps({"time": _dt(3), "cmd": "patch-procedure", "args": "foo", "sec": 3.0, "ok": True}))
+
+    # 1.3倍悪化の手「slow_degrade」: 前期間(20日前) 10回 sec=1.0、今期間(5日前) 10回 sec=2.0 (2.0倍悪化)
+    for _ in range(10):
+        lines.append(json.dumps({"time": _dt(20), "cmd": "slow_degrade", "args": "", "sec": 1.0, "ok": True}))
+    for _ in range(10):
+        lines.append(json.dumps({"time": _dt(5), "cmd": "slow_degrade", "args": "", "sec": 2.0, "ok": True}))
+
+    # 健全な手「fast_cmd」: sec=0.1 (目安なし or 1.0以下)
+    for _ in range(3):
+        lines.append(json.dumps({"time": _dt(1), "cmd": "get", "args": "foo", "sec": 0.1, "ok": True}))
+
+    mock_log = tmp_path / "mock_calls.jsonl"
+    mock_log.write_text("\n".join(lines), encoding="utf-8")
+
+    rows = stats_slow_summary(days=14, file_path=str(mock_log))
+    by_cmd = {r['cmd']: r for r in rows}
+
+    # 合計秒の降順にソートされていること
+    totals = [r['total'] for r in rows]
+    assert totals == sorted(totals, reverse=True)
+
+    # test 分割確認
+    assert "test（全部）" in by_cmd
+    assert "test（絞り込み）" in by_cmd
+    assert by_cmd["test（全部）"]["count"] == 2
+    assert by_cmd["test（全部）"]["warn"] is True  # 中央値 19.0 > 目安 15.0
+    assert by_cmd["test（絞り込み）"]["count"] == 1
+    assert by_cmd["test（絞り込み）"]["warn"] is False  # 0.5 <= 目安 1.5
+
+    # gate 分割確認
+    assert "gate（全部）" in by_cmd
+    assert "gate（--changed）" in by_cmd
+
+    # 目安超え確認 (patch-procedure)
+    assert by_cmd["patch-procedure"]["warn"] is True
+
+    # 1.3倍悪化確認 (slow_degrade)
+    assert by_cmd["slow_degrade"]["warn"] is True
+    assert by_cmd["slow_degrade"]["count"] == 10
+
+    # 健全確認 (get)
+    assert by_cmd["get"]["warn"] is False
+
+
+def test_project_code_cache_invalidation_20261029():
+    """076の2: patch 直後の大文字小文字補正で、直した後の名前が反映されること（キャッシュの穴の塞ぎ）。"""
+    from vbam_vba import _project_code_fn, _project_code_cache, invalidate_project_code_cache
+    from vbam_vba import auto_align_code_case
+    _project_code_cache.clear()
+
+    class MockCodeModule:
+        def __init__(self, code):
+            self.lines = [ln for ln in code.replace("\r\n", "\n").split("\n")]
+        @property
+        def CountOfLines(self):
+            return len(self.lines)
+        def Lines(self, start, count):
+            return "\r\n".join(self.lines[start - 1:start - 1 + count])
+
+    class MockComp:
+        def __init__(self, name, code):
+            self.Name = name
+            self.CodeModule = MockCodeModule(code)
+
+    class MockVBProject:
+        def __init__(self, comps):
+            self.VBComponents = comps
+
+    class MockWorkbook:
+        def __init__(self, comps):
+            self.FullName = r"C:\fake\test.xlsm"
+            self.Name = "test.xlsm"
+            self.VBProject = MockVBProject(comps)
+
+    c1 = MockComp("Module1", "Sub Test1()\r\n    Dim myOrigVar As Long\r\nEnd Sub")
+    wb = MockWorkbook([c1])
+
+    fn = _project_code_fn("test.xlsm", wb_hint=wb)
+    code0 = fn()
+    assert "myOrigVar" in code0
+
+    # シナリオ1: patch の直後に、直したばかりの名前を使う次の patch
+    # 1本目の patch で myOrigVar を BrandNewApple に変更
+    c1.CodeModule = MockCodeModule("Sub Test1()\r\n    Dim BrandNewApple As Long\r\nEnd Sub")
+    invalidate_project_code_cache(wb)
+
+    # 直後に brandnewapple (小文字) を auto_align_code_case に通すと、最新コードから BrandNewApple に補正されること
+    latest_code = fn()
+    aligned, diffs = auto_align_code_case("Sub Test2()\r\n    a = brandnewapple\r\nEnd Sub", latest_code)
+    assert "BrandNewApple" in aligned
+    assert diffs, "直したばかりの BrandNewApple で補正が働くこと"
+
+    # シナリオ2: 同じ行数のまま中身だけ変える patch (BrandNewApple → BrandNewBanana)
+    c1.CodeModule = MockCodeModule("Sub Test1()\r\n    Dim BrandNewBanana As Long\r\nEnd Sub")
+    invalidate_project_code_cache(wb)
+
+    latest_code2 = fn()
+    aligned2, diffs2 = auto_align_code_case("Sub Test2()\r\n    b = brandnewbanana\r\nEnd Sub", latest_code2)
+    assert "BrandNewBanana" in aligned2
+    assert "BrandNewApple" not in latest_code2
+
+    # シナリオ3: add → delete → 同じ名前で add (行数変化によるシグネチャ自動検知)
+    # add: Module2 を追加 (行数変化)
+    c2 = MockComp("Module2", "Sub AddedSub()\r\n    Dim Mod2SpecialVar As Long\r\nEnd Sub")
+    wb.VBProject.VBComponents.append(c2)
+    latest_code3 = fn()
+    assert "Mod2SpecialVar" in latest_code3
+
+    # delete: Module2 を削除
+    wb.VBProject.VBComponents.remove(c2)
+    latest_code4 = fn()
+    assert "Mod2SpecialVar" not in latest_code4
+
+    # 再度同じ名前で add (中身は別名 Mod2ReAddedVar)
+    c2_new = MockComp("Module2", "Sub AddedSub()\r\n    Dim Mod2ReAddedVar As Long\r\nEnd Sub")
+    wb.VBProject.VBComponents.append(c2_new)
+    latest_code5 = fn()
+    assert "Mod2ReAddedVar" in latest_code5
+
+
+def test_shelf_cache_invalidation_on_patch_20261029():
+    """080: 棚のマクロを patch したら即座に新しい本文が反映されること（5秒キャッシュで古い本文を読まない）。"""
+    import vbam_view as vw
+    import vbam_vba as vba
+
+    class MockCodeModule:
+        def __init__(self, text):
+            self.text = text
+            self.CountOfLines = len(text.splitlines())
+        def Lines(self, start, count):
+            lines = self.text.splitlines()
+            return "\r\n".join(lines[start - 1 : start - 1 + count])
+
+    class MockComp:
+        def __init__(self, name, text):
+            self.Name = name
+            self.CodeModule = MockCodeModule(text)
+
+    class MockVBProject:
+        def __init__(self, comps, name="VBAProject"):
+            self.Name = name
+            self.VBComponents = comps
+            self.Protection = 0
+            self.Filename = r"C:\fake\秀コンボ.xlam"
+            self.FileName = self.Filename
+
+    class MockWorkbook:
+        def __init__(self, comps):
+            self.FullName = r"C:\fake\秀コンボ.xlam"
+            self.Name = "秀コンボ.xlam"
+            self.VBProject = MockVBProject(comps)
+
+    class MockXL:
+        def __init__(self, wb):
+            self.wb = wb
+            self.Workbooks = [wb]
+            self.VBE = type("MockVBE", (), {"VBProjects": [wb.VBProject]})()
+
+    c = MockComp("表の整理", "Sub 整理りんご()\r\n    '依頼の語: りんご\r\nEnd Sub")
+    wb = MockWorkbook([c])
+    xl = MockXL(wb)
+
+    # 1回目: shelf_source を呼ぶとキャッシュされる
+    owner, lines = vw._shelf_source(xl)
+    assert any("りんご" in ln for ln in lines)
+
+    # 棚を patch して 'みかん' に更新
+    c.CodeModule = MockCodeModule("Sub 整理みかん()\r\n    '依頼の語: みかん\r\nEnd Sub")
+    vba.invalidate_project_code_cache(wb)
+
+    # 直後（5秒以内）に shelf_source を呼んだとき、新しい本文が使われること
+    owner2, lines2 = vw._shelf_source(xl)
+    assert any("みかん" in ln for ln in lines2), f"古い本文が残っている: {lines2}"
+
+
+def test_watchdog_preserves_batch_results_on_timeout_20261029(monkeypatch, capsys):
+    """080: まとめ撃ち（VMT_RunBatch）の途中で無限ループ等で時間切れ（watchdog発火）になっても、
+    それまでに完了したテストの結果が失われず、止まったテスト以降が時間切れ・未実行として記録されること。"""
+    import argparse
+    import vbam_vba as vba
+
+    class MockCodeModule:
+        def __init__(self, code):
+            self.code = code
+            self.CountOfLines = len(code.splitlines())
+        def Lines(self, start, count):
+            return "\r\n".join(self.code.splitlines()[start - 1 : start - 1 + count])
+        def AddFromString(self, s):
+            self.code += "\r\n" + s
+
+    class MockComp:
+        def __init__(self, name, code, type_=1):
+            self.Name = name
+            self.Type = type_
+            self.CodeModule = MockCodeModule(code)
+
+    class MockVBComponents:
+        def __init__(self, comps):
+            self.comps = list(comps)
+        def __iter__(self):
+            return iter(self.comps)
+        def Add(self, type_):
+            c = MockComp("VbaManagerTestHarness", "", type_=type_)
+            self.comps.append(c)
+            return c
+        def Remove(self, c):
+            if c in self.comps:
+                self.comps.remove(c)
+
+    class MockVBProject:
+        def __init__(self, comps):
+            self.VBComponents = MockVBComponents(comps)
+
+    class MockWorksheet:
+        def __init__(self, name, code_name):
+            self.Name = name
+            self.CodeName = code_name
+
+    class MockWorkbook:
+        def __init__(self, comps):
+            self.Name = "TestBook.xlsm"
+            self.Path = r"C:\fake"
+            self.Saved = True
+            self.ReadOnly = False
+            self.VBProject = MockVBProject(comps)
+            self.Worksheets = [MockWorksheet("Sheet1", "Sheet1")]
+
+    test_code = (
+        "Sub テスト1_成功()\r\nEnd Sub\r\n"
+        "Sub テスト2_無限()\r\nEnd Sub\r\n"
+        "Sub テスト3_未実行()\r\nEnd Sub\r\n"
+    )
+    mod1 = MockComp("Module1", test_code, type_=1)
+    wb = MockWorkbook([mod1])
+
+    # watchdog のモックを用意
+    class MockWatchdog:
+        def __init__(self):
+            self.fired = False
+            self.seconds = 2.0
+        def stop(self):
+            pass
+
+    wd = MockWatchdog()
+
+    class MockApp:
+        def __init__(self):
+            self.DisplayAlerts = True
+        def Run(self, macro_name, *args):
+            if "VMT_RunBatch" in macro_name:
+                log_path = args[2] if len(args) > 2 else ""
+                # テスト1が完了した時点でログに追記
+                if log_path:
+                    with open(log_path, "a", encoding="utf-8") as f:
+                        f.write("1:0.05:OK\n")
+                # テスト2で時間切れ（watchdog発火・COM例外）
+                wd.fired = True
+                raise RuntimeError("RPC error / timeout")
+            raise NotImplementedError(macro_name)
+
+    xl = type("MockXL", (), {"Application": MockApp(), "DisplayAlerts": True, "EnableEvents": True, "ScreenUpdating": True})()
+
+    monkeypatch.setattr(vba, "get_workbook", lambda *a, **k: (xl, wb))
+    monkeypatch.setattr(vba, "_start_call_watchdog", lambda *a, **k: wd)
+    monkeypatch.setattr(vba, "_start_dialog_watcher", lambda *a, **k: None)
+
+    args = argparse.Namespace(
+        posargs=[],
+        module=None,
+        keyword=None,
+        timeout=2.0,
+        auto_dialog=None,
+        input_text=None,
+        isolate=False,
+        isolated=False,
+        in_place=True,
+        json=False,
+    )
+
+    ok = vba.cmd_test(args)
+    captured = capsys.readouterr().out
+
+    # 1. テスト1の結果が失われていないこと（OKとして表示されること）
+    assert "○ テスト1_成功  [Module1]  (0.05秒)" in captured
+    # 2. テスト2が時間切れとして記録されること
+    assert "✗ テスト2_無限  [Module1]  (2.00秒)" in captured
+    assert "時間切れ（2秒）" in captured
+    # 3. テスト3が未実行（時間切れ）となること
+    assert "－ テスト3_未実行  [Module1]  未実行（時間切れ）" in captured
+    assert ok is False
+
+
+def test_dispatch_invalidates_shelf_cache_between_commands_20261029(monkeypatch):
+    """080の2: コマンド振り分けの頭で棚キャッシュが消され、VBProject直書き換えが次コマンドに即時反映されること。"""
+    import argparse
+    import vba_manager
+    import vbam_view
+    import vbam_train
+
+    shelf_v1 = ["Sub 棚1()", "    ' 依頼の語: テスト1", "End Sub"]
+    shelf_v2 = ["Sub 棚1()", "    ' 依頼の語: テスト1", "End Sub", "Sub 棚2()", "    ' 依頼の語: テスト2", "End Sub"]
+    current_lines = list(shelf_v1)
+
+    class DummyVBComp:
+        def __init__(self, name):
+            self.Name = name
+            class DummyCM:
+                @property
+                def CountOfLines(cm_self):
+                    return len(current_lines)
+                def Lines(cm_self, start, count):
+                    return "\n".join(current_lines[start - 1 : start - 1 + count])
+            self.CodeModule = DummyCM()
+
+    class DummyVBProj:
+        def __init__(self):
+            pass
+        def VBComponents(self, name):
+            if name in ("表の整理", "コンボ道具"):
+                return DummyVBComp(name)
+            raise KeyError(name)
+
+    class DummyWb:
+        def __init__(self, name):
+            self.Name = name
+            self.VBProject = DummyVBProj()
+
+    class DummyXl:
+        def __init__(self):
+            self.Workbooks = [DummyWb("秀コンボ.xlam")]
+
+    dummy_xl = DummyXl()
+    dummy_wb = dummy_xl.Workbooks[0]
+
+    import vbam_core
+    monkeypatch.setattr(vbam_core, "get_workbook", lambda *a, **k: (dummy_xl, dummy_wb))
+    monkeypatch.setattr(vbam_core, "shelf_text", lambda *a, **k: "")
+
+    def mock_shelf_source_uncached(xl):
+        return ("秀コンボ.xlam", list(current_lines))
+    monkeypatch.setattr(vbam_view, "_shelf_source_uncached", mock_shelf_source_uncached, raising=False)
+
+    # _shelf_source の実装に合わせてモックまたは実動作をセット
+    def mock_shelf_source(xl):
+        if vbam_view._SHELF_SOURCE_CACHE.get('res'):
+            return vbam_view._SHELF_SOURCE_CACHE['res']
+        res = ("秀コンボ.xlam", list(current_lines))
+        vbam_view._SHELF_SOURCE_CACHE['res'] = res
+        return res
+    monkeypatch.setattr(vbam_view, "_shelf_source", mock_shelf_source)
+
+    # 1. キャッシュをリセットしてから初回呼出で温める
+    vbam_view.invalidate_shelf_cache()
+    owner1, lines1 = vbam_view._shelf_source(dummy_xl)
+    assert len(lines1) == 3
+    assert vbam_view._SHELF_SOURCE_CACHE['res'] is not None
+
+    # 2. 棚の中身を v2 に直書き換え（焼き直しやpatchではなくVBProject直書き換え）
+    current_lines[:] = shelf_v2
+
+    # 3. ディスパッチ経由で次のコマンドを実行（例: capabilities）
+    cmds = vba_manager._command_table()
+    args = argparse.Namespace(command="capabilities", posargs=[])
+    cmds["capabilities"](args)
+
+    # 4. train._connect() が新しい棚（5行）を読むこと
+    _xl, _src, text = vbam_train._connect()
+    assert "Sub 棚2()" in text, f"コマンド振り分けでキャッシュが無効化されておらず古い棚を読んでいる: {text}"
+
+
+

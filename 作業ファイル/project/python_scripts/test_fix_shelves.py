@@ -118,7 +118,12 @@ def test_new_shelves_pass_lint():
     whole = [x for x in vp.shelf_lint(_shelf_text(d)) if x[0] in ('止める', '注意') and any(n in x[1] for n in NEW_SHELVES)]
     assert not whole, whole
     # 棚の目録に出るのは 3 本だけ（手伝いは Private Function）
-    assert re.findall(r'^(?:Public\s+)?Sub ([^\s(]+)\(', _block(d), re.M) == list(NEW_SHELVES)
+    # 3 本の後ろに足した棚（082の2 の背景色の棚など）は、頭の語を持つ棚なら許す（手伝いが Public になっていないかだけ見る）
+    names = re.findall(r'^(?:Public\s+)?Sub ([^\s(]+)\(', _block(d), re.M)
+    assert names[:len(NEW_SHELVES)] == list(NEW_SHELVES)
+    procs = _procs(_block(d))
+    for extra in names[len(NEW_SHELVES):]:
+        assert "' 依頼の語:" in procs.get(extra, ''), extra
     assert 'Private Sub' not in _block(d)
 
 

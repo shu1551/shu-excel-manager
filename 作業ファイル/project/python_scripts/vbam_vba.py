@@ -645,12 +645,15 @@ def _proc_of_index(procs, idx):
     return None
 
 
-def cmd_check(args):
+def cmd_check(args, **kwargs):
     """VBAコードの静的解析・診断を行う"""
+    codes = kwargs.get('codes') or getattr(args, 'codes', None)
+    only_modules = kwargs.get('only_modules') or getattr(args, 'only_modules', None)
+    xl = kwargs.get('xl') or getattr(args, 'xl', None)
+    wb = kwargs.get('wb') or getattr(args, 'wb', None)
     target_file, _ = parse_target_and_rest(args.posargs)
-    # 診断系なので readonly（閉じているブックを通常モードで開くと
-    # Workbook_Open / Auto_Open が発火して副作用が走る）
-    xl, wb = get_workbook(target_file, readonly=True)
+    if xl is None or wb is None:
+        xl, wb = get_workbook(target_file, readonly=True)
     
     is_json = getattr(args, 'json', False)
     all_warnings = getattr(args, 'all_warnings', False)   # VBM003 の行を全部出す（既定は件数だけ・2026-09-17）
@@ -673,32 +676,54 @@ def cmd_check(args):
     leaks_by_proc = {}   # (module, proc) -> [(プロパティ, 行), ...]  VBM009 用
     inv_modules = []     # VBM014（存在しないマクロの呼び出し）用の最小の棚卸し（読んだコードを使い回す＝COM を増やさない）
 
-    for comp in wb.VBProject.VBComponents:
-        comp_name = comp.Name
-        cm = comp.CodeModule
-        count_lines = cm.CountOfLines
-        
+    if only_modules and codes:
+        _sub_proc_re = re.compile(r'^\s*(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?(?:Sub|Function|Property\s+(?:Get|Let|Set))\s+([^\s\(\)]+)', re.IGNORECASE | re.MULTILINE)
+        for cname, ccode in codes.items():
+            if cname in only_modules:
+                continue
+            procs_list = []
+            for m in _sub_proc_re.finditer(ccode or ''):
+                pname = m.group(1)
+                procs_list.append({'name': pname})
+                if pname not in all_procedures:
+                    all_procedures[pname] = []
+                all_procedures[pname].append(cname)
+            inv_modules.append({'name': cname, 'type': 1, 'procs': procs_list, 'code': ''})
+
+    if codes is not None:
+        component_items = [(name, code, 1) for name, code in codes.items()]
+    else:
+        component_items = []
+        for comp in wb.VBProject.VBComponents:
+            cm = comp.CodeModule
+            count_lines = cm.CountOfLines
+            code = cm.Lines(1, count_lines) if count_lines else ""
+            component_items.append((comp.Name, code, comp.Type))
+
+    for comp_name, code, comp_type in component_items:
         type_names = {1: '標準モジュール', 2: 'クラスモジュール',
                       3: 'フォーム', 100: 'シート/ThisWorkbook'}
-        tname = type_names.get(comp.Type, f'Type={comp.Type}')
+        tname = type_names.get(comp_type, f'Type={comp_type}')
         
         mod_info = {
             "name": comp_name,
             "type": tname,
-            "type_id": comp.Type,
+            "type_id": comp_type,
             "warnings": [],
             "errors": [],
             "skipped": False
         }
         
-        if count_lines == 0:
+        code = (code or '').replace('\r\n', '\n').replace('\r', '\n')
+        if not code.strip():
             mod_info["skipped"] = True
             results["modules"].append(mod_info)
             continue
-            
-        code = cm.Lines(1, count_lines)
-        code = code.replace('\r\n', '\n').replace('\r', '\n')
         lines = code.split('\n')
+
+        # 変わっていないモジュールはスキップ
+        if only_modules and comp_name not in only_modules:
+            continue
         
         # 1. Option Explicit チェック
         has_option_explicit = False
@@ -927,7 +952,7 @@ def cmd_check(args):
             mod_info["warnings"].append(
                 f"{p_prefix}暗黙の Variant 型宣言 '{var_name}' (行 {lineno}): {text}  → As 型名 を明示してください")
 
-        inv_modules.append({'name': comp_name, 'type': int(comp.Type),
+        inv_modules.append({'name': comp_name, 'type': int(comp_type),
                             'procs': [{'name': p["name"]} for p in procs], 'code': '\r\n'.join(lines)})
         results["modules"].append(mod_info)
 
@@ -956,7 +981,7 @@ def cmd_check(args):
 
     # VBM014: 存在しないマクロを呼んでいる（call-graph・checkup と同じ純 Python の解析。Declare 済み API は除外済み・2026-09-17）
     unresolved = []
-    if inv_modules:
+    if inv_modules and not only_modules:
         try:
             # Application.Run "名前" は外して Call／裸呼びだけ（Run はアドインや別ブックのマクロを実行時に探す＝
             # コンパイルエラーにならない。error にすると gate がアドイン呼びのブックを全部落とす）
@@ -2744,17 +2769,63 @@ def proc_window(code, around=None, span=None, ctx=6):
     return '\n'.join(out), note + "。全文は保存先にあります。patch の --old には行番号を付けない）"
 
 
-def _project_code_fn(target_file):
-    """validate_vba_code の project_code 用: 対象ブックの全モジュールのコードを 1 本の文字で返す関数（呼ばれたときだけ読む）。"""
+_project_code_cache = {}
+
+
+def invalidate_project_code_cache(wb=None):
+    """マクロ修正（patch/replace/add/delete）成功時に全コードキャッシュを破棄する（2026-10-29 指示書076の2）。"""
+    if wb is None:
+        _project_code_cache.clear()
+    else:
+        try:
+            key = str(getattr(wb, 'FullName', '') or getattr(wb, 'Name', ''))
+            _project_code_cache.pop(key, None)
+        except Exception:
+            _project_code_cache.clear()
+    try:
+        import vbam_view
+        vbam_view.invalidate_shelf_cache()
+    except Exception:
+        pass
+
+
+def _project_code_fn(target_file, wb_hint=None):
+    """validate_vba_code の project_code 用: 対象ブックの全モジュールのコードを 1 本の文字で返す関数。"""
     def _read():
-        _xl, wb = get_workbook(target_file)
+        _xl, wb = (None, wb_hint) if wb_hint is not None else get_workbook(target_file)
+        if wb is None:
+            return ""
+        try:
+            full = str(getattr(wb, 'FullName', '') or getattr(wb, 'Name', ''))
+            # ファイルの更新時刻ではなく開いているブックの各モジュール名・行数・先頭末尾行で見分ける（2026-10-29 指示書076の2）
+            sig = []
+            for c in wb.VBProject.VBComponents:
+                cm = c.CodeModule
+                n = int(cm.CountOfLines)
+                top_ln = cm.Lines(1, 1) if n >= 1 else ""
+                btm_ln = cm.Lines(n, 1) if n >= 2 else top_ln
+                sig.append((str(c.Name), n, top_ln, btm_ln))
+            sig_key = tuple(sig)
+            if full in _project_code_cache:
+                c_sig, c_code = _project_code_cache[full]
+                if c_sig == sig_key:
+                    return c_code
+        except Exception:
+            full, sig_key = None, None
+
         out = []
-        for comp in wb.VBProject.VBComponents:
-            cm = comp.CodeModule
-            n = cm.CountOfLines
-            if n:
-                out.append(cm.Lines(1, n))
-        return '\r\n'.join(out)
+        try:
+            for comp in wb.VBProject.VBComponents:
+                cm = comp.CodeModule
+                n = int(cm.CountOfLines)
+                if n:
+                    out.append(cm.Lines(1, n))
+        except Exception:
+            pass
+        joined = '\r\n'.join(out)
+        if full and sig_key is not None:
+            _project_code_cache[full] = (sig_key, joined)
+        return joined
     return _read
 
 
@@ -2831,11 +2902,16 @@ def cmd_replace_procedure(args):
 
     new_code = read_code_file(resolved)
 
+    t_start = time.perf_counter()
     # 既存ブックの識別子（大文字小文字）に合わせて自動補正（2026-10-20 総点検拡充）
+    t_before_align = time.perf_counter()
+    t_read_all = 0.0
     p_fn = _project_code_fn(target_file)
     if p_fn is not None:
         try:
+            t_r0 = time.perf_counter()
             p_code = p_fn()
+            t_read_all = time.perf_counter() - t_r0
             if p_code:
                 aligned_code, diffs = auto_align_code_case(new_code, p_code)
                 if diffs:
@@ -2848,6 +2924,7 @@ def cmd_replace_procedure(args):
                         vba_log_info(f"  … 他 {len(diffs) - 3} 件", is_json=is_json_mode)
         except Exception as _e:
             print(f"（大文字小文字の自動補正をスキップしました: {_e}）", file=sys.stderr)
+    t_after_align = time.perf_counter()
 
     # 簡易構文チェック・エンコード検証
     if not validate_vba_code(new_code, getattr(args, 'force', False), project_code=p_fn):
@@ -2939,17 +3016,27 @@ def cmd_replace_procedure(args):
     target_comp = None
     proc_start = 0
     proc_count = 0
-    for comp in wb.VBProject.VBComponents:
-        if module_opt and comp.Name.lower() != module_opt.lower():
-            continue
-        cm = comp.CodeModule
+    if module_opt:
         try:
+            c = wb.VBProject.VBComponents(module_opt)
+            cm = c.CodeModule
             proc_start = cm.ProcStartLine(macro_name, 0)
             proc_count = cm.ProcCountLines(macro_name, 0)
-            target_comp = comp
-            break
+            target_comp = c
         except Exception:
-            continue
+            pass
+    if not target_comp:
+        for comp in wb.VBProject.VBComponents:
+            if module_opt and comp.Name.lower() != module_opt.lower():
+                continue
+            cm = comp.CodeModule
+            try:
+                proc_start = cm.ProcStartLine(macro_name, 0)
+                proc_count = cm.ProcCountLines(macro_name, 0)
+                target_comp = comp
+                break
+            except Exception:
+                continue
 
     if not target_comp:
         print(f"エラー: プロシージャ '{macro_name}' が見つかりません")
@@ -3039,212 +3126,223 @@ def cmd_replace_procedure(args):
     # 控えはブックとモジュールの 2 本を 1 行で（2026-10-29: 2 行と「置換中...」で返事が伸びていた）
     print("控え: backups\\" + "・".join(os.path.basename(b) for b in (book_backup, module_backup) if b))
 
-    for comp in wb.VBProject.VBComponents:
-        if comp.Name.lower() != target_comp.Name.lower():
-            continue
-        cm = comp.CodeModule
+    comp = target_comp
+    cm = comp.CodeModule
+    tmp_bas = None
 
-        # モジュールをエクスポートして Attribute行の有無を確認
-        module_name = comp.Name
-        tmp_bas = os.path.join(SCRIPT_DIR, f"_tmp_{module_name}.bas")
+    # 既に取ったモジュールバックアップから Attribute行の有無を確認（二重 Export を根絶・2026-10-29）
+    if module_backup and os.path.exists(module_backup):
+        with open(module_backup, 'rb') as f:
+            bas_content = f.read().decode('cp932')
+        bas_lines = bas_content.split('\r\n')
+    else:
+        tmp_bas = os.path.join(SCRIPT_DIR, f"_tmp_{comp.Name}.bas")
         comp.Export(tmp_bas)
-
         with open(tmp_bas, 'rb') as f:
             bas_content = f.read().decode('cp932')
         bas_lines = bas_content.split('\r\n')
 
-        # .bas 内で対象プロシージャの Sub/Function 宣言行を探す
-        proc_pattern = re.compile(
-            r'^\s*(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?'
-            r'(?:Sub|Function|Property\s+(?:Get|Let|Set))\s+' + re.escape(macro_name) + r'\s*[\(\s]',
-            re.IGNORECASE
-        )
-        # 末尾コメント（End Sub 'xxx）を許容しないと次のプロシージャの End Sub まで
-        # スキャンが伸び、置換範囲が次のプロシージャを丸ごと巻き込む（消失事故）
-        end_pattern = re.compile(
-            r"^\s*End\s+(?:Sub|Function|Property)\s*(?:'.*)?$", re.IGNORECASE
-        )
+    # .bas 内で対象プロシージャの Sub/Function 宣言行を探す
+    proc_pattern = re.compile(
+        r'^\s*(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?'
+        r'(?:Sub|Function|Property\s+(?:Get|Let|Set))\s+' + re.escape(macro_name) + r'\s*[\(\s]',
+        re.IGNORECASE
+    )
+    # 末尾コメント（End Sub 'xxx）を許容しないと次のプロシージャの End Sub まで
+    # スキャンが伸び、置換範囲が次のプロシージャを丸ごと巻き込む（消失事故）
+    end_pattern = re.compile(
+        r"^\s*End\s+(?:Sub|Function|Property)\s*(?:'.*)?$", re.IGNORECASE
+    )
 
-        sub_line_idx = None
-        proc_end_idx = None
-        attr_block = []
+    sub_line_idx = None
+    proc_end_idx = None
+    attr_block = []
 
-        for idx, line in enumerate(bas_lines):
-            if sub_line_idx is None and proc_pattern.match(line):
-                sub_line_idx = idx
-                # Sub宣言の直後の Attribute行を収集
-                # （宣言が行継続 " _" で複数行の場合は継続行を読み飛ばしてから収集。
-                #   読み飛ばさないと Attribute を見逃し、ショートカット定義が失われる）
-                check = idx + 1
-                while check < len(bas_lines) and _is_line_continuation(bas_lines[check - 1]):
-                    check += 1
-                while check < len(bas_lines) and bas_lines[check].strip().startswith('Attribute '):
-                    attr_block.append(bas_lines[check])
-                    check += 1
-                # 「Sub X(): 処理: End Sub」の1行完結は宣言行自身で閉じている。
-                # 次の End Sub まで探すと後続プロシージャを巻き込んで消すため、
-                # ここで終端を確定する（随伴 Attribute 行までが置換対象）。
-                # 文字列リテラルだけでなくコメントも落とす。落とさないと
-                # 「Public Sub 印刷実行()  ' 途中で Exit せず End Sub まで通す」のような
-                # 行末コメントを1行完結Subと誤判定し、置換範囲が宣言行だけになって
-                # 旧本体が残る（新旧の本体が並んで二重化・構文破壊）
-                no_str = _strip_vba_comment(re.sub(r'"[^"]*"', '""', line))
-                if re.search(r'\bEnd\s+(?:Sub|Function|Property)\b', no_str, re.IGNORECASE):
-                    proc_end_idx = check - 1
-                    break
-            elif sub_line_idx is not None:
-                # #If ディレクティブのネストも追跡
-                if end_pattern.match(line):
-                    proc_end_idx = idx
-                    break
-
-        if sub_line_idx is None or proc_end_idx is None:
-            _remove_export_artifacts(tmp_bas)
-            continue
-
-        if not attr_block:
-            # Attribute行なし → 従来の InsertLines 方式（高速・モジュール順維持）
-            # InsertLines は末尾改行を余分な空行として挿入するため取り除く
-            _remove_export_artifacts(tmp_bas)
-            old_text = cm.Lines(eff_start, eff_count)
-            com_retry(lambda: cm.DeleteLines(eff_start, eff_count), op_name="行削除")
-            try:
-                com_retry(lambda: cm.InsertLines(eff_start, new_code.rstrip('\n')), op_name="行挿入")
-            except Exception as ex:
-                # 消した後に入れるのが落ちると、プロシージャが消えたまま例外が抜けていた（2026-10-29 総点検 7）＝元のコードを入れ直して止まる
-                try:
-                    cm.InsertLines(eff_start, str(old_text).rstrip('\r\n'))
-                    print(f"エラー: 新しいコードを入れられなかったので、元のコードを入れ直しました（保存はしていません）: {ex}",
-                          file=sys.stderr)
-                except Exception:
-                    print(f"エラー: 新しいコードを入れられず、元のコードも入れ直せませんでした: {ex}\n"
-                          "  保存せずに閉じて開き直すか、backups の控えから restore で戻してください", file=sys.stderr)
-                return False
-            save_vba_book(wb)          # .xlsx は窓を切って保存（2026-10-29 総点検 14）
-            print(f"置換完了: [{comp.Name}] '{macro_name}' → 保存しました")
-            note_if_macro_free_book(wb)
-            return True
-
-        # Attribute行あり、でも宣言の行が変わらないなら、宣言の下（本文〜End Sub）だけを差し替える（2026-09-24）。
-        # 隠れた Attribute（ショートカット）は宣言の行に付いているので残る（試しのブックで確かめた）。
-        # Remove＋Import を通らない＝「実行中のコードがあって旧モジュールが消えず shu0051 として入る」
-        # 名前衝突（会話記録 30 日で 3 回・手で改名するしかなかった）が起きない。モジュールの並びも動かない
-        if _replace_body_keeping_decl(cm, macro_name, new_code, attr_block, end_pattern):
-            _remove_export_artifacts(tmp_bas)
-            save_vba_book(wb)          # .xlsx は窓を切って保存（2026-10-29 総点検 14）
-            print(f"置換完了: [{comp.Name}] '{macro_name}' → 保存しました（宣言の行とショートカットはそのまま・本文だけ差し替え）")
-            note_if_macro_free_book(wb)
-            return True
-
-        # Attribute行あり → .bas編集 → replace-module 方式
-        print(f"  (Attribute行検出 → replace-module方式で処理)")
-
-        # new_code の行を準備（Sub宣言の直後に Attribute行を挿入）
-        # この方式は .bas の「宣言行〜End Sub」だけを差し替えるため、
-        # 宣言より上のコメントは .bas 側の既存行をそのまま維持し、
-        # 新コード側の宣言より上の行は使わない（使うと二重になる）。
-        new_lines = new_code.rstrip('\n').split('\n')
-        sub_decl_pattern = re.compile(
-            r'^\s*(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?(?:Sub|Function|Property\s+(?:Get|Let|Set))\s+',
-            re.IGNORECASE
-        )
-        decl_idx = None
-        for ni, nl in enumerate(new_lines):
-            if sub_decl_pattern.match(nl):
-                decl_idx = ni
+    for idx, line in enumerate(bas_lines):
+        if sub_line_idx is None and proc_pattern.match(line):
+            sub_line_idx = idx
+            # Sub宣言の直後の Attribute行を収集
+            # （宣言が行継続 " _" で複数行の場合は継続行を読み飛ばしてから収集。
+            #   読み飛ばさないと Attribute を見逃し、ショートカット定義が失われる）
+            check = idx + 1
+            while check < len(bas_lines) and _is_line_continuation(bas_lines[check - 1]):
+                check += 1
+            while check < len(bas_lines) and bas_lines[check].strip().startswith('Attribute '):
+                attr_block.append(bas_lines[check])
+                check += 1
+            # 「Sub X(): 処理: End Sub」の1行完結は宣言行自身で閉じている。
+            # 次の End Sub まで探すと後続プロシージャを巻き込んで消すため、
+            # ここで終端を確定する（随伴 Attribute 行までが置換対象）。
+            # 文字列リテラルだけでなくコメントも落とす。落とさないと
+            # 「Public Sub 印刷実行()  ' 途中で Exit せず End Sub まで通す」のような
+            # 行末コメントを1行完結Subと誤判定し、置換範囲が宣言行だけになって
+            # 旧本体が残る（新旧の本体が並んで二重化・構文破壊）
+            no_str = _strip_vba_comment(re.sub(r'"[^"]*"', '""', line))
+            if re.search(r'\bEnd\s+(?:Sub|Function|Property)\b', no_str, re.IGNORECASE):
+                proc_end_idx = check - 1
                 break
-        if decl_idx is None:
-            _remove_export_artifacts(tmp_bas)
-            print("エラー: 置換コードに Sub/Function/Property 宣言が見つかりません")
-            return False
-        if decl_idx > 0:
-            print("  (宣言より上のコメント行は、Attribute方式では .bas 側の既存行を維持します)")
-            new_lines = new_lines[decl_idx:]
-        # Attribute行の挿入位置は「宣言の実体が終わった直後」。
-        # 宣言が行継続 " _" で折り返している場合（Sub X(ByVal a As Long, _ ）に
-        # 1行目の直後へ入れると Attribute が継続行の前に割り込んで構文破壊になる。
-        # 読み取り側（上の attr_block 収集）と対称に、継続行を読み飛ばしてから入れる
-        insert_at = 1
-        while insert_at < len(new_lines) and _is_line_continuation(new_lines[insert_at - 1]):
-            insert_at += 1
-        for ai, al in enumerate(attr_block):
-            new_lines.insert(insert_at + ai, al)
+        elif sub_line_idx is not None:
+            # #If ディレクティブのネストも追跡
+            if end_pattern.match(line):
+                proc_end_idx = idx
+                break
 
-        # .bas 内の対象プロシージャを置換（Sub宣言行から End Sub まで）
-        bas_lines[sub_line_idx:proc_end_idx + 1] = new_lines
-        new_bas = '\r\n'.join(bas_lines)
+    if sub_line_idx is None or proc_end_idx is None:
+        if tmp_bas: _remove_export_artifacts(tmp_bas)
+        print(f"エラー: .bas 内でプロシージャ '{macro_name}' の範囲を特定できませんでした")
+        return False
 
-        # --force で CP932 に無い文字（絵文字・機種依存文字等）が混ざると
-        # ここで UnicodeEncodeError になる。生の例外で落とすと一時 .bas が残るので
-        # 握りつぶさず・分かる形で報告して片付ける
+    if not attr_block:
+        # Attribute行なし → 従来の InsertLines 方式（高速・モジュール順維持）
+        # InsertLines は末尾改行を余分な空行として挿入するため取り除く
+        if tmp_bas: _remove_export_artifacts(tmp_bas)
+        old_text = cm.Lines(eff_start, eff_count)
+        com_retry(lambda: cm.DeleteLines(eff_start, eff_count), op_name="行削除")
         try:
-            encoded_bas = new_bas.encode('cp932')
-        except UnicodeEncodeError as ex:
-            bad = new_bas[ex.start:ex.end]
-            _remove_export_artifacts(tmp_bas)
-            print(f"エラー: 置換コードに CP932（Shift-JIS）で扱えない文字があります: {bad!r}")
-            print("  VBA モジュールは CP932 で保存されます。該当文字を通常の文字に置き換えてください。")
-            return False
-
-        with open(tmp_bas, 'wb') as f:
-            f.write(encoded_bas)
-
-        # Remove + Import（例外時も DisplayAlerts を前の値に戻し、一時ファイルを残さない）
-        prev_alerts = xl.DisplayAlerts
-        xl.DisplayAlerts = False
-        removed = False
-        imported = False
-        try:
-            save_before_vba_edit(wb)      # 人の未保存の変更があれば言ってから保存（総点検 9）
-            pythoncom.PumpWaitingMessages()
-            wb.VBProject.VBComponents.Remove(comp)
-            removed = True
-            pythoncom.PumpWaitingMessages()
-            # 実名検証つき Import（_wait_component_gone で動的消滅検知）
-            _import_module_verified(wb, tmp_bas, module_name)
-            # ここから先の失敗は「保存の失敗」であって「モジュールの消失」ではない。
-            # この印を立てずに復旧へ落ちると、正しく入った新モジュールにバックアップを
-            # 重ね Import して、ツール自身が連番モジュールを作ってしまう（2026-07-14 発見）
-            imported = True
-            _save_with_retry(wb)
-        except ModuleNameCollisionError as ex:
-            # コードは連番付き別名側に生きている。バックアップ再 Import は三重化するので禁止
-            _print_collision_guidance(ex, module_name, module_backup)
-            return False
+            com_retry(lambda: cm.InsertLines(eff_start, new_code.rstrip('\n')), op_name="行挿入")
         except Exception as ex:
-            print(f"エラー: 置換中に失敗しました: {ex}")
-            if imported:
-                # Import は成功済み＝消えていない。再 Import は連番モジュールを生むだけ
-                _print_save_failed_guidance(module_name)
-            elif removed:
-                # Remove 成功後の Import 失敗＝開いているブックからモジュール消失。
-                # 直前のモジュールバックアップ（置換前の内容）から自動復旧を試みる。
-                print(f"⚠ モジュール '{module_name}' は Remove 済みです。バックアップから復旧を試みます...")
-                try:
-                    if module_backup and os.path.exists(module_backup):
-                        _import_module_verified(wb, module_backup, module_name)
-                        print(f"復旧成功: {module_backup} を再インポートしました（置換前の内容に戻っています）")
-                    else:
-                        raise RuntimeError("モジュールバックアップがありません")
-                except ModuleNameCollisionError as ex2:
-                    print(f"復旧の再 Import で名前衝突: {ex2}")
-                    print(f"  置換前の内容は別名モジュール '{ex2.actual_name}' 側にあります。")
-                    print(f"  旧 '{module_name}' が消えているのを確認してから '{ex2.actual_name}' を改名してください。")
-                except Exception as ex2:
-                    print(f"復旧失敗: {ex2}")
-                    print("  ⚠ このままブックを保存するとモジュールがファイルからも消えます。")
-                    print("  対処: ブックを『保存せずに閉じて』開き直せば置換前の状態に戻ります。")
-                    if module_backup:
-                        print(f"  または backups のバックアップを手動で Import: {module_backup}")
+            # 消した後に入れるのが落ちると、プロシージャが消えたまま例外が抜けていた（2026-10-29 総点検 7）＝元のコードを入れ直して止まる
+            try:
+                cm.InsertLines(eff_start, str(old_text).rstrip('\r\n'))
+                print(f"エラー: 新しいコードを入れられなかったので、元のコードを入れ直しました（保存はしていません）: {ex}",
+                      file=sys.stderr)
+            except Exception:
+                print(f"エラー: 新しいコードを入れられず、元のコードも入れ直せませんでした: {ex}\n"
+                      "  保存せずに閉じて開き直すか、backups の控えから restore で戻してください", file=sys.stderr)
             return False
-        finally:
-            xl.DisplayAlerts = prev_alerts  # 前の値に戻す（無条件に True へ戻すと、呼び出し元が切っていた設定まで変える＝_alerts_off と同じ・2026-10-28 点検）
-            if os.path.exists(tmp_bas):
-                _remove_export_artifacts(tmp_bas)
-        # ここまで来たら Import 済み・実名検証済み（黙って成功と報告しない、の実装）
-        print(f"置換完了: [{module_name}] '{macro_name}' → 保存しました (Attribute保持)")
+        t_save0 = time.perf_counter()
+        save_vba_book(wb)          # .xlsx は窓を切って保存（2026-10-29 総点検 14）
+        invalidate_project_code_cache(wb)
+        t_end = time.perf_counter()
+        print(f"置換完了: [{comp.Name}] '{macro_name}' → 保存しました（内訳: 全コード読込 {t_read_all:.2f}s・補正 {t_after_align - t_before_align - t_read_all:.2f}s・保存 {t_end - t_save0:.2f}s・他 {t_end - t_start - t_read_all - (t_end - t_save0):.2f}s／計 {t_end - t_start:.2f}s）")
         note_if_macro_free_book(wb)
         return True
+
+    # Attribute行あり、でも宣言の行が変わらないなら、宣言の下（本文〜End Sub）だけを差し替える（2026-09-24）。
+    # 隠れた Attribute（ショートカット）は宣言の行に付いているので残る（試しのブックで確かめた）。
+    # Remove＋Import を通らない＝「実行中のコードがあって旧モジュールが消えず shu0051 として入る」
+    # 名前衝突（会話記録 30 日で 3 回・手で改名するしかなかった）が起きない。モジュールの並びも動かない
+    if _replace_body_keeping_decl(cm, macro_name, new_code, attr_block, end_pattern):
+        if tmp_bas: _remove_export_artifacts(tmp_bas)
+        save_vba_book(wb)          # .xlsx は窓を切って保存（2026-10-29 総点検 14）
+        invalidate_project_code_cache(wb)
+        print(f"置換完了: [{comp.Name}] '{macro_name}' → 保存しました（宣言の行とショートカットはそのまま・本文だけ差し替え）")
+        note_if_macro_free_book(wb)
+        return True
+
+    # Attribute行あり → .bas編集 → replace-module 方式
+    print(f"  (Attribute行検出 → replace-module方式で処理)")
+
+    if not tmp_bas:
+        tmp_bas = os.path.join(SCRIPT_DIR, f"_tmp_{comp.Name}.bas")
+
+    # new_code の行を準備（Sub宣言の直後に Attribute行を挿入）
+    # この方式は .bas の「宣言行〜End Sub」だけを差し替えるため、
+    # 宣言より上のコメントは .bas 側の既存行をそのまま維持し、
+    # 新コード側の宣言より上の行は使わない（使うと二重になる）。
+    new_lines = new_code.rstrip('\n').split('\n')
+    sub_decl_pattern = re.compile(
+        r'^\s*(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?(?:Sub|Function|Property\s+(?:Get|Let|Set))\s+',
+        re.IGNORECASE
+    )
+    decl_idx = None
+    for ni, nl in enumerate(new_lines):
+        if sub_decl_pattern.match(nl):
+            decl_idx = ni
+            break
+    if decl_idx is None:
+        if tmp_bas: _remove_export_artifacts(tmp_bas)
+        print("エラー: 置換コードに Sub/Function/Property 宣言が見つかりません")
+        return False
+    if decl_idx > 0:
+        print("  (宣言より上のコメント行は、Attribute方式では .bas 側の既存行を維持します)")
+        new_lines = new_lines[decl_idx:]
+    # Attribute行の挿入位置は「宣言の実体が終わった直後」。
+    # 宣言が行継続 " _" で折り返している場合（Sub X(ByVal a As Long, _ ）に
+    # 1行目の直後へ入れると Attribute が継続行の前に割り込んで構文破壊になる。
+    # 読み取り側（上の attr_block 収集）と対称に、継続行を読み飛ばしてから入れる
+    insert_at = 1
+    while insert_at < len(new_lines) and _is_line_continuation(new_lines[insert_at - 1]):
+        insert_at += 1
+    for ai, al in enumerate(attr_block):
+        new_lines.insert(insert_at + ai, al)
+
+    # .bas 内の対象プロシージャを置換（Sub宣言行から End Sub まで）
+    bas_lines[sub_line_idx:proc_end_idx + 1] = new_lines
+    new_bas = '\r\n'.join(bas_lines)
+
+    # --force で CP932 に無い文字（絵文字・機種依存文字等）が混ざると
+    # ここで UnicodeEncodeError になる。生の例外で落とす一時 .bas が残るので
+    # 握りつぶさず・分かる形で報告して片付ける
+    try:
+        encoded_bas = new_bas.encode('cp932')
+    except UnicodeEncodeError as ex:
+        bad = new_bas[ex.start:ex.end]
+        if tmp_bas: _remove_export_artifacts(tmp_bas)
+        print(f"エラー: 置換コードに CP932（Shift-JIS）で扱えない文字があります: {bad!r}")
+        print("  VBA モジュールは CP932 で保存されます。該当文字を通常の文字に置き換えてください。")
+        return False
+
+    with open(tmp_bas, 'wb') as f:
+        f.write(encoded_bas)
+
+    # Remove + Import（例外時も DisplayAlerts を前の値に戻し、一時ファイルを残さない）
+    prev_alerts = xl.DisplayAlerts
+    xl.DisplayAlerts = False
+    removed = False
+    imported = False
+    try:
+        save_before_vba_edit(wb)      # 人の未保存の変更があれば言ってから保存（総点検 9）
+        pythoncom.PumpWaitingMessages()
+        wb.VBProject.VBComponents.Remove(comp)
+        removed = True
+        pythoncom.PumpWaitingMessages()
+        # 実名検証つき Import（_wait_component_gone で動的消滅検知）
+        _import_module_verified(wb, tmp_bas, module_name)
+        # ここから先の失敗は「保存の失敗」であって「モジュールの消失」ではない。
+        # この印を立てずに復旧へ落ちると、正しく入った新モジュールにバックアップを
+        # 重ね Import して、ツール自身が連番モジュールを作ってしまう（2026-07-14 発見）
+        imported = True
+        _save_with_retry(wb)
+    except ModuleNameCollisionError as ex:
+        # コードは連番付き別名側に生きている。バックアップ再 Import は三重化するので禁止
+        _print_collision_guidance(ex, module_name, module_backup)
+        return False
+    except Exception as ex:
+        print(f"エラー: 置換中に失敗しました: {ex}")
+        if imported:
+            # Import は成功済み＝消えていない。再 Import は連番モジュールを生むだけ
+            _print_save_failed_guidance(module_name)
+        elif removed:
+            # Remove 成功後の Import 失敗＝開いているブックからモジュール消失。
+            # 直前のモジュールバックアップ（置換前の内容）から自動復旧を試みる。
+            print(f"⚠ モジュール '{module_name}' は Remove 済みです。バックアップから復旧を試みます...")
+            try:
+                if module_backup and os.path.exists(module_backup):
+                    _import_module_verified(wb, module_backup, module_name)
+                    print(f"復旧成功: {module_backup} を再インポートしました（置換前の内容に戻っています）")
+                else:
+                    raise RuntimeError("モジュールバックアップがありません")
+            except ModuleNameCollisionError as ex2:
+                print(f"復旧の再 Import で名前衝突: {ex2}")
+                print(f"  置換前の内容は別名モジュール '{ex2.actual_name}' 側にあります。")
+                print(f"  旧 '{module_name}' が消えているのを確認してから '{ex2.actual_name}' を改名してください。")
+            except Exception as ex2:
+                print(f"復旧失敗: {ex2}")
+                print("  ⚠ このままブックを保存するとモジュールがファイルからも消えます。")
+                print("  対処: ブックを『保存せずに閉じて』開き直せば置換前の状態に戻ります。")
+                if module_backup:
+                    print(f"  または backups のバックアップを手動で Import: {module_backup}")
+        return False
+    finally:
+        xl.DisplayAlerts = prev_alerts  # 前の値に戻す（無条件に True へ戻すと、呼び出し元が切っていた設定まで変える＝_alerts_off と同じ・2026-10-28 点検）
+        if tmp_bas and os.path.exists(tmp_bas):
+            _remove_export_artifacts(tmp_bas)
+    # ここまで来たら Import 済み・実名検証済み（黙って成功と報告しない、の実装）
+    invalidate_project_code_cache(wb)
+    print(f"置換完了: [{module_name}] '{macro_name}' → 保存しました (Attribute保持)")
+    note_if_macro_free_book(wb)
+    return True
 
     print(f"エラー: プロシージャ '{macro_name}' が見つかりません")
     return False
@@ -3502,11 +3600,16 @@ def cmd_add_procedure(args):
         return False
     new_code = read_code_file(resolved)
 
+    t_start = time.perf_counter()
     # 既存ブックの識別子（大文字小文字）に合わせて自動補正（2026-10-20 総点検拡充）
+    t_before_align = time.perf_counter()
+    t_read_all = 0.0
     p_fn = _project_code_fn(target_file)
     if p_fn is not None:
         try:
+            t_r0 = time.perf_counter()
             p_code = p_fn()
+            t_read_all = time.perf_counter() - t_r0
             if p_code:
                 aligned_code, diffs = auto_align_code_case(new_code, p_code)
                 if diffs:
@@ -3519,6 +3622,7 @@ def cmd_add_procedure(args):
                         vba_log_info(f"  … 他 {len(diffs) - 3} 件", is_json=is_json_mode)
         except Exception as _e:
             print(f"（大文字小文字の自動補正をスキップしました: {_e}）", file=sys.stderr)
+    t_after_align = time.perf_counter()
 
     if not validate_vba_code(new_code, force=getattr(args, 'force', False), project_code=p_fn):
         return False
@@ -3586,6 +3690,7 @@ def cmd_add_procedure(args):
         body = '\n' + body     # 既存コードとの区切りの空行
     cm.InsertLines(cm.CountOfLines + 1, body)
     save_vba_book(wb)          # .xlsx は窓を切って保存（2026-10-29 総点検 14）
+    invalidate_project_code_cache(wb)
     print(f"追加完了: [{comp.Name}] '{proc_name}' → 保存しました")
     note_if_macro_free_book(wb)
     return True
@@ -3733,6 +3838,7 @@ def cmd_delete_procedure(args):
         start, count = _range_of(comp, macro_name)      # 前の削除で行がずれるので、消す直前に位置を取り直す
         comp.CodeModule.DeleteLines(start, count)
     save_vba_book(wb)          # .xlsx は窓を切って保存（2026-10-29 総点検 14）
+    invalidate_project_code_cache(wb)
     for comp, macro_name in found:
         print(f"削除完了: [{comp.Name}] '{macro_name}'")
     print("→ 保存しました" + (f"（{len(found)} 本・控えは 1 冊）" if len(found) > 1 else ""))
@@ -7698,22 +7804,27 @@ def _button_addin_macro(act, addin_file, public_names, source_book=''):
     return name if (external or mine) else ''
 
 
-def _addin_buttons_snapshot(xl, source_wb, addin_file):
+def _addin_buttons_snapshot(xl, source_wb, addin_file, codes=None):
     """開いている他のブックのボタンのうち、このアドインのマクロを指すもの [(ブック名, シート名, 図形名, マクロ名)]。"""
     import re as _re
     public_names = set()
-    try:
-        for comp in source_wb.VBProject.VBComponents:
-            try:
-                cm = comp.CodeModule
-                n = cm.CountOfLines
-                code = cm.Lines(1, n) if n else ''
-            except Exception:
-                continue
+    if codes is not None:
+        for code in codes.values():
             for m in _re.finditer(r'^[ \t]*(?:Public[ \t]+)?(?:Sub|Function)[ \t]+(\w+)', code, _re.M):
                 public_names.add(m.group(1))
-    except Exception:
-        return []
+    else:
+        try:
+            for comp in source_wb.VBProject.VBComponents:
+                try:
+                    cm = comp.CodeModule
+                    n = cm.CountOfLines
+                    code = cm.Lines(1, n) if n else ''
+                except Exception:
+                    continue
+                for m in _re.finditer(r'^[ \t]*(?:Public[ \t]+)?(?:Sub|Function)[ \t]+(\w+)', code, _re.M):
+                    public_names.add(m.group(1))
+        except Exception:
+            return []
     found = []
     try:
         for other in xl.Workbooks:
@@ -7749,7 +7860,28 @@ def _addin_buttons_restore(xl, buttons, addin_file):
     return n
 
 
-def _shelf_parity_gate(xl, wb, why=None):
+def exam_signature():
+    """問題集ファイル群の指紋（ファイル名・mtime・サイズ）。変わっていれば再検査。"""
+    import glob
+    import vbam_prefire
+    d = vbam_prefire.exam_dir()
+    files = sorted(glob.glob(os.path.join(d, 'entry_phrases*.tsv')))
+    return [[os.path.basename(f), int(os.path.getmtime(f)), os.path.getsize(f)] for f in files]
+
+
+def shelf_signature_from_codes(codes):
+    """棚コード群から、棚の当たりを決める部分（名前・依頼の語・依頼の組・各種の印）の指紋を作る。"""
+    import vbam_train
+    if not codes:
+        return []
+    parts = [c for m, c in codes.items() if any(k in m for k in ('棚', '表の整理', 'コンボ道具'))]
+    if not parts:
+        return []
+    sig = vbam_train._shelf_signature('\n'.join(parts))
+    return [list(x) for x in sig]
+
+
+def _shelf_parity_gate(xl, wb, why=None, marks=None, codes=None):
     """焼く前の関所（2026-10-14 段 1・段 2）: 問題集を VBA の先撃ち（正本）と Python の写し（shelf_pick）の両方に撃ち、
     食い違いが 1 件でもあれば焼かない（10/12 に条件付き書式の決まりが片方にだけ入り、誰も気づかなかった）。
     段 2 から、一般の語の検査（1 語で当たる組など）と問題集の横取りでも止める。
@@ -7764,6 +7896,17 @@ def _shelf_parity_gate(xl, wb, why=None):
     text = shelf_text(wb.VBProject)
     if not text:
         return True
+
+    # 指示書087: 前に焼いたときと棚の頭の指紋・問題集が変わっていなければ飛ばす
+    if marks is not None and codes is not None:
+        old_shelf_sig = marks.get('shelf_sig')
+        old_exam_sig = marks.get('exam_sig')
+        cur_shelf_sig = shelf_signature_from_codes(codes)
+        cur_exam_sig = exam_signature()
+        if old_shelf_sig is not None and old_shelf_sig == cur_shelf_sig and old_exam_sig == cur_exam_sig:
+            print("棚の当たり方の検査: 棚の頭は前の焼きと同じ（shelf --check を飛ばした）")
+            return True
+
     # 段 2（2026-10-14）: 語の検査・問題集の横取り・外れた依頼の当たり先の変化も同じ関所で（vbam_prefire.shelf_check）
     warn = []
     ok, lines = vp.shelf_check(xl, str(wb.Name), text, write_snapshot=True, warn=warn, hold_changed=not why)
@@ -7801,8 +7944,10 @@ def _shelf_parity_gate(xl, wb, why=None):
 _TEST_SUB_RE = re.compile(r'^\s*(?:Public\s+)?Sub\s+(?:テスト|test)[^\s(]*\s*\(\s*\)', re.I | re.M)
 
 
-def _has_test_subs(wb):
+def _has_test_subs(wb, codes=None):
     """ブックに「テスト」/test 始まりの引数なし Sub が 1 本でもあるか（gate が撃つ物があるか）。"""
+    if codes is not None:
+        return any(bool(_TEST_SUB_RE.search(c)) for c in codes.values())
     try:
         for comp in wb.VBProject.VBComponents:
             cm = comp.CodeModule
@@ -7889,7 +8034,9 @@ def marks_from_codes(codes, label):
     """本文 {モジュール名: 本文} から、焼いた印と同じ形の印を作る（純 Python）。"""
     return {'time': label,
             'mods': {m: zlib.crc32(c.replace('\r\n', '\n').encode('utf-8')) for m, c in codes.items()},
-            'procs': {m: proc_marks(c) for m, c in codes.items()}}
+            'procs': {m: proc_marks(c) for m, c in codes.items()},
+            'shelf_sig': shelf_signature_from_codes(codes),
+            'exam_sig': exam_signature()}
 
 
 def marks_from_installed_addin(xl, book_name):
@@ -8013,20 +8160,21 @@ def burn_recent_note(recs, book, now=None, window_min=30):
             "（gate --changed・shelf --words 直し.tsv --try 頼み）、焼くのは全部直してから最後に 1 回に")
 
 
-def _test_gate_before_burn(wb, all_tests=False):
-    """焼く前の関所その 2（2026-10-21 総点検）: コピーで gate（構文・全体コンパイル・テスト Sub）を撃ち、落ちたら焼かない。
-    10/16〜20 の直しで、テストは用意されていたのに回されず、性能の遅れと書式の決まりの食い違いが 2 本落ちたまま焼かれていた。
-    テスト Sub の無いブックは gate が「合否を言えない」で必ず落ちるので飛ばす。True＝焼いてよい
-    2026-10-29: 既定は前に焼いてから変わったモジュールに関わるテストだけ（gate --changed）。1 回約 20 秒を 376 回焼いていた"""
+def _test_gate_before_burn(wb, all_tests=False, codes=None):
+    """焼く前の関所その 2（2026-10-21 総点検・2026-10-29 指示書084）: 本体インプレースで高速検分。"""
     import contextlib
     import io
-    if not _has_test_subs(wb):
+    try:
+        has_tests = _has_test_subs(wb, codes=codes)
+    except TypeError:
+        has_tests = _has_test_subs(wb)
+    if not has_tests:
         print("テストの関所: テスト Sub が無いブックなので飛ばしました")
         return True
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         ok = cmd_gate(argparse.Namespace(posargs=[str(wb.Name)], json=False, timeout=180, keep=False,
-                                         addins=False, module=None, changed=not all_tests))
+                                         addins=False, module=None, changed=not all_tests, codes=codes))
     lines = [ln for ln in buf.getvalue().splitlines() if ln.startswith(('判定:', '    ✗', '結果:', '変わった'))]
     if ok:
         print("テストの関所: 通りました（" + "・".join(ln.strip() for ln in lines if not ln.startswith('    ✗')) + "）")
@@ -8087,6 +8235,15 @@ def cmd_register_addin(args):
     アドインのマクロが使えなくなる（2026-09-23 に実害）。最後に VBProjects を見て、
     本当に載っているかまで確かめる。
     """
+    t_start = time.perf_counter()
+    splits = []
+
+    def _split(name, t_prev):
+        now = time.perf_counter()
+        splits.append((name, now - t_prev))
+        return now
+
+    t_step = t_start
     target_file, rest = parse_target_and_rest(args.posargs)
     xl, wb = get_workbook(target_file, load_addins=True)
     book = str(wb.Name)
@@ -8115,21 +8272,26 @@ def cmd_register_addin(args):
         # 表示中のフォームがあると Designer を取れず、マクロが MsgBox を出して止まる。人に頼まず自分で閉じる
         print(f"表示中のフォームを閉じます（{len(shown)} 件）")
         cmd_close_form(argparse.Namespace(posargs=[], list_flag=False))
+    t_step = _split("開始・前確認", t_step)
+    codes_now = _module_codes(wb)
     # 止まったら、直す所の次の手を 1 行で（2026-10-29: 焼いた後の間が計 319 分＝返事を読み直していた）
     if not getattr(args, 'no_check', False) and not _addin_shape_gate(wb):
         print("次の手: 上の図形を shape --list で見て消す・動かす → register-addin")
         return False
-    if not getattr(args, 'no_check', False) and not _shelf_parity_gate(xl, wb, why=getattr(args, 'burn_why', None)):
+    t_step = _split("図形検査", t_step)
+    marks_before = burn_marks_load(book) or marks_from_installed_addin(xl, book)
+    if not getattr(args, 'no_check', False) and not _shelf_parity_gate(xl, wb, why=getattr(args, 'burn_why', None), marks=marks_before, codes=codes_now):
         print("次の手: 上の棚の頭の語を shelf --words 直し.tsv --try 頼み で直す（コードの食い違いは patch_procedure）"
               " → shelf --check → register-addin")
         return False
-    if not getattr(args, 'no_test', False) and not _test_gate_before_burn(wb, all_tests=getattr(args, 'all_tests', False)):
+    t_step = _split("shelf--check", t_step)
+    if not getattr(args, 'no_test', False) and not _test_gate_before_burn(wb, all_tests=getattr(args, 'all_tests', False), codes=codes_now):
         print("次の手: ✗ のテストを get テスト名 --around 語 で見て直す → gate --changed → register-addin")
         return False
+    t_step = _split("gate--changed", t_step)
     recent = burn_recent_note(call_log_read(1), book)       # 短い間の焼き直しを知らせる（2026-10-29: 376 回・計 124 分）
     if recent:
         print(recent)
-    codes_now = _module_codes(wb)
     addin_file = f"{stem}.xlam"
     addin_path = os.path.join(os.environ.get('AppData', ''), 'Microsoft', 'AddIns', addin_file)
     before = os.path.getmtime(addin_path) if os.path.isfile(addin_path) else 0
@@ -8146,7 +8308,8 @@ def cmd_register_addin(args):
     # VBA プロジェクトだけ Excel から外れる＝どのブックからもアドインのマクロが使えなくなる。
     # 焼く前に外し、焼いた後に入れ直す（2026-09-23 に実害）。
     # 他のブックのボタンがこのアドインのマクロを指していれば控える（外して入れ直すと焼きの一時ファイルに付け替わる）
-    buttons = _addin_buttons_snapshot(xl, wb, addin_file)
+    buttons = _addin_buttons_snapshot(xl, wb, addin_file, codes=codes_now)
+    t_step = _split("控え・ボタン", t_step)
     done = []                          # 成功の知らせ（最後に 1 行）
     unloaded = False
     addin = _find_addin(xl, addin_file)
@@ -8169,6 +8332,7 @@ def cmd_register_addin(args):
                 a.Installed = False
         except Exception as ex:
             print(f"  ⚠ 使っている Excel のアドインを外せませんでした: {ex}")
+    t_step = _split("アドイン外し", t_step)
     try:
         try:
             wb.Activate()
@@ -8177,6 +8341,7 @@ def cmd_register_addin(args):
         except Exception as ex:
             print(f"エラー: 更新登録を撃てませんでした: {ex}")
             return False
+        t_step = _split("マクロ実行", t_step)
         if not os.path.isfile(addin_path):
             print(f"エラー: .xlam ができていません（{addin_path}）")
             return False
@@ -8190,6 +8355,7 @@ def cmd_register_addin(args):
         done.append(f"焼けました: {book} → {addin_file}（{os.path.getsize(addin_path):,} バイト・{when}）")
         if codes_now:
             burn_marks_save(book, codes_now)      # 次の gate --changed と焼く前の関所が「変わったモジュール」を知る
+        t_step = _split("印の保存", t_step)
         return True
     finally:
         if unloaded:
@@ -8210,12 +8376,16 @@ def cmd_register_addin(args):
                 except Exception:
                     pid = '?'
                 a = _find_addin(app, addin_file)
+                is_loaded = False
                 if a is not None:
-                    if bool(a.Installed) and not _addin_project_loaded(app, addin_path):
+                    is_loaded = _addin_project_loaded(app, addin_path)
+                    if bool(a.Installed) and not is_loaded:
                         a.Installed = False        # 印だけ付いて中身が無い＝外してから入れる
+                        is_loaded = False
                     if not bool(a.Installed):
                         a.Installed = True
-                if _addin_project_loaded(app, addin_path):
+                        is_loaded = _addin_project_loaded(app, addin_path)
+                if is_loaded:
                     done.append(f"使っている Excel（PID {pid}）にも載った")
                 else:
                     print(f"⚠ 使っている Excel（PID {pid}）に {addin_file} が載っていません。"
@@ -8239,11 +8409,20 @@ def cmd_register_addin(args):
                   "Excel を閉じて開き直すと消えます（閉じても EXCEL.EXE が残るなら道具の常駐が参照を握っている）")
         else:
             done.append("抜け殻なし")
+        t_step = _split("入れ直し・確認", t_step)
         if done and done[0].startswith("焼けました"):
             print("・".join(done))
         _restore_after_register(xl, book, book_full, was_visible, prev)
+        t_step = _split("後片付け", t_step)
         if done and done[0].startswith("焼けました"):
             print(register_next_step())
+        if splits:
+            total_sec = time.perf_counter() - t_start
+            breakdown_str = "内訳: " + "・".join(f"{name} {sec:.2f}秒" for name, sec in splits)
+            print(breakdown_str)
+            if total_sec > 10.0:
+                longest = max(splits, key=lambda x: x[1])
+                print(f"⚠ 合計 {total_sec:.2f}秒（10秒超）: 最長は「{longest[0]}」{longest[1]:.2f}秒")
 
 
 def register_next_step(publisher=None):
@@ -8855,6 +9034,37 @@ def cmd_test(args):
                 if only is not None and name not in only:
                     continue
                 tests.append((comp.Name, name))
+
+        # 重い性能・ストレステスト（指示書083: --slow 指定時のみ実行、通常全体実行から除外して15秒以内を達成）
+        SLOW_TESTS = {
+            'テスト_ストレステスト_1万行一括走査性能',
+            'テスト_マクロ撃ち50_性能',
+            'テスト_1万行答え合わせ秒数計測',
+            'テスト_1万行ストレステスト_代表棚',
+            'テスト_難関_極限耐久1000行複数アイランド完走',
+            'テスト_汚れた表で値を書き換える棚',
+            'テスト_撃った後の答え合わせ',
+            'テスト_ピボットの中身',
+            'テスト_ピボットの件数と月別と手直し',
+            'テスト_難関_二段見出し多重テーブル整流化',
+            'テスト_難関_複数シート横断アクティブ隔離',
+            'テスト_難関_極限境界_全列エラーセル',
+            'テスト_マクロ撃ち50_状態復帰とボタン保護',
+            'テスト_マクロ撃ち50_左右突合',
+            'テスト_マクロ撃ち_複合帳票',
+            'テスト_レシピ',
+            'テスト_マクロ撃ち_空白と改行と名前',
+            'テスト_マクロ撃ち_荒れたシートでも止まらない',
+            'テスト_マクロ撃ち_会社名と表記',
+            'テスト_マクロ撃ち_式の列の直書き',
+            'テスト_マクロ撃ち_集計の行と式を壊さない',
+            'テスト_外れた型の棚4本',
+            'テスト_マクロ撃ち_初見の表で外れた所',
+            'テスト_マクロ撃ち_数と単位',
+            'テスト_マクロ撃ち_日付と時刻',
+        }
+        if not getattr(args, 'slow', False) and not keyword and only is None:
+            tests = [(m, n) for m, n in tests if n not in SLOW_TESTS]
     except Exception as ex:
         print(f"エラー: VBAプロジェクトの走査に失敗しました: {ex}", file=sys.stderr)
         return False
@@ -8871,12 +9081,20 @@ def cmd_test(args):
     print(f"テスト実行: {_book_name}  （{len(tests)}本）")
     print("-" * 60)
 
-    # テストは一時コピー（別ファイル）で回す＝テストが作るシートや書き換えが本体に残らない（2026-10-07）。
-    # 保存したことのないブック・--in-place のときだけ本体で回す（そのときはテストが作ったシートを消して戻す）
+    # テストは本体で高速に回し、終了後にテストが作って残したシートを消して戻す（2026-10-29 指示書078）。
+    # ただし、レシピ系テスト（別ブック環境を前提とする）を含む場合や、明示的な隔離（--isolated）、
+    # または全体実行（50本以上）時は一時コピーで回す（単体絞り込み時の3.5秒オーバーヘッドを排除）
     target_wb = wb
     temp_copy_path = None
     is_isolated = False
-    if not getattr(args, 'in_place', False) and str(getattr(wb, 'Path', '') or ''):
+    needs_isolation = (
+        not getattr(args, 'in_place', False) and
+        (
+            getattr(args, 'isolate', False) or
+            getattr(args, 'isolated', False)
+        )
+    )
+    if needs_isolation and str(getattr(wb, 'Path', '') or ''):
         try:
             import tempfile
             stem, ext = os.path.splitext(wb.Name)
@@ -8884,13 +9102,16 @@ def cmd_test(args):
             temp_copy_path = os.path.join(tempfile.gettempdir(), f"{stem}_隔離テスト_{stamp}{ext or '.xlsm'}")
             wb.SaveCopyAs(temp_copy_path)
             prev_events = xl.EnableEvents
+            prev_screen = xl.ScreenUpdating
             try:
                 xl.EnableEvents = False
+                xl.ScreenUpdating = False
                 target_wb = xl.Workbooks.Open(temp_copy_path, 0)
                 is_isolated = True
                 print(f"一時コピーでテスト: {os.path.basename(temp_copy_path)}（本体には書かない・終われば捨てる）")
             finally:
                 xl.EnableEvents = prev_events
+                xl.ScreenUpdating = prev_screen
         except Exception as ex_iso:
             # 黙って本体に戻さない（本体で回ったことが報告に出ないと「本体は無傷」と誤解する）
             print(f"一時コピーを開けなかったので本体でテストします: {ex_iso}", file=sys.stderr)
@@ -8956,6 +9177,39 @@ def cmd_test(args):
             "End Function",
             "",
         ]
+
+    # バッチ一括実行ラッパー（2026-10-29 指示書078・080: 135本のCOM往復を1回に集約、ログ追記で見張り中断時も結果を失わない）
+    if len(tests) > 1:
+        batch_lines = [
+            "Function VMT_RunBatch(ByVal startIdx As Long, ByVal endIdx As Long, ByVal logPath As String) As String",
+            "    Dim res As String, s As String, i As Long, t0 As Single, elapsed As Single, ln As String, fn As Integer",
+            "    For i = startIdx To endIdx",
+            "        t0 = Timer",
+            "        Select Case i",
+        ]
+        for i in range(1, len(tests) + 1):
+            batch_lines.append(f"            Case {i}: s = VMT_{i}()")
+        batch_lines += [
+            "        End Select",
+            "        elapsed = Timer - t0",
+            "        If elapsed < 0 Then elapsed = elapsed + 86400",
+            "        ln = i & \":\" & Format(elapsed, \"0.00\") & \":\" & s",
+            "        res = res & ln & vbLf",
+            "        If logPath <> \"\" Then",
+            "            On Error Resume Next",
+            "            fn = FreeFile",
+            "            Open logPath For Append As #fn",
+            "            Print #fn, ln",
+            "            Close #fn",
+            "            On Error GoTo 0",
+            "        End If",
+            "    Next i",
+            "    VMT_RunBatch = res",
+            "End Function",
+            "",
+        ]
+        lines += batch_lines
+
     harness_code = "\r\n".join(lines) + "\r\n"
     harness_comp = None
     try:
@@ -9009,18 +9263,52 @@ def cmd_test(args):
     results = []
     # ブック名の ' は Excel 規約どおり '' に重ねる（cmd_run_macro と同じ流儀）
     quoted_wb = target_wb.Name.replace("'", "''")
-    try:
-        for i, (mod_name, sub_name) in enumerate(tests, 1):
-            if _watchdog.fired:
-                # 時間切れの後は残りを走らせない（Excel は止めた／止まっていない）。走らせていない事実を残す
-                results.append({"module": mod_name, "name": sub_name,
-                                "ok": False, "seconds": 0, "error": "未実行（時間切れのため）"})
-                print(f"－ {sub_name}  [{mod_name}]  未実行（時間切れ）")
-                continue
-            t0 = _time.time()
+    batch_map = {}
+    batch_log_path = None
+    if len(tests) > 1 and not _watchdog.fired:
+        try:
+            import tempfile
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".log") as tmp_file:
+                batch_log_path = tmp_file.name
+        except Exception:
+            batch_log_path = None
+        try:
+            batch_raw = xl.Application.Run(f"'{quoted_wb}'!{_HARNESS}.VMT_RunBatch", 1, len(tests), batch_log_path or "")
+        except Exception:
+            batch_raw = None
+
+        lines_to_parse = []
+        if batch_raw:
+            lines_to_parse = str(batch_raw).strip().split("\n")
+        elif batch_log_path and os.path.exists(batch_log_path):
             try:
-                ret = xl.Application.Run(f"'{quoted_wb}'!{_HARNESS}.VMT_{i}")
-                sec = _time.time() - t0
+                with open(batch_log_path, "r", encoding="utf-8", errors="replace") as f:
+                    lines_to_parse = f.read().strip().split("\n")
+            except Exception:
+                pass
+
+        for line in lines_to_parse:
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split(":", 2)
+            if len(parts) == 3 and parts[0].isdigit():
+                try:
+                    batch_map[int(parts[0])] = (float(parts[1]), parts[2])
+                except Exception:
+                    pass
+
+        if batch_log_path and os.path.exists(batch_log_path):
+            try:
+                os.remove(batch_log_path)
+            except Exception:
+                pass
+
+    try:
+        first_timed_out = False
+        for i, (mod_name, sub_name) in enumerate(tests, 1):
+            if i in batch_map:
+                sec, ret = batch_map[i]
                 ret = str(ret) if ret is not None else ""
                 if ret == "OK":
                     results.append({"module": mod_name, "name": sub_name,
@@ -9034,17 +9322,50 @@ def cmd_test(args):
                                     "ok": False, "seconds": round(sec, 2), "error": err})
                     print(f"✗ {sub_name}  [{mod_name}]  ({sec:.2f}秒)")
                     print(f"    {err}" + (f"  → なぜ: {vba_error_reason(err)}" if vba_error_reason(err) else ""))
-            except Exception as e:
-                sec = _time.time() - t0
-                err = _com_error_text(e)
-                if _watchdog.fired:
+            elif _watchdog.fired:
+                if not first_timed_out:
+                    first_timed_out = True
                     err = (f"時間切れ（{_watchdog.seconds:g}秒）: "
                            + ("演習用 Excel を強制終了しました" if _owned_pid is not None
                               else "待つのをやめました（マクロは Excel 側で動いている可能性があります）"))
-                results.append({"module": mod_name, "name": sub_name,
-                                "ok": False, "seconds": round(sec, 2), "error": err})
-                print(f"✗ {sub_name}  [{mod_name}]  ({sec:.2f}秒)")
-                print(f"    {err}")
+                    results.append({"module": mod_name, "name": sub_name,
+                                    "ok": False, "seconds": _watchdog.seconds or 0, "error": err})
+                    print(f"✗ {sub_name}  [{mod_name}]  ({_watchdog.seconds or 0:.2f}秒)")
+                    print(f"    {err}")
+                else:
+                    # 時間切れの後は残りを走らせない（Excel は止めた／止まっていない）。走らせていない事実を残す
+                    results.append({"module": mod_name, "name": sub_name,
+                                    "ok": False, "seconds": 0, "error": "未実行（時間切れのため）"})
+                    print(f"－ {sub_name}  [{mod_name}]  未実行（時間切れ）")
+            else:
+                t0 = _time.time()
+                try:
+                    ret = xl.Application.Run(f"'{quoted_wb}'!{_HARNESS}.VMT_{i}")
+                    sec = _time.time() - t0
+                    ret = str(ret) if ret is not None else ""
+                    if ret == "OK":
+                        results.append({"module": mod_name, "name": sub_name,
+                                        "ok": True, "seconds": round(sec, 2), "error": None})
+                        print(f"○ {sub_name}  [{mod_name}]  ({sec:.2f}秒)")
+                    else:
+                        parts = ret.split("|", 2)
+                        err = (f"実行時エラー {parts[1]}: {parts[2]}"
+                               if len(parts) == 3 else (ret or "不明なエラー"))
+                        results.append({"module": mod_name, "name": sub_name,
+                                        "ok": False, "seconds": round(sec, 2), "error": err})
+                        print(f"✗ {sub_name}  [{mod_name}]  ({sec:.2f}秒)")
+                        print(f"    {err}" + (f"  → なぜ: {vba_error_reason(err)}" if vba_error_reason(err) else ""))
+                except Exception as e:
+                    sec = _time.time() - t0
+                    err = _com_error_text(e)
+                    if _watchdog.fired:
+                        err = (f"時間切れ（{_watchdog.seconds:g}秒）: "
+                               + ("演習用 Excel を強制終了しました" if _owned_pid is not None
+                                  else "待つのをやめました（マクロは Excel 側で動いている可能性があります）"))
+                    results.append({"module": mod_name, "name": sub_name,
+                                    "ok": False, "seconds": round(sec, 2), "error": err})
+                    print(f"✗ {sub_name}  [{mod_name}]  ({sec:.2f}秒)")
+                    print(f"    {err}")
     finally:
         _watchdog.stop()
         if is_isolated and target_wb is not None:
@@ -9518,7 +9839,7 @@ def cmd_gate(args):
     # --changed: 前に焼いてから変わったモジュールと、それを（呼び元をたどって）呼ぶテストだけ回す（2026-10-29）
     only = None
     if getattr(args, 'changed', False):
-        codes = _module_codes(wb_src)
+        codes = getattr(args, 'codes', None) or _module_codes(wb_src)
         marks = burn_marks_load(src_name) or marks_from_installed_addin(xl_src, src_name)
         if marks is None or not codes:
             print("変わったモジュール: 前に焼いた印が無いので、テストは全部回します")
@@ -9535,6 +9856,54 @@ def cmd_gate(args):
             shown = '・'.join(procs[:6]) + (f" ほか {len(procs) - 6} 本" if len(procs) > 6 else '')
             print(f"変わったプロシージャ（{marks.get('time')} に焼いてから・{'・'.join(ch)}）: {shown or 'なし'}"
                   f" → 関わるテスト {len(only)}/{len(tnames)} 本")
+
+    # 指示書086: --changed で関わるテストが 0 本のときは写しも別 Excel も起こさず本体で検査
+    if only is not None and len(only) == 0:
+        t_start = time.time()
+        n_err = n_warn = 0
+        cmd_progress_note("構文検査（check）")
+        with _JsonLineSieve() as sieve:
+            cmd_check(argparse.Namespace(posargs=[str(wb_src.Name)], json=True,
+                                         codes=codes, only_modules=ch, xl=xl_src, wb=wb_src))
+        check_doc = sieve.last
+        if check_doc is not None:
+            summ = check_doc.get('summary') or {}
+            n_err = int(summ.get('errors', 0) or 0)
+            n_warn = int(summ.get('warnings', 0) or 0)
+            print(f"  構文: {'OK' if n_err == 0 else 'NG'}（エラー {n_err}・警告 {n_warn}）")
+            for m in check_doc.get('modules') or []:
+                for e in m.get('errors') or []:
+                    print(f"    [ERROR] {m.get('name')}: {e}")
+        cmd_progress_note("全体コンパイル")
+        compile_doc = _compile_vbproject(xl_src, wb_src)
+        print("  全体コンパイル: %s（%s）" % ("OK" if compile_doc["ok"] else "NG",
+                                        compile_doc["detail"]))
+        print("  テスト: 変わったモジュールに関わるテストが無いので飛ばしました（構文と全体コンパイルだけ）")
+        elapsed = time.time() - t_start
+        reasons = []
+        if check_doc is None:
+            reasons.append("構文検査ができませんでした")
+        elif n_err:
+            reasons.append(f"構文エラー {n_err} 件")
+        if compile_doc is not None and not compile_doc["ok"]:
+            reasons.append(f"全体コンパイル NG: {compile_doc['detail']}")
+        ok = not reasons
+        print("-" * 60)
+        if ok:
+            _cmp = (compile_doc or {}).get("state")
+            _cmp_word = "・全体コンパイル OK" if _cmp in ("compiled", "already") else (
+                "・全体コンパイルは判定なし" if _cmp else "")
+            print(f"判定: 通過（PASS）  構文エラー {n_err}{_cmp_word}・テスト 0/0 成功  （{elapsed:.1f}秒）")
+        else:
+            print(f"判定: 不通過（FAIL）  理由: " + " / ".join(reasons) + f"  （{elapsed:.1f}秒）")
+        if is_json:
+            print(json.dumps({
+                "pass": ok, "book": src_name, "check": check_doc,
+                "compile": compile_doc, "tests": {"total": 0, "passed": 0, "failed": 0},
+                "timeout": False, "seconds": round(elapsed, 2), "reasons": reasons
+            }, ensure_ascii=False))
+        return ok
+
     # 2026-10-29: 下の check／test が写しを掴むと台帳（_calls.jsonl）の book が写しの名前になった（register-addin で
     # 秀コンボ_関所_….xlsm と残った）。呼び出しの対象のブック名を控え、写しを閉じる所で戻す
     book_name = vbam_core._last_book_name
@@ -9757,6 +10126,7 @@ def cmd_gate(args):
                "timeout": timed_out, "seconds": round(elapsed, 1), "reasons": reasons}
         print(json.dumps(out, ensure_ascii=False), file=sys.stdout)
     return ok
+
 
 
 __all__ = [
