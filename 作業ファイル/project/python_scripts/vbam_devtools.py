@@ -26,7 +26,7 @@ import shutil
 import tempfile
 import contextlib
 
-from vbam_core import (save_vba_book,
+from vbam_core import (save_vba_book, remembers_unsaved, remember_unsaved, say_unsaved,
                        SCRIPT_DIR, BACKUP_DIR, LAST_PROC_FILE, get_workbook, parse_target_and_rest, make_backup,
                        make_module_backup, _reject_extra_args, _remove_export_artifacts, smart_path_resolve,
                        check_vba_identifier, _import_module_verified, _save_with_retry, ModuleNameCollisionError,
@@ -318,6 +318,7 @@ def _export_history_note(book_name, out_dir):
 # rename-procedure
 # ================================================================
 
+@remembers_unsaved
 def cmd_rename_procedure(args):
     """マクロの改名: rename-procedure [excel_file] <旧名> <新名> [--module 名] [-y] [--dry-run] [--force]
 
@@ -662,6 +663,7 @@ def cmd_references(args):
 # copy-modules
 # ================================================================
 
+@remembers_unsaved
 def cmd_copy_modules(args):
     """モジュールを別の開いているブックへ複製: copy-modules <モジュール名…> --to <ブック名> [--overwrite] [-y] [--force]
 
@@ -723,6 +725,7 @@ def cmd_copy_modules(args):
             old_path = None
             if old is not None:
                 make_module_backup(dst, name)
+                remember_unsaved(dst)          # 行き先の人の未保存の変更を、書き換える前に控える（総点検 9）
                 # 外す前に行き先の元のモジュールを書き出しておく。取り込みが名前衝突以外で落ちると、行き先から消えたままだった
                 # （2026-10-29 総点検 8）＝落ちたらこれを入れ直す
                 with contextlib.suppress(Exception):
@@ -759,6 +762,7 @@ def cmd_copy_modules(args):
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
     if dst_saved:
+        say_unsaved(dst)
         _save_with_retry(dst)
         print(f"完了: {len(done)} 本を {dst.Name} へ複製して保存しました")
     else:

@@ -1771,10 +1771,81 @@ def com_retry(func, attempts=3, delay=0.4, op_name="COM操作"):
         raise last_ex
 
 
+# VBA を書き換える手が始まった時点で、ブックに人の未保存の変更があったか（FullName → True/False）。
+# 道具はマクロを書き換えるたびに保存するので、人がいじっていたセルも一緒にファイルへ書かれる。保存はそのままにして、
+# そのことを言う（2026-10-29 総点検 9・シュウさん「言うだけにする」）
+_unsaved_before = {}
+_unsaved_said = set()
+_unsaved_depth = [0]
+
+
+def _book_key(wb):
+    try:
+        return str(wb.FullName)
+    except Exception:
+        return None
+
+
+def remember_unsaved(wb):
+    """VBA を書き換える前に呼ぶ: 人の未保存の変更があるかを控える（同じ手の中では最初の 1 回だけ）。"""
+    k = _book_key(wb)
+    if k is None or k in _unsaved_before:
+        return
+    try:
+        _unsaved_before[k] = not bool(wb.Saved)
+    except Exception:
+        pass
+
+
+def say_unsaved(wb):
+    """保存の直前に呼ぶ: 控えた時点で未保存の変更があったら 1 回だけ言う。"""
+    k = _book_key(wb)
+    if k is None or k in _unsaved_said or not _unsaved_before.get(k):
+        return
+    _unsaved_said.add(k)
+    try:
+        nm = str(wb.Name)
+    except Exception:
+        nm = k
+    print(f"⚠ {nm} には道具が触る前から保存していない変更（セルなど）がありました。マクロと一緒にそれも保存しています")
+
+
+def save_before_vba_edit(wb):
+    """VBA を外して入れ直す前の保存（控えの代わり）。ここで保存するのは人の未保存の変更そのもの＝言ってから保存する。"""
+    remember_unsaved(wb)
+    say_unsaved(wb)
+    wb.Save()
+
+
+def remembers_unsaved(cmd_func):
+    """cmd_* を「VBA を書き換える前に人の未保存の変更を控え、保存のときに言う」に変える decorator。"""
+    import functools
+
+    @functools.wraps(cmd_func)
+    def wrapper(args):
+        _unsaved_depth[0] += 1
+        try:
+            if _unsaved_depth[0] == 1:
+                try:
+                    target_file, _rest = parse_target_and_rest(getattr(args, 'posargs', []) or [])
+                    _xl, wb = get_workbook(target_file)
+                    remember_unsaved(wb)
+                except Exception:
+                    pass
+            return cmd_func(args)
+        finally:
+            _unsaved_depth[0] -= 1
+            if _unsaved_depth[0] == 0:
+                _unsaved_before.clear()
+                _unsaved_said.clear()
+    return wrapper
+
+
 def save_vba_book(wb):
     """VBA を書き換えたブックを保存する。.xlsx などマクロを持てない形式は「マクロなしで保存しますか」の窓が出て COM が戻らなく
     なる（MCP では 600 秒で時間切れ）ので、その形式のときだけ窓を切って保存する。マクロはファイルに残らない＝
-    note_if_macro_free_book が知らせる（2026-10-29 総点検 14）"""
+    note_if_macro_free_book が知らせる（2026-10-29 総点検 14）。道具が触る前から未保存の変更があったブックは、そう言う（総点検 9）"""
+    say_unsaved(wb)
     try:
         name = str(wb.Name).lower()
     except Exception:
@@ -3378,7 +3449,7 @@ def cmd_close_vbe(args=None):
 
 
 __all__ = ['is_vbproject_protected',
-    'save_vba_book',
+    'save_vba_book', 'remember_unsaved', 'say_unsaved', 'save_before_vba_edit', 'remembers_unsaved',
     'cmd_close_vbe',
     'classify_unstick_dialog',
     'inspect_excel_unstick',

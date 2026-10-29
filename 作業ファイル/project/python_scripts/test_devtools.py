@@ -951,3 +951,29 @@ def test_undo_layout_skipped_without_code_names_20261029():
     wb = _FakeBook()
     wb._sheets = [_FakeSheet(wb, '', 'Sheet1')]
     assert u._sheet_layout(wb) == []
+
+def test_vba_save_says_when_the_book_had_unsaved_changes_before(monkeypatch, capsys):
+    """マクロを書き換えて保存するとき、道具が触る前から未保存の変更があったら 1 回だけ言う（2026-10-29 総点検 9）。"""
+    class WB:
+        def __init__(self, name, saved):
+            self.Name, self.FullName, self.Saved, self.saves = name, rf"C:\x\{name}", saved, 0
+
+        def Save(self):
+            self.saves += 1
+            self.Saved = True
+
+    dirty, clean = WB("売上.xlsm", False), WB("台帳.xlsm", True)
+    for wb in (dirty, clean):
+        monkeypatch.setattr(vc, "get_workbook", lambda t=None, wb=wb: (None, wb))
+
+        @vc.remembers_unsaved
+        def cmd(args, wb=wb):
+            wb.Saved = False                      # マクロの書き換えで未保存になる
+            vc.save_vba_book(wb)
+            vc.save_vba_book(wb)                  # 2 回保存しても言うのは 1 回
+            return True
+
+        assert cmd(argparse.Namespace(posargs=[])) is True
+    out = capsys.readouterr().out
+    assert out.count("保存していない変更") == 1 and "売上.xlsm" in out and "台帳.xlsm" not in out
+    assert vc._unsaved_before == {} and vc._unsaved_said == set()
