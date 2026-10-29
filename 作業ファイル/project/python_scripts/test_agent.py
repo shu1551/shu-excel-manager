@@ -1092,7 +1092,7 @@ def test_key_problem_catches_paste_accidents():
 
 def test_user_env_write_then_delete_removes_the_entry():
     """setx NAME "" は空の値を残す＝消えない。SetEnvironmentVariable(null) は項目ごと消える。"""
-    name = "_VBAM_TEST_KEY"
+    name = f"_VBAM_TEST_KEY_{os.getpid()}"   # 同時に回す試験（両側・分けた組）とぶつからない名（2026-10-29）
     try:
         va._user_env_write(name, "dummy-value-1234")
         assert va._user_env_get(name) == "dummy-value-1234"
