@@ -604,7 +604,11 @@ def _agent_backup(wb, ws, sheet, request, run_id=None):
         # 「この後に控えなしの走行があった」印を付け、--undo を --force 無しでは止める（2026-10-28 点検）
         _mark_undo_stale(f"控えを取れなかった agent の走行「{(request or '')[:40]}」", str(wb.Name))
         return None
-    meta = {'book': str(wb.Name), 'sheet': sheet, 'sheets': [sheet], 'path': path,
+    try:
+        book_full = str(wb.FullName)
+    except Exception:
+        book_full = ''
+    meta = {'book': str(wb.Name), 'book_full': book_full, 'sheet': sheet, 'sheets': [sheet], 'path': path,
             'request': (request or '')[:300], 'time': time.strftime('%Y-%m-%d %H:%M:%S'),
             'run_id': run_id, 'shapes': _shapes_geometry(ws), 'layout': _sheet_layout(wb)}
     _save_undo_meta(meta)
@@ -1278,6 +1282,93 @@ def _drop_backup_link(wb, path):
         return False
 
 
+def _sheet_ref_re(names):
+    """数式・名前の中の「シート名!」への参照（'名 簿'! の形も）を拾う正規表現。"""
+    alts = []
+    for s in names:
+        q = str(s).replace("'", "''")
+        alts.append("'" + re.escape(q) + "'!")
+        alts.append(re.escape(str(s)) + "!")
+    return re.compile(r"(?<![\w\]'.])(?:" + "|".join(alts) + ")")
+
+
+def _restore_refs_from_others(wb, src_wb, sheets):
+    """戻したシートを指す、ほかのシートの式と名前を控えの字面に戻す → 報告の行（2026-10-29 総点検 32）。
+
+    棚が戻す先のシートの行や列を消すと、Excel はほかのシートの =名簿!C8 を =名簿!C6 に付け替える。
+    戻すのは書いたシートだけなので、付け替わった式が残り、違うセルを指したままになっていた（実機で再現）。
+    控えで戻したシートを指していて、いまの字面が控えと違うセルだけを入れ直す（ほかの式には触らない）。
+    """
+    pat = _sheet_ref_re(sheets)
+    fixed = []
+    try:
+        src_sheets = list(src_wb.Worksheets)
+    except Exception:
+        src_sheets = []
+    for src_ws in src_sheets:
+        try:
+            name = str(src_ws.Name)
+            if name in sheets:
+                continue
+            ws = wb.Worksheets(name)
+            ur = src_ws.UsedRange
+            if int(ur.Rows.Count) * int(ur.Columns.Count) > _SNAPSHOT_MAX_CELLS:
+                continue
+            addr = _addr(ur)
+            try:
+                prop = 'Formula2'
+                want = _rows_of(ur.Formula2)
+            except Exception:
+                prop = 'Formula'
+                want = _rows_of(ur.Formula)
+            cur = _rows_of(getattr(ws.Range(addr), prop))
+        except Exception:
+            continue
+        r0, c0 = int(ur.Row), int(ur.Column)
+        for i, row in enumerate(want):
+            for j, f in enumerate(row):
+                if not (isinstance(f, str) and f.startswith('=') and pat.search(f)):
+                    continue
+                now = cur[i][j] if i < len(cur) and j < len(cur[i]) else None
+                if now == f:
+                    continue
+                try:
+                    cell = ws.Cells(r0 + i, c0 + j)
+                    nf = str(cell.NumberFormat)
+                    if nf == '@':                       # 文字列の書式のまま入れると式が文字になる＝外して入れて戻す
+                        from vbam_edit import _untext_one
+                        _untext_one(cell, f)
+                    setattr(cell, prop, f)
+                    if nf == '@':
+                        cell.NumberFormat = '@'
+                    fixed.append(f"{name}!{str(cell.Address).replace('$', '')}")
+                except Exception:
+                    pass
+    names = []
+    try:
+        src_names = list(src_wb.Names)
+    except Exception:
+        src_names = []
+    for nm in src_names:
+        try:
+            ref = str(nm.RefersTo)
+            if not pat.search(ref):
+                continue
+            mine = wb.Names(str(nm.Name))
+            if str(mine.RefersTo) != ref:
+                mine.RefersTo = ref
+                names.append(str(nm.Name))
+        except Exception:
+            continue
+    out = []
+    if fixed:
+        out.append(f"ほかのシートの式で、戻したシートを指す先がずれていたものを控えの字面に戻しました: {len(fixed)} 個（"
+                   + "・".join(fixed[:12]) + (" ほか" if len(fixed) > 12 else "") + "）")
+    if names:
+        out.append("名前の参照先も控えの字面に戻しました: " + "・".join(names[:12]) + (" ほか" if len(names) > 12 else ""))
+    return out
+
+
 _PAGE_PROPS = ('Orientation', 'PrintTitleRows', 'PrintTitleColumns', 'PrintArea', 'CenterHorizontally',
                'LeftMargin', 'RightMargin', 'TopMargin', 'BottomMargin')
 _EXTRA_ROWS_MAX = 3000
@@ -1417,6 +1508,17 @@ def undo_agent(target_file=None, dry_run=False, force=False, which=None):
         print(f"エラー: 控えは「{book}」のものです（いま開いているのは「{wb.Name}」）。"
               "そのブックを開いてアクティブにしてから、もう一度 --undo してください")
         return False
+    # 名前が同じでも別のフォルダのブック（写し等）なら止める（名前だけで比べ、別のブックを控えで置き換えていた・2026-10-29 総点検 10）。
+    # 前の覚書には場所が無い＝そのときは名前だけで通す
+    want_full = meta.get('book_full') or ''
+    try:
+        now_full = str(wb.FullName)
+    except Exception:
+        now_full = ''
+    if want_full and now_full and os.path.normcase(os.path.abspath(want_full)) != os.path.normcase(os.path.abspath(now_full)):
+        print(f"エラー: 控えは「{want_full}」のものです（いま前に出ているのは同じ名前の「{now_full}」）。"
+              "控えを取ったブックを前に出してから、もう一度 --undo してください。何も変えていません")
+        return False
     layout = meta.get('layout') or []
     # 戻す先のシートがそろっているかを、何かを変える前に確かめる（前はシートを消して名前を戻した後で「ありません」と止まり、
     # 半端な状態が残っていた・2026-10-29 総点検 3）。名前を変えられたシートは、控えのコード名から戻せるので数に入れる
@@ -1472,8 +1574,10 @@ def undo_agent(target_file=None, dry_run=False, force=False, which=None):
             if created:
                 # 貼り戻しの前に消す（ピボットの残った範囲は Clear が拒まれる＝先に消さないと戻せない）。
                 # 戻す先のシートそのものは消さない（消したら貼る先が無い）
+                # 並び（layout）のある控えでは、増えたシートは上の _restore_layout がコード名で始末済み。名前で消しにいくと
+                # 「消せなかったもの」に出て、その名前を人が別のシートに付け直していればそちらを消していた（2026-10-29 総点検 27）
                 gone, ng = _delete_created(xl, wb, [c for c in created
-                                                    if not (c.get('kind') == 'sheet' and c.get('name') in sheets)])
+                                                    if not (c.get('kind') == 'sheet' and (c.get('name') in sheets or layout))])
                 if gone:
                     print(f"  作った物を消しました: {len(gone)} 個（" + " / ".join(gone) + "）")
                 if ng:
@@ -1497,11 +1601,16 @@ def undo_agent(target_file=None, dry_run=False, force=False, which=None):
                     ws.UsedRange.Clear()
                 except Exception:
                     pass
-                src_ur.Copy()
-                ws.Range(addr).PasteSpecial(-4104)      # xlPasteAll
-                src_ur.Copy()
-                ws.Range(addr).PasteSpecial(8)          # xlPasteColumnWidths
-                xl.CutCopyMode = False
+                # 中身はクリップボードを通さずに写す。Copy→PasteSpecial は他のアプリがクリップボードを掴んでいると落ち、
+                # 空にしたシートが残っていた（2026-10-29 総点検 4）。列幅だけはクリップボードで写し、落ちても中身は戻っている
+                src_ur.Copy(ws.Range(addr))
+                try:
+                    src_ur.Copy()
+                    ws.Range(addr).PasteSpecial(8)      # xlPasteColumnWidths
+                except Exception:
+                    print(f"  ⚠ 「{name}」の列幅は戻せませんでした（中身は戻しました）")
+                with contextlib.suppress(Exception):
+                    xl.CutCopyMode = False
                 # ブックをまたぐ貼り付けは別シート参照を控えへの外部リンクに書き換える＝控えの字面で入れ直す
                 if _restore_formulas(ws, addr, src_snap) is None:
                     print(f"  ⚠ 控えが大きすぎて「{name}」の数式を写せませんでした"
@@ -1530,6 +1639,8 @@ def undo_agent(target_file=None, dry_run=False, force=False, which=None):
                     except Exception:
                         pass
                 xl.CutCopyMode = False
+            for ln in _restore_refs_from_others(wb, src_wb, sheets):
+                print("  " + ln)
             _drop_backup_link(wb, path)
             if back:
                 print(f"  消えていた図形を控えから戻しました: {back} 個")

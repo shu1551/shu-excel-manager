@@ -26,7 +26,8 @@ import shutil
 import tempfile
 import contextlib
 
-from vbam_core import (SCRIPT_DIR, BACKUP_DIR, LAST_PROC_FILE, get_workbook, parse_target_and_rest, make_backup,
+from vbam_core import (save_vba_book,
+                       SCRIPT_DIR, BACKUP_DIR, LAST_PROC_FILE, get_workbook, parse_target_and_rest, make_backup,
                        make_module_backup, _reject_extra_args, _remove_export_artifacts, smart_path_resolve,
                        check_vba_identifier, _import_module_verified, _save_with_retry, ModuleNameCollisionError,
                        _print_collision_guidance, validate_bas_encoding, _reregister_shortcuts_from_bas,
@@ -444,7 +445,7 @@ def cmd_rename_procedure(args):
             print(f"改名: [図形 {sh}!{name}] OnAction → {na}")
         except Exception as ex:
             print(f"  ⚠ 図形 {sh}!{name} の OnAction を直せませんでした: {_com_error_text(ex)}")
-    wb.Save()
+    save_vba_book(wb)          # .xlsx は窓を切って保存（2026-10-29 総点検 14）
     note = ""
     if key:
         # 宣言行を書き換えると VBE は属性のキーを空にする（2026-09-16 実測）。MacroOptions では保存に残らないので、
@@ -719,8 +720,15 @@ def cmd_copy_modules(args):
             name = str(c.Name)
             path = _export_to_temp(c, tmpdir)
             old = _find_comp(dst, name)
+            old_path = None
             if old is not None:
                 make_module_backup(dst, name)
+                # 外す前に行き先の元のモジュールを書き出しておく。取り込みが名前衝突以外で落ちると、行き先から消えたままだった
+                # （2026-10-29 総点検 8）＝落ちたらこれを入れ直す
+                with contextlib.suppress(Exception):
+                    old_dir = os.path.join(tmpdir, '_old')
+                    os.makedirs(old_dir, exist_ok=True)
+                    old_path = _export_to_temp(old, old_dir)
                 prev_alerts = xl.DisplayAlerts
                 xl.DisplayAlerts = False
                 try:
@@ -733,6 +741,17 @@ def cmd_copy_modules(args):
                 _import_module_verified(dst, path, name)
             except ModuleNameCollisionError as ex:
                 _print_collision_guidance(ex, name, None)
+                return False
+            except Exception as ex:
+                if old_path:
+                    try:
+                        _import_module_verified(dst, old_path, name)
+                        print(f"エラー: {name} を取り込めなかったので、行き先の元のモジュールを入れ直しました: {_com_error_text(ex)}")
+                    except Exception:
+                        print(f"エラー: {name} を取り込めず、元のモジュールも入れ直せませんでした: {_com_error_text(ex)}\n"
+                              "  保存せずに閉じるか、backups の控えから restore で戻してください")
+                else:
+                    print(f"エラー: {name} を取り込めませんでした: {_com_error_text(ex)}")
                 return False
             # ショートカットの再登録は _import_module_verified の中で済む（二重に呼ぶと表示も二重・2026-09-16 実射）
             done.append(name)
