@@ -2710,6 +2710,7 @@ def _project_code_fn(target_file):
     return _read
 
 
+@remembers_unsaved
 def cmd_replace_procedure(args):
     """プロシージャを置換 (コードファイル省略時は _last_proc.vba を使用)"""
     target_file, rest = parse_target_and_rest(args.posargs)
@@ -3102,7 +3103,7 @@ def cmd_replace_procedure(args):
         removed = False
         imported = False
         try:
-            wb.Save()
+            save_before_vba_edit(wb)      # 人の未保存の変更があれば言ってから保存（総点検 9）
             pythoncom.PumpWaitingMessages()
             wb.VBProject.VBComponents.Remove(comp)
             removed = True
@@ -3351,6 +3352,7 @@ def cmd_patch_procedure(args):
     return cmd_replace_procedure(r_args)
 
 
+@remembers_unsaved
 def cmd_add_procedure(args):
     """新規プロシージャをモジュール末尾に追加: add-procedure [excel_file] <モジュール名>
 
@@ -3463,6 +3465,7 @@ def cmd_add_procedure(args):
     return True
 
 
+@remembers_unsaved
 def cmd_add_module(args):
     """新規モジュールを追加: add-module [excel_file] <モジュール名> [--type std|class|form]
 
@@ -3525,6 +3528,7 @@ def cmd_add_module(args):
     return True
 
 
+@remembers_unsaved
 def cmd_delete_procedure(args):
     """プロシージャを削除: delete-procedure [excel_file] <Sub名>
 
@@ -3609,6 +3613,7 @@ def cmd_delete_procedure(args):
     return True
 
 
+@remembers_unsaved
 def cmd_delete_module(args):
     """モジュール丸ごと削除: delete-module [excel_file] <モジュール名> [-y]
 
@@ -3700,6 +3705,7 @@ def _module_name_of_file(path):
     return os.path.splitext(os.path.basename(path))[0]
 
 
+@remembers_unsaved
 def cmd_replace_module(args):
     """モジュール全体を Remove+Import で置換 (Attribute を正しく処理)"""
     target_file, rest = parse_target_and_rest(args.posargs)
@@ -3821,7 +3827,7 @@ def cmd_replace_module(args):
             removed = False
             imported = False
             try:
-                wb.Save()
+                save_before_vba_edit(wb)      # 人の未保存の変更があれば言ってから保存（総点検 9）
                 pythoncom.PumpWaitingMessages()
                 wb.VBProject.VBComponents.Remove(comp)
                 removed = True
@@ -3875,6 +3881,7 @@ def cmd_replace_module(args):
     return False
 
 
+@remembers_unsaved
 def cmd_import_module(args):
     """モジュール（.bas/.cls/.frm）を取り込む: import-module <ファイル…> [--book 名] [--replace] [-y]"""
     raw_files = list(args.posargs or [])
@@ -3944,7 +3951,7 @@ def cmd_import_module(args):
     prev_alerts = xl.DisplayAlerts
     xl.DisplayAlerts = False
     try:
-        wb.Save()
+        save_before_vba_edit(wb)      # 人の未保存の変更があれば言ってから保存（総点検 9）
         pythoncom.PumpWaitingMessages()
 
         for abs_p, mod_name, ext in plan:
@@ -4059,6 +4066,7 @@ def _write_module(header, blocks, trailing):
     return '\r\n'.join(parts)
 
 
+@remembers_unsaved
 def cmd_reorder_macro(args):
     """
     マクロを同モジュール内で 1 つ上 / 下のマクロと入れ替える。
@@ -4191,7 +4199,7 @@ def cmd_reorder_macro(args):
     imported = False
     success = False
     try:
-        wb.Save()
+        save_before_vba_edit(wb)      # 人の未保存の変更があれば言ってから保存（総点検 9）
         pythoncom.PumpWaitingMessages()
         wb.VBProject.VBComponents.Remove(target_comp)
         removed = True
@@ -6538,6 +6546,7 @@ def _vba_tolerant_pattern(needle):
     return re.compile(''.join(parts), re.IGNORECASE)
 
 
+@remembers_unsaved
 def cmd_code_replace(args):
     """全マクロ横断の一括置換: code-replace <検索> <置換>
 
