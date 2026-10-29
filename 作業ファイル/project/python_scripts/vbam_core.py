@@ -1210,7 +1210,7 @@ def get_or_start_excel(visible=True):
     return xl
 
 
-def make_backup(wb_fullname, label):
+def make_backup(wb_fullname, label, quiet=False):
     """バックアップを作成（タイムスタンプ付き・同系列は直近5世代まで保持）。
 
     成功時はバックアップパス、失敗時は None を返す。
@@ -1233,7 +1233,8 @@ def make_backup(wb_fullname, label):
         backup_path = os.path.join(BACKUP_DIR, f"{prefix}{stamp}_{seq}{ext}")
     try:
         shutil.copy2(wb_fullname, backup_path)
-        print(f"バックアップ作成: backups/{os.path.basename(backup_path)}")
+        if not quiet:                # quiet＝呼び出し側がモジュールの控えと 1 行にまとめて言う
+            print(f"バックアップ作成: backups/{os.path.basename(backup_path)}")
     except Exception as e:
         print(f"警告: バックアップ失敗 ({e})")
         return None
@@ -1483,7 +1484,7 @@ def validate_vba_code(code, force=False, old_code='', project_code=None):
     return True
 
 
-def make_module_backup(wb, module_name):
+def make_module_backup(wb, module_name, quiet=False):
     """モジュール単位のバックアップを .bas 形式で保存"""
     os.makedirs(BACKUP_DIR, exist_ok=True)
     timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -1502,7 +1503,8 @@ def make_module_backup(wb, module_name):
             backup_path = os.path.join(BACKUP_DIR, backup_filename)
             try:
                 comp.Export(backup_path)
-                print(f"モジュールバックアップ作成: backups/{backup_filename}")
+                if not quiet:
+                    print(f"モジュールバックアップ作成: backups/{backup_filename}")
                 return backup_path
             except Exception as e:
                 print(f"警告: モジュールバックアップ失敗 ({e})")
