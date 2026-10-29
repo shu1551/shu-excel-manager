@@ -7841,8 +7841,27 @@ def burn_marks_load(book, path=None):
         return None
 
 
+_PROC_DECL_RE = re.compile(r'^\s*(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?(?:Sub|Function|Property\s+(?:Get|Let|Set))\s+([^\s(]+)',
+                           re.IGNORECASE | re.MULTILINE)
+
+
+def proc_marks(code):
+    """モジュールの本文 → {プロシージャ名: 本文の crc}。頭の宣言部は '(宣言部)'、同じ名の 2 本目（Property Get/Let）は '名#2'。"""
+    code = code.replace('\r\n', '\n')
+    marks = list(_PROC_DECL_RE.finditer(code))
+    out = {'(宣言部)': zlib.crc32(code[:marks[0].start() if marks else len(code)].encode('utf-8'))}
+    for k, m in enumerate(marks):
+        end = marks[k + 1].start() if k + 1 < len(marks) else len(code)
+        key, n = m.group(1), 1
+        while key in out:
+            n += 1
+            key = f"{m.group(1)}#{n}"
+        out[key] = zlib.crc32(code[m.start():end].encode('utf-8'))
+    return out
+
+
 def burn_marks_save(book, codes, path=None):
-    """焼けたときに、モジュールごとの印（本文の crc）を控える。gate --changed と register-addin が読む。"""
+    """焼けたときに、モジュールごとの印（本文の crc）とプロシージャごとの印を控える。gate --changed と register-addin が読む。"""
     import json
     p = _burn_marks_path(path)
     try:
@@ -7851,7 +7870,9 @@ def burn_marks_save(book, codes, path=None):
     except (OSError, ValueError):
         allm = {}
     allm[str(book).lower()] = {'time': time.strftime('%Y-%m-%d %H:%M:%S'),
-                               'mods': {m: zlib.crc32(c.replace('\r\n', '\n').encode('utf-8')) for m, c in codes.items()}}
+                               'mods': {m: zlib.crc32(c.replace('\r\n', '\n').encode('utf-8')) for m, c in codes.items()},
+                               # 2026-10-29: モジュールの単位だと「表の整理」の棚 1 本の直しで 135 本中 128 本が回った
+                               'procs': {m: proc_marks(c) for m, c in codes.items()}}
     try:
         with open(p, 'w', encoding='utf-8') as f:
             json.dump(allm, f, ensure_ascii=False)
@@ -7866,32 +7887,50 @@ def changed_modules(marks, codes):
                   if old.get(m) != zlib.crc32(c.replace('\r\n', '\n').encode('utf-8')))
 
 
-def related_tests(codes, changed, test_names):
-    """変わったモジュールに関わるテストの名前（純 Python）。
+def changed_procs(marks, codes):
+    """変わったモジュールの中の、変わった・増えたプロシージャの名前（純 Python）。前の印にプロシージャの印が無い
+    モジュールと、宣言部（モジュールの変数・定数）が変わったモジュールは、そのモジュールの全部を返す。"""
+    oldp = (marks or {}).get('procs') or {}
+    out = set()
+    for mod in changed_modules(marks, codes):
+        now, before = proc_marks(codes[mod]), oldp.get(mod)
+        whole = before is None or now['(宣言部)'] != before.get('(宣言部)')
+        out |= {k.split('#')[0] for k, c in now.items()
+                if k != '(宣言部)' and (whole or before.get(k) != c)}
+    return sorted(out)
 
-    変わったモジュールにあるプロシージャ → それを呼ぶプロシージャ → … を呼び元へたどり（どのモジュールでも）、
-    その輪の中の名前を本文に含むテストと、変わったモジュールにあるテストを選ぶ。名前は語の区切りで見る（大小文字は区別しない）。"""
-    decl = re.compile(r'^\s*(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?(?:Sub|Function|Property\s+(?:Get|Let|Set))\s+([^\s(]+)',
-                      re.IGNORECASE | re.MULTILINE)
-    bodies, home = {}, {}
+
+def related_tests(codes, changed, test_names, procs=None):
+    """変わったモジュール（procs があれば変わったプロシージャ）に関わるテストの名前（純 Python）。
+
+    変わったプロシージャ → それを呼ぶプロシージャ → … を呼び元へたどり（どのモジュールでも）、
+    その輪の中にあるテストを選ぶ。名前は語の区切りで見る（大小文字は区別しない・コメントの中は数えない・
+    文字列の中は数える＝Application.Run "名前" や 一覧から撃つ "名前" の呼び方を落とさない）。"""
+    bodies, home = [], {}
     for mod, code in codes.items():
-        marks = list(decl.finditer(code))
+        marks = list(_PROC_DECL_RE.finditer(code))
         for k, m in enumerate(marks):
             end = marks[k + 1].start() if k + 1 < len(marks) else len(code)
             name = m.group(1)
-            bodies[name] = code[m.end():end]
+            # コメントの中の名は数えない。文字列の中は数える（試験は棚を 一覧から撃つ "名前" と文字列で呼ぶ）
+            bare = '\n'.join(ln[:len(re.sub(r'"(?:[^"]|"")*"', lambda s: 'x' * len(s.group()), ln).split("'", 1)[0])]
+                             for ln in code[m.end():end].split('\n'))
+            bodies.append((name, bare))
             home[name] = mod
-    changed = set(changed)
-    hot = {n for n, mod in home.items() if mod in changed}
+    if procs is not None:
+        hot = {n.lower() for n in procs}
+    else:
+        changed = set(changed)
+        hot = {n.lower() for n, mod in home.items() if mod in changed}
     grew = True
     while grew and hot:
         grew = False
         rx = re.compile(r'(?<![\w])(?:' + '|'.join(map(re.escape, sorted(hot))) + r')(?![\w])', re.IGNORECASE)
-        for n, body in bodies.items():
-            if n not in hot and rx.search(body):
-                hot.add(n)
+        for n, body in bodies:
+            if n.lower() not in hot and rx.search(body):
+                hot.add(n.lower())
                 grew = True
-    return [t for t in test_names if t in hot]
+    return [t for t in test_names if t.lower() in hot]
 
 
 def where_name(codes, name, max_uses=30):
@@ -9471,8 +9510,11 @@ def cmd_gate(args):
             if not ch:
                 print(f"判定: 通過（PASS）  {marks.get('time')} に焼いてから VBA は変わっていません（全部回すなら --changed を外す）")
                 return True
-            only = set(related_tests(codes, ch, tnames))
-            print(f"変わったモジュール（{marks.get('time')} に焼いてから）: {'・'.join(ch)} → 関わるテスト {len(only)}/{len(tnames)} 本")
+            procs = changed_procs(marks, codes)
+            only = set(related_tests(codes, ch, tnames, procs=procs))
+            shown = '・'.join(procs[:6]) + (f" ほか {len(procs) - 6} 本" if len(procs) > 6 else '')
+            print(f"変わったプロシージャ（{marks.get('time')} に焼いてから・{'・'.join(ch)}）: {shown or 'なし'}"
+                  f" → 関わるテスト {len(only)}/{len(tnames)} 本")
     # 2026-10-29: 下の check／test が写しを掴むと台帳（_calls.jsonl）の book が写しの名前になった（register-addin で
     # 秀コンボ_関所_….xlsm と残った）。呼び出しの対象のブック名を控え、写しを閉じる所で戻す
     book_name = vbam_core._last_book_name

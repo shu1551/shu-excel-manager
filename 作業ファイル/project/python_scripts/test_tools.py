@@ -6854,6 +6854,30 @@ def test_gate_changed_picks_tests_through_callers_20261029():
     assert vv.changed_modules(marks, {k: v.replace("\n", "\r\n") for k, v in codes.items()}) == []   # 改行の違いは数えない
 
 
+def test_gate_changed_narrows_to_changed_procedures_20261029(tmp_path):
+    """gate --changed: 変わったプロシージャだけを起点にする（モジュールの単位だと棚 1 本の直しで 128/135 本回った）。"""
+    import vbam_vba as vv
+    codes = {"棚": "Dim 共有 As Long\nSub 合計を足す()\n  x = 1\nEnd Sub\nSub 空行を詰める()\n  y = 2\nEnd Sub\n",
+             "試験": "Sub テスト合計()\n  合計を足す\nEnd Sub\nSub テスト空行()\n  空行を詰める\nEnd Sub\n"
+                     "Sub テスト別件()\n  ' 合計を足す はここでは呼ばない\n  MsgBox \"It's\" ' 合計を足す\nEnd Sub\n"
+                     "Sub テスト名で撃つ()\n  Application.Run \"合計を足す\"\nEnd Sub\n"}
+    tests = ["テスト合計", "テスト空行", "テスト別件", "テスト名で撃つ"]
+    p = str(tmp_path / "marks.json")
+    vv.burn_marks_save("秀コンボ.xlsm", codes, path=p)
+    marks = vv.burn_marks_load("秀コンボ.xlsm", path=p)
+    one = dict(codes, 棚=codes["棚"].replace("x = 1", "x = 10"))
+    procs = vv.changed_procs(marks, one)
+    assert procs == ["合計を足す"]
+    # コメントの中の名は数えない（文字列の中の ' はコメントの始まりではない）。文字列で名を撃つ試験は拾う
+    assert vv.related_tests(one, ["棚"], tests, procs=procs) == ["テスト合計", "テスト名で撃つ"]
+    assert vv.related_tests(one, ["棚"], tests) == ["テスト合計", "テスト空行", "テスト名で撃つ"]   # procs なし＝モジュールの単位（前の動き）
+    head = dict(codes, 棚=codes["棚"].replace("Dim 共有 As Long", "Dim 共有 As String"))
+    assert vv.changed_procs(marks, head) == ["合計を足す", "空行を詰める"]           # 宣言部が変わった＝全部
+    assert vv.changed_procs({"mods": marks["mods"]}, one) == ["合計を足す", "空行を詰める"]   # 前の印にプロシージャの印が無い
+    t = dict(codes, 試験=codes["試験"].replace("空行を詰める\nEnd", "空行を詰める\n  z = 3\nEnd"))
+    assert vv.related_tests(t, ["試験"], tests, procs=vv.changed_procs(marks, t)) == ["テスト空行"]   # テスト自体を直した
+
+
 def test_burn_marks_round_trip_and_recent_note_20261029(tmp_path):
     """焼いた印を控えて読み戻せる／30 分のうちの焼き直しは知らせる（ほかのブック・失敗・古いものは数えない）。"""
     import vbam_vba as vv
