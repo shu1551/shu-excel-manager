@@ -165,6 +165,15 @@ from vbam_clean import cmd_clean_table, clean_plan  # noqa: F401  (2026-09-11 �
 # エントリポイント
 # ================================================================
 
+def _slow_arg(val):
+    if val is None or val is True:
+        return True
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return val
+
+
 def build_parser():
     """argparse の構築（main と batch で共用）"""
     parser = argparse.ArgumentParser(
@@ -409,13 +418,14 @@ def build_parser():
     p.add_argument("--force", action="store_true", dest="force", help="バックアップ失敗時も強行する")
 
     # list-backups [キーワード] / restore <バックアップファイル>
-    # stats [--days N] [--top N] [--slow N] [--json]（2026-09-16・呼び出し台帳の集計）
+    # stats [--days N] [--top N] [--slow [N]] [--json]（2026-09-16・呼び出し台帳の集計）
     p = sub.add_parser("stats", help="呼び出し台帳（_calls.jsonl）の集計＝どのコマンドを何回・平均何秒・失敗・"
                                      "遅かった呼び出し・呼び出しの間（道具の外の時間）。COM不要")
     p.add_argument("posargs", nargs="*")
-    p.add_argument("--days", dest="days", type=int, default=None, help="直近 N 日（既定 7）")
+    p.add_argument("--days", dest="days", type=int, default=None, help="直近 N 日（既定 7、--slow 時は既定 14）")
     p.add_argument("--top", dest="top", type=int, default=None, help="コマンド別の表示件数（既定 20）")
-    p.add_argument("--slow", dest="slow", type=int, default=None, help="遅かった呼び出しの表示件数（既定 8）")
+    p.add_argument("--slow", dest="slow", nargs="?", const=True, default=False, type=_slow_arg,
+                   help="遅い手を名指しして集計（stats --slow [--days 14]）。数 N を渡すと遅かった呼び出しの上位 N 件（既定 8）")
     p.add_argument("--cmd", dest="cmd_filter", default=None,
                    help="このコマンドだけ集計し、失敗の理由を全部の型で出す（例 --cmd patch-procedure・2026-10-29）")
     p.add_argument("--json", action="store_true", help="結果をJSON形式で出力")
@@ -597,6 +607,8 @@ def build_parser():
     p.add_argument("--timeout", dest="timeout", default=None,
                    help="テスト全体の制限時間（秒）。過ぎたら待つのをやめて残りは未実行にする"
                         "（生きている Excel のマクロは止められない。VBA が応答する状態でだけ効く）")
+    p.add_argument("--slow", dest="slow", action="store_true",
+                   help="重い性能・ストレステスト（1万行・極限耐久等）も含めて実行する（既定は除外して高速化）")
 
     # compile [excel_file] [--json]（全体コンパイル。check が見ない「呼ばれないマクロの中」まで見る）
     p = sub.add_parser("compile", aliases=["全体コンパイル"],
@@ -1939,6 +1951,8 @@ def _logged(fn):
         if getattr(_CALL_LOCAL, 'depth', 0):
             return fn(args)
         _CALL_LOCAL.depth = 1
+        import vbam_view
+        vbam_view.invalidate_shelf_cache()
         _vc._last_book_name = None
         t0 = time.perf_counter()
         ok = None

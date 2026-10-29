@@ -13036,7 +13036,7 @@ CleanUp:
 End Sub
 
 Sub 表のデザインを美化する()
-    ' 依頼の語: 表のデザインを美化|デザイン美化|系デザイン|エグゼクティブデザイン|ネイビーデザイン|濃紺デザイン|モダンエメラルド|エメラルドデザイン|グリーンデザイン|緑デザイン|深緑デザイン|シックチャコール|チャコールデザイン|グレーデザイン|モノトーンデザイン|ノーブルボルドー|ボルドーデザイン|ワインデザイン|赤デザイン|ウォームアンバー|アンバーデザイン|琥珀デザイン|茶色デザイン|クラシックインディゴ|インディゴデザイン|藍色デザイン|青デザイン|リッチなグレー|リッチなワイン|リッチなグリーン|リッチなボルドー|リッチなエメラルド|リッチなネイビー|リッチなチャコール|リッチなアンバー|リッチなインディゴ|表の色をノーブルボルドー|ノーブルボルドーに|リッチな他のもの色|他のもの色|他の色に|別の色に|を基調に|色合いを青|色合いを緑|色合いをグレー|色合いを灰色|色合いを赤|色合いを茶|配色を青|配色を緑|配色をグレー|配色を灰色|配色を赤|配色を茶
+    ' 依頼の語: 表のデザインを美化|デザイン美化|系デザイン|エグゼクティブデザイン|ネイビーデザイン|濃紺デザイン|モダンエメラルド|エメラルドデザイン|グリーンデザイン|緑デザイン|深緑デザイン|シックチャコール|チャコールデザイン|グレーデザイン|モノトーンデザイン|ノーブルボルドー|ボルドーデザイン|ワインデザイン|赤デザイン|ウォームアンバー|アンバーデザイン|琥珀デザイン|茶色デザイン|クラシックインディゴ|インディゴデザイン|藍色デザイン|青デザイン|リッチなグレー|リッチなワイン|リッチなグリーン|リッチなボルドー|リッチなエメラルド|リッチなネイビー|リッチなチャコール|リッチなアンバー|リッチなインディゴ|表の色をノーブルボルドー|ノーブルボルドーに|リッチな他のもの色|他のもの色|他の色に|別の色に|を基調に|色合いを青|色合いを緑|色合いをグレー|色合いを灰色|色合いを赤|色合いを茶|配色を青|配色を緑|配色をグレー|配色を灰色|配色を赤|配色を茶|リッチな色
     ' 依頼の語限定（誤爆防止のため組なし）
     ' 階級: 作り替え
     ' 扱う: デザイン 書式 美化 配色 罫線 エグゼクティブ エメラルド チャコール ボルドー アンバー インディゴ
@@ -14244,3 +14244,112 @@ Private Function 同じ値か(ByVal a As Variant, ByVal b As Variant) As Boolean
         同じ値か = (a = b)
     End If
 End Function
+
+Sub 指定した値の行の背景色を別の値の行にそろえる()
+    ' 依頼の語: 同じ背景の色に|同じ背景色に|背景色を同じに|背景の色を同じに|と同じ背景の色に|と同じ背景色に|と同じ色に
+    ' 依頼の組: 背景の色,背景色,背景,塗り+と同じ,と同じ色,と同じ背景,同じ背景の色,同じ背景色+-見出し,表の
+    ' 扱う: 背景色 塗りつぶし そろえる 同じ色
+    ' 見出し: なし
+    ' 列は頼みから: あり
+    ' 変えてよい: 書式
+
+
+    Dim ws As Worksheet, 表 As Range, why As String
+    Dim req As String, targetWord As String, refWord As String
+    Dim hdr As Long, R1 As Long, r2 As Long, c1 As Long, c2 As Long
+    Dim r As Long, c As Long, hitCount As Long
+    Dim refColor As Variant, refColorIndex As Variant, foundRef As Boolean
+    Dim cellText As String, reg As Object, matches As Object
+    Dim oldScreen As Boolean
+
+    Set ws = ActiveSheet
+    Set 表 = 明細の表の範囲(ws, why)
+    If 表 Is Nothing Then Call 先撃ちに断る(why): Exit Sub
+
+    hdr = 表.row
+    R1 = 表.row + 1
+    r2 = 表.row + 表.rows.Count - 1
+    c1 = 表.Column
+    c2 = 表.Column + 表.Columns.Count - 1
+    If r2 < R1 Then Call 先撃ちに断る("見出しの下に明細行がありません。"): Exit Sub
+
+    req = Trim$(先撃ちの頼みの文())
+    If Len(req) = 0 Then
+        Call 先撃ちに断る("「巡回員を正会員と同じ背景の色に」のように、そろえる対象と基準の語を指定してください。")
+        Exit Sub
+    End If
+
+    ' 「AをBと同じ背景」の抽出（空白を含む人名等にも対応）
+    Set reg = CreateObject("VBScript.RegExp")
+    reg.Global = False
+    reg.IgnoreCase = True
+    reg.Pattern = "([^\s、。，．「」『』()（）]+(?:\s+[^\s、。，．「」『』()（）]+)*)(?:の行|のセル)?を.*?([^\s、。，．「」『』()（）]+(?:\s+[^\s、。，．「」『』()（）]+)*)(?:の行|のセル)?と同じ(?:背景|色)"
+    If reg.Test(req) Then
+        Set matches = reg.Execute(req)
+        targetWord = Trim$(matches(0).SubMatches(0))
+        refWord = Trim$(matches(0).SubMatches(1))
+    Else
+        reg.Pattern = "([^\s、。，．「」『』()（）]+(?:\s+[^\s、。，．「」『』()（）]+)*)と([^\s、。，．「」『』()（）]+(?:\s+[^\s、。，．「」『』()（）]+)*)(?:の行|のセル)?の背景"
+        If reg.Test(req) Then
+            Set matches = reg.Execute(req)
+            refWord = Trim$(matches(0).SubMatches(0))
+            targetWord = Trim$(matches(0).SubMatches(1))
+        End If
+    End If
+
+    If Len(targetWord) = 0 Or Len(refWord) = 0 Then
+        Call 先撃ちに断る("「〇〇を××と同じ背景の色に」の形で、そろえる対象と基準の語を指定してください。")
+        Exit Sub
+    End If
+
+    If Right$(targetWord, 1) = "を" Then targetWord = Left$(targetWord, Len(targetWord) - 1)
+    If Right$(refWord, 1) = "と" Then refWord = Left$(refWord, Len(refWord) - 1)
+
+    ' 1. 基準となる refWord のセルを探し、背景色を取得
+    foundRef = False
+    For r = R1 To r2
+        For c = c1 To c2
+            cellText = Trim$(ws.Cells(r, c).text)
+            If cellText = refWord Or (Len(refWord) >= 2 And InStr(cellText, refWord) > 0) Then
+                refColorIndex = ws.Cells(r, c).Interior.ColorIndex
+                refColor = ws.Cells(r, c).Interior.Color
+                foundRef = True
+                Exit For
+            End If
+        Next c
+        If foundRef Then Exit For
+    Next r
+
+    If Not foundRef Then
+        Call 先撃ちに断る("基準となる「" & refWord & "」を含むセルが見つかりませんでした。")
+        Exit Sub
+    End If
+
+    oldScreen = Application.ScreenUpdating
+    Application.ScreenUpdating = False
+
+    ' 2. 対象となる targetWord の行の背景色をそろえる
+    hitCount = 0
+    For r = R1 To r2
+        For c = c1 To c2
+            cellText = Trim$(ws.Cells(r, c).text)
+            If cellText = targetWord Or (Len(targetWord) >= 2 And InStr(cellText, targetWord) > 0) Then
+                If refColorIndex = xlNone Or refColorIndex = -4142 Then
+                    ws.Range(ws.Cells(r, c1), ws.Cells(r, c2)).Interior.ColorIndex = xlNone
+                Else
+                    ws.Range(ws.Cells(r, c1), ws.Cells(r, c2)).Interior.Color = refColor
+                End If
+                hitCount = hitCount + 1
+                Exit For
+            End If
+        Next c
+    Next r
+
+    Application.ScreenUpdating = oldScreen
+
+    If hitCount = 0 Then
+        Call 先撃ちに断る("そろえる対象「" & targetWord & "」を含む行が見つかりませんでした。")
+    Else
+        Application.StatusBar = "「" & targetWord & "」の行 " & hitCount & " 件の背景色を「" & refWord & "」と同じ色にそろえました"
+    End If
+End Sub

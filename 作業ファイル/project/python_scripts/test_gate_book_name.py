@@ -122,3 +122,129 @@ def test_gate_restores_the_book_name_even_when_the_check_fails(monkeypatch, tmp_
     assert ok is False
     assert any("_関所_" in n for n in seen)
     assert vbam_core._last_book_name == "台帳.xlsm"
+
+
+def test_gate_changed_zero_tests_skips_copy_and_dispatchex(monkeypatch, tmp_path):
+    """指示書086: 関わるテスト 0 本のときは SaveCopyAs も DispatchEx も呼ばれない"""
+    src = _FakeWb("秀コンボ.xlsm")
+    seen = _rig(monkeypatch, tmp_path, src)
+
+    copy_called = []
+    def fail_save_copy(path):
+        copy_called.append(path)
+        raise AssertionError("SaveCopyAs が呼ばれました（0本なら呼ばれてはいけない）")
+    src.SaveCopyAs = fail_save_copy
+
+    dispatch_called = []
+    def fail_dispatch(prog):
+        dispatch_called.append(prog)
+        raise AssertionError("DispatchEx が呼ばれました（0本なら呼ばれてはいけない）")
+    monkeypatch.setattr(vbam_vba.win32com.client, "DispatchEx", fail_dispatch, raising=False)
+
+    monkeypatch.setattr(vbam_vba, "burn_marks_load", lambda name: {"time": "2026-10-29 00:00:00", "modules": {"m1": "hash_old"}})
+    monkeypatch.setattr(vbam_vba, "_module_codes", lambda wb: {"m1": "Sub NotATest()\nEnd Sub\n"})
+    monkeypatch.setattr(vbam_vba, "changed_modules", lambda marks, codes: ["m1"])
+    monkeypatch.setattr(vbam_vba, "changed_procs", lambda marks, codes: ["NotATest"])
+    monkeypatch.setattr(vbam_vba, "related_tests", lambda codes, ch, tnames, procs=None: [])
+
+    ok = vbam_vba.cmd_gate(argparse.Namespace(posargs=["秀コンボ.xlsm"], json=False, timeout=120, keep=False,
+                                              addins=False, module=None, changed=True))
+    assert ok is True
+    assert len(copy_called) == 0
+    assert len(dispatch_called) == 0
+    assert not any("_関所_" in n for n in seen)
+
+
+def test_gate_changed_zero_tests_fails_when_compile_fails(monkeypatch, tmp_path):
+    """指示書086: 関わるテスト 0 本でもコンパイルエラーなら止まる"""
+    src = _FakeWb("秀コンボ.xlsm")
+    seen = _rig(monkeypatch, tmp_path, src)
+
+    monkeypatch.setattr(vbam_vba, "burn_marks_load", lambda name: {"time": "2026-10-29 00:00:00", "modules": {"m1": "hash_old"}})
+    monkeypatch.setattr(vbam_vba, "_module_codes", lambda wb: {"m1": "Sub SyntaxErr()\nEnd Sub\n"})
+    monkeypatch.setattr(vbam_vba, "changed_modules", lambda marks, codes: ["m1"])
+    monkeypatch.setattr(vbam_vba, "changed_procs", lambda marks, codes: ["SyntaxErr"])
+    monkeypatch.setattr(vbam_vba, "related_tests", lambda codes, ch, tnames, procs=None: [])
+    monkeypatch.setattr(vbam_vba, "_compile_vbproject", lambda xl, wb: {"ok": False, "detail": "コンパイル エラー: 構文エラー", "state": "error"})
+
+    ok = vbam_vba.cmd_gate(argparse.Namespace(posargs=["秀コンボ.xlsm"], json=False, timeout=120, keep=False,
+                                              addins=False, module=None, changed=True))
+    assert ok is False
+    assert not any("_関所_" in n for n in seen)
+
+
+def test_shelf_parity_gate_skips_when_shelf_head_unchanged(monkeypatch):
+    """指示書087: 棚の頭が前と同じなら shelf--check が呼ばれない"""
+    import vbam_prefire
+    called = []
+    monkeypatch.setattr(vbam_prefire, "shelf_check", lambda *args, **kwargs: (called.append(True) or (True, [])))
+
+    code = "Sub 棚1()\n  ' 依頼の語: テスト頼み\n  ' 依頼の組: テスト,頼み\n  x = 1\nEnd Sub\n"
+    codes = {"棚_テスト": code}
+    sig = vbam_vba.shelf_signature_from_codes(codes)
+    esig = [["exam.tsv", 100, 200]]
+    monkeypatch.setattr(vbam_vba, "exam_signature", lambda: esig)
+
+    marks = {"shelf_sig": sig, "exam_sig": esig}
+
+    new_code = "Sub 棚1()\n  ' 依頼の語: テスト頼み\n  ' 依頼の組: テスト,頼み\n  x = 999\nEnd Sub\n"
+    new_codes = {"棚_テスト": new_code}
+
+    wb = _FakeWb("秀コンボ.xlsm")
+    wb.VBProject = argparse.Namespace(VBComponents=lambda name: True)
+    monkeypatch.setattr(vbam_core, "shelf_text", lambda proj: new_code)
+
+    ok = vbam_vba._shelf_parity_gate(None, wb, marks=marks, codes=new_codes)
+    assert ok is True
+    assert len(called) == 0
+
+
+def test_shelf_parity_gate_runs_when_shelf_head_changed(monkeypatch):
+    """指示書087: 頼みの語を 1 つ変えたら shelf--check が呼ばれる"""
+    import vbam_prefire
+    called = []
+    monkeypatch.setattr(vbam_prefire, "shelf_check", lambda *args, **kwargs: (called.append(True) or (True, [])))
+
+    code = "Sub 棚1()\n  ' 依頼の語: テスト頼み\n  ' 依頼の組: テスト,頼み\n  x = 1\nEnd Sub\n"
+    codes = {"棚_テスト": code}
+    sig = vbam_vba.shelf_signature_from_codes(codes)
+    esig = [["exam.tsv", 100, 200]]
+    monkeypatch.setattr(vbam_vba, "exam_signature", lambda: esig)
+
+    marks = {"shelf_sig": sig, "exam_sig": esig}
+
+    new_code = "Sub 棚1()\n  ' 依頼の語: 別の頼み\n  ' 依頼の組: テスト,頼み\n  x = 1\nEnd Sub\n"
+    new_codes = {"棚_テスト": new_code}
+
+    wb = _FakeWb("秀コンボ.xlsm")
+    wb.VBProject = argparse.Namespace(VBComponents=lambda name: True)
+    monkeypatch.setattr(vbam_core, "shelf_text", lambda proj: new_code)
+
+    ok = vbam_vba._shelf_parity_gate(None, wb, marks=marks, codes=new_codes)
+    assert ok is True
+    assert len(called) == 1
+
+
+def test_shelf_parity_gate_runs_when_exam_changed(monkeypatch):
+    """指示書087: 問題集が変わったら shelf--check が呼ばれる"""
+    import vbam_prefire
+    called = []
+    monkeypatch.setattr(vbam_prefire, "shelf_check", lambda *args, **kwargs: (called.append(True) or (True, [])))
+
+    code = "Sub 棚1()\n  ' 依頼の語: テスト頼み\n  ' 依頼の組: テスト,頼み\n  x = 1\nEnd Sub\n"
+    codes = {"棚_テスト": code}
+    sig = vbam_vba.shelf_signature_from_codes(codes)
+    esig = [["exam.tsv", 100, 200]]
+    monkeypatch.setattr(vbam_vba, "exam_signature", lambda: [["exam.tsv", 200, 200]])
+
+    marks = {"shelf_sig": sig, "exam_sig": esig}
+
+    wb = _FakeWb("秀コンボ.xlsm")
+    wb.VBProject = argparse.Namespace(VBComponents=lambda name: True)
+    monkeypatch.setattr(vbam_core, "shelf_text", lambda proj: code)
+
+    ok = vbam_vba._shelf_parity_gate(None, wb, marks=marks, codes=codes)
+    assert ok is True
+    assert len(called) == 1
+
+

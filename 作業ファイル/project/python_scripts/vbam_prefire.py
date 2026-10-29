@@ -1032,6 +1032,8 @@ _LEDGER_DEFAULT = """' つなぎ語: ええ,えー,えーと,えっと,あの,�
 ' 聞き違い: 気切り=>区切り ; 出どころ=聞き違いの学び ×4
 ' 聞き違い: 洗濯=>選択 ; 出どころ=聞き違いの学び ×2
 ' 聞き違い: 不倫仮名=>ふりがな ; 出どころ=外れた依頼 2026-10-24
+' 聞き違い: 不倫がな=>ふりがな ; 出どころ=外れた依頼 2026-10-24
+' 聞き違い: フリマナ=>ふりがな ; 出どころ=外れた依頼 2026-10-24
 """
 # seiri が棚に当てられず AI に回すときの案内の 1 行（頼みの聞き違いを学びに残してもらう）
 HEARD_HINT = '→ 頼みに聞き違いがあれば（例: 産業ごと→3桁ごと）、直したうえで shelf --heard 誤 正 --q "頼みの文" で残す（違う頼みの文で 2 回以上残ると自動で直る）'
@@ -1630,8 +1632,10 @@ def words_compare(old_text, new_text, questions):
     return ok0, ok1, moved
 
 
-def parity_diffs(questions, answers, entries):
+def parity_diffs(questions, answers, entries, py_answers=None):
     """VBA の答えと写し（shelf_pick）の答えが違う問題 → [(依頼文, VBA, 写し)]（純 Python）。"""
+    if py_answers is not None:
+        return [(q, a, p) for q, a, p in zip(questions, answers, py_answers) if a != p]
     return [(q, a, shelf_pick(q, entries)) for q, a in zip(questions, answers) if a != shelf_pick(q, entries)]
 
 
@@ -1978,13 +1982,16 @@ def shelf_check(xl, owner, text, write_snapshot=False, warn=None, hold_changed=F
     warn（並び）を渡すと 4 の「当たり先が変わった」を足す。hold_changed=True なら、変わった物がある間は控えを書かない
     （register-addin が --why 無しで止まったのに、控えだけ進んで次の検査で消えないように・2026-10-28 番頭点検）"""
     import time as _t
-    t0 = _t.time()
+    t0 = _t.perf_counter()
     lines, ok = [], True
     changed = []
     # 2026-10-22 指示書041: 判定コードの中の棚名決め打ち検査
+    t_start = t0
     hardcoded_stops = check_hardcoded_shelf_names(xl, owner, text)
-    stops = [x for x in shelf_lint(text) if x[0] == '止める'] + hardcoded_stops
-    notes = [x for x in shelf_lint(text) if x[0] == '注意']
+    lint_items = shelf_lint(text)
+    stops = [x for x in lint_items if x[0] == '止める'] + hardcoded_stops
+    notes = [x for x in lint_items if x[0] == '注意']
+    t_lint = _t.perf_counter() - t_start
     if stops:
         ok = False
         lines.append(f"語の検査: 止める {len(stops)} 件")
@@ -1995,21 +2002,32 @@ def shelf_check(xl, owner, text, write_snapshot=False, warn=None, hold_changed=F
     valid_shelf_names = {e['name'] for e in entries}
     qa = exam_questions()
     ans = None
+    t_vba = 0.0
+    t_py = 0.0
+    t_diff = 0.0
+    t_entry = 0.0
     if qa:
         qs = [q for _e, q in qa]
+        t_v_start = _t.perf_counter()
         ans = vba_answers(xl, owner, qs)
+        t_vba = _t.perf_counter() - t_v_start
         if ans is None:
             lines.append("問題集: VBA の 先撃ち候補の一括 を呼べませんでした（照合していません）")
         else:
+            before_path = os.path.join(exam_dir(), 'answers_before.tsv')
+            if not os.path.isfile(before_path):
+                write_vba_snapshot(qs, ans, path=before_path)
+            t_d_start = _t.perf_counter()
+            py_ans = [shelf_pick(q, entries) for q in qs]
             # 2026-10-27 番頭点検: 「棚の名前」か「空（＝AIへ）」以外の第3の返却値（「AIへ: …」等）を止める
             bad_vba = [(q, a) for q, a in zip(qs, ans) if a and a not in valid_shelf_names]
-            bad_py = [(q, shelf_pick(q, entries)) for q in qs if shelf_pick(q, entries) and shelf_pick(q, entries) not in valid_shelf_names]
+            bad_py = [(q, p) for q, p in zip(qs, py_ans) if p and p not in valid_shelf_names]
             if bad_vba or bad_py:
                 ok = False
                 lines.append(f"約束違反の返却値（棚の名前でも空でもない第3の答え）: VBA {len(bad_vba)} 問 / Python写し {len(bad_py)} 問")
                 for q, a in (bad_vba or bad_py)[:12]:
                     lines.append(f"  「{q}」 返却値={a!r}（返せるのは棚の名前か空文字だけ）")
-            diffs = parity_diffs(qs, ans, entries)
+            diffs = parity_diffs(qs, ans, entries, py_answers=py_ans)
             if diffs:
                 ok = False
                 lines.append(f"VBA と Python の写しの食い違い: {len(diffs)} 問（{len(qs)} 問中）")
@@ -2021,21 +2039,27 @@ def shelf_check(xl, owner, text, write_snapshot=False, warn=None, hold_changed=F
                 for q, e, a in miss[:12]:
                     why = vba_peek(xl, owner, q).split('\n')[1:2]
                     lines.append(f"  「{q}」 期待={e or '(AIへ)'}  今={a or '(AIへ)'}" + (f"  ← {why[0].strip()}" if why and why[0].strip() else ''))
+            t_diff = _t.perf_counter() - t_d_start
             if not diffs and not miss and not bad_vba and not bad_py:
+                t_e_start = _t.perf_counter()
                 # 2026-10-22 指示書039: 入口の照合（Excelコンボ判定 vs seiri判定 plan_full）
                 reg = registry_from_text(text)
+                py_map = dict(zip(qs, py_ans))
+                pick_fn = lambda x: py_map.get(x) if x in py_map else shelf_pick(x, entries)
                 entry_diffs = []
                 for q, v_ans in zip(qs, ans):
-                    pf = plan_full(q, reg, entries=entries)
+                    pf = plan_full(q, reg, entries=entries, pick=pick_fn)
                     s_ans = pf.get('chosen', [''])[0] if pf.get('chosen') else ""
                     if v_ans != s_ans:
                         entry_diffs.append((q, v_ans, s_ans))
+                t_entry = _t.perf_counter() - t_e_start
                 if entry_diffs:
                     ok = False
                     lines.append(f"入口の照合（Excelコンボ vs seiri）の食い違い: {len(entry_diffs)} 問（{len(qs)} 問中）")
                     lines += [f"  「{q}」 Excelコンボ={v or '(AIへ)'}  seiri={s or '(AIへ)'}" for q, v, s in entry_diffs[:12]]
                 else:
                     lines.append(f"問題集: {len(qs)} 問で VBA・写し・seiri の入口がすべて一致・全部が期待どおり")
+    t_m_start = _t.perf_counter()
     misses = missed_requests()
     miss_ans = vba_answers(xl, owner, misses) if misses else None
     snap_miss = vba_snapshot_path().replace('vba_answers.tsv', 'vba_answers_miss.tsv')
@@ -2055,12 +2079,16 @@ def shelf_check(xl, owner, text, write_snapshot=False, warn=None, hold_changed=F
             lines.append(f"⚠ 【報告前停止】前の検査から当たり先が変わった頼みが {len(changed)} 種あります。報告の前に止まって理由を確認してください")
         if changed and warn is not None:
             warn.append(f"外れた依頼の当たり先が前の検査から変わった: {len(changed)} 種（上の「前 → 今」が正しいか見る）")
+    t_miss = _t.perf_counter() - t_m_start
+    t_s_start = _t.perf_counter()
     if ok and write_snapshot and not (hold_changed and changed):
         if qa and ans is not None:
             write_vba_snapshot([q for _e, q in qa], ans)
         if miss_ans is not None:
             write_vba_snapshot(misses, miss_ans, path=snap_miss)
-    lines.append(f"（{_t.time() - t0:.1f} 秒）")
+    t_snap = _t.perf_counter() - t_s_start
+    t_total = _t.perf_counter() - t0
+    lines.append(f"（内訳: 語の検査 {t_lint:.2f}秒・VBAに撃つ {t_vba:.2f}秒・照合 {t_diff:.2f}秒・入口 {t_entry:.2f}秒・外れた依頼 {t_miss:.2f}秒・控え {t_snap:.2f}秒／計 {t_total:.2f}秒）")
     return ok, lines
 
 

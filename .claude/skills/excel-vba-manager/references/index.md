@@ -39,6 +39,7 @@ inspect-gui [マクロ] / capabilities [コマンド] / metrics / process [--kil
 close-form [題名] [--list] / vbe-reset [--check] / unstick [--fix] / close-vbe   # 表示中フォームを閉じる・中断モード解除・Excelの詰まり解除・VBEを閉じる
 form-to-vba <フォーム> [--all] [--add モジュール] [--verify]   # UserForm を作成マクロに変換
 stats [--days 7] [--top 20] [--slow 8] / status         # 呼び出し台帳の集計・いま走っているコマンドと進み具合（COM 不要）
+stats --slow [--days 14]                                  # 遅い手を名指し（合計秒順・1.3倍悪化や目安超えに⚠・COM 不要・2026-10-29）
 <長い手> --bg                                          # MCP の vba() で行末に付けると待たずに job id（checkup・export-all・gate・rehearse・snapshot・docs）。段は status、結果は agent_status("job…")（2026-09-17）
 batch cmds.txt / shell                                  # 1 接続で連続実行・対話
 

@@ -2043,6 +2043,21 @@ def _macro_book(xl, module, sub):
         projects = list(xl.VBE.VBProjects)
     except Exception:
         return None
+    # 秀コンボ.xlam を優先的に探索（他プロジェクトの無駄な走査をスキップ・2026-10-29）
+    for p in projects:
+        try:
+            name = _project_book_name(xl, p)
+            if name and name.lower() == '秀コンボ.xlam':
+                if module == SHELF_MODULE:
+                    hit = shelf_module_of(p, sub) is not None
+                else:
+                    cm = p.VBComponents(module).CodeModule
+                    n = int(cm.CountOfLines)
+                    hit = bool(n and re.search(r'^\s*Sub\s+' + re.escape(sub) + r'\b', cm.Lines(1, n), re.M))
+                if hit:
+                    return name
+        except Exception:
+            continue
     candidates = []
     for p in projects:
         try:
@@ -2055,8 +2070,6 @@ def _macro_book(xl, module, sub):
             if hit:
                 name = _project_book_name(xl, p)
                 if name:
-                    if name.lower() == '秀コンボ.xlam':
-                        return name
                     candidates.append(name)
         except Exception:
             continue
@@ -2340,16 +2353,28 @@ def _seiri_fire_request(xl, wb, ws, request, before_snap):
         t0 = time.time()
         vp.shelf_refusal(xl, src, clear=True)
         vp.note_shot(xl, src, None)
+        watcher = _start_dialog_watcher(xl)
         try:
             run_book_macro(xl, src, nm)
         except Exception as ex:
             macro_err = str(ex)
         finally:
             try:
+                watcher.stop()
+            except Exception:
+                pass
+            try:
                 wb.Activate()
                 ws.Activate()
             except Exception:
                 pass
+
+        if getattr(watcher, 'count', 0) > 0:
+            prompt = getattr(watcher, 'last_text', '') or ''
+            prompt_disp = f"「{prompt}」" if prompt else "（プロンプトなし）"
+            print(f"この棚は入力を求めました: {nm}（何を求めたか: {prompt_disp}）")
+            stopped = nm
+            continue
         refused = '' if macro_err else vp.shelf_refusal(xl, src)
         if refused:
             # 棚が自分で断った（撃てなかった理由を断りの口に置いた）＝止めた
@@ -2408,7 +2433,7 @@ def _seiri_tidy(wb, ws, before_snap):
         print(out.rstrip())
 
 
-def _seiri_hints_now(ws):
+def _seiri_hints_now(ws, include_shapes=True):
     """今のシートで「棚で直せる手」を数え直す → [(順, マクロ, 選択, 理由)]（COM で読んで純 Python で数える）。"""
     ur = ws.UsedRange
     nr, nc = int(ur.Rows.Count), int(ur.Columns.Count)
@@ -2422,6 +2447,8 @@ def _seiri_hints_now(ws):
     hints = []
     dirt_notes(grid, r0, c0, hidx, None, hints=hints)
     hints += seiri_formula_hints(fa, fr, grid, r0, c0, hidx)
+    if not include_shapes:
+        return hints
     # マクロの付いていない図形（グラフ・セルのメモは除く）は知らせるだけ。ロゴ・印影・説明の図は人の物なので
     # seiri が撃って消さない（_seiri_needs_human）。消すのは人が「図形を消して」と頼んだとき
     try:
@@ -2557,30 +2584,36 @@ def _seiri_autofix(xl, wb, ws, max_steps=10):
     """気づき（表の汚れ・式のずれ）のうち棚で直せる手を、その場で上から撃つ（2026-09-25 shu「突き返さずにやり切る」）。
 
     前は「棚で直せる手」を報告に並べて AI が 1 本ずつ shelf-run していた（手の間ごとに AI が考える）。
-    1 本撃つたびに数え直す＝行を消すと番地がずれるので、前に数えた範囲を使い回さない。
+    1 回で読む（2026-10-29 指示書080の2: ループごとのCOM再取得と不要なwatcher起動を省き1.17秒を短縮）。
     式を揃える手が先・行を消す手が後の順は print_seiri_hints と同じ（順の小さい方から）。
     人の判断が要る手（番号の重複の振り直し）は撃たない。撃っても消えない手は二度撃たない（残りに出る）。
     → 撃った手の [(名前, 選択, 理由)]、撃った鍵の集合。
     """
     import vbam_prefire as vp
     from vbam_vba import run_book_macro, _VbaRuntimeError
+
+    # 1. まず高速に気づき棚の候補を取得（図形走査なし・1回で読む）
+    try:
+        hints = sorted(_seiri_hints_now(ws, include_shapes=False), key=lambda h: h[0])
+    except Exception:
+        return [], set()
+
+    todo = [(n, s, w) for _o, n, s, w in hints if not _seiri_needs_human(n, w)]
+    if not todo:
+        return [], set()
+
+    # 直す手があるときだけ重い shelf_source や watcher を用意する
     src, _lines = _shelf_source(xl)
     if not src:
         return [], set()
     fired, tried = [], set()
     watcher = _start_dialog_watcher(xl)
     try:
-        for _step in range(max_steps):
-            try:
-                hints = sorted(_seiri_hints_now(ws), key=lambda h: h[0])
-            except Exception:
-                break
-            nxt = next(((n, s, w) for _o, n, s, w in hints
-                        if _seiri_hint_key(n, s) not in tried and not _seiri_needs_human(n, w)), None)
-            if nxt is None:
-                break
-            name, sel, why = nxt
-            tried.add(_seiri_hint_key(name, sel))
+        for name, sel, why in todo[:max_steps]:
+            key = _seiri_hint_key(name, sel)
+            if key in tried:
+                continue
+            tried.add(key)
             try:
                 if sel:
                     ws.Range(sel).Select()
@@ -2630,7 +2663,11 @@ def _seiri_autofix(xl, wb, ws, max_steps=10):
         except Exception:
             pass
     note = _dialog_watcher_note(watcher, None)
-    if note:
+    if getattr(watcher, 'count', 0) > 0:
+        prompt = getattr(watcher, 'last_text', '') or ''
+        prompt_disp = f"「{prompt}」" if prompt else "（プロンプトなし）"
+        print(f"この棚は入力を求めました: {name}（何を求めたか: {prompt_disp}）")
+    elif note:
         print(note)
     return fired, tried
 
@@ -2709,6 +2746,17 @@ def cmd_seiri(args):
     残り＝エラーセル（式と一言の原因）・数式と表の気づき・### だけを出す。
     直す手（式の書き直しなど判断の要るもの）はこの残りの分だけ。仕事の時計も押す。
     """
+    invalidate_shelf_cache()
+    t_seiri_start = time.perf_counter()
+    splits = []
+    t_prev = time.perf_counter()
+
+    def _split(label):
+        nonlocal t_prev
+        now = time.perf_counter()
+        splits.append((label, now - t_prev))
+        t_prev = now
+
     target_file, rest = parse_target_and_rest(args.posargs)
     request = " ".join(str(x) for x in rest).strip()     # 依頼の文（渡されたら棚にも当てて同じ呼び出しで撃つ）
     xl, wb = get_workbook(target_file)
@@ -2721,7 +2769,9 @@ def cmd_seiri(args):
     from vbam_structure import no_values_mode
     nv = no_values_mode()
     print(f"ブック: {wb.Name}   シート: {ws.Name}" + ("   【値なし】" if nv else ""))
+    t_seiri_init = time.perf_counter()
     owner = _macro_book(xl, _SEIRI_MODULE, _SEIRI_TIDY)
+    _split("初期化・マクロ探索")
     # マクロ撃ち（全自動修復）はここで撃たない: 原本の控えシートを足し、図形を消し、式の無い列に式を入れ、
     # エラーを IFERROR で 0 にする＝使う人の値と形を変える手。人がボタンで選んで撃つ物（2026-10-07）
     names = [_SEIRI_TIDY] + ([_SEIRI_DEDUPE] if getattr(args, 'dedupe', False) else [])
@@ -2748,6 +2798,7 @@ def cmd_seiri(args):
             backup_path = _agent_backup(wb, ws, str(ws.Name), request="seiri")
         except Exception:
             pass
+        _split("スナップショット・控え")
         t0 = time.time()
         try:
             wb.Activate()
@@ -2759,12 +2810,14 @@ def cmd_seiri(args):
                 print(f"マクロ: {' → '.join(names)}（{owner}・{time.time() - t0:.2f} 秒）")
         except Exception as e:
             print(f"マクロを撃てませんでした: {e}（残りだけ出します）")
+        _split("マクロ実行")
         fired = []
         if request:
             try:
                 fired += _seiri_fire_request(xl, wb, ws, request, before_snap)
             except Exception as e:
                 print(f"依頼の文に当たる棚を撃てませんでした: {e}（残りとして直す）")
+        _split("依頼の棚実行")
         # 気づき（重複行・空行・消えた先頭のゼロ・空白の揺れ・文字の日付・式のずれ）で棚が直せる手は、報告に並べずにここで撃つ
         # （2026-09-25 shu「検知した定型の異常を AI への宿題として突き返さず、seiri がその場でやり切る」）
         try:
@@ -2773,6 +2826,7 @@ def cmd_seiri(args):
                 fired += [n for n, _s, _w in auto_fired]
         except Exception as e:
             print(f"気づきの棚を撃てませんでした: {e}（残りとして直す）")
+        _split("気づきの棚自動実行")
         # デザインの棚で美化した表（いま撃った・前に撃った）には tidy を当てない＝見出しの色と罫線を塗り戻さない
         designed = any(_shelf_priority(n) == 40 for n in fired) or _has_dark_header(ws)
         if fired and not on_pivot and designed:
@@ -2784,7 +2838,9 @@ def cmd_seiri(args):
                 _seiri_tidy(wb, ws, before_snap)
             except Exception as e:
                 print(f"仕上げ（tidy）を撃てませんでした: {e}")
+        _split("仕上げtidy")
         has_changes = bool(_seiri_print_changes(ws, before_snap, backup_path))
+        _split("変更差分印刷")
     else:
         print(f"マクロ: モジュール「{_SEIRI_MODULE}」の {_SEIRI_TIDY} が開いているブック・アドインに無いので撃っていません")
     try:
@@ -2824,6 +2880,7 @@ def cmd_seiri(args):
     print(f"エラーセル: {len(errs)}個" if errs else "エラーセル: なし")
     for e in errs:
         print(e)
+    _split("エラーセル走査")
     # 長文セル（題・例の文・メモ）は「残り」に出さない。実務の表に頼みの文は普通は無く、ここに全文を出すと
     # AI が直す宿題と読んで seiri に渡し直していた（2026-09-25 テスト用4 の A3 の例文で突き合わせまで撃った）
     # 気づき（数式・表の汚れ）
@@ -2885,12 +2942,14 @@ def cmd_seiri(args):
                 pass
     except Exception as e:
         print(f"（気づきを数えられませんでした: {e}）")
+    _split("気づき・診断")
     try:
         if nr * nc <= 3000:
             hashes, _bad, _n = _hash_scan(ur, max_rows=nr, max_cols=nc)
             print(f"'###' で読めないセル: {hashes}個（{' '.join(_bad)}）" if hashes else "'###': なし")
     except Exception:
         pass
+    _split("###走査")
     # 次の手（2026-09-24 夜: Gemini が「残り」の D31 を直さず、直す手を探してソースやマクロを読み回った＝
     #   残りは AI が表を見て直す所だと、ここで言い切る）
     # 2026-09-25: エラーが無いのに AI が気づき（文字色）の直し・screenshot・寄せの手直しを 4 手足して 27 秒かかった
@@ -2921,6 +2980,10 @@ def cmd_seiri(args):
             pass
     if has_changes:
         print("（保存はしていません）")
+    t_seiri_end = time.perf_counter()
+    split_str = "・".join(f"{lbl} {sec:.2f}s" for lbl, sec in splits if sec >= 0.01)
+    print(f"（内訳: 初期化 {t_seiri_init - t_seiri_start:.2f}s・マクロ等 {t_seiri_end - t_seiri_init:.2f}s／計 {t_seiri_end - t_seiri_start:.2f}s）")
+    print(f"（段別内訳: {split_str}）")
     return True
 
 
@@ -2937,6 +3000,16 @@ _SHELF_ASK_RE = re.compile(r"^依頼の語\s*[:：]\s*(.+)$")
 _SHELF_FP_MAX_CELLS = 50000     # 別シートの書き換わりを見る指紋を取るセル数の上限（超えたら番地だけ比べる）
 
 
+_SHELF_SOURCE_CACHE = {'res': None}
+_SHELF_SUB_MODULE_CACHE = {}
+
+
+def invalidate_shelf_cache():
+    """棚の本文・モジュール名キャッシュを空にする（撃ちの入口・棚の更新後に呼ぶ・2026-10-29 指示書080）。"""
+    _SHELF_SOURCE_CACHE['res'] = None
+    _SHELF_SUB_MODULE_CACHE.clear()
+
+
 def _shelf_source(xl):
     """棚（モジュール「表の整理」）のコードを持つブックと行の並び。無ければ (None, None)。
 
@@ -2944,35 +3017,55 @@ def _shelf_source(xl):
     固定の shelf_catalog.tsv を鵜呑みにせず、開いているブック・アドインの中身から毎回組み立てる
     （棚が増減しても道具の目録が古くならない）。秀コンボ.xlam が載っていれば優先して持ち主にする（2026-10-09）。
     """
+    if _SHELF_SOURCE_CACHE.get('res'):
+        return _SHELF_SOURCE_CACHE['res']
     try:
         projects = list(xl.VBE.VBProjects)
     except Exception:
         return None, None
     candidates = []
+    from vbam_vba import _project_book_name
+    # 秀コンボ.xlam を優先的に探索
+    for p in projects:
+        try:
+            name = _project_book_name(xl, p)
+            if name and name.lower() == '秀コンボ.xlam':
+                text = shelf_text(p)
+                if text:
+                    res = (name, text.split('\r\n'))
+                    _SHELF_SOURCE_CACHE['res'] = res
+                    return res
+        except Exception:
+            continue
     for p in projects:
         try:
             text = shelf_text(p)            # 「表の整理_〜」に分かれていても全部（2026-09-23）
             if not text:
                 continue
-            from vbam_vba import _project_book_name
             name = _project_book_name(xl, p)
             if name:
                 res = (name, text.split('\r\n'))
-                if name.lower() == '秀コンボ.xlam':
-                    return res
                 candidates.append(res)
         except Exception:
             continue
-    return candidates[0] if candidates else (None, None)
+    res = candidates[0] if candidates else (None, None)
+    if res[0]:
+        _SHELF_SOURCE_CACHE['res'] = res
+    return res
 
 
 def _shelf_module_name(xl, owner, sub):
     """owner（ブック名）の棚で Sub sub がいるモジュール名（表示用）。分からなければ「表の整理」。"""
+    cache_key = (owner.lower(), sub)
+    if cache_key in _SHELF_SUB_MODULE_CACHE:
+        return _SHELF_SUB_MODULE_CACHE[cache_key]
     try:
         from vbam_vba import _project_book_name
         for p in xl.VBE.VBProjects:
             if _project_book_name(xl, p) == owner:
-                return shelf_module_of(p, sub) or SHELF_MODULE
+                mod = shelf_module_of(p, sub) or SHELF_MODULE
+                _SHELF_SUB_MODULE_CACHE[cache_key] = mod
+                return mod
     except Exception:
         pass
     return SHELF_MODULE
@@ -3030,6 +3123,7 @@ def cmd_shelf(args):
     名前・選ぶ列・窓を出すか（本文に MsgBox/InputBox があるか）・扱う・説明。
     撃つ手は shelf-run。目録どおりに動くとは限らないマクロ側の間違いはここでは直さない。
     """
+    invalidate_shelf_cache()
     target_file, rest = parse_target_and_rest(args.posargs)
     xl, wb = get_workbook(target_file)
     owner, lines = _shelf_source(xl)
@@ -3232,7 +3326,7 @@ def _sheet_fingerprint(ws, cap=None):
         return None
 
 
-def _shelf_book_state(wb):
+def _shelf_book_state(wb, current_sheet_name=None):
     """撃つ前後のブックの姿（2026-09-23）: シートの並び・シートごとの中身の指紋と図形の位置・テーブル・ピボット・
     名前（見えるものだけ）・クエリ。読めない項目は黙って飛ばす（撃つ手を止めない）。"""
     from vbam_undo import _shapes_geometry
@@ -3245,12 +3339,18 @@ def _shelf_book_state(wb):
         sheets = list(wb.Worksheets)
     except Exception:
         sheets = []
+    # シートが1枚だけなら別シートの変更は存在しない（2026-10-29 最適化）
+    is_single_sheet = len(sheets) <= 1
     for sh in sheets:
         try:
             n = str(sh.Name)
         except Exception:
             continue
-        st['fp'][n] = _sheet_fingerprint(sh)
+        # 現在シートは _sheet_snapshot で精査するため、別シート監視用の指紋はスキップ
+        if is_single_sheet or (current_sheet_name and n == current_sheet_name):
+            st['fp'][n] = ('', 0, 0)
+        else:
+            st['fp'][n] = _sheet_fingerprint(sh)
         st['geom'][n] = _shapes_geometry(sh)
         # 循環参照のあるシートに Excel が描く矢印（Line 10 等）は、人が足した図形ではない。数えない
         # （2026-09-23 通しの実測 2: 撃つたびに「足された図形・グラフ: 売上!Line 10」と出ていた）
@@ -3539,17 +3639,21 @@ def cmd_shelf_run(args):
     途中で出た窓（MsgBox/InputBox）は安全側（キャンセル優先）で自動解除し、本文を報告する
     （--input-text があれば InputBox に入れて確定）。明細は agent --changes でも読める。
     """
+    invalidate_shelf_cache()
     target_file, rest = parse_target_and_rest(args.posargs)
     if not rest:
         print("使い方: shelf-run <名前> [--select 範囲[,範囲]] [--sheet 名] [--input-text 値]（一覧は shelf）")
         return False
     name = rest[0]
+    t_start = time.perf_counter()
     xl, wb = get_workbook(target_file)
+    t_init = time.perf_counter()
     owner, lines = _shelf_source(xl)
     if not owner:
         print(f"エラー: 棚（モジュール「{_SEIRI_MODULE}」）が開いているブック・アドインに見つかりません")
         return False
     catalog = _parse_shelf_catalog(lines)
+    t_source = time.perf_counter()
     row = next((r for r in catalog if r['name'] == name), None)
     if row is None:
         cands = [r['name'] for r in catalog if name in r['name']][:5]
@@ -3596,12 +3700,14 @@ def cmd_shelf_run(args):
     from vbam_undo import (_agent_backup, _changes_of, _changes_table, _sheet_snapshot, _format_changes,
                            _format_table, _write_changes_file, _record_created, _undo_add_sheets)
     from vbam_ledger import runs_append, _run_id
-    book_before = _shelf_book_state(wb)
+    t_snap0 = time.perf_counter()
+    book_before = _shelf_book_state(wb, current_sheet_name=sheet_name)
     before_snap = _sheet_snapshot(ws)
     extras_before = _sheet_extras_state(ws)
     run_id = _run_id()
     request = f"shelf-run {name}" + (f" --select {sel}" if sel else "")
     backup_path = _agent_backup(wb, ws, sheet_name, request=request, run_id=run_id)
+    t_snap_before = time.perf_counter()
     # run-macro と同じハーネスで撃つ（run_book_macro）。素の Run だと実行時エラーが「終了／デバッグ」の窓になり、
     # 窓の見張りはそれを閉じないので、人が vbe-reset するまで Excel ごと止まる（2026-09-23 選んだ列の途切れた式を戻す で 671 秒）
     watcher = _start_dialog_watcher(xl, input_texts=getattr(args, 'input_text', None))
@@ -3634,13 +3740,18 @@ def cmd_shelf_run(args):
             ws.Activate()
         except Exception:
             pass
+    t_macro_end = time.perf_counter()
     sec = time.time() - t0
     note = _dialog_watcher_note(watcher, None)
-    if note:
+    if getattr(watcher, 'count', 0) > 0:
+        prompt = getattr(watcher, 'last_text', '') or ''
+        prompt_disp = f"「{prompt}」" if prompt else "（プロンプトなし）"
+        print(f"この棚は入力を求めました: {name}（何を求めたか: {prompt_disp}）")
+    elif note:
         print(note)
     print(f"撃った: {owner}!{_shelf_module_name(xl, owner, name)}.{name}（{wb.Name}!{sheet_name}・{sec:.2f} 秒）"
           + (f"　選択: {sel}" if sel else ""))
-    bc = _shelf_book_changes(book_before, _shelf_book_state(wb), sheet_name)
+    bc = _shelf_book_changes(book_before, _shelf_book_state(wb, current_sheet_name=sheet_name), sheet_name)
     if backup_path:                              # 控えの覚書に積む＝undo で作った物を消し、別シートも戻す
         _record_created(bc['created'])
         _undo_add_sheets(bc['changed'], book_before['geom'])
@@ -3721,7 +3832,9 @@ def cmd_shelf_run(args):
                  'book': str(wb.Name), 'sheet': sheet_name, 'request': request, 'macro': name,
                  'sec': round(sec, 2), 'changed': n_changed, 'created': len(bc['created']),
                  'other_sheets': bc['changed']})
+    t_all_end = time.perf_counter()
     print(f"（控え: {backup_path or 'なし'}。戻すなら agent --undo・明細は agent --changes。保存はしていません）")
+    print(f"（内訳: 初期化 {t_init - t_start:.2f}s・棚目録 {t_source - t_init:.2f}s・控え {t_snap_before - t_snap0:.2f}s・マクロ {t_macro_end - t_snap_before:.2f}s・差分等 {t_all_end - t_macro_end:.2f}s／計 {t_all_end - t_start:.2f}s）")
     return ok
 
 
@@ -5615,6 +5728,7 @@ def cmd_style_map(args):
 
 
 __all__ = [
+    'invalidate_shelf_cache',
     'cmd_style_map', 'style_summary', 'diagnose_notes',
     'LAST_VIEW_FILE',
     'cmd_seiri',
