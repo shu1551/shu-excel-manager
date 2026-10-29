@@ -8355,6 +8355,12 @@ def cmd_register_addin(args):
         done.append(f"焼けました: {book} → {addin_file}（{os.path.getsize(addin_path):,} バイト・{when}）")
         if codes_now:
             burn_marks_save(book, codes_now)      # 次の gate --changed と焼く前の関所が「変わったモジュール」を知る
+        # 2026-10-30 指示書089の3: 焼き完了時に全フォームの位置を控えておく
+        try:
+            from vbam_edit import learn_all_forms_geometry
+            learn_all_forms_geometry(wb, xl)
+        except Exception:
+            pass
         t_step = _split("印の保存", t_step)
         return True
     finally:

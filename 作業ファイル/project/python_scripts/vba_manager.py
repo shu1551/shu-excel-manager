@@ -680,6 +680,9 @@ def build_parser():
         p.add_argument("--name", dest="name_opt", default=None, help="作られるフォーム名（省略時は元と同じ）")
         p.add_argument("--sub", dest="sub_opt", default=None, help="作成マクロの名前（省略時 <フォーム名>作成）")
         p.add_argument("--force", action="store_true", help="大文字小文字等の警告があっても強制追加する")
+        # 2026-10-30 指示書089の3: 引数の揺れ吸収
+        p.add_argument("--png", action="store_true", help="（互換オプション）")
+        p.add_argument("--font", dest="font_opt", default=None, help="（互換オプション）")
 
     # form-inspect [excel_file] <フォーム名> [--json] [--lint]
     for _nm in ("form-inspect", "inspect-form"):
@@ -687,6 +690,10 @@ def build_parser():
         p.add_argument("posargs", nargs="*")
         p.add_argument("--json", action="store_true", help="結果をJSON形式で出力")
         p.add_argument("--lint", action="store_true", help="コントロールの重なり・はみ出し・不揃いを機械診断")
+        # 2026-10-30 指示書089の3: 引数の揺れ吸収
+        p.add_argument("--form", dest="form_opt", default=None, help="フォーム名指定")
+        p.add_argument("--png", action="store_true", help="（互換オプション）")
+        p.add_argument("--font", dest="font_opt", default=None, help="（互換オプション）")
 
     # reorder-macro <macro_name> <up|down>
     p = sub.add_parser("reorder-macro")
@@ -1207,9 +1214,13 @@ def build_parser():
     p.add_argument("--learn", action="store_true", dest="learn_flag", help="フォームが閉じているうちに位置を控える")
     p.add_argument("--here", action="store_true", dest="here_flag",
                    help="フォームの持ち主のブックが前に出ていても押す（シートを書き換えないボタンだけ。2026-10-22）")
+    p.add_argument("--list", action="store_true", dest="list_flag",
+                   help="フォームのコントロール一覧を表示する（2026-10-30 指示書089の3）")
     p = sub.add_parser("form-read",    # form-read <フォーム名>
                        help="表示中の UserForm の中身を読む（入力欄の文字・リストの項目と選択・チェックの状態・見出し）。何も書き換えない")
     p.add_argument("posargs", nargs="*")
+    p.add_argument("--list", action="store_true", dest="list_flag",
+                   help="表示中のフォーム一覧を表示する（2026-10-30 指示書089の3）")
     p = sub.add_parser("vbe-reset",    # vbe-reset [excel_file] [--check]
                        help="VBE の「実行>リセット」を押す（中断モードの解除。走っている VBA は全部止まるので人の指示でだけ使う）")
     p.add_argument("posargs", nargs="*")

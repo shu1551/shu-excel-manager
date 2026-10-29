@@ -763,19 +763,48 @@ def cmd_form_to_vba(args):
 
 
 def cmd_form_inspect(args):
-    """UserFormのレイアウト逆解析・プロパティ取得: form-inspect [excel_file] <フォーム名> [--json] [--lint]"""
+    """UserFormのレイアウト逆解析・プロパティ取得: form-inspect [excel_file] <フォーム名> [--form 名前] [--json] [--lint] [--png] [--font]"""
     target_file, rest = parse_target_and_rest(args.posargs)
-    if not rest:
-        print("使い方: form-inspect [excel_file] <フォーム名> [--json] [--lint]")
+    # 2026-10-30 指示書089の3: 引数の揺れ（--form 名前）吸収
+    form_name = getattr(args, 'form_opt', None) or (rest[0] if rest else "")
+    if not form_name:
+        print("使い方: form-inspect [excel_file] <フォーム名> [--form 名前] [--json] [--lint]")
         return False
-    form_name = rest[0]
     xl, wb = get_workbook(target_file)
 
     import form_inspect
-    comp = form_inspect.find_component(wb, form_name)
+    import importlib
+    import difflib
+    try:
+        importlib.reload(form_inspect)
+    except Exception:
+        pass
+    comp, owner_wb = form_inspect.find_component_extended(xl, wb, form_name)
     if not comp:
-        print(f"エラー: フォーム '{form_name}' が見つかりません。")
+        # 見つからないときは近い名前とどのブックにあるかを返す（2026-10-30 指示書089の3）
+        all_forms = form_inspect.find_all_forms_in_books(xl, wb)
+        form_names = [fn for fn, _ in all_forms]
+        close = difflib.get_close_matches(form_name, form_names, n=3, cutoff=0.3)
+        cands_msg = []
+        if close:
+            for c_name in close:
+                b_name = next((bn for fn, bn in all_forms if fn == c_name), "")
+                cands_msg.append(f"{c_name}（{b_name}）" if b_name else c_name)
+        elif all_forms:
+            for fn, bn in all_forms[:5]:
+                cands_msg.append(f"{fn}（{bn}）")
+        msg = f"エラー: フォーム '{form_name}' が見つかりません。"
+        if cands_msg:
+            msg += f" 近い名前: {'・'.join(cands_msg)}"
+        print(msg)
         return False
+
+    # 2026-10-30 指示書089の3: 点検時に位置の控え（--learn）を自動更新しておく
+    try:
+        from vbam_edit import _learn_form_geometry
+        _learn_form_geometry(owner_wb or wb, comp.Name, xl)
+    except Exception:
+        pass
 
     if comp.Designer is None:
         try:

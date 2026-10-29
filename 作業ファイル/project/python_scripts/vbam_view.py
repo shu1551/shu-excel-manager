@@ -2036,8 +2036,19 @@ _SEIRI_DEDUPE = '全列が同じ重複行を削除する'
 _CELL_REF_RE = re.compile(r"(?<![A-Za-z_!])\$?([A-Z]{1,3})\$?(\d{1,7})(?![\d(])")
 
 
+_macro_book_cache = {}
+
+
 def _macro_book(xl, module, sub):
     """モジュール module に Sub sub を持つブック（アドイン含む）の名前。無ければ None（2026-09-13）。"""
+    ck = (str(module), str(sub))
+    if ck in _macro_book_cache:
+        cname = _macro_book_cache[ck]
+        try:
+            _ = xl.Workbooks(cname)
+            return cname
+        except Exception:
+            _macro_book_cache.pop(ck, None)
     from vbam_vba import _project_book_name
     try:
         projects = list(xl.VBE.VBProjects)
@@ -2055,6 +2066,7 @@ def _macro_book(xl, module, sub):
                     n = int(cm.CountOfLines)
                     hit = bool(n and re.search(r'^\s*Sub\s+' + re.escape(sub) + r'\b', cm.Lines(1, n), re.M))
                 if hit:
+                    _macro_book_cache[ck] = name
                     return name
         except Exception:
             continue
@@ -2073,7 +2085,10 @@ def _macro_book(xl, module, sub):
                     candidates.append(name)
         except Exception:
             continue
-    return candidates[0] if candidates else None
+    res = candidates[0] if candidates else None
+    if res:
+        _macro_book_cache[ck] = res
+    return res
 
 
 def error_hint(text, formula, empty_refs):
@@ -2429,8 +2444,28 @@ def _seiri_tidy(wb, ws, before_snap):
         if a and a not in targets and _region_has_rows(ws, a):
             targets.append(a)
     if targets:
-        ok, out = vp.va._run_cmd(['tidy', '--sheet', str(ws.Name)] + targets, wb)
-        print(out.rstrip())
+        # 2026-10-30 指示書090: 表を整えるマクロが既に格子細罫線を引いているので、tidy の罫線2度撃ち（vbam_edit.py:2414-2430）を省く
+        # 直接 ve.cmd_tidy を呼んで毎回 ArgumentParser 全体を構築するオーバーヘッドを省く
+        import vbam_edit as ve
+        # 2026-10-30 指示書090: 表を整えるマクロが既に罫線（213-214行）とAutoFit（238行）を済ませているので、
+        # tidy の罫線2度撃ち（vbam_edit.py:2414-2430）と列幅AutoFit2度撃ち（vbam_edit.py:2436-2464）を省く
+        args = argparse.Namespace(
+            posargs=[str(wb.Name)] + targets,
+            sheet_opt=str(ws.Name),
+            no_border=True,
+            no_header=False,
+            no_col_format=False,
+            no_autofit=True,
+            min_width=6,
+            max_width=60,
+            bg=None,
+            header_from=None,
+        )
+        try:
+            ve.cmd_tidy(args)
+        except Exception:
+            ok, out = vp.va._run_cmd(['tidy', '--sheet', str(ws.Name), '--no-border', '--no-autofit'] + targets, wb)
+            print(out.rstrip())
 
 
 def _seiri_hints_now(ws, include_shapes=True):
@@ -2609,54 +2644,99 @@ def _seiri_autofix(xl, wb, ws, max_steps=10):
     fired, tried = [], set()
     watcher = _start_dialog_watcher(xl)
     try:
+        steps = []
         for name, sel, why in todo[:max_steps]:
             key = _seiri_hint_key(name, sel)
             if key in tried:
                 continue
             tried.add(key)
+            steps.append((name, sel, why))
+
+        batch_done = False
+        # 2026-10-30 指示書090: 気づきの棚が2本以上のときは1回の呼び出しでまとめて順に撃つ
+        if len(steps) >= 2:
             try:
-                if sel:
-                    ws.Range(sel).Select()
-                else:
-                    # 選択が 2 つ以上だと棚はその範囲しか見ない＝表の見出しの 1 セルに戻して表の全部を見せる
-                    anchor = vp._table_anchor(ws)
-                    (ws.Range(anchor) if anchor else xl.ActiveCell).Select()
+                anchor = vp._table_anchor(ws) or ""
+                plan_lines = []
+                for name, sel, why in steps:
+                    s_range = sel or anchor or ""
+                    plan_lines.append(f"{name}\t{s_range}")
+                plan = "\n".join(plan_lines)
+                quoted_src = src.replace("'", "''")
+                raw_res = xl.Application.Run(f"'{quoted_src}'!棚をまとめて撃つ", ws, plan)
+                if raw_res and isinstance(raw_res, str):
+                    res_lines = [ln.strip() for ln in raw_res.strip().split("\n") if ln.strip()]
+                    res_map = {}
+                    for ln in res_lines:
+                        pts = ln.split("\t")
+                        if len(pts) >= 3:
+                            res_map[pts[0]] = (pts[1], pts[2])
+
+                    for name, sel, why in steps:
+                        if name in res_map:
+                            sec_str, status = res_map[name]
+                            try:
+                                elap = float(sec_str)
+                            except Exception:
+                                elap = 0.0
+                            if status == "OK":
+                                fired.append((name, sel, why))
+                                print(f"棚: {name}" + (f"（選択 {sel}）" if sel else "") + f" ← {why}（気づきから・{elap:.2f} 秒）")
+                            elif status.startswith("ROLLBACK:"):
+                                reason = status[len("ROLLBACK:"):]
+                                print(f"⚠ 棚「{name}」で {reason} のため、値と式を撃つ前に戻しました（残りとして直す）")
+                            elif status.startswith("UNRECOVERED:"):
+                                reason = status[len("UNRECOVERED:"):]
+                                print(f"⚠ 棚「{name}」で {reason}。行や列が動いたので自動では戻していません（戻すなら agent --undo）")
+                            elif status.startswith("ERR:"):
+                                reason = status[len("ERR:"):]
+                                print(f"⚠ 棚「{name}」で エラー: {reason}（残りとして直す）")
+                    batch_done = True
             except Exception:
-                pass
-            # ガードレール: 撃つ前の数式エラー数計測 ＆ メモリスナップショット取得
-            err_cnt_before, _ = _count_sheet_formula_errors(ws)
-            snap = _guardrail_snapshot(ws)
-            macro_err = None
-            t0 = time.time()
-            try:
-                run_book_macro(xl, src, name)
-            except _VbaRuntimeError as ex:
-                macro_err = f"実行時エラー: {ex}"
-            except Exception as ex:
-                macro_err = f"エラー: {ex}"
-            finally:
+                batch_done = False
+
+        if not batch_done:
+            for name, sel, why in steps:
                 try:
-                    wb.Activate()
-                    ws.Activate()
+                    if sel:
+                        ws.Range(sel).Select()
+                    else:
+                        anchor = vp._table_anchor(ws)
+                        (ws.Range(anchor) if anchor else xl.ActiveCell).Select()
                 except Exception:
                     pass
+                err_cnt_before, _ = _count_sheet_formula_errors(ws)
+                snap = _guardrail_snapshot(ws)
+                macro_err = None
+                t0 = time.time()
+                try:
+                    run_book_macro(xl, src, name)
+                except _VbaRuntimeError as ex:
+                    macro_err = f"実行時エラー: {ex}"
+                except Exception as ex:
+                    macro_err = f"エラー: {ex}"
+                finally:
+                    try:
+                        wb.Activate()
+                        ws.Activate()
+                    except Exception:
+                        pass
 
-            # 事後検証: 実行時エラー or 数式エラー純増を検知したら自動ロールバック
-            err_cnt_after, err_detail = _count_sheet_formula_errors(ws) if macro_err is None else (err_cnt_before, "")
-            rolled_back = False
-            if macro_err or (err_cnt_after > err_cnt_before):
-                reason = macro_err or f"{err_detail}が発生（{err_cnt_before}件→{err_cnt_after}件）"
-                if snap and _guardrail_restore(ws, snap):
-                    rolled_back = True
-                    print(f"⚠ 棚「{name}」で {reason} のため、値と式を撃つ前に戻しました（残りとして直す）")
-                else:
-                    print(f"⚠ 棚「{name}」で {reason}。行や列が動いたので自動では戻していません（戻すなら agent --undo）")
+                err_cnt_after, err_detail = _count_sheet_formula_errors(ws) if macro_err is None else (err_cnt_before, "")
+                rolled_back = False
+                if macro_err or (err_cnt_after > err_cnt_before):
+                    reason = macro_err or f"{err_detail}が発生（{err_cnt_before}件→{err_cnt_after}件）"
+                    if snap and _guardrail_restore(ws, snap):
+                        rolled_back = True
+                        print(f"⚠ 棚「{name}」で {reason} のため、値と式を撃つ前に戻しました（残りとして直す）")
+                    else:
+                        print(f"⚠ 棚「{name}」で {reason}。行や列が動いたので自動では戻していません（戻すなら agent --undo）")
 
-            if rolled_back or macro_err:
-                continue
+                if rolled_back or macro_err:
+                    continue
 
-            fired.append((name, sel, why))
-            print(f"棚: {name}" + (f"（選択 {sel}）" if sel else "") + f" ← {why}（気づきから・{time.time() - t0:.2f} 秒）")
+                fired.append((name, sel, why))
+                print(f"棚: {name}" + (f"（選択 {sel}）" if sel else "") + f" ← {why}（気づきから・{time.time() - t0:.2f} 秒）")
     finally:
         try:
             watcher.stop()
