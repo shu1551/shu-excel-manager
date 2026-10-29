@@ -236,6 +236,11 @@ def _run_line(parser, table, line, buf):
 
 def _worker(jobs):
     pythoncom.CoInitialize()
+    try:
+        # サーバー本体が起動時に『後ろで保存を回せる』と登録する（2026-10-30 指示書091の4）
+        vbam_core.register_deferred_saver(_run_deferred_saves)
+    except Exception:
+        pass
     parser = vba_manager.build_parser()
     table = vba_manager._command_table()
     while True:
@@ -284,6 +289,11 @@ def _worker(jobs):
             # 自分のバッファに行き、JSON-RPC の通信線には絶対に漏れない。
             _ThreadRouted.bind(out_buf, err_buf, io.StringIO(""),
                                json_mode=_wants_json(line))
+            # 前の手の後ろ保存で失敗があったら、今回の手の返事の頭に出す（2026-10-30 指示書091の3）
+            if getattr(vbam_core, '_last_deferred_save_error', None):
+                _prev_bname, _prev_err = vbam_core._last_deferred_save_error
+                vbam_core._last_deferred_save_error = None
+                err_buf.write(f"前の直しの保存に失敗しました（{_prev_bname}: {_prev_err}）\n")
             if line == "__cleanup__":
                 vba_manager.cleanup_excel()
                 ok = True
@@ -309,6 +319,39 @@ def _worker(jobs):
             box["out"] = out_buf.getvalue()
             box["err"] = err_buf.getvalue()
             done.set()
+
+            # 返事の後ろで保存待ちを回す（2026-10-30 指示書091の3）
+            _run_deferred_saves()
+
+
+def _run_deferred_saves():
+    """返事の後ろでマクロ直しのブック保存を回す（2026-10-30 指示書091の3）。"""
+    if not getattr(vbam_core, '_deferred_save_books', None):
+        return
+    books = list(vbam_core._deferred_save_books.values())
+    vbam_core._deferred_save_books.clear()
+    for wb in books:
+        t0 = time.perf_counter()
+        ok = False
+        err_msg = ""
+        bname = ""
+        try:
+            bname = str(wb.Name)
+        except Exception:
+            bname = "ブック"
+        try:
+            vbam_core._execute_real_save(wb)
+            ok = True
+        except Exception as ex:
+            err_msg = str(ex)
+            vbam_core._last_deferred_save_error = (bname, err_msg)
+        sec = time.perf_counter() - t0
+        try:
+            import argparse
+            vbam_core._last_book_name = bname
+            vbam_core.call_log_write("save(後ろ)", argparse.Namespace(posargs=[bname]), sec, ok, via="mcp", why=err_msg if not ok else None)
+        except Exception:
+            pass
 
 
 _RELOAD_ORDER = ['vbam_core', 'vbam_view', 'vbam_edit', 'vbam_vba', 'vbam_form2vba', 'vbam_build',
@@ -391,6 +434,11 @@ def _reload_modules():
             failed.append(f"{n}: {ex}")
     try:
         vba_manager._wb_cache.clear()
+    except Exception:
+        pass
+    try:
+        # reload 後に再登録する（古いサーバーでは呼ばれないため即時保存になる・2026-10-30 指示書091の4）
+        vbam_core.register_deferred_saver(_run_deferred_saves)
     except Exception:
         pass
     msg = "読み直しました: " + (", ".join(done) or "（なし）")

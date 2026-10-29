@@ -4653,19 +4653,47 @@ def cmd_form_click(args):
     except Exception as ex:
         print(f"エラー: win32gui が使えません（pywin32 不足）: {ex}")
         return False
-    frames = [h for h, cap in _list_form_windows()]
+    form_wins = _list_form_windows()
+    if not form_wins:
+        how_to_show = _find_form_show_macro(form_name, xl)
+        msg = f"エラー: 表示中のフォームが見つかりません（先に {form_name} を表示してください）"
+        if how_to_show:
+            msg += f"\n  表示する手: {how_to_show}"
+        print(msg)
+        return False
+
+    picked_frame = None
+    if len(form_wins) == 1:
+        picked_frame = form_wins[0][0]
+    else:
+        # 2026-10-30 指示書089の5: 複数表示されている場合は対象フォームに合致する窓を選ぶ
+        fn_short = form_name[:-4] if form_name.endswith("フォーム") else form_name
+        best_score = -1
+        best_h = None
+        for h, cap in form_wins:
+            if not cap:
+                continue
+            if form_name in cap or fn_short in cap or cap in form_name:
+                score = 100 + len(cap)
+            else:
+                score = len(set(fn_short) & set(cap))
+            if score > best_score:
+                best_score = score
+                best_h = h
+        if best_h is not None and best_score > 0:
+            picked_frame = best_h
+        else:
+            picked_frame = form_wins[0][0]
+
     picked = None
-    for h in frames:
-        kids = []
-        try:
-            win32gui.EnumChildWindows(h, lambda k, a: a.append(k), kids)
-        except Exception:
-            continue
-        if kids:
-            picked = kids[0]
-            break
+    kids = []
+    try:
+        win32gui.EnumChildWindows(picked_frame, lambda k, a: a.append(k), kids)
+    except Exception:
+        pass
+    if kids:
+        picked = kids[0]
     if picked is None:
-        # 2026-10-30 指示書089の3: 表示する手（どのマクロ・どのボタン）をそのまま返す
         how_to_show = _find_form_show_macro(form_name, xl)
         msg = f"エラー: 表示中のフォームが見つかりません（先に {form_name} を表示してください）"
         if how_to_show:
