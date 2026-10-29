@@ -5380,7 +5380,7 @@ def test_inner_cmd_calls_are_pinned():
     assert "with pinned_workbook(" in src_verify
     assert src_verify.index("with pinned_workbook(") < src_verify.index("cmd_screenshot(ns)")
 
-    src_clean = inspect.getsource(vc.cmd_clean_table)
+    src_clean = inspect.getsource(vc._clean_table)
     assert "with pinned_workbook(" in src_clean
     assert src_clean.index("with pinned_workbook(") < src_clean.index("cmd_tidy(ns)")
 

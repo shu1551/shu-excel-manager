@@ -414,7 +414,7 @@ def build_parser():
     p = sub.add_parser("restore", help="モジュールバックアップ(.bas/.frm)を開いているブックへ書き戻す")
     p.add_argument("posargs", nargs="*")
     p.add_argument("--force", action="store_true", dest="force",
-                   help="バックアップ失敗時も強行する")
+                   help="バックアップ失敗時も強行する／別のブックの控えでも入れる")
 
     # list-shortcuts [excel_file]
     p = sub.add_parser("list-shortcuts")

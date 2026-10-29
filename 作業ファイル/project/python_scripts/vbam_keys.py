@@ -148,8 +148,9 @@ def _user_env_write(name, value):
     env = dict(os.environ)
     if value is not None:
         env['_VBAM_KEY_IN'] = value
+    # stdin を引き継がない（MCP では親の stdin が JSON-RPC の線＝子が待つ・読むと戻らない）・時間切れも付ける（2026-10-29 総点検 16）
     p = subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
-                       env=env, capture_output=True, text=True)
+                       env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=60)
     if p.returncode != 0:
         raise RuntimeError((p.stderr or p.stdout or '').strip() or f"powershell が {p.returncode} を返しました")
 

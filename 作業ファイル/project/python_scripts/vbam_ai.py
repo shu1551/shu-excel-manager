@@ -177,7 +177,8 @@ class _CCConv:
         except Exception:
             # claude.CMD の殻（cmd.exe）だけ殺すと中の node が残る＝子孫ごと落とす
             if os.name == 'nt':
-                subprocess.run(['taskkill', '/T', '/F', '/PID', str(p.pid)], capture_output=True)
+                subprocess.run(['taskkill', '/T', '/F', '/PID', str(p.pid)], capture_output=True,
+                               stdin=subprocess.DEVNULL, timeout=30)
             else:
                 with contextlib.suppress(Exception):
                     p.kill()

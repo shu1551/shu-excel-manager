@@ -10,6 +10,7 @@ import shutil
 import zlib
 import argparse
 import time
+import contextlib
 import datetime
 import unicodedata
 import pythoncom
@@ -888,7 +889,12 @@ def _get_workbook_cached(target_file_arg=None, load_addins=False, readonly=False
                 # （pinned_workbook のあいだは追従しない＝道具が自分の台を触っている最中）
                 try:
                     cur = _screen_book(xl)
-                    if cur is not None and cur.Name != wb.Name:
+                    # 名前だけで比べると、別のフォルダの同じ名前のブックに切り替えても追従しなかった（2026-10-29 総点検 31）
+                    same = cur is not None and cur.Name == wb.Name
+                    if same:
+                        with contextlib.suppress(Exception):
+                            same = str(cur.FullName) == str(wb.FullName)
+                    if cur is not None and not same:
                         print(f"対象ブック: {cur.Name}（アクティブブックの切替に追従）")
                         wb = cur
                         _wb_cache[key] = (xl, wb, was_ro)
@@ -1128,59 +1134,6 @@ def _get_workbook_uncached(target_file_arg=None, load_addins=False, readonly=Fal
         "対象ブックが Excel で開いていません。\n"
         f"  ・Excel で対象ブックを開いてから再実行してください: {target_path}\n"
         "  ※ 道具は見えない Excel を自分で起こしません（アドインが外れる原因になるため）。")
-    # 以下は旧処理（見えない Excel を起こして開く）。上で必ず止まるので通らない。
-    # ★必ず DispatchEx を使う。Dispatch は既存インスタンスがあるとそこに接続してしまい、
-    #   「自分が起動した Excel」と誤認 → 後始末でユーザーの Excel ごと閉じる大事故になる
-    #   （2026-07-03 実害。ユーザーのブックを巻き込んで Quit した）
-    xl = win32com.client.DispatchEx("Excel.Application")
-    global _created_xl, _created_xl_pid
-    _created_xl = xl
-    try:
-        import win32process
-        hwnd = xl.Hwnd
-        _, pid = win32process.GetWindowThreadProcessId(hwnd)
-        _created_xl_pid = pid
-        global _last_excel_pid
-        _last_excel_pid = pid or None
-        print(f"[DEBUG] Excel process PID detected: {_created_xl_pid}")
-    except Exception as ex:
-        _created_xl_pid = None
-        print(f"[DEBUG] Failed to detect Excel PID: {ex}")
-    # 起動した全台を記録（batch/shell で複数起動しても cleanup で全部閉じるため）。
-    # ただし DispatchEx が使う人の Excel に合流していたら記録しない（後始末で人の Excel を畳まない・2026-09-23）
-    if is_fresh_instance(xl):
-        _created_instances.append({"xl": xl, "pid": _created_xl_pid})
-    else:
-        _created_xl = None
-        print(f"[WARNING] DispatchEx が既存の Excel（PID {_created_xl_pid}・ブック "
-              f"{getattr(getattr(xl, 'Workbooks', None), 'Count', '?')} 冊）に合流しました。"
-              "自分が起こした台としては扱いません（後始末で畳みません）", file=sys.stderr)
-    xl.Visible = "--visible" in sys.argv or "-v" in sys.argv
-
-    if load_addins:
-        load_excel_addins_and_personal(xl)
-
-    if readonly:
-        # 健診モード: Workbook_Open 等の自動実行を起こさず、リンク更新もせず、
-        # 読み取り専用で開く（「診察に行ったら患者を起こしてしまった」の防止）
-        try:
-            xl.EnableEvents = False
-        except Exception:
-            pass
-        wb = _open_maybe_repair(xl, target_path, (0, True))   # UpdateLinks=0, ReadOnly=True
-        _last_open_by_tool = True
-        print(f"対象ブック: {wb.Name}  (新規オープン・読み取り専用・イベント無効=健診モード)")
-        return xl, wb
-
-    wb = _open_maybe_repair(xl, target_path)
-    _last_open_by_tool = True
-    print(f"対象ブック: {wb.Name}  (新規オープン)")
-    if not excel_running and not load_addins:
-        # COM起動のExcelは起動処理が走らず、アドインや PERSONAL.XLSB が読み込まれない
-        print("注意: Excelが未起動だったため自動化用に新規起動しました。")
-        print("      このExcelにはアドイン(秀.xlam等)・PERSONAL.XLSB が読み込まれていません。")
-        print("      普段使いにはこのウィンドウを閉じて、手動起動した Excel で開き直してください。")
-    return xl, wb
 
 
 def pin_active_workbook(wb):

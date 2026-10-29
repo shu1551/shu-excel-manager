@@ -1109,14 +1109,16 @@ def cmd_format_range(args):
                 rng.ColumnWidth = new_cw
                 applied.append(f"col-width={new_cw:g} ({cw_str})")
             else:
+                n_ng = 0
                 for col in rng.Columns:
                     try:
                         cur = col.ColumnWidth
                         if cur is not None:
                             col.ColumnWidth = max(1.0, float(cur) + delta)
                     except Exception:
-                        pass
-                applied.append(f"col-width{cw_str}")
+                        n_ng += 1
+                applied.append(f"col-width{cw_str}"
+                               + (f"（{n_ng} 列は当てられませんでした）" if n_ng else ''))   # 失敗を飲んで「当てた」と言わない（2026-10-29 総点検 26）
         else:
             rng.ColumnWidth = float(args.col_width); applied.append(f"col-width={args.col_width}")
     if getattr(args, 'row_height', None) is not None:
@@ -1137,14 +1139,16 @@ def cmd_format_range(args):
                 rng.RowHeight = new_rh
                 applied.append(f"row-height={new_rh:g} ({rh_str})")
             else:
+                n_ng = 0
                 for row in rng.Rows:
                     try:
                         cur = row.RowHeight
                         if cur is not None:
                             row.RowHeight = max(1.0, float(cur) + delta)
                     except Exception:
-                        pass
-                applied.append(f"row-height{rh_str}")
+                        n_ng += 1
+                applied.append(f"row-height{rh_str}"
+                               + (f"（{n_ng} 行は当てられませんでした）" if n_ng else ''))   # 失敗を飲んで「当てた」と言わない（2026-10-29 総点検 26）
         else:
             rng.RowHeight = float(args.row_height)
             applied.append(f"row-height={args.row_height}")
@@ -3570,8 +3574,10 @@ def cmd_find(args):
             continue
         try:
             # 名前つき引数だと環境によって LookAt/MatchCase が届かない＝引数を位置で全部渡す
-            # （What, After, LookIn, LookAt, SearchOrder, SearchDirection, MatchCase）
-            cell = rng.Find(needle, rng.Cells(rng.Cells.Count), look_in, look_at, 1, 1, False)
+            # （What, After, LookIn, LookAt, SearchOrder, SearchDirection, MatchCase, MatchByte, SearchFormat）。
+            # MatchByte は前の検索の値が残る＝find-replace と同じ True を毎回渡す（同じ find の件数が前の操作で変わっていた・
+            # 2026-10-29 総点検 24）
+            cell = rng.Find(needle, rng.Cells(rng.Cells.Count), look_in, look_at, 1, 1, False, True, False)
         except Exception:
             cell = None
         first = None
@@ -3681,7 +3687,11 @@ def cmd_find_replace(args):
             for j, v in enumerate(row):
                 f = fmls[i][j] if i < len(fmls) and j < len(fmls[i]) else None
                 is_formula = isinstance(f, str) and f.startswith('=')
-                s = f if is_formula else v
+                # 数のセルも Excel の Replace と同じく、その数の字（.Formula の字）で見る（数のセルを黙って飛ばしていた・
+                # 2026-10-29 総点検 23）。置き換えた字は打ち込んだのと同じに読み直す＝数は数のまま
+                is_number = (not is_formula and isinstance(v, (int, float)) and not isinstance(v, bool)
+                             and isinstance(f, str))
+                s = f if (is_formula or is_number) else v
                 if not isinstance(s, str) or not pat.search(s):
                     continue
                 if (repl in s) if match_case else (repl.lower() in s.lower()):
@@ -3689,7 +3699,9 @@ def cmd_find_replace(args):
                     continue
                 cell = ws.Cells(r0 + i, c0 + j)
                 new = pat.sub(lambda m: repl, s)
-                if not is_formula:
+                if is_number:
+                    cell.Value = new
+                elif not is_formula:
                     cell.Value = new
                     if _kept_as_text(cell, new):     # 「1番-2」の「番」を消した「1-2」が日付に化けたら文字に戻す
                         kept.append(cell.Address.replace('$', ''))

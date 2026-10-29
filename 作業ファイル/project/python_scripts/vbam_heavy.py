@@ -2373,14 +2373,21 @@ def cmd_datamodel(args):
             for i in range(1, rels.Count + 1):
                 r = rels.Item(i)
                 try:
-                    if (r.ForeignKeyTable.Name == fkt_name and r.ForeignKeyColumn.Name == fkc_name
-                            and r.PrimaryKeyTable.Name == pkt_name and r.PrimaryKeyColumn.Name == pkc_name):
-                        r.Delete()
-                        print(f"リレーション削除: {fkt_name}[{fkc_name}] → {pkt_name}[{pkc_name}]")
-                        print("（保存はしていません）")
-                        return True
+                    hit = (r.ForeignKeyTable.Name == fkt_name and r.ForeignKeyColumn.Name == fkc_name
+                           and r.PrimaryKeyTable.Name == pkt_name and r.PrimaryKeyColumn.Name == pkc_name)
                 except Exception:
                     continue
+                if not hit:
+                    continue
+                # 見つけて消せなかったときは「見つかりません」と言わない（理由を取り違えていた・2026-10-29 総点検 25）
+                try:
+                    r.Delete()
+                except Exception as ex:
+                    print(f"エラー: リレーション {fkt_name}[{fkc_name}] → {pkt_name}[{pkc_name}] は見つかりましたが、消せませんでした: {ex}")
+                    return False
+                print(f"リレーション削除: {fkt_name}[{fkc_name}] → {pkt_name}[{pkc_name}]")
+                print("（保存はしていません）")
+                return True
             print("エラー: 該当するリレーションが見つかりません（datamodel list で確認）。")
             return False
         print('使い方: datamodel relation <add|delete> <FKテーブル> <FK列> <PKテーブル> <PK列>')

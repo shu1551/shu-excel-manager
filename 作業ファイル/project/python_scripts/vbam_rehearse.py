@@ -237,7 +237,18 @@ def rehearse_steps(module_text, names, book_path, sheet, module='表の整理', 
         comp, macro_file = _compile_scratch(xl, mwb)
         if comp:
             return [{'name': names[0] if names else '', 'ok': False, 'changed': False, 'why': comp}]
-        wb = xl.Workbooks.Open(book_path, UpdateLinks=0)
+        # 開く間だけイベントを切る（写しの Workbook_Open に MsgBox があると、見えない Excel の中で窓が出て Open が戻らない。
+        # 見張りの _watchdog は Run の間だけ・2026-10-29 総点検 15）。撃つ間は元に戻す（Worksheet_Change もその仕事のうち）
+        ev = None
+        with contextlib.suppress(Exception):
+            ev = bool(xl.EnableEvents)
+            xl.EnableEvents = False
+        try:
+            wb = xl.Workbooks.Open(book_path, UpdateLinks=0)
+        finally:
+            if ev is not None:
+                with contextlib.suppress(Exception):
+                    xl.EnableEvents = ev
         ws = wb.Sheets(sheet)
         wb.Activate()
         ws.Activate()
