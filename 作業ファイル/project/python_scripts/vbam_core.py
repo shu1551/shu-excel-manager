@@ -2588,10 +2588,27 @@ def _pid_alive(pid):
 def call_log_why(text):
     """失敗した手の出力から、理由の 1 行を拾う（エラー・使い方・見つからない の行。無ければ最後の行）。"""
     lines = [ln.strip() for ln in (text or '').splitlines() if ln.strip()]
-    for ln in lines:
-        if re.search(r'エラー|使い方|usage:|見つかりません|できません|失敗|不明な', ln, re.IGNORECASE):
-            return ln[:120]
-    return lines[-1][:120] if lines else None
+    # テストの落ちた行（✗）を先に拾う（2026-10-29: test の失敗 104 回のうち 28 回が、最後の「○ 通ったテスト」の行を理由に残していた）
+    pick = None
+    for k, ln in enumerate(lines):
+        if ln.startswith('✗'):                     # 次の行が理由（実行時エラー …）
+            pick = re.sub(r'\s+\(\d+\.\d+秒\)$', '', ln) + (' ' + lines[k + 1] if k + 1 < len(lines) else '')
+            break
+        if '判定: 不通過' in ln:
+            pick = ln
+            break
+    if pick is None:
+        pick = next((ln for ln in lines
+                     if re.search(r'エラー|使い方|usage:|見つかりません|できません|失敗|不明な', ln, re.IGNORECASE)), None)
+    if pick is None:
+        pick = lines[-1] if lines else None
+    if pick is None:
+        return None
+    # COM の例外の組 (-2147352567, '例外…', (0, 'Microsoft Excel', '本文', …)) は本文だけにする（台帳で理由が読めなかった）
+    m = re.search(r"\(-?\d+,\s*'[^']*',\s*\(\d+,\s*'[^']*',\s*'([^']+)'", pick)
+    if m:
+        pick = pick[:m.start()] + m.group(1)
+    return pick[:120]
 
 
 def call_log_write(cmd, args, sec, ok, via="cli", why=None):
@@ -2645,7 +2662,7 @@ def call_log_read(days=7):
     return out
 
 
-def call_log_summary(recs, top=20, slow=8):
+def call_log_summary(recs, top=20, slow=8, why_top=8):
     """台帳の行 → 集計（純 Python）。コマンド別・遅かった呼び出し・呼び出しの「間」。"""
     by = {}
     for r in recs:
@@ -2673,7 +2690,7 @@ def call_log_summary(recs, top=20, slow=8):
         if r.get("ok") is False and r.get("why"):
             k = (r.get("cmd", "?"), re.sub(r"'[^']*'|「[^」]*」|\d+", "…", r["why"]))
             whys[k] = whys.get(k, 0) + 1
-    why_top = [{"cmd": c, "why": w, "count": n} for (c, w), n in sorted(whys.items(), key=lambda kv: -kv[1])][:8]
+    why_top = [{"cmd": c, "why": w, "count": n} for (c, w), n in sorted(whys.items(), key=lambda kv: -kv[1])][:why_top]
     return {"count": len(recs), "fail": sum(1 for r in recs if r.get("ok") is False), "why_top": why_top,
             "tool_sec": sum(float(r.get("sec") or 0) for r in recs),
             "books": sorted({r["book"] for r in recs if r.get("book")}),
@@ -2689,10 +2706,13 @@ def cmd_stats(args):
     top = int(getattr(args, 'top', None) or 20)
     slow = int(getattr(args, 'slow', None) or 8)
     recs = call_log_read(days)
+    only = getattr(args, 'cmd_filter', None)
+    if only:
+        recs = [r for r in recs if r.get('cmd') == only]
     if not recs:
         print(f"呼び出し台帳に直近 {days} 日の記録がありません（コマンドを撃つと {os.path.basename(_CALL_LOG_FILE)} に溜まります）")
         return True
-    s = call_log_summary(recs, top=top, slow=slow)
+    s = call_log_summary(recs, top=top, slow=slow, why_top=20 if only else 8)
     if getattr(args, 'json', False):
         out = dict(s)
         out["days"] = days

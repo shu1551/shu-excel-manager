@@ -243,6 +243,14 @@ def build_parser():
     p.add_argument("--out", dest="out_opt", default=None,
                    help="保存先ファイル（省略時は _last_proc.vba。参照用コピーを残したいときに）")
     p.add_argument("--json", action="store_true", help="結果をJSON形式で出力")
+    # 長いプロシージャを丸ごと文脈に入れない（2026-10-29: get 1,577 回の多くが数百行を丸ごと返していた）。
+    # _last_proc.vba には全文を保存し、画面に返すのは絞った所だけ
+    p.add_argument("--around", dest="around_opt", default=None,
+                   help="この語を含む行の前後だけ返す（大小文字を区別しない・前後の行数は --context）")
+    p.add_argument("--lines", dest="lines_opt", default=None,
+                   help="プロシージャの中の行の範囲だけ返す（例 40-80・40）")
+    p.add_argument("--context", dest="context_opt", type=int, default=6,
+                   help="--around の前後の行数（既定 6）")
 
     # replace-procedure [excel_file] [code_file] [--code-file file] [--module name]
     p = sub.add_parser("replace-procedure")
@@ -379,6 +387,8 @@ def build_parser():
     p.add_argument("-i", "--ignore-case", dest="ignore_case", action="store_true",
                    help="大文字小文字を区別しない")
     p.add_argument("--module", dest="module_opt", default=None, help="検索対象モジュールを限定")
+    p.add_argument("--where", action="store_true",
+                   help="名前の定義・使っている所・呼び元（間接も）を 1 回で（語で少しずつ探さない・2026-10-29）")
     p.add_argument("--max", dest="max_hits", type=int, default=None, help="表示件数の上限（既定200）")
     p.add_argument("--json", action="store_true", help="結果をJSON形式で出力")
     p.add_argument("--file", dest="needle_file", default=None,
@@ -406,6 +416,8 @@ def build_parser():
     p.add_argument("--days", dest="days", type=int, default=None, help="直近 N 日（既定 7）")
     p.add_argument("--top", dest="top", type=int, default=None, help="コマンド別の表示件数（既定 20）")
     p.add_argument("--slow", dest="slow", type=int, default=None, help="遅かった呼び出しの表示件数（既定 8）")
+    p.add_argument("--cmd", dest="cmd_filter", default=None,
+                   help="このコマンドだけ集計し、失敗の理由を全部の型で出す（例 --cmd patch-procedure・2026-10-29）")
     p.add_argument("--json", action="store_true", help="結果をJSON形式で出力")
 
     p = sub.add_parser("list-backups", help="backups のバックアップ一覧（COM不要）")
@@ -600,6 +612,8 @@ def build_parser():
                             "（終了コード 0/1）。テスト0本は FAIL。時間切れは演習用 Excel を強制終了")
     p.add_argument("posargs", nargs="*")
     p.add_argument("--module", dest="module", default=None, help="テストの対象モジュールを限定")
+    p.add_argument("--changed", action="store_true",
+                   help="前に焼いて（register-addin）から変わったモジュールと、それを呼ぶテストだけ回す（2026-10-29）")
     p.add_argument("--addins", action="store_true",
                    help="演習用Excelにアドイン・PERSONALを読み込む（アドインの関数を呼ぶテスト用）")
     p.add_argument("--timeout", dest="timeout", default=120,
@@ -713,7 +727,9 @@ def build_parser():
     p.add_argument("--no-check", action="store_true", dest="no_check",
                    help="焼く前の先撃ちの照合（問題集を VBA と Python の写しに撃って食い違いを止める）を飛ばす")
     p.add_argument("--no-test", action="store_true", dest="no_test",
-                   help="焼く前の gate（コピーでテスト Sub を全部撃つ）を飛ばす")
+                   help="焼く前の gate（コピーでテスト Sub を撃つ）を飛ばす")
+    p.add_argument("--all-tests", action="store_true", dest="all_tests",
+                   help="焼く前の gate でテスト Sub を全部撃つ（既定は前に焼いてから変わったモジュールに関わるテストだけ・2026-10-29）")
     p.add_argument("--why", dest="burn_why", default=None,
                    help="読むべき警告（train の誤爆・当たり先の変化）を読んだうえで焼く理由（台帳に残る・2026-10-28）")
     p = sub.add_parser("shelf",
@@ -1475,6 +1491,7 @@ _OPTION_ALIASES = {
                      "--width": "--col-width", "--height": "--row-height"},
     "add-procedure": {"--file": "--code-file"},
     "replace-procedure": {"--file": "--code-file"},
+    "grep": {"-m": "--module"},             # 台帳 10/21〜29: 「不明な引数/オプション: -m」で撃ち直し
 }
 
 # 形を外したときに、使い方と一緒に返す手本（2026-09-24。Antigravity の Gemini の記録 9/18〜23 で、使い方だけが返って
@@ -1930,11 +1947,14 @@ def _logged(fn):
             cmd_progress_write('run', cmd=name, args=args)          # `status` が読む「始めた」（2026-09-16）
         # MCP では出力がスレッドごとのバッファに溜まる＝失敗の理由を台帳に拾える（2026-09-24。CLI の画面は読み戻せない）
         bufs = []
+        err_buf = None
         for s in (sys.stdout, sys.stderr):
             tgt = getattr(s, '_target', None)
             b = tgt() if callable(tgt) else None
             if isinstance(b, io.StringIO):
                 bufs.append((b, len(b.getvalue())))
+                if s is sys.stderr:
+                    err_buf = bufs[-1]
         exc_why = None
         try:
             ok = fn(args)
@@ -1959,11 +1979,31 @@ def _logged(fn):
                 except Exception:
                     why = None
             call_log_write(name, args, time.perf_counter() - t0, ok, via=via, why=why)
+            _book_head(name, err_buf, _vc._last_book_name)
             if name != 'status':
                 cmd_progress_write('done', cmd=name, args=args, ok=ok, sec=time.perf_counter() - t0)
 
     _LOGGED_CACHE[fn] = run
     return run
+
+
+def _book_head(name, err_buf, book, cmds=("get", "patch-procedure", "replace-procedure", "add-procedure",
+                                           "delete-procedure", "code-replace", "compile", "run-macro", "test",
+                                           "register-addin", "更新登録", "gate", "grep", "repair", "list")):
+    """マクロを直す手の返事の頭に、対象のブック名を 1 行で差し込む（MCP の返事だけ・2026-10-29）。
+
+    台帳 10/15〜29: list-open を 244 回撃って「どのブックに当たったか」を確かめていた。返事は err（情報行）が先に
+    並ぶので、err のバッファの、この手が書き始めた所に入れる。CLI の画面は読み戻せないので何もしない。"""
+    if name not in cmds or not book or err_buf is None:
+        return
+    try:
+        b, pos = err_buf
+        v = b.getvalue()
+        b.seek(0)
+        b.truncate()
+        b.write(v[:pos] + f"対象: {book}\n" + v[pos:])
+    except Exception:
+        pass
 
 
 def _command_table():

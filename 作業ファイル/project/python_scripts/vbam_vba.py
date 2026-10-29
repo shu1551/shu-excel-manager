@@ -2684,16 +2684,64 @@ def cmd_get(args):
                           "procs": results}, ensure_ascii=False), file=sys.stdout)
         return True
 
+    around = getattr(args, 'around_opt', None)
+    span = getattr(args, 'lines_opt', None)
+    ctx = getattr(args, 'context_opt', None)
     for r in results:
         print(f"モジュール  : {r['module']}")
         print(f"プロシージャ: {r['name']}")
         print(f"保存先      : {save_path}")
         print("=" * 60)
+        if around or span:
+            body, note = proc_window(r['code'], around=around, span=span, ctx=6 if ctx is None else ctx)
+            print(body)
+            print("=" * 60)
+            print(note)
+            continue
         print(r['code'])
         print("=" * 60)
+        n = r['code'].count('\n') + 1
+        if n > 120:
+            print(f"（{n} 行。次からは --around 語 か --lines 40-80 で要る所だけ取れます。全文は保存先にあります）")
     if len(results) > 1:
         print(f"（{len(results)}本を連結して保存しました。replace-procedure での書き戻しは1本ずつ）")
     return True
+
+
+def proc_window(code, around=None, span=None, ctx=6):
+    """プロシージャの本文から、語の前後・行の範囲だけを行番号つきで切り出す → (本文, 1 行の注記)（純 Python）。
+
+    行番号はプロシージャの中の数（宣言の行が 1）。宣言の行はいつも見せる（どのプロシージャか・引数が分かるように）。
+    飛んだ所は「…」1 行に畳む。patch の --old には行番号を付けずに中身だけを渡す。"""
+    lines = code.replace('\r\n', '\n').rstrip('\n').split('\n')
+    n = len(lines)
+    keep, hits = {0}, []
+    if span:
+        m = re.fullmatch(r'\s*(\d+)\s*(?:[-:～~]\s*(\d+))?\s*', str(span))
+        if not m:
+            return '', f"エラー: --lines は 40-80 か 40 の形で渡してください（{span}）"
+        a = max(1, int(m.group(1)))
+        b = min(n, int(m.group(2) or m.group(1)))
+        keep.update(range(a - 1, b))
+    if around:
+        key = str(around).lower()
+        hits = [i for i, ln in enumerate(lines) if key in ln.lower()]
+        for i in hits:
+            keep.update(range(max(0, i - ctx), min(n, i + ctx + 1)))
+    out, prev = [], -1
+    width = len(str(n))
+    for i in sorted(k for k in keep if k < n):
+        if prev >= 0 and i > prev + 1:
+            out.append('…')
+        out.append(f"{i + 1:>{width}}: {lines[i]}")
+        prev = i
+    if prev < n - 1:
+        out.append('…')
+    shown = len([k for k in keep if k < n])
+    note = f"（全 {n} 行のうち {shown} 行を表示"
+    if around:
+        note += f"・「{around}」は {len(hits)} か所" if hits else f"・「{around}」は見つかりません（大小文字は区別しない）"
+    return '\n'.join(out), note + "。全文は保存先にあります。patch の --old には行番号を付けない）"
 
 
 def _project_code_fn(target_file):
@@ -3380,6 +3428,13 @@ def cmd_patch_procedure(args):
     if new_code is None:
         new_code = current_norm.replace(target_str, replacement_str, 1)
 
+    # replacement に新しいプロシージャ（下請けの Function など）を書き足したら、元の 1 本を置き換えてから
+    # 残りを同じモジュールの末尾に足す（2026-10-29 台帳: 「コードファイルに 2 本のプロシージャ」で patch が 16 回止まり、
+    # add-procedure を撃ち直していた）
+    head, extra_code = split_first_procedure(new_code)
+    if extra_code:
+        new_code = head
+
     # _last_proc.vba に書き込んで、実績ある cmd_replace_procedure で適用
     with open(LAST_PROC_FILE, 'w', encoding='utf-8') as f:
         f.write(new_code + ('\n' if not new_code.endswith('\n') else ''))
@@ -3393,7 +3448,34 @@ def cmd_patch_procedure(args):
     r_args.yes = getattr(args, 'yes', False)
     r_args.force = getattr(args, 'force', False)
 
-    return cmd_replace_procedure(r_args)
+    ok = cmd_replace_procedure(r_args)
+    if not ok or not extra_code:
+        return ok
+    extra_path = os.path.join(SCRIPT_DIR, '_patch_extra.vba')
+    with open(extra_path, 'w', encoding='utf-8') as f:
+        f.write(extra_code)
+    print(f"（書き足したプロシージャを [{comp_name}] の末尾に足します）")
+    return cmd_add_procedure(argparse.Namespace(
+        posargs=([target_file] if target_file else []) + [comp_name], code_file_opt=extra_path,
+        yes=getattr(args, 'yes', False), force=getattr(args, 'force', False), json=False))
+
+
+def split_first_procedure(code):
+    """コードを「先頭の 1 本」と「2 本目から後」に分ける → (先頭, 残り or '')（純 Python）。
+
+    2 本目の宣言の直前にあるコメント行・空行は、2 本目の側に付ける（説明のコメントがその関数の頭に残るように）。"""
+    decl = re.compile(r'^\s*(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?(?:Sub|Function|Property\s+(?:Get|Let|Set))\s+[^\s(]+',
+                      re.IGNORECASE)
+    lines = code.replace('\r\n', '\n').split('\n')
+    starts = [i for i, ln in enumerate(lines) if decl.match(ln)]
+    if len(starts) < 2:
+        return code, ''
+    cut = starts[1]
+    while cut > starts[0] + 1 and (not lines[cut - 1].strip() or lines[cut - 1].lstrip().startswith("'")):
+        cut -= 1
+    head = '\n'.join(lines[:cut]).rstrip('\n') + '\n'
+    rest = '\n'.join(lines[cut:]).strip('\n') + '\n'
+    return head, rest
 
 
 @remembers_unsaved
@@ -6463,9 +6545,9 @@ def cmd_grep(args):
                   "\n  引用符で割れる文字（' \" 等）を探すときは --file 検索語.txt（中身をそのまま検索語にする）")
             return False
         needle = rest[0]
-        if _reject_extra_args(rest, 1, '検索文字列は1つ。スペースを含むならクォートで囲む'
-                                       '（引用符で割れるなら --file 検索語.txt）'):
-            return False
+    # 2 つ目の語は、モジュール名なら --module、そうでなければ引用符を付け忘れた検索語の続きとして読む
+    # （2026-10-29 台帳: 「余分な引数があります: 表の整理」「…: =」で 1 往復ずつ撃ち直していた。下でブックを開いてから決める）
+    extra = rest[1:] if needle == (rest[0] if rest else None) else []
     flags = re.IGNORECASE if getattr(args, 'ignore_case', False) else 0
     if getattr(args, 'regex', False):
         try:
@@ -6485,6 +6567,21 @@ def cmd_grep(args):
 
     # コードを読むだけ → 読み取り専用で開く（Workbook_Open を起こさない）
     xl, wb = get_workbook(target_file, readonly=True)
+    if extra:
+        try:
+            comps = {str(c.Name).lower(): str(c.Name) for c in wb.VBProject.VBComponents}
+        except Exception:
+            comps = {}
+        if len(extra) == 1 and not mod_filter and extra[0].lower() in comps:
+            mod_filter = comps[extra[0].lower()]
+            print(f"（2 つ目の語 {extra[0]} はモジュール名として絞りました＝--module {mod_filter}）")
+        else:
+            needle = " ".join([needle] + list(extra))
+            print(f"（引用符が無かったので「{needle}」を 1 つの検索語として探しました）")
+            pat = re.compile(needle if getattr(args, 'regex', False) else re.escape(needle), flags)
+    if getattr(args, 'where', False):
+        print("\n".join(where_name(_module_codes(wb), needle.strip())))
+        return True
     # --all: 開いている全部のブック・アドイン（PERSONAL・秀コンボ.xlam も）を横に探す（2026-09-24: 会話記録で
     # grep … --all が不明な引数で落ちていた。list --all と同じ口）
     projects = [(None, wb.VBProject)]
@@ -7717,10 +7814,151 @@ def _has_test_subs(wb):
     return False
 
 
-def _test_gate_before_burn(wb):
-    """焼く前の関所その 2（2026-10-21 総点検）: コピーで gate（構文・全体コンパイル・テスト Sub 全部）を撃ち、落ちたら焼かない。
+def _module_codes(wb):
+    """ブックの VBA をモジュールごとの本文にする → {モジュール名: 本文}。読めなければ {}。"""
+    out = {}
+    try:
+        for comp in wb.VBProject.VBComponents:
+            cm = comp.CodeModule
+            n = int(cm.CountOfLines)
+            out[str(comp.Name)] = str(cm.Lines(1, n)) if n else ''
+    except Exception:
+        return {}
+    return out
+
+
+def _burn_marks_path(path=None):
+    return path or os.path.join(SCRIPT_DIR, '_burn_marks.json')
+
+
+def burn_marks_load(book, path=None):
+    """前に焼いたときのモジュールの印 → {'time': 時刻, 'mods': {モジュール名: 印}}。無ければ None。"""
+    import json
+    try:
+        with open(_burn_marks_path(path), encoding='utf-8') as f:
+            return (json.load(f) or {}).get(str(book).lower())
+    except (OSError, ValueError):
+        return None
+
+
+def burn_marks_save(book, codes, path=None):
+    """焼けたときに、モジュールごとの印（本文の crc）を控える。gate --changed と register-addin が読む。"""
+    import json
+    p = _burn_marks_path(path)
+    try:
+        with open(p, encoding='utf-8') as f:
+            allm = json.load(f) or {}
+    except (OSError, ValueError):
+        allm = {}
+    allm[str(book).lower()] = {'time': time.strftime('%Y-%m-%d %H:%M:%S'),
+                               'mods': {m: zlib.crc32(c.replace('\r\n', '\n').encode('utf-8')) for m, c in codes.items()}}
+    try:
+        with open(p, 'w', encoding='utf-8') as f:
+            json.dump(allm, f, ensure_ascii=False)
+    except OSError:
+        pass
+
+
+def changed_modules(marks, codes):
+    """前に焼いたときの印と今の本文を比べ、変わった・増えたモジュールの名前を返す（純 Python）。"""
+    old = (marks or {}).get('mods') or {}
+    return sorted(m for m, c in codes.items()
+                  if old.get(m) != zlib.crc32(c.replace('\r\n', '\n').encode('utf-8')))
+
+
+def related_tests(codes, changed, test_names):
+    """変わったモジュールに関わるテストの名前（純 Python）。
+
+    変わったモジュールにあるプロシージャ → それを呼ぶプロシージャ → … を呼び元へたどり（どのモジュールでも）、
+    その輪の中の名前を本文に含むテストと、変わったモジュールにあるテストを選ぶ。名前は語の区切りで見る（大小文字は区別しない）。"""
+    decl = re.compile(r'^\s*(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?(?:Sub|Function|Property\s+(?:Get|Let|Set))\s+([^\s(]+)',
+                      re.IGNORECASE | re.MULTILINE)
+    bodies, home = {}, {}
+    for mod, code in codes.items():
+        marks = list(decl.finditer(code))
+        for k, m in enumerate(marks):
+            end = marks[k + 1].start() if k + 1 < len(marks) else len(code)
+            name = m.group(1)
+            bodies[name] = code[m.end():end]
+            home[name] = mod
+    changed = set(changed)
+    hot = {n for n, mod in home.items() if mod in changed}
+    grew = True
+    while grew and hot:
+        grew = False
+        rx = re.compile(r'(?<![\w])(?:' + '|'.join(map(re.escape, sorted(hot))) + r')(?![\w])', re.IGNORECASE)
+        for n, body in bodies.items():
+            if n not in hot and rx.search(body):
+                hot.add(n)
+                grew = True
+    return [t for t in test_names if t in hot]
+
+
+def where_name(codes, name, max_uses=30):
+    """名前の定義・使っている所・呼び元（間接も）を 1 回で → 行のリスト（純 Python）。
+
+    codes: {モジュール名: 本文}。名前は語の区切りで見る（大小文字は区別しない・文字列とコメントの中は数えない）。
+    2026-10-29 台帳: grep 1,364 回の多くが「どこで定義・どこで使う・どこから呼ぶ」を語で少しずつ探していた（grep の後の間 計 271 分）。"""
+    decl = re.compile(r'^\s*(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?(?:Sub|Function|Property\s+(?:Get|Let|Set))\s+([^\s(]+)',
+                      re.IGNORECASE)
+    word = lambda n: re.compile(r'(?<![\w])' + re.escape(n) + r'(?![\w])', re.IGNORECASE)
+    w = word(name)
+    defs, uses, bodies, home = [], [], {}, {}
+    for mod, code in codes.items():
+        proc, start = '(宣言部)', 0
+        for i, ln in enumerate(code.replace('\r\n', '\n').split('\n'), 1):
+            m = decl.match(ln)
+            if m:
+                proc, start = m.group(1), i
+                home[proc] = mod
+                if m.group(1).lower() == name.lower():
+                    defs.append(f"  [{mod}] {ln.strip()}  （{i} 行目）")
+                    continue
+            bare = re.sub(r'"(?:[^"]|"")*"', '""', ln).split("'", 1)[0]
+            bodies.setdefault(proc, []).append(bare)
+            if w.search(bare) and proc.lower() != name.lower():     # Function の中の「名前 = 値」は使う所ではない
+                uses.append((mod, proc, i - start + 1 if start else i, ln.strip()))
+    out = [f"「{name}」の定義:"] + (defs or ["  （このブックに定義なし＝組み込み・別のブック・変数の名前）"])
+    callers = sorted({p for _m, p, _i, _l in uses if p != '(宣言部)'})
+    out.append(f"使っている所（{len(uses)} か所・{len(callers)} 本のプロシージャ）:")
+    for mod, proc, i, ln in uses[:max_uses]:
+        out.append(f"  [{mod}] {proc}:{i}: {ln[:120]}")
+    if len(uses) > max_uses:
+        out.append(f"  … 他 {len(uses) - max_uses} か所")
+    hot, grew = set(callers), True
+    texts = {p: '\n'.join(b) for p, b in bodies.items()}
+    while grew and hot:
+        grew = False
+        rx = re.compile(r'(?<![\w])(?:' + '|'.join(map(re.escape, sorted(hot))) + r')(?![\w])', re.IGNORECASE)
+        for p, t in texts.items():
+            if p not in hot and p != '(宣言部)' and p.lower() != name.lower() and rx.search(t):
+                hot.add(p)
+                grew = True
+    far = sorted(hot - set(callers))
+    if far:
+        out.append(f"間接の呼び元（{len(far)} 本）: " + "・".join(f"[{home.get(p, '?')}] {p}" for p in far[:20])
+                   + (" …" if len(far) > 20 else ""))
+    return out
+
+
+def burn_recent_note(recs, book, now=None, window_min=30):
+    """台帳から、同じブックをこの window_min 分のうちに焼いた回数を見て、知らせの 1 行を返す（純 Python・無ければ空）。"""
+    now = time.time() if now is None else now
+    hits = [r for r in recs
+            if r.get('cmd') in ('register-addin', '更新登録') and r.get('ok') is True
+            and str(r.get('book') or '').lower() == str(book).lower()
+            and now - float(r.get('_t') or 0) <= window_min * 60]
+    if not hits:
+        return ''
+    return (f"⚠ この {window_min} 分で {len(hits) + 1} 回目の焼き直しです（1 回約 20 秒）。確かめは写しで済ませ"
+            "（gate --changed・shelf --words 直し.tsv --try 頼み）、焼くのは全部直してから最後に 1 回に")
+
+
+def _test_gate_before_burn(wb, all_tests=False):
+    """焼く前の関所その 2（2026-10-21 総点検）: コピーで gate（構文・全体コンパイル・テスト Sub）を撃ち、落ちたら焼かない。
     10/16〜20 の直しで、テストは用意されていたのに回されず、性能の遅れと書式の決まりの食い違いが 2 本落ちたまま焼かれていた。
-    テスト Sub の無いブックは gate が「合否を言えない」で必ず落ちるので飛ばす。True＝焼いてよい"""
+    テスト Sub の無いブックは gate が「合否を言えない」で必ず落ちるので飛ばす。True＝焼いてよい
+    2026-10-29: 既定は前に焼いてから変わったモジュールに関わるテストだけ（gate --changed）。1 回約 20 秒を 376 回焼いていた"""
     import contextlib
     import io
     if not _has_test_subs(wb):
@@ -7729,8 +7967,8 @@ def _test_gate_before_burn(wb):
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         ok = cmd_gate(argparse.Namespace(posargs=[str(wb.Name)], json=False, timeout=180, keep=False,
-                                         addins=False, module=None))
-    lines = [ln for ln in buf.getvalue().splitlines() if ln.startswith(('判定:', '    ✗', '結果:'))]
+                                         addins=False, module=None, changed=not all_tests))
+    lines = [ln for ln in buf.getvalue().splitlines() if ln.startswith(('判定:', '    ✗', '結果:', '変わった'))]
     if ok:
         print("テストの関所: 通りました（" + "・".join(ln.strip() for ln in lines if not ln.startswith('    ✗')) + "）")
         return True
@@ -7818,12 +8056,21 @@ def cmd_register_addin(args):
         # 表示中のフォームがあると Designer を取れず、マクロが MsgBox を出して止まる。人に頼まず自分で閉じる
         print(f"表示中のフォームを閉じます（{len(shown)} 件）")
         cmd_close_form(argparse.Namespace(posargs=[], list_flag=False))
+    # 止まったら、直す所の次の手を 1 行で（2026-10-29: 焼いた後の間が計 319 分＝返事を読み直していた）
     if not getattr(args, 'no_check', False) and not _addin_shape_gate(wb):
+        print("次の手: 上の図形を shape --list で見て消す・動かす → register-addin")
         return False
     if not getattr(args, 'no_check', False) and not _shelf_parity_gate(xl, wb, why=getattr(args, 'burn_why', None)):
+        print("次の手: 上の棚の頭の語を shelf --words 直し.tsv --try 頼み で直す（コードの食い違いは patch_procedure）"
+              " → shelf --check → register-addin")
         return False
-    if not getattr(args, 'no_test', False) and not _test_gate_before_burn(wb):
+    if not getattr(args, 'no_test', False) and not _test_gate_before_burn(wb, all_tests=getattr(args, 'all_tests', False)):
+        print("次の手: ✗ のテストを get テスト名 --around 語 で見て直す → gate --changed → register-addin")
         return False
+    recent = burn_recent_note(call_log_read(1), book)       # 短い間の焼き直しを知らせる（2026-10-29: 376 回・計 124 分）
+    if recent:
+        print(recent)
+    codes_now = _module_codes(wb)
     addin_file = f"{stem}.xlam"
     addin_path = os.path.join(os.environ.get('AppData', ''), 'Microsoft', 'AddIns', addin_file)
     before = os.path.getmtime(addin_path) if os.path.isfile(addin_path) else 0
@@ -7882,6 +8129,8 @@ def cmd_register_addin(args):
             return False
         # 焼けた・載った・抜け殻なしは最後に 1 行で言う（2026-10-29: 成功でも 6〜7 行出ていた）
         done.append(f"焼けました: {book} → {addin_file}（{os.path.getsize(addin_path):,} バイト・{when}）")
+        if codes_now:
+            burn_marks_save(book, codes_now)      # 次の gate --changed と焼く前の関所が「変わったモジュール」を知る
         return True
     finally:
         if unloaded:
@@ -7934,6 +8183,17 @@ def cmd_register_addin(args):
         if done and done[0].startswith("焼けました"):
             print("・".join(done))
         _restore_after_register(xl, book, book_full, was_visible, prev)
+        if done and done[0].startswith("焼けました"):
+            print(register_next_step())
+
+
+def register_next_step(publisher=None):
+    """焼けた後の次の手を 1 行で（純 Python）。公開の道具（publish_all.py）が手元にあればそれ、無ければ使う所で確かめる。"""
+    publisher = publisher or os.path.join(os.path.dirname(SCRIPT_DIR), 'publish', 'publish_all.py')
+    if os.path.isfile(publisher):
+        return ('次の手: ほかに直す所が無ければ公開を 1 回 → py publish\\publish_all.py -m "題" -m "本文"'
+                '（まだ直すなら写しで確かめ、焼くのは最後に 1 回）')
+    return "次の手: 使う Excel でマクロを撃って確かめる（焼き直しは要りません。保存もしていません）"
 
 
 def _restore_after_register(xl, book, book_full, was_visible, prev=None):
@@ -8513,6 +8773,7 @@ def cmd_test(args):
     )
 
     module_filter = getattr(args, 'module', None)
+    only = getattr(args, 'only', None)        # gate --changed が選んだテストの名前（None＝絞らない）
     tests = []          # (モジュール名, Sub名)
     scanned_modules = 0
     try:
@@ -8531,6 +8792,8 @@ def cmd_test(args):
                 if not (name.startswith('テスト') or name.lower().startswith('test')):
                     continue
                 if keyword and keyword.lower() not in name.lower():
+                    continue
+                if only is not None and name not in only:
                     continue
                 tests.append((comp.Name, name))
     except Exception as ex:
@@ -9193,6 +9456,23 @@ def cmd_gate(args):
     # 本体は健診モードで掴む（閉じているブックを自動で開く場合に Workbook_Open を起こさない）
     xl_src, wb_src = get_workbook(target_file, readonly=True)
     src_name = wb_src.Name
+    # --changed: 前に焼いてから変わったモジュールと、それを（呼び元をたどって）呼ぶテストだけ回す（2026-10-29）
+    only = None
+    if getattr(args, 'changed', False):
+        codes = _module_codes(wb_src)
+        marks = burn_marks_load(src_name)
+        if marks is None or not codes:
+            print("変わったモジュール: 前に焼いた印が無いので、テストは全部回します")
+        else:
+            ch = changed_modules(marks, codes)
+            sub0 = re.compile(r'^\s*(?:Public\s+)?(?:Static\s+)?Sub\s+([^\s\(\)]+)\s*\(\s*\)', re.IGNORECASE | re.MULTILINE)
+            tnames = [m.group(1) for c in codes.values() for m in sub0.finditer(c)
+                      if m.group(1).startswith('テスト') or m.group(1).lower().startswith('test')]
+            if not ch:
+                print(f"判定: 通過（PASS）  {marks.get('time')} に焼いてから VBA は変わっていません（全部回すなら --changed を外す）")
+                return True
+            only = set(related_tests(codes, ch, tnames))
+            print(f"変わったモジュール（{marks.get('time')} に焼いてから）: {'・'.join(ch)} → 関わるテスト {len(only)}/{len(tnames)} 本")
     # 2026-10-29: 下の check／test が写しを掴むと台帳（_calls.jsonl）の book が写しの名前になった（register-addin で
     # 秀コンボ_関所_….xlsm と残った）。呼び出しの対象のブック名を控え、写しを閉じる所で戻す
     book_name = vbam_core._last_book_name
@@ -9302,11 +9582,14 @@ def cmd_gate(args):
                 module=getattr(args, 'module', None), json=True,
                 auto_dialog=getattr(args, 'auto_dialog', None),
                 input_text=getattr(args, 'input_text', None),
-                timeout=remaining, owned_pid=pid)
-            cmd_progress_note("テスト Sub を一括実行（test）")
-            with _JsonLineSieve() as sieve:
-                cmd_test(ns)
-            test_doc = sieve.last            # None＝テストが見つからない（cmd_test が案内を出す）
+                timeout=remaining, owned_pid=pid, only=only)
+            if only is not None and not only:
+                print("  テスト: 変わったモジュールに関わるテストが無いので飛ばしました（構文と全体コンパイルだけ）")
+            else:
+                cmd_progress_note("テスト Sub を一括実行（test）")
+                with _JsonLineSieve() as sieve:
+                    cmd_test(ns)
+                test_doc = sieve.last            # None＝テストが見つからない（cmd_test が案内を出す）
             if test_doc is not None and test_doc.get('timeout'):
                 timed_out = True
     except Exception as e:
@@ -9365,7 +9648,7 @@ def cmd_gate(args):
         if failed:
             reasons.append(f"テスト {len(failed)}/{total} 本 NG（未実行を含む）")
     elif not fatal:
-        if total == 0:
+        if total == 0 and not (only is not None and not only):
             reasons.append("テストが 0 本＝合否を言えない（「テスト」/test 始まりの引数なし Sub を書く）")
         elif failed:
             reasons.append(f"テスト {len(failed)}/{total} 本 NG")
@@ -9485,6 +9768,15 @@ __all__ = [
     'cmd_export_all',
     'cmd_export_module',
     'cmd_gate',
+    'proc_window',
+    'split_first_procedure',
+    'burn_marks_load',
+    'burn_marks_save',
+    'changed_modules',
+    'related_tests',
+    'burn_recent_note',
+    'register_next_step',
+    'where_name',
     'cmd_get',
     'cmd_grep',
     'cmd_impact',
