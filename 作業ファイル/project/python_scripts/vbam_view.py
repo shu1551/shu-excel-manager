@@ -572,6 +572,23 @@ def cmd_sheet_info(args):
         return False
     print(f"ブック: {wb.Name}")
     print(f"シート数: {wb.Sheets.Count}   アクティブ: {active}")
+    # 「開いているファイルは?」に 1 回で答える＝ほかのブックも 1 行（2026-10-29: 名前が無く list-open を 2 回目に撃った）
+    others = []
+    try:
+        for b in xl.Workbooks:
+            if str(b.FullName) == str(wb.FullName):
+                continue
+            n = str(b.Name)
+            others.append(f"{n}（個人用マクロ）" if n.upper().startswith('PERSONAL.') else n)
+    except Exception:
+        pass
+    try:
+        for a in xl.AddIns2 if hasattr(xl, 'AddIns2') else xl.AddIns:
+            if a.Installed and str(a.Name).lower().endswith(('.xlam', '.xla')):
+                others.append(f"{a.Name}（アドイン）")
+    except Exception:
+        pass
+    print("ほかに開いているブック: " + ("・".join(others) if others else "なし"))
     print("-" * 60)
     fast = getattr(args, 'fast', False)
     for sh in wb.Sheets:
