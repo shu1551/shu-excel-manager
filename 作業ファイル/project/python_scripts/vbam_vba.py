@@ -9582,7 +9582,9 @@ def cmd_gate(args):
                 module=getattr(args, 'module', None), json=True,
                 auto_dialog=getattr(args, 'auto_dialog', None),
                 input_text=getattr(args, 'input_text', None),
-                timeout=remaining, owned_pid=pid, only=only)
+                timeout=remaining, owned_pid=pid, only=only,
+                # 関所の写しは捨てる物＝test がもう一度写して開き直さない（2026-10-29: 写しを 2 回作っていた）
+                in_place=True)
             if only is not None and not only:
                 print("  テスト: 変わったモジュールに関わるテストが無いので飛ばしました（構文と全体コンパイルだけ）")
             else:
