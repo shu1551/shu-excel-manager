@@ -742,6 +742,13 @@ def build_parser():
                    help="--heard に添える、そのときの頼みの文")
     p.add_argument("--train", dest="train", action="store_true",
                    help="棚を鍛える固定の形（new→freeze→before→sort→export→after→close。引数なしで手順を見る・2026-10-23）")
+    p.add_argument("--words", dest="words", default=None,
+                   help="棚の頭の語の直しをまとめて試す近道（UTF-8 の TSV: 棚の名前<TAB>元の字<TAB>直した字。"
+                        "元の字を +語 にすると依頼の語の末尾に足す）。写しで問題集を全部撃ち比べる。--apply で控え 1 回・保存 1 回で書く（2026-10-29）")
+    p.add_argument("--apply", dest="apply", action="store_true",
+                   help="--words の直しを書く（悪くなった頼み・一般の語の検査で止まる物があれば書かない）")
+    p.add_argument("--try", dest="try_q", action="append", default=None,
+                   help="--words で、直す前と後の当たりを見たい頼み（何回でも）")
     p = sub.add_parser("shelf-run",
                        help="棚のマクロを選んで撃つ：対象ブック/シートを前に出し(--sheet)、--select で選んでから"
                             "撃つ。控えを取り、差分（番地:前→後・上限30件＋件数・足された行/列/シート）を返す"

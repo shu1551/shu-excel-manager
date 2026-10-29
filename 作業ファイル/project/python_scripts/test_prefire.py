@@ -522,3 +522,55 @@ def test_release_instance_keeps_a_person_book_that_joined_the_hidden_excel(monke
     assert vbam_core.release_instance(999993) == 0
     assert x.Visible is True and vbam_core._created_instances == [] and vbam_core._created_xl is None
     assert "見積.xlsx" in capsys.readouterr().err
+
+
+# shelf --words（2026-10-29）: 棚の頭の語の直しをまとめて試し、1 回で書く近道の純 Python 部分
+_WORDS_MOD = ("Attribute VB_Name = \"表の整理_基本操作\"\r\n"
+              "Sub 頼みの文で指した列と行の幅と表示を変える()\r\n"
+              "    ' 依頼の語: の列の幅|の列を隠\r\n"
+              "    ' 依頼の組: の列,見出しの行+幅,高さ,広げ\r\n"
+              "    ' 階級: 基本\r\n"
+              "    Dim n As Long\r\n"
+              "    ' 依頼の語: 本文のコメントは直さない\r\n"
+              "End Sub\r\n")
+
+
+def test_words_apply_changes_only_head_lines_20261029():
+    mods = [("表の整理_基本操作", _WORDS_MOD)]
+    new, diff = vp.words_apply(mods, [("頼みの文で指した列と行の幅と表示を変える", "見出しの行+幅,", "見出しの行,行目+幅,"),
+                                      ("頼みの文で指した列と行の幅と表示を変える", "+語", "行目の高さ")])
+    lines = new[0][1].split('\r\n')
+    assert lines[2] == "    ' 依頼の語: の列の幅|の列を隠|行目の高さ"
+    assert lines[3] == "    ' 依頼の組: の列,見出しの行,行目+幅,高さ,広げ"
+    assert lines[6] == "    ' 依頼の語: 本文のコメントは直さない"
+    assert [(m, j) for m, j, _a, _b in diff] == [("表の整理_基本操作", 2), ("表の整理_基本操作", 3)]
+    assert mods[0][1] == _WORDS_MOD                       # 元の本文は変えない
+
+
+@pytest.mark.parametrize("edit, msg", [
+    (("無い棚", "a", "b"), "棚が見つかりません"),
+    (("頼みの文で指した列と行の幅と表示を変える", "Dim n", "Dim m"), "ちょうど 1 か所"),      # 頭の語の行の外は直さない
+    (("頼みの文で指した列と行の幅と表示を変える", "+語", "の列を隠"), "もう依頼の語にあります"),
+])
+def test_words_apply_stops_20261029(edit, msg):
+    with pytest.raises(ValueError, match=msg):
+        vp.words_apply([("表の整理_基本操作", _WORDS_MOD)], [edit])
+
+
+def test_words_compare_marks_better_and_worse_20261029():
+    old = _WORDS_MOD.replace("    ' 依頼の語: 本文のコメントは直さない\r\n", "")
+    name = "頼みの文で指した列と行の幅と表示を変える"
+    new, _ = vp.words_apply([("m", old)], [(name, "+語", "行目の高さ")])
+    qs = [(name, "3行目の高さを2倍にして"), ("", "5行目の高さを2倍にして")]
+    ok0, ok1, moved = vp.words_compare(old, new[0][1], qs)
+    assert (ok0, ok1) == (1, 1)
+    assert sorted(m[0] for m in moved) == ['悪くなった', '良くなった']
+
+
+def test_read_words_edits_20261029(tmp_path):
+    p = tmp_path / "直し.tsv"
+    p.write_text("# 棚の名前\t元\t新\n\nA\t+語\tx|y\nB\told\tnew\n", encoding="utf-8")
+    assert vp.read_words_edits(str(p)) == [("A", "+語", "x|y"), ("B", "old", "new")]
+    p.write_text("A\told\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        vp.read_words_edits(str(p))

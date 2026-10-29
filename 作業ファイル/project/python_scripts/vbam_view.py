@@ -3046,6 +3046,9 @@ def cmd_shelf(args):
         return True
     if getattr(args, 'check', False):
         return _shelf_check(xl, wb, owner, lines)
+    words = getattr(args, 'words', None)
+    if words:
+        return _shelf_words(wb, words, getattr(args, 'apply', False), getattr(args, 'try_q', None) or [])
     ask = (getattr(args, 'ask', None) or '').strip()
     if ask:
         return _shelf_ask(owner, lines, rows, ask, xl)
@@ -3081,6 +3084,60 @@ def _shelf_check(xl, wb, owner, lines):
     for _lv, n, m in notes[:10]:
         print(f"  注意: {n}: {m}")
     return ok
+
+
+def _shelf_words(wb, path, apply, tries):
+    """`shelf --words 直し.tsv [--apply] [--try 頼み …]`: 棚の頭の語（依頼の語・依頼の組）の直しをまとめて試し、--apply で 1 回で書く（2026-10-29）。
+    写しで問題集を全部撃ち比べる（数秒）→ 悪くなった頼み・一般の語の検査で新しく止まる物が無ければ、控え 1 回・書き込み・保存 1 回。
+    焼くのは register-addin（関所はそこで 1 回）。1 語ずつ patch → 焼く → 公開 を何周も回さないための近道"""
+    import vbam_prefire as vp
+    from vbam_core import shelf_text, shelf_texts, make_backup, save_vba_book
+    try:
+        wb.VBProject.VBComponents('コンボ道具')
+    except Exception:
+        print(f"直す棚のブック（コンボ道具のある秀コンボ.xlsm）を前に出してください（いま前: {wb.Name}）")
+        return False
+    try:
+        edits = vp.read_words_edits(path)
+        old_text = shelf_text(wb.VBProject)       # 棚の辞書（下ごしらえ）もこのブックの物で読む
+        mods = shelf_texts(wb.VBProject, helpers=False)
+        new_mods, diff = vp.words_apply(mods, edits)
+    except (OSError, ValueError) as e:
+        print(f"止めました: {e}")
+        return False
+    new_text = '\r\n'.join(t for _n, t in new_mods)
+    qs = vp.exam_questions()
+    ok0, ok1, moved = vp.words_compare(old_text, new_text, qs)
+    print(f"直し {len(edits)} 件・頭の行 {len(diff)} 行（{wb.Name}）")
+    for mname, j, before, after in diff:
+        print(f"  {mname} {j + 1} 行目\n    - {before.strip()}\n    + {after.strip()}")
+    print(f"問題集 {len(qs)} 問: 期待どおり {ok0} → {ok1}")
+    for mark, want, q, a, b in moved:
+        print(f"  {mark}\t{q}\t期待={want or 'AI'}\t{a or 'AI'} → {b or 'AI'}")
+    if tries:
+        oe, ne = vp.shelf_entries_from_text(old_text), vp.shelf_entries_from_text(new_text)
+        print("試した頼み:")
+        for q in tries:
+            print(f"  {q}\t{vp.shelf_pick(q, oe) or 'AI'} → {vp.shelf_pick(q, ne) or 'AI'}")
+    was = {(n, m) for lv, n, m in vp.shelf_lint(old_text) if lv == '止める'}
+    stops = [(n, m) for lv, n, m in vp.shelf_lint(new_text) if lv == '止める' and (n, m) not in was]
+    for n, m in stops:
+        print(f"  止める: {n}: {m}")
+    bad = [x for x in moved if x[0] == '悪くなった']
+    if not apply:
+        print("（試しただけ。書くなら --apply。悪くなった頼みが問題集の期待の方の間違いなら、その行を直してから撃ち直す）")
+        return not bad and not stops
+    if bad or stops:
+        print("書きませんでした: 悪くなった頼みか、一般の語の検査で止まる物があります")
+        return False
+    if make_backup(str(wb.FullName), 'shelf_words') is None:
+        print("控えが取れないので書きませんでした")
+        return False
+    for mname, j, _before, after in diff:
+        wb.VBProject.VBComponents(mname).CodeModule.ReplaceLine(j + 1, after)
+    save_vba_book(wb)
+    print(f"書きました: {len(diff)} 行・保存 1 回。焼くのは register-addin（関所はそこで 1 回・公開は全部済んでから 1 回）")
+    return True
 
 
 def _shelf_ask(owner, lines, rows, ask, xl=None):
