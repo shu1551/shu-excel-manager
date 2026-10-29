@@ -4522,54 +4522,74 @@ def cmd_form_click(args):
 _FORM_READ_MODULE = "VMFormRead"
 _FORM_READ_CODE = """Function VMFR(ByVal 形 As String) As String
     Dim 窓 As Object, 部 As Object, 行 As String, 全 As String, 型 As String, i As Long, 項 As String
+    Dim 一致 As Boolean, 候補 As String, カウント As Long
     On Error Resume Next
-    For Each 窓 In VBA.UserForms
-        If 窓.Name = 形 Then
-            全 = "CAPTION" & vbTab & 窓.Caption & vbLf
-            For Each 部 In 窓.Controls
-                型 = TypeName(部)
-                行 = 部.Name & vbTab & 型 & vbTab & 部.Caption
-                If Err.Number <> 0 Then 行 = 部.Name & vbTab & 型 & vbTab: Err.Clear
-                Select Case 型
-                    Case "TextBox"
-                        行 = 部.Name & vbTab & 型 & vbTab & 部.Text
-                    Case "ComboBox", "ListBox"
-                        項 = ""
-                        For i = 0 To 部.ListCount - 1
-                            If i >= 50 Then Exit For
-                            項 = 項 & IIf(i = 0, "", "|") & IIf(部.Selected(i) And 型 = "ListBox", "*", "") & 部.List(i)
-                        Next i
-                        行 = 部.Name & vbTab & 型 & vbTab & 部.Text & vbTab & "index=" & 部.ListIndex & vbTab & "count=" & 部.ListCount & vbTab & 項
-                    Case "CheckBox", "OptionButton", "ToggleButton"
-                        行 = 行 & vbTab & "value=" & 部.Value
-                End Select
-                Err.Clear
-                行 = 行 & vbTab & IIf(部.Visible, "", "hidden") & vbTab & IIf(部.Enabled, "", "disabled")
-                Err.Clear
-                全 = 全 & 行 & vbLf
-            Next 部
-            VMFR = 全
+    カウント = VBA.UserForms.Count
+    If 形 = "" Then
+        If カウント = 1 Then
+            Set 窓 = VBA.UserForms(0)
+            一致 = True
+        ElseIf カウント > 1 Then
+            候補 = "MULTIPLE"
+            For Each 窓 In VBA.UserForms
+                候補 = 候補 & vbTab & 窓.Name
+            Next 窓
+            VMFR = 候補
             Exit Function
         End If
-    Next 窓
+    End If
+    If Not 一致 Then
+        For Each 窓 In VBA.UserForms
+            If 窓.Name = 形 Or LCase(窓.Name) = LCase(形) Then
+                一致 = True: Exit For
+            ElseIf 形 <> "" And (LCase(窓.Name) = LCase(形) & "フォーム" Or LCase(形) = LCase(窓.Name) & "フォーム") Then
+                一致 = True: Exit For
+            End If
+        Next 窓
+    End If
+    If 一致 And Not 窓 Is Nothing Then
+        全 = "CAPTION" & vbTab & 窓.Caption & vbLf
+        For Each 部 In 窓.Controls
+            型 = TypeName(部)
+            行 = 部.Name & vbTab & 型 & vbTab & 部.Caption
+            If Err.Number <> 0 Then 行 = 部.Name & vbTab & 型 & vbTab: Err.Clear
+            Select Case 型
+                Case "TextBox"
+                    行 = 部.Name & vbTab & 型 & vbTab & 部.Text
+                Case "ComboBox", "ListBox"
+                    項 = ""
+                    For i = 0 To 部.ListCount - 1
+                        If i >= 50 Then Exit For
+                        項 = 項 & IIf(i = 0, "", "|") & IIf(部.Selected(i) And 型 = "ListBox", "*", "") & 部.List(i)
+                    Next i
+                    行 = 部.Name & vbTab & 型 & vbTab & 部.Text & vbTab & "index=" & 部.ListIndex & vbTab & "count=" & 部.ListCount & vbTab & 項
+                Case "CheckBox", "OptionButton", "ToggleButton"
+                    行 = 行 & vbTab & "value=" & 部.Value
+            End Select
+            Err.Clear
+            行 = 行 & vbTab & IIf(部.Visible, "", "hidden") & vbTab & IIf(部.Enabled, "", "disabled")
+            Err.Clear
+            全 = 全 & 行 & vbLf
+        Next 部
+        VMFR = 全
+        Exit Function
+    End If
     VMFR = "NOFORM"
 End Function
 """
 
 
 def cmd_form_read(args):
-    """表示中の UserForm の中身を読む: form-read <フォーム名>
+    """表示中の UserForm の中身を読む: form-read [フォーム名]
 
     入力欄の文字・リスト（ComboBox/ListBox）の項目と選択・チェックの状態・ボタンの見出し・隠れた/使えない部品を
     1 部品 1 行で返す。表示中のフォームは設計画面（Designer）が取れないので、一時の読み取り用モジュールを
     ブックに入れて VBA の中から読み、すぐ消す（保存済みのブックは保存済みのまま）。
     押した結果を読み戻すのに使う（form-click で押す → form-read で読む）。何も書き換えない。
+    （指示書089: フォーム名省略時は表示中の単一フォームを自動読み、名前の「フォーム」有無の揺れも吸収）
     """
     rest = list(getattr(args, 'posargs', []) or [])
-    if not rest:
-        print("使い方: form-read <フォーム名>")
-        return False
-    form_name = rest[0]
+    form_name = rest[0] if rest else ""
     xl, wb = get_workbook(None)
     # 同じ名前のフォームを持つブックを全部候補にする。アドイン（.xlam）は Workbooks に並ばないので AddIns から足す
     # （秀コンボ.xlsm と 秀コンボ.xlam の両方に同じフォームがあり、表示しているのは xlam 側＝xlsm だけ見て「表示されていません」と
@@ -4630,15 +4650,26 @@ def cmd_form_read(args):
                     pass
         if out != "NOFORM":
             break
+    if out.startswith("MULTIPLE\t"):
+        multi_forms = [f for f in out.split("\t")[1:] if f.strip()]
+        print(f"エラー: 表示中のフォームが複数あります（フォーム名を指定してください）: {', '.join(multi_forms)}")
+        return False
+
     if out == "NOFORM":
+        if not form_name:
+            print("エラー: 表示中のフォームはありません（先にフォームを表示してください）")
+            return False
         # 表示されていないが、フォーム自体がブックに存在するか確認（静的確認なら form-inspect へ自動フォールバック）
         found_form = None
         for b in owners:
             try:
                 for c in b.VBProject.VBComponents:
-                    if int(c.Type) == 3 and c.Name.lower() == form_name.lower():
-                        found_form = c.Name
-                        break
+                    if int(c.Type) == 3:
+                        cn = c.Name.lower()
+                        fn = form_name.lower()
+                        if fn and (cn == fn or cn == fn + "フォーム" or (fn.endswith("フォーム") and cn == fn[:-4])):
+                            found_form = c.Name
+                            break
                 if found_form:
                     break
             except Exception:

@@ -82,6 +82,95 @@ _F2V_SWEEP = [
     "EnterFieldBehavior", "MousePointer", "AutoWordSelect",
 ]
 
+# 指示書089の2: コントロール種別ごとに変更されうる属性に絞り、無駄なCOM走査を削減（順序は_F2V_SWEEPと一致）
+_F2V_PROP_BY_TYPE = {
+    "Label": [
+        "BackColor", "ForeColor", "BorderColor", "BorderStyle", "SpecialEffect",
+        "TextAlign", "WordWrap", "AutoSize", "ControlTipText", "Enabled", "Visible",
+    ],
+    "CommandButton": [
+        "BackColor", "ForeColor", "WordWrap", "AutoSize", "ControlTipText",
+        "Enabled", "Visible", "TabStop", "TakeFocusOnClick",
+    ],
+    "TextBox": [
+        "BackColor", "ForeColor", "BorderColor", "BorderStyle", "SpecialEffect",
+        "TextAlign", "WordWrap", "ControlTipText", "Enabled", "Locked",
+        "Visible", "TabStop", "MultiLine", "ScrollBars", "MaxLength", "PasswordChar",
+    ],
+    "ListBox": [
+        "BackColor", "ForeColor", "BorderColor", "BorderStyle", "SpecialEffect",
+        "TextAlign", "ControlTipText", "Enabled", "Locked", "Visible", "TabStop",
+        "ListStyle", "ColumnCount", "ColumnWidths", "ColumnHeads", "BoundColumn",
+        "TextColumn", "MultiSelect", "MatchEntry",
+    ],
+    "ComboBox": [
+        "Style", "BackColor", "ForeColor", "BorderColor", "BorderStyle", "SpecialEffect",
+        "TextAlign", "ControlTipText", "Enabled", "Locked", "Visible", "TabStop",
+        "ListStyle", "ColumnCount", "ColumnWidths", "ColumnHeads", "BoundColumn",
+        "TextColumn", "MatchEntry", "MatchRequired", "DropButtonStyle", "ShowDropButtonWhen",
+        "ListRows",
+    ],
+    "CheckBox": [
+        "BackColor", "ForeColor", "ControlTipText", "Enabled", "Locked", "Visible",
+        "TabStop", "WordWrap", "AutoSize", "TripleState", "GroupName", "Alignment",
+    ],
+    "OptionButton": [
+        "BackColor", "ForeColor", "ControlTipText", "Enabled", "Locked", "Visible",
+        "TabStop", "WordWrap", "AutoSize", "TripleState", "GroupName", "Alignment",
+    ],
+    "ToggleButton": [
+        "BackColor", "ForeColor", "ControlTipText", "Enabled", "Locked", "Visible",
+        "TabStop", "WordWrap", "AutoSize", "TripleState", "GroupName",
+    ],
+    "Frame": [
+        "BackColor", "ForeColor", "BorderColor", "BorderStyle", "SpecialEffect",
+        "ControlTipText", "Enabled", "Visible", "Cycle", "KeepScrollBarsVisible",
+        "ScrollBars", "ScrollHeight", "ScrollWidth", "Zoom",
+    ],
+    "MultiPage": [
+        "Style", "BackColor", "ControlTipText", "Enabled", "Visible", "TabStop", "TabOrientation",
+        "MultiRow", "TabFixedWidth", "TabFixedHeight",
+    ],
+    "Image": [
+        "BackColor", "BorderColor", "BorderStyle", "SpecialEffect", "ControlTipText",
+        "Enabled", "Visible", "PictureAlignment", "PictureSizeMode", "PictureTiling",
+        "AutoSize",
+    ],
+    "SpinButton": [
+        "ControlTipText", "Enabled", "Visible", "TabStop", "Orientation", "Min", "Max",
+        "SmallChange", "Delay",
+    ],
+    "ScrollBar": [
+        "ControlTipText", "Enabled", "Visible", "TabStop", "Orientation", "Min", "Max",
+        "SmallChange", "LargeChange", "Delay",
+    ],
+}
+
+_F2V_DISPID_CACHE = {}
+
+
+def _f2v_get_control_prop(c, t, pname):
+    """コントロールのプロパティをDISPIDキャッシュ経由で高速取得する（指示書089の2）"""
+    import pythoncom
+    dispid = _F2V_DISPID_CACHE.get((t, pname))
+    ole = getattr(c, "_oleobj_", None)
+    if ole is None:
+        try:
+            return getattr(c, pname, None)
+        except Exception:
+            return None
+    if dispid is None:
+        try:
+            dispid = ole.GetIDsOfNames(0, pname)
+            _F2V_DISPID_CACHE[(t, pname)] = dispid
+        except Exception:
+            return None
+    try:
+        return ole.Invoke(dispid, 0x0, pythoncom.DISPATCH_PROPERTYGET, True)
+    except Exception:
+        return None
+
+
 # フォーム自身の属性のうち、書き出さないもの（読み取り専用・COMオブジェクト・別扱い）
 _F2V_SKIP_FORM = {
     "Caption", "Width", "Height", "StartUpPosition", "Name", "Left", "Top",
@@ -131,8 +220,14 @@ def _f2v_ctl_type(c):
     return None
 
 
+_F2V_DEFAULTS_CACHE = None
+
+
 def _f2v_defaults(wb):
-    """一時フォームに各種コントロールを1個ずつ置いて既定値を採る（罠5）"""
+    """一時フォームに各種コントロールを1個ずつ置いて既定値を採る（罠5）。指示書089: プロセスキャッシュ化で1秒以内を達成。"""
+    global _F2V_DEFAULTS_CACHE
+    if _F2V_DEFAULTS_CACHE is not None:
+        return _F2V_DEFAULTS_CACHE
     tmp = wb.VBProject.VBComponents.Add(3)
     # 直前に消した名前は VBE がまだ握っているので、通る名前が出るまでずらす（罠1）
     for i in range(1, 100):
@@ -167,6 +262,7 @@ def _f2v_defaults(wb):
             wb.VBProject.VBComponents.Remove(tmp)
         except Exception:
             pass  # 意図的に無視：一時コンポーネント削除失敗時のクリーンアップ
+    _F2V_DEFAULTS_CACHE = d
     return d
 
 
@@ -175,12 +271,27 @@ def build_form_builder(wb, src_form, new_form=None, sub_name=None):
 
     戻り値: (テキスト, 分割本数)
     """
+    import time as _time
+    t0_all = _time.time()
     new_form = new_form or src_form
     sub_name = sub_name or (new_form + "作成")
 
+    t0 = _time.time()
     DEF = _f2v_defaults(wb)
+    sec_defaults = _time.time() - t0
+
     vbc = wb.VBProject.VBComponents(src_form)
     dsn = vbc.Designer
+    if dsn is None:
+        # 指示書089: 表示中のフォームなら自動で閉じてから Designer を取得
+        try:
+            import argparse
+            from vbam_edit import cmd_close_form
+            print(f"（フォーム '{src_form}' が表示中のため、閉じてから書き出します）")
+            cmd_close_form(argparse.Namespace(posargs=[src_form], all=False, wait_opt=2.0))
+            dsn = vbc.Designer
+        except Exception:
+            pass
     if dsn is None:
         raise RuntimeError(
             "フォーム '%s' の Designer が取れません。"
@@ -282,27 +393,40 @@ def build_form_builder(wb, src_form, new_form=None, sub_name=None):
     a("    ' 内寸 %s x %s（元フォームと同じ）" % (dsn.InsideWidth, dsn.InsideHeight))
     a("")
 
-    # --- コントロールを集める（親子の判定つき）
-    items = []
+    # --- コントロールを集める（親子の判定つき・指示書089の2: コンテナ有無判定でCOM走査半減）
+    raw_items = []
+    has_containers = False
     for c in dsn.Controls:
         t = _f2v_ctl_type(c)
+        if t in ("MultiPage", "Frame"):
+            has_containers = True
+        raw_items.append((c, t))
+
+    items = []
+    for c, t in raw_items:
         parent_name = None
-        try:
-            pn = c.Parent.Name
-            if pn != src_form:
-                parent_name = pn
-        except Exception:
-            pass  # 意図的に無視：Parentプロパティ非サポート等の例外
+        if has_containers:
+            try:
+                pn = c.Parent.Name
+                if pn != src_form:
+                    parent_name = pn
+            except Exception:
+                pass  # 意図的に無視：Parentプロパティ非サポート等の例外
         items.append((c, t, parent_name))
 
-    def geom(c, var):
+    def geom(c, var, c_geom=None):
+        if c_geom:
+            cl, ct, cw, ch = c_geom
+        else:
+            cl, ct, cw, ch = c.Left, c.Top, c.Width, c.Height
         a('    %s.Left = %g: %s.Top = %g: %s.Width = %g: %s.Height = %g'
-          % (var, c.Left, var, c.Top, var, c.Width, var, c.Height))
+          % (var, cl, var, ct, var, cw, var, ch))
 
     def emit(c, t, var, adder="dsn"):
         f = c.Font
+        c_geom = (c.Left, c.Top, c.Width, c.Height)
         a('    Set %s = %s.Controls.Add(%s, %s)' % (var, adder, _f2v_q(_F2V_PROGID[t]), _f2v_q(c.Name)))
-        geom(c, var)
+        geom(c, var, c_geom)
         a('    %s.Font.Name = %s: %s.Font.Size = %g' % (var, _f2v_q(f.Name), var, f.Size))
         if getattr(f, "Bold", False):
             a('    %s.Font.Bold = True' % var)
@@ -315,8 +439,8 @@ def build_form_builder(wb, src_form, new_form=None, sub_name=None):
                 ih = None
         if ih:
             a('    %s.IntegralHeight = False' % var)
-            list_heights.append((c.Name, c.Height, page_ctx[0]))
-        geom(c, var)
+            list_heights.append((c.Name, c_geom[3], page_ctx[0]))
+        geom(c, var, c_geom)
         try:
             if t in ("Label", "CommandButton", "CheckBox", "OptionButton", "ToggleButton", "Frame"):
                 a('    %s.Caption = %s' % (var, _f2v_q(c.Caption)))
@@ -330,15 +454,13 @@ def build_form_builder(wb, src_form, new_form=None, sub_name=None):
                     a('    %s.Cancel = True' % var)
             except Exception:
                 pass  # 意図的に無視：Default/Cancelプロパティ非サポート時
-        # 既定と違う属性だけを機械的に拾う（種類ごとの取りこぼしを防ぐ・罠5）
+        # 既定と違う属性だけを機械的に拾う（種類ごとの取りこぼしを防ぐ・罠5・指示書089の2で種別別絞込＆DISPIDキャッシュ）
         base = DEF.get(t, {})
-        for pname in _F2V_SWEEP:
+        props_to_check = _F2V_PROP_BY_TYPE.get(t) or _F2V_SWEEP
+        for pname in props_to_check:
             if pname not in base or pname == "IntegralHeight":
                 continue
-            try:
-                v = c.__getattr__(pname)
-            except Exception:
-                continue
+            v = _f2v_get_control_prop(c, t, pname)
             if v is None or v == base[pname]:
                 continue
             a('    %s.%s = %s' % (var, pname, _f2v_lit(v)))
@@ -349,17 +471,24 @@ def build_form_builder(wb, src_form, new_form=None, sub_name=None):
         except Exception:
             return 999
 
+    # TabIndex を事前に1回だけ取得して保持（指示書089の2）
+    item_ti = {}
+    for c, t, pn in items:
+        try:
+            item_ti[c.Name] = int(c.TabIndex)
+        except Exception:
+            item_ti[c.Name] = 999
+
     tops = [(c, t, pn) for (c, t, pn) in items if pn is None and t is not None]
-    tops.sort(key=_ti)
+    tops.sort(key=lambda x: item_ti.get(x[0].Name, 999))
     tab_order = []
 
     for c, t, parent_name in tops:
         a("    ' %s" % c.Name)
         emit(c, t, "c")
-        try:
-            tab_order.append((int(c.TabIndex), c.Name))
-        except Exception:
-            pass  # 意図的に無視：TabIndex非サポート等のコントロール
+        ti = item_ti.get(c.Name, 999)
+        if ti < 999:
+            tab_order.append((ti, c.Name))
         if t == "MultiPage":
             n_pages = c.Pages.Count
             a('    Set p = c')
@@ -478,6 +607,11 @@ def build_form_builder(wb, src_form, new_form=None, sub_name=None):
         emit_chunk(chunks[n - 1])
         a("End Sub")
 
+    sec_total = _time.time() - t0_all
+    build_form_builder.last_times = {
+        "defaults": sec_defaults,
+        "total": sec_total,
+    }
     return "\n".join(out) + "\n", len(chunks)
 
 
@@ -604,8 +738,12 @@ def cmd_form_to_vba(args):
         with io.open(out_path, "w", encoding="utf-8") as fh:
             fh.write(text)
         n_lines = text.count("\n")
+        times = getattr(build_form_builder, "last_times", {})
+        sec_d = times.get("defaults", 0)
+        sec_tot = times.get("total", 0)
+        time_note = f"（内訳: 既定値 {sec_d:.2f}s・コード生成 {sec_tot - sec_d:.2f}s／計 {sec_tot:.2f}s）"
         print(f"  出力: {os.path.basename(out_path)}  ({n_lines}行 {len(text)}文字"
-              + (f" / {n_chunk}本に分割" if n_chunk > 1 else "") + ")")
+              + (f" / {n_chunk}本に分割" if n_chunk > 1 else "") + f")  {time_note}")
 
         if do_verify:
             if not _f2v_verify(xl, wb, text, form):
@@ -614,9 +752,10 @@ def cmd_form_to_vba(args):
         if add_mod:
             # 追加は既存の add-procedure に通す（同名重複ガード・バックアップ・保存が乗る）
             from vbam_vba import cmd_add_procedure
+            force_opt = getattr(args, "force", False)
             ns = argparse.Namespace(
                 posargs=([target_file] if target_file else []) + [add_mod],
-                code_file_opt=out_path, yes=True, force=False)
+                code_file_opt=out_path, yes=True, force=force_opt)
             if not cmd_add_procedure(ns):
                 all_ok = False
 
@@ -637,6 +776,14 @@ def cmd_form_inspect(args):
     if not comp:
         print(f"エラー: フォーム '{form_name}' が見つかりません。")
         return False
+
+    if comp.Designer is None:
+        try:
+            from vbam_edit import cmd_close_form
+            print(f"（フォーム '{form_name}' が表示中のため、閉じてからレイアウトを取得します）")
+            cmd_close_form(argparse.Namespace(posargs=[form_name], all=False, wait_opt=2.0))
+        except Exception:
+            pass
 
     info = form_inspect.get_form_info(comp)
     controls = form_inspect.collect_controls(comp)
@@ -665,4 +812,3 @@ def cmd_form_inspect(args):
     if do_lint:
         form_inspect.print_lint(form_name, info, controls)
     return True
-
