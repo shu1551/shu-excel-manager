@@ -1539,6 +1539,97 @@ def vba_answers(xl, owner, questions):
     return ans
 
 
+# 棚の頭の語の直しをまとめて試す近道（shelf --words・2026-10-29）。1 語ずつ patch して焼いて公開して…を 4 周回して
+# 小さな直しに何十分もかかった（シュウさん「近道でいいだろ作れよ」）。直しは表 1 枚に並べ、写しで問題集を全部撃ち比べてから 1 回で書く
+_WORDS_HEAD_RE = re.compile(r"^\s*'\s*依頼の(?:語|組)\s*[:：]")
+
+
+def read_words_edits(path):
+    """直しの表（UTF-8 の TSV: 棚の名前<TAB>元の字<TAB>直した字）→ [(名前, 元, 新)]。# で始まる行と空行は読まない。
+    元の字を「+語」と書くと、直した字を依頼の語の末尾に | で足す（「+語<TAB>行目の高さ|列目の幅」）。"""
+    import io
+    out = []
+    for ln in io.open(path, encoding='utf-8-sig'):
+        ln = ln.rstrip('\r\n')
+        if not ln.strip() or ln.lstrip().startswith('#'):
+            continue
+        p = ln.split('\t')
+        if len(p) < 3 or not p[0].strip() or not p[2]:
+            raise ValueError(f"直しの表の行の形が違います（棚の名前<TAB>元の字<TAB>直した字）: {ln}")
+        out.append((p[0].strip(), p[1], p[2]))
+    return out
+
+
+def _head_lines(lines, sub):
+    """lines の中の Sub sub の頭の「依頼の語・依頼の組」の行の番号（0 始まり）。Sub が無ければ None。"""
+    pat = re.compile(r'^\s*(?:Public\s+|Private\s+)?Sub\s+' + re.escape(sub) + r'\s*\(')
+    for i, ln in enumerate(lines):
+        if pat.match(ln):
+            out, j = [], i + 1
+            while j < len(lines) and (lines[j].strip().startswith("'") or not lines[j].strip()):
+                if _WORDS_HEAD_RE.match(lines[j]):
+                    out.append(j)
+                j += 1
+            return out
+    return None
+
+
+def words_apply(modules, edits):
+    """[(モジュール名, 本文)] に頭の語の直しを当てる（純 Python）→ (直した [(モジュール名, 本文)], [(モジュール名, 行番号 0 始まり, 前, 後)])。
+    直せるのは Sub の頭の「' 依頼の語:」「' 依頼の組:」の行だけ。元の字はその棚の頭の行でちょうど 1 か所に無ければ止める（ValueError）。"""
+    mods = [(n, t.split('\r\n') if '\r\n' in t else t.split('\n'), '\r\n' if '\r\n' in t else '\n') for n, t in modules]
+    changes = {}
+    for sub, old, new in edits:
+        hit = None
+        for mi, (mname, lines, _nl) in enumerate(mods):
+            heads = _head_lines(lines, sub)
+            if heads is not None:
+                hit = (mi, mname, lines, heads)
+                break
+        if hit is None:
+            raise ValueError(f"棚が見つかりません: {sub}")
+        mi, mname, lines, heads = hit
+        if old.strip() == '+語':
+            asks = [j for j in heads if re.match(r"^\s*'\s*依頼の語\s*[:：]", lines[j])]
+            if len(asks) != 1:
+                raise ValueError(f"{sub}: 依頼の語の行がありません（+語 は今ある行の末尾に足すだけ）")
+            j = asks[0]
+            add = new.strip().lstrip('|')
+            m = _REG_ASK_RE.match(lines[j])
+            if m and any(w in m.group(1).split('|') for w in add.split('|')):
+                raise ValueError(f"{sub}: 足す語がもう依頼の語にあります: {add}")
+            after = lines[j].rstrip() + '|' + add
+        else:
+            found = [j for j in heads if old in lines[j]]
+            if len(found) != 1 or lines[found[0]].count(old) != 1:
+                raise ValueError(f"{sub}: 元の字「{old}」が頭の依頼の語・依頼の組にちょうど 1 か所ありません（{sum(lines[j].count(old) for j in heads)} か所）")
+            j = found[0]
+            after = lines[j].replace(old, new)
+        if (mi, j) not in changes:
+            changes[(mi, j)] = lines[j]
+        lines[j] = after
+    out = [(n, nl.join(lines)) for n, lines, nl in mods]
+    diff = [(mods[mi][0], j, before, mods[mi][1][j]) for (mi, j), before in sorted(changes.items())]
+    return out, diff
+
+
+def words_compare(old_text, new_text, questions):
+    """直す前と後の棚の本文で問題集を全部撃ち比べる（純 Python）→ (前の正解数, 後の正解数, [(印, 期待, 依頼文, 前, 後)])。
+    印は 良くなった／悪くなった／変わった（期待が空＝AI に回すのが正解）。"""
+    old_e, new_e = shelf_entries_from_text(old_text), shelf_entries_from_text(new_text)
+    ok0 = ok1 = 0
+    moved = []
+    for want, q in questions:
+        a = shelf_pick(q, old_e) or ''
+        b = shelf_pick(q, new_e) or ''
+        ok0 += a == want
+        ok1 += b == want
+        if a != b:
+            mark = '良くなった' if b == want else ('悪くなった' if a == want else '変わった')
+            moved.append((mark, want, q, a, b))
+    return ok0, ok1, moved
+
+
 def parity_diffs(questions, answers, entries):
     """VBA の答えと写し（shelf_pick）の答えが違う問題 → [(依頼文, VBA, 写し)]（純 Python）。"""
     return [(q, a, shelf_pick(q, entries)) for q, a in zip(questions, answers) if a != shelf_pick(q, entries)]
