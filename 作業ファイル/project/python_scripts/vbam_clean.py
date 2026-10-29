@@ -8,7 +8,7 @@
 import re
 import unicodedata
 import argparse
-from vbam_core import (_col_letter, parse_target_and_rest, get_workbook)
+from vbam_core import (_col_letter, parse_target_and_rest, get_workbook, protect_safe)
 
 import vbam_hands as vh
 
@@ -131,7 +131,15 @@ def _row_has_outside(ws, r, c1, c2):
                for j, v in enumerate(got[0] if got else ()))
 
 
+@protect_safe
 def cmd_clean_table(args):
+    """clean-table の入口。値を書き行を消す手なので、保護したシートは一時解除し（protect_safe）、
+    書き込みで起きるイベントマクロの窓は見張りが安全側で閉じる（dialog_safe・write-cells と同じ。2026-10-29 総点検 17）。"""
+    from vbam_vba import dialog_safe                            # 遅延 import（循環を避ける）
+    return dialog_safe(_clean_table)(args)
+
+
+def _clean_table(args):
     """表を掃除する（AI を使わない）: clean-table [範囲|セル] [--sheet 名] [--delete-dups] [--no-tidy]
 
     材料の「気づき」と同じ検出を使って、列ごとに規則を決めて当てる（空白の全角半角と連続・半角カナ・
@@ -174,7 +182,7 @@ def cmd_clean_table(args):
         print("データの行がありません")
         return False
 
-    done = []
+    done, failed = [], []
     for j in sorted(plan['rules']):
         col = _col_letter(c0 + j)
         act = {'op': 'normalize', 'range': f"{col}{body_top}:{col}{body_bottom}",
@@ -183,6 +191,7 @@ def cmd_clean_table(args):
             _label, ok, out = vh._do_normalize(ws, act)
         except Exception as ex:
             print(f"  {col}列 {'+'.join(plan['rules'][j])}: 失敗（{ex}）")
+            failed.append(f"{col}列")
             continue
         n = re.search(r'(\d+) セルを変えた', out or '')
         done.append(f"{col}列 {'+'.join(plan['rules'][j])} → {n.group(1) if n else '?'} セル")
@@ -240,8 +249,13 @@ def cmd_clean_table(args):
                                 no_autofit=False, min_width=None, max_width=None)
         from vbam_core import pinned_workbook
         with pinned_workbook(wb):        # 名指しされたブックに当てる（2026-09-08・自動検出だと別ブックへ流れる）
-            cmd_tidy(ns)
+            if cmd_tidy(ns) is False:
+                failed.append("仕上げ（tidy）")
     print("（保存はしていません。Excelで確認後に保存してください）")
+    if failed:
+        # 列の直しや仕上げが落ちたのに成功を返していた（2026-10-29 総点検 21）
+        print(f"エラー: 直せなかったところがあります: {'・'.join(failed)}")
+        return False
     return True
 
 

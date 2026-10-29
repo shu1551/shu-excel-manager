@@ -1545,7 +1545,8 @@ def cmd_process(args):
         out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq EXCEL.EXE",
                               "/FO", "CSV", "/NH"],
                              capture_output=True, text=True,
-                             encoding='cp932', errors='replace')
+                             encoding='cp932', errors='replace',
+                             stdin=subprocess.DEVNULL, timeout=30)
         for line in out.stdout.splitlines():
             parts = [x.strip().strip('"') for x in line.split('","')]
             if len(parts) >= 5 and parts[0].upper().startswith("EXCEL"):
@@ -1588,8 +1589,13 @@ def cmd_process(args):
             print("  作業中の Excel を落とす恐れがあるため、kill しません。"
                   "先に close で閉じてください。")
             return False
-        subprocess.run(["taskkill", "/PID", str(kill_pid), "/F"],
-                       capture_output=True, text=True)
+        # 結果を見てから「終了しました」と言う（管理者で動く Excel 等は「アクセスが拒否されました」で落ちる・2026-10-29 総点検 22）
+        r = subprocess.run(["taskkill", "/PID", str(kill_pid), "/F"],
+                           capture_output=True, text=True, encoding='cp932', errors='replace',
+                           stdin=subprocess.DEVNULL, timeout=30)
+        if r.returncode != 0:
+            print(f"エラー: PID {kill_pid} を終了できませんでした: {(r.stderr or r.stdout or '').strip()}")
+            return False
         print(f"PID {kill_pid} を終了しました（ブック0冊のプロセス）")
         return True
 
@@ -4395,6 +4401,12 @@ def cmd_list_backups(args):
     return True
 
 
+def _backup_owner_stem(filename, module_name):
+    """モジュールの控えのファイル名（ブック名_モジュール名_日時[_n].拡張子）→ ブック名（拡張子なし）。形が違えば None（純 Python）。"""
+    m = re.match(r'^(.+)_' + re.escape(module_name) + r'_\d{8}_\d{6}(?:_\d+)?\.(?:bas|cls|frm)$', filename, re.IGNORECASE)
+    return m.group(1) if m else None
+
+
 def cmd_restore(args):
     """モジュールバックアップを開いているブックに書き戻す: restore <バックアップ.bas>
 
@@ -4425,6 +4437,19 @@ def cmd_restore(args):
         print(f"エラー: {os.path.basename(path)} に VB_Name がありません（モジュールバックアップではない可能性）")
         return False
     module_name = m.group(1)
+    # 控えの名前は「ブック名_モジュール名_日時」。前に出ているブックと違うブックの控えなら止める
+    # （中の VB_Name だけ見て、B の Module1 を A の控えで置き換えていた・2026-10-29 総点検 11）
+    owner = _backup_owner_stem(os.path.basename(path), module_name)
+    if owner and not getattr(args, 'force', False):
+        try:
+            _xl, _wb = get_workbook(target_file)
+            now = os.path.splitext(str(_wb.Name))[0]
+        except Exception:
+            now = None
+        if now is not None and owner != now:
+            print(f"エラー: この控えは「{owner}」のモジュール {module_name} のものです（いま前に出ているのは「{now}」）。"
+                  "\n  そのブックを前に出してから restore してください。別のブックに入れるなら --force")
+            return False
     print(f"復元: モジュール '{module_name}' ← backups/{os.path.basename(path)}")
     import argparse as _ap
     ns = _ap.Namespace(posargs=([target_file] if target_file else []) + [module_name, path],
@@ -7750,6 +7775,11 @@ def cmd_register_addin(args):
         was_visible, book_full = bool(xl.Visible), str(wb.FullName)
     except Exception:
         was_visible, book_full = True, ''
+    # 撃つ前の設定を控え、後片付けはその値に戻す（無条件に「入」へそろえていた・2026-10-29 総点検 30）
+    prev = {}
+    for prop in ('ScreenUpdating', 'EnableEvents', 'DisplayAlerts'):
+        with contextlib.suppress(Exception):
+            prev[prop] = bool(getattr(xl, prop))
     print(f"更新登録: {book} → {addin_path}")
     # 読み込み中の .xlam をそのまま上書きすると、登録一覧は Installed=True のままなのに
     # VBA プロジェクトだけ Excel から外れる＝どのブックからもアドインのマクロが使えなくなる。
@@ -7769,10 +7799,12 @@ def cmd_register_addin(args):
     # 使う人の Excel（焼く台とは別の Excel）でも外す。読み込んだままだと .xlam が掴まれて上書きできず、
     # 焼いた後に入れ直さないと使う人の Excel にだけ載らない（2026-10-03 実害）
     others = _other_excel_apps(xl)
-    for app in others:
+    others_had = set()                 # もともと入っていた Excel だけ入れ直す（外していた人のアドインは入れない・総点検 30）
+    for k, app in enumerate(others):
         a = _find_addin(app, addin_file)
         try:
             if a is not None and bool(a.Installed):
+                others_had.add(k)
                 a.Installed = False
         except Exception as ex:
             print(f"  ⚠ 使っている Excel のアドインを外せませんでした: {ex}")
@@ -7805,7 +7837,9 @@ def cmd_register_addin(args):
             except Exception as ex:
                 print(f"⚠ アドインを入れ直せませんでした: {ex}")
         # 使う人の Excel に入れ直して、その Excel の中で載ったかを見る（焼く台の確認だけで「載った」と言わない）
-        for app in others:
+        for k, app in enumerate(others):
+            if k not in others_had:
+                continue
             try:
                 try:
                     import win32process
@@ -7846,17 +7880,18 @@ def cmd_register_addin(args):
                   "Excel を閉じて開き直すと消えます（閉じても EXCEL.EXE が残るなら道具の常駐が参照を握っている）")
         else:
             print("抜け殻: なし（古いアドインはきれいに閉じました）")
-        _restore_after_register(xl, book, book_full, was_visible)
+        _restore_after_register(xl, book, book_full, was_visible, prev)
 
 
-def _restore_after_register(xl, book, book_full, was_visible):
+def _restore_after_register(xl, book, book_full, was_visible, prev=None):
     """更新登録の後、使う人の Excel を「見えていて・焼く元のブックが開いている」状態に戻す（2026-10-16）。
     焼きのマクロは ScreenUpdating・EnableEvents を切って写しを開け閉めするので、途中で止まると切れたまま残る。
     10/15 夜に使う人の Excel が「見えない・ブック 0 冊」で 2 回残った（番頭が COM で戻した）＝最後に必ず確かめる。"""
     for prop in ('ScreenUpdating', 'EnableEvents', 'DisplayAlerts'):
+        want = (prev or {}).get(prop, True)
         try:
-            if not bool(getattr(xl, prop)):
-                setattr(xl, prop, True)
+            if bool(getattr(xl, prop)) != want:
+                setattr(xl, prop, want)
         except Exception:
             pass
     try:
@@ -9016,6 +9051,25 @@ def cmd_compile(args):
     return res["ok"]
 
 
+def _book_has_more(wb):
+    """セルは空でも、図形・グラフ・マクロのどれかを持つブックか（2026-10-29 総点検 13: gate の後片付けが、マクロを入れた
+    新しいブックや図形だけ置いた新しいブックまで「空」として保存せずに閉じうる）。読めない項目は「無い」と見る。"""
+    with contextlib.suppress(Exception):
+        if int(wb.Worksheets(1).Shapes.Count) > 0:
+            return True
+    with contextlib.suppress(Exception):
+        if int(wb.Charts.Count) > 0:
+            return True
+    with contextlib.suppress(Exception):
+        for comp in wb.VBProject.VBComponents:
+            cm = comp.CodeModule
+            n = int(cm.CountOfLines)
+            if n and any(cm.Lines(i, 1).strip() and not cm.Lines(i, 1).strip().lower().startswith('option ')
+                         for i in range(1, n + 1)):
+                return True
+    return False
+
+
 def _blank_book_names(xl):
     """使う人の Excel で開いている「保存していない空のブック」（Book1 など・シート 1 枚・何も書いていない）の名前。"""
     names = []
@@ -9025,7 +9079,7 @@ def _blank_book_names(xl):
                 if str(wb.Path or '') or wb.Worksheets.Count != 1:
                     continue
                 ur = wb.Worksheets(1).UsedRange
-                if ur.Count == 1 and ur.Formula in ('', None):
+                if ur.Count == 1 and ur.Formula in ('', None) and not _book_has_more(wb):
                     names.append(str(wb.Name))
             except Exception:
                 continue
