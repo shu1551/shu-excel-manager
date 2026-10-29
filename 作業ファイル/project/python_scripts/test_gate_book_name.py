@@ -83,17 +83,19 @@ def _rig(monkeypatch, tmp_path, src):
 
 
 def test_gate_keeps_the_target_book_name_for_the_call_log(monkeypatch, tmp_path):
-    seen = _rig(monkeypatch, tmp_path, _FakeWb("秀コンボ.xlsm"))
+    """指示書088: gate を本体で回し、台帳の名前が呼び出し対象のまま記録されることを確かめる試験"""
+    src = _FakeWb("秀コンボ.xlsm")
+    seen = _rig(monkeypatch, tmp_path, src)
     monkeypatch.setattr(vbam_core, "_last_book_name", None)
     ok = vbam_vba.cmd_gate(argparse.Namespace(posargs=["秀コンボ.xlsm"], json=False, timeout=120, keep=False,
                                               addins=False, module=None))
     assert ok is True
-    assert any("_関所_" in n for n in seen)                 # 写しは掴まれた（前はここで台帳の名前が写しになった）
+    assert all("_関所_" not in n for n in seen)                 # 写しは作られず本体で回る
     assert vbam_core._last_book_name == "秀コンボ.xlsm"
-    assert not any("_関所_" in f for f in os.listdir(tmp_path))   # 写しは消えている
 
 
 def test_register_addin_test_gate_logs_the_burned_book(monkeypatch, tmp_path):
+    """指示書088: 焼く前の gate が本体で回っても、台帳に焼く対象のブック名が正しく残る試験"""
     src = _FakeWb("秀コンボ.xlsm")
     seen = _rig(monkeypatch, tmp_path, src)
     monkeypatch.setattr(vbam_vba, "_has_test_subs", lambda wb: True)
@@ -102,13 +104,14 @@ def test_register_addin_test_gate_logs_the_burned_book(monkeypatch, tmp_path):
     monkeypatch.setattr(vbam_core, "_last_book_name", None)      # 呼び出しの入口で戻すのと同じ
     vbam_vba.get_workbook(None, load_addins=True)                 # register-addin が対象を掴む
     assert vbam_vba._test_gate_before_burn(src) is True
-    assert any("_関所_" in n for n in seen)
+    assert all("_関所_" not in n for n in seen)
     vbam_core.call_log_write("register-addin", argparse.Namespace(posargs=[]), 1.0, True, via="mcp")
     rec = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
     assert rec["book"] == "秀コンボ.xlsm"
 
 
 def test_gate_restores_the_book_name_even_when_the_check_fails(monkeypatch, tmp_path):
+    """指示書088: 構文検査で失敗しても、台帳の対象ブック名が正しく残る試験"""
     seen = _rig(monkeypatch, tmp_path, _FakeWb("台帳.xlsm"))
 
     def broken_check(args):
@@ -120,7 +123,6 @@ def test_gate_restores_the_book_name_even_when_the_check_fails(monkeypatch, tmp_
     ok = vbam_vba.cmd_gate(argparse.Namespace(posargs=["台帳.xlsm"], json=False, timeout=120, keep=False,
                                               addins=False, module=None))
     assert ok is False
-    assert any("_関所_" in n for n in seen)
     assert vbam_core._last_book_name == "台帳.xlsm"
 
 
@@ -246,5 +248,35 @@ def test_shelf_parity_gate_runs_when_exam_changed(monkeypatch):
     ok = vbam_vba._shelf_parity_gate(None, wb, marks=marks, codes=codes)
     assert ok is True
     assert len(called) == 1
+
+
+def test_gate_changed_skips_slow_tests_and_passes(monkeypatch, tmp_path, capsys):
+    """指示書088の2: 関わる試験が重い試験だけのとき、gate が試験を回さずに通り、スキップの1行が出る"""
+    src = _FakeWb("秀コンボ.xlsm")
+    _rig(monkeypatch, tmp_path, src)
+
+    codes = {
+        "モジュール1": "Sub 対象マクロ()\n  x = 1\nEnd Sub\n",
+        "テストモジュール": "Sub テスト_ピボットの中身()\n  対象マクロ\nEnd Sub\n",
+    }
+    marks = {"modules": {"モジュール1": "old_hash", "テストモジュール": "test_hash"}, "time": "2026-10-29 23:00:00"}
+
+    monkeypatch.setattr(vbam_vba, "burn_marks_load", lambda name: marks)
+    monkeypatch.setattr(vbam_vba, "changed_modules", lambda m, c: ["モジュール1"])
+    monkeypatch.setattr(vbam_vba, "changed_procs", lambda m, c: ["対象マクロ"])
+    monkeypatch.setattr(vbam_vba, "related_tests", lambda c, ch, t, procs: ["テスト_ピボットの中身"])
+
+    test_called = []
+    def fake_test_spy(args):
+        test_called.append(args)
+    monkeypatch.setattr(vbam_vba, "cmd_test", fake_test_spy)
+
+    ok = vbam_vba.cmd_gate(argparse.Namespace(posargs=["秀コンボ.xlsm"], json=False, timeout=120, keep=False,
+                                              addins=False, module=None, changed=True, codes=codes))
+    assert ok is True
+    assert len(test_called) == 0
+    captured = capsys.readouterr().out
+    assert "重い試験 1 本は飛ばした（test --slow で回る）: テスト_ピボットの中身" in captured
+
 
 

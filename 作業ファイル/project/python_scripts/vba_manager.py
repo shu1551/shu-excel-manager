@@ -679,6 +679,7 @@ def build_parser():
         p.add_argument("--verify", action="store_true", help="捨てブックで実際に組み立てて元と照合する（元ブックには触らない）")
         p.add_argument("--name", dest="name_opt", default=None, help="作られるフォーム名（省略時は元と同じ）")
         p.add_argument("--sub", dest="sub_opt", default=None, help="作成マクロの名前（省略時 <フォーム名>作成）")
+        p.add_argument("--force", action="store_true", help="大文字小文字等の警告があっても強制追加する")
 
     # form-inspect [excel_file] <フォーム名> [--json] [--lint]
     for _nm in ("form-inspect", "inspect-form"):

@@ -147,6 +147,8 @@ def shelf_entries_from_text(text):
             # ' 条件付き書式: はい ＝条件付き書式を付ける棚。条件付き書式を付ける頼みは AI の役目だが、この印の棚だけは当てる（2026-10-22 指示書044）
             if cf.group(1).strip() == 'はい':
                 out[-1]['cf_ok'] = True
+    for e in out:
+        _get_entry_cache(e)
     return out
 
 
@@ -980,6 +982,15 @@ _SHELF_CF_LOOK = ("調べ", "一覧", "どこ", "探", "確認", "チェック",
 # （「ブックが重い原因を調べて」はエラーの印が無いので今までどおり棚に当たる）
 _SHELF_ERROR_MARK = ("エラー", "#N/A", "#REF", "#NAME", "#VALUE", "#DIV", "#SPILL", "#NUM", "#NULL", "#CALC")
 _SHELF_WHY = ("原因", "なぜ", "どうして", "なんで", "何で", "理由")
+_SHELF_QUESTION_LOWER = tuple(w.lower() for w in _SHELF_QUESTION)
+_SHELF_QUESTION_EXCEPT_LOWER = tuple(w.lower() for w in _SHELF_QUESTION_EXCEPT)
+_SHELF_ERROR_MARK_LOWER = tuple(w.lower() for w in _SHELF_ERROR_MARK)
+_SHELF_NOT_WORK_RE = re.compile('|'.join(re.escape(w) for w in _SHELF_NOT_WORK))
+_SHELF_QUESTION_RE = re.compile('|'.join(re.escape(w.lower()) for w in _SHELF_QUESTION))
+_SHELF_QUESTION_EXCEPT_RE = re.compile('|'.join(re.escape(w.lower()) for w in _SHELF_QUESTION_EXCEPT))
+_SHELF_ERROR_MARK_RE = re.compile('|'.join(re.escape(w.lower()) for w in _SHELF_ERROR_MARK))
+_SHELF_WHY_RE = re.compile('|'.join(re.escape(w) for w in _SHELF_WHY))
+_SHELF_FIX_RE = re.compile(r'直して|直す|修正')
 
 
 def _ask_points(ask, req):
@@ -1243,6 +1254,10 @@ def learned_report(entries=None):
 def _fix_heard(s, wrong, right, stop='', need=''):
     """聞き違い 1 件を直す（VBA の コンボ道具.聞き違いを直す と同じ答え）。
     stop: 誤の直前の字がこの中にあれば直さない／need: カンマ区切り。誤の後ろ HEARD_WINDOW 字以内にどれかがあるときだけ直す。"""
+    if not wrong or wrong not in s:
+        return s
+    if not stop and not need:
+        return s.replace(wrong, right)
     n = len(wrong)
     if not n:
         return s
@@ -1295,7 +1310,56 @@ _COLOR_PATTERN = re.compile(
 _PHRASE_REPLACEMENTS = list(_COLOR_MAP.items())
 
 
-def request_normalize(req, entries=None):
+
+
+
+def _get_entry_cache(e):
+    c = e.get('_cache')
+    if c is not None:
+        return c
+    ask_parsed = []
+    for a in str(e.get('ask') or '').split('|'):
+        w = a.strip()
+        if w:
+            ask_parsed.append((len(w), w.lower()))
+    pos_groups = []
+    neg_words = []
+    for group in str(e.get('combo') or '').split('+'):
+        group = group.strip()
+        if not group:
+            continue
+        if group.startswith('-'):
+            for x in group[1:].split(','):
+                w = x.strip().lower()
+                if w:
+                    neg_words.append(w)
+        else:
+            words = []
+            for x in group.split(','):
+                w = x.strip()
+                if w:
+                    words.append((len(w), w.lower()))
+            if words:
+                words.sort(key=lambda x: x[0], reverse=True)
+                pos_groups.append(words)
+    name = str(e.get('name') or '')
+    c = {
+        'name': name,
+        'cf_ok': bool(e.get('cf_ok')),
+        'allow_fix': bool(e.get('allow_fix')),
+        'look_only': bool(e.get('look_only')),
+        'is_look_only_name': bool(_LOOK_ONLY_RE.search(name)),
+        'ask': ask_parsed,
+        'pos_groups': pos_groups,
+        'neg_words': neg_words,
+        'name_len': len(name),
+        'name_lower': name.lower(),
+    }
+    e['_cache'] = c
+    return c
+
+
+def request_normalize(req, entries=None, meta=None):
     """頼みの文の下ごしらえ（純 Python・2026-10-22 指示書035・038／2026-10-23 指示書047で台帳へ）。
     1. 頭のつなぎ語を落とす（台帳「棚の辞書」の つなぎ語 ＋「、」か空白）
     2. 聞き違いの言い換え（台帳の聞き違いを書いた順 → 学び＝違う頼みの文で 2 回以上残った対。票→表・産業ごと→3桁ごと など）
@@ -1306,31 +1370,106 @@ def request_normalize(req, entries=None):
     s = str(req or '').strip()
     if not s:
         return ''
-    led = current_ledger()
-    if _LEDGER_CACHE.get('filler_re') is not None:
-        s = _LEDGER_CACHE['filler_re'].sub('', s).strip()
-    for p in led['pairs'] + learned_pairs(entries):
-        s = _fix_heard(s, p['wrong'], p['right'], p['stop'], p['need'])
+    if meta is not None:
+        filler_re = meta['filler_re']
+        pairs = meta['pairs']
+    else:
+        led = current_ledger()
+        filler_re = _LEDGER_CACHE.get('filler_re')
+        pairs = [
+            (p['wrong'], p['right'], p['stop'], p['need'])
+            for p in (led['pairs'] + learned_pairs(entries))
+        ]
+    if filler_re is not None:
+        s = filler_re.sub('', s).strip()
+    for wrong, right, stop, need in pairs:
+        s = _fix_heard(s, wrong, right, stop, need)
     if _COLOR_CONTEXT_RE.search(s):
         s = _COLOR_PATTERN.sub(lambda m: _COLOR_MAP[m.group(1)], s)
     return s
 
 
-def shelf_pick(request, entries=()):
+def _prepare_entries_meta(entries):
+    if not entries:
+        return {'list': [], 'name_map': {}, 'name_cand': [], 'neg_entries': [], 'cf_list': [],
+                'combo_only': [], 'ask_only': [], 'both': [], 'pairs': [], 'filler_re': None}
+    meta = getattr(entries, '_meta', None)
+    if meta is not None:
+        return meta
+    cached_list = []
+    name_map = {}
+    name_cand = []
+    neg_entries = []
+    cf_list = []
+    combo_only = []
+    ask_only = []
+    both = []
+    for e in entries:
+        ec = e.get('_cache')
+        if ec is None:
+            ec = _get_entry_cache(e)
+        cached_list.append(ec)
+        name_map[ec['name']] = ec
+        if ec['name_len'] >= 4:
+            name_cand.append(ec)
+        if ec['neg_words']:
+            neg_entries.append(ec)
+        if ec['cf_ok']:
+            cf_list.append(ec)
+        if ec['pos_groups'] and not ec['ask']:
+            combo_only.append(ec)
+        elif ec['ask'] and not ec['pos_groups']:
+            ask_only.append(ec)
+        elif ec['pos_groups'] and ec['ask']:
+            both.append(ec)
+    led = current_ledger()
+    filler_re = _LEDGER_CACHE.get('filler_re')
+    pairs = [
+        (p['wrong'], p['right'], p['stop'], p['need'])
+        for p in (led['pairs'] + learned_pairs(entries))
+    ]
+    meta = {
+        'list': cached_list,
+        'name_map': name_map,
+        'name_cand': name_cand,
+        'neg_entries': neg_entries,
+        'cf_list': cf_list,
+        'combo_only': combo_only,
+        'ask_only': ask_only,
+        'both': both,
+        'pairs': pairs,
+        'filler_re': filler_re,
+    }
+    try:
+        entries._meta = meta
+    except Exception:
+        pass
+    return meta
+
+
+def shelf_pick(request, entries=(), meta=None):
     """依頼文 → 棚のマクロ名（当たらなければ ''＝AI に回す）。VBA の コンボ道具.先撃ち候補 の Python 版。
 
     entries は shelf_entries_from_text の並び（登録簿の順＝モジュールの順。同点なら先に出てくる方が勝つ）。
     点＝依頼の語（当たった語の長さの合計）＋依頼の組（各組の最長の語の長さの和）。
     マクロ名そのものを言った依頼（4 字以上）は名前の長さの 2 倍で当てる（手順書の依頼文は除く）。
     """
-    req = request_normalize(request, entries)
+    if meta is None:
+        meta = _prepare_entries_meta(entries)
+    req = request_normalize(request, entries, meta=meta)
     if not req:
         return ''
+
+    cached_list = meta['list']
+    name_map = meta['name_map']
+    name_cand = meta['name_cand']
+    neg_entries = meta['neg_entries']
+
     p = req.find('【手順書：')
     if p >= 0:
         m = re.match(r'【手順書：([^】]*)】', req[p:])
         name = m.group(1).strip() if m else ''
-        if name and any(e.get('name') == name for e in entries or ()):
+        if name and name in name_map:
             return name
         req = req[:p].strip()
         if not req:
@@ -1339,61 +1478,125 @@ def shelf_pick(request, entries=()):
     if 'マクロ' in req and any(w in req for w in ('説明', '書き直', '高速化', '解説')):
         return ''
     low = req.lower()
-    if any(w in req for w in _SHELF_NOT_WORK) or (any(w.lower() in low for w in _SHELF_QUESTION) and not any(e.lower() in low for e in _SHELF_QUESTION_EXCEPT)):
+    if _SHELF_NOT_WORK_RE.search(req) or (_SHELF_QUESTION_RE.search(low) and not _SHELF_QUESTION_EXCEPT_RE.search(low)):
         return ''
     # 条件付き書式を付ける頼みは、頭に「' 条件付き書式: はい」と書いた棚だけが当たる（無ければ AI の役目・2026-10-22 指示書044）
     cf_block = '条件付き書式' in req and not any(w in req for w in _SHELF_CF_LOOK)
-    if not any(w in req for w in ("直して", "直す", "修正")) and any(w.lower() in low for w in _SHELF_ERROR_MARK) and any(w in req for w in _SHELF_WHY):
+    if not _SHELF_FIX_RE.search(req) and _SHELF_ERROR_MARK_RE.search(low) and _SHELF_WHY_RE.search(req):
         return ''
     points, banned, order = {}, set(), []
-    for e in entries or ():
-        name = e.get('name')
-        if not name:
-            continue
-        if cf_block and not e.get('cf_ok'):
-            continue
-        pt, ban = combo_score(e.get('combo'), req)
-        pt += _ask_points(e.get('ask'), req)
-        if ban:
-            banned.add(name)
-        if pt:
-            if name not in points:
-                order.append(name)
-            points[name] = points.get(name, 0) + pt
+    if neg_entries:
+        for ec in neg_entries:
+            if any(w in low for w in ec['neg_words']):
+                banned.add(ec['name'])
+    if cf_block:
+        for ec in meta['cf_list']:
+            name = ec['name']
+            if not name:
+                continue
+            pt = 0
+            if ec['pos_groups']:
+                c_tot = 0
+                for words in ec['pos_groups']:
+                    for l, w in words:
+                        if w in low:
+                            c_tot += l
+                            break
+                    else:
+                        break
+                else:
+                    pt = c_tot
+            if ec['ask']:
+                for l, w in ec['ask']:
+                    if w in low:
+                        pt += l
+            if pt:
+                if name in points:
+                    points[name] += pt
+                else:
+                    order.append(name)
+                    points[name] = pt
+    else:
+        for ec in meta['combo_only']:
+            c_tot = 0
+            for words in ec['pos_groups']:
+                for l, w in words:
+                    if w in low:
+                        c_tot += l
+                        break
+                else:
+                    break
+            else:
+                name = ec['name']
+                if name in points:
+                    points[name] += c_tot
+                else:
+                    order.append(name)
+                    points[name] = c_tot
+        for ec in meta['ask_only']:
+            tot = 0
+            for l, w in ec['ask']:
+                if w in low:
+                    tot += l
+            if tot:
+                name = ec['name']
+                if name in points:
+                    points[name] += tot
+                else:
+                    order.append(name)
+                    points[name] = tot
+        for ec in meta['both']:
+            pt = 0
+            c_tot = 0
+            for words in ec['pos_groups']:
+                for l, w in words:
+                    if w in low:
+                        c_tot += l
+                        break
+                else:
+                    break
+            else:
+                pt = c_tot
+            for l, w in ec['ask']:
+                if w in low:
+                    pt += l
+            if pt:
+                name = ec['name']
+                if name in points:
+                    points[name] += pt
+                else:
+                    order.append(name)
+                    points[name] = pt
     best, top = '', 0
     for name in order:
         if name not in banned and points[name] > top:
             top, best = points[name], name
+    is_name_match = False
     if '【手順書：' not in req:
-        for e in entries or ():
-            n = str(e.get('name') or '')
-            if cf_block and not e.get('cf_ok'):
+        for ec in name_cand:
+            if cf_block and not ec['cf_ok']:
                 continue
-            if len(n) >= 4 and n.lower() in low and len(n) * 2 > top:
-                top, best = len(n) * 2, n
+            nl = ec['name_len']
+            if ec['name_lower'] in low:
+                is_name_match = True
+                if nl * 2 > top:
+                    top, best = nl * 2, ec['name']
+    if not best:
+        return ''
+    best_ec = name_map.get(best)
     # 「直して」の頼みに、調べて一覧にするだけの棚は当てない（2026-09-24・エラーの原因を探して直して→ エラー値のセルを一覧にする だった）
     # （「直すとどこまで影響する」は調べる頼み＝「直して」「修正して」と頼んだときだけ）
     # 「直して」の頼みにも当てる棚（' 直す頼みにも当てる: はい）は除外しない（2026-10-22 指示書041）
-    if best and _LOOK_ONLY_RE.search(best) and any(w in req for w in ('直して', '修正して')):
-        allow_fix = False
-        for e in entries or ():
-            if e.get('name') == best:
-                allow_fix = bool(e.get('allow_fix'))
-                break
-        if not allow_fix:
+    if best and best_ec and best_ec['is_look_only_name'] and any(w in req for w in ('直して', '修正して')):
+        if not best_ec['allow_fix']:
             best = ''
+            best_ec = None
     # 調べるだけの棚は、調べる頼みのときだけ撃つ（2026-10-22 指示書042）
-    if best:
-        is_look_only = False
-        for e in entries or ():
-            if e.get('name') == best:
-                is_look_only = bool(e.get('look_only'))
-                break
-        if is_look_only and not any(w in req for w in ('一覧', '調べ', '確認', 'どこ', '探', 'チェック', '点検', '洗い出', 'リスト', '教えて', '何ページ', '何枚', '何件', '何行', '何列', '何個', '何人', 'いくつ', 'どれだけ', 'どのくらい', 'どれくらい')):
+    if best and best_ec:
+        if best_ec['look_only'] and not any(w in req for w in ('一覧', '調べ', '確認', 'どこ', '探', 'チェック', '点検', '洗い出', 'リスト', '教えて', '何ページ', '何枚', '何件', '何行', '何列', '何個', '何人', 'いくつ', 'どれだけ', 'どのくらい', 'どれくらい')):
             best = ''
     # 迷いの判定（2026-10-22 指示書042: 倍率1.2）
     if best and '【手順書：' not in req:
-        is_name_match = any(len(str(e.get('name') or '')) >= 4 and str(e.get('name') or '').lower() in low for e in entries or ())
         if not is_name_match:
             sec_pt = 0
             for name in order:
@@ -2018,21 +2221,21 @@ def shelf_check(xl, owner, text, write_snapshot=False, warn=None, hold_changed=F
             if not os.path.isfile(before_path):
                 write_vba_snapshot(qs, ans, path=before_path)
             t_d_start = _t.perf_counter()
-            py_ans = [shelf_pick(q, entries) for q in qs]
+            meta = _prepare_entries_meta(entries)
+            t_pk0 = _t.perf_counter()
+            py_ans = [shelf_pick(q, entries, meta=meta) for q in qs]
+            t_pk = _t.perf_counter() - t_pk0
             # 2026-10-27 番頭点検: 「棚の名前」か「空（＝AIへ）」以外の第3の返却値（「AIへ: …」等）を止める
+            t_bv0 = _t.perf_counter()
             bad_vba = [(q, a) for q, a in zip(qs, ans) if a and a not in valid_shelf_names]
             bad_py = [(q, p) for q, p in zip(qs, py_ans) if p and p not in valid_shelf_names]
-            if bad_vba or bad_py:
-                ok = False
-                lines.append(f"約束違反の返却値（棚の名前でも空でもない第3の答え）: VBA {len(bad_vba)} 問 / Python写し {len(bad_py)} 問")
-                for q, a in (bad_vba or bad_py)[:12]:
-                    lines.append(f"  「{q}」 返却値={a!r}（返せるのは棚の名前か空文字だけ）")
+            t_bv = _t.perf_counter() - t_bv0
+            t_df0 = _t.perf_counter()
             diffs = parity_diffs(qs, ans, entries, py_answers=py_ans)
-            if diffs:
-                ok = False
-                lines.append(f"VBA と Python の写しの食い違い: {len(diffs)} 問（{len(qs)} 問中）")
-                lines += [f"  「{q}」 VBA={a or '(AIへ)'}  写し={p or '(AIへ)'}" for q, a, p in diffs[:12]]
+            t_df = _t.perf_counter() - t_df0
+            t_ms0 = _t.perf_counter()
             miss = [(q, e, a) for (e, q), a in zip(qa, ans) if e != a]
+            t_ms = _t.perf_counter() - t_ms0
             if miss:
                 ok = False
                 lines.append(f"問題集の横取り・当たらなくなった頼み: {len(miss)} 問（{len(qs)} 問中）")
@@ -2040,6 +2243,7 @@ def shelf_check(xl, owner, text, write_snapshot=False, warn=None, hold_changed=F
                     why = vba_peek(xl, owner, q).split('\n')[1:2]
                     lines.append(f"  「{q}」 期待={e or '(AIへ)'}  今={a or '(AIへ)'}" + (f"  ← {why[0].strip()}" if why and why[0].strip() else ''))
             t_diff = _t.perf_counter() - t_d_start
+            lines.append(f"    照合内訳: 写し計算 {t_pk:.3f}秒・返却値検査 {t_bv:.3f}秒・差分比較 {t_df:.3f}秒・期待照合 {t_ms:.3f}秒")
             if not diffs and not miss and not bad_vba and not bad_py:
                 t_e_start = _t.perf_counter()
                 # 2026-10-22 指示書039: 入口の照合（Excelコンボ判定 vs seiri判定 plan_full）

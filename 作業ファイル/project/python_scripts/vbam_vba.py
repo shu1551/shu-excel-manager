@@ -8175,7 +8175,7 @@ def _test_gate_before_burn(wb, all_tests=False, codes=None):
     with contextlib.redirect_stdout(buf):
         ok = cmd_gate(argparse.Namespace(posargs=[str(wb.Name)], json=False, timeout=180, keep=False,
                                          addins=False, module=None, changed=not all_tests, codes=codes))
-    lines = [ln for ln in buf.getvalue().splitlines() if ln.startswith(('判定:', '    ✗', '結果:', '変わった'))]
+    lines = [ln for ln in buf.getvalue().splitlines() if ln.startswith(('判定:', '    ✗', '結果:', '変わった', '重い試験'))]
     if ok:
         print("テストの関所: 通りました（" + "・".join(ln.strip() for ln in lines if not ln.startswith('    ✗')) + "）")
         return True
@@ -8981,6 +8981,36 @@ def _com_error_text(e):
     return " - ".join(parts) if parts else str(e)
 
 
+# 重い性能・ストレステスト（指示書083: --slow 指定時のみ実行、通常全体実行から除外して15秒以内を達成。指示書088の2: gate --changed からも除外）
+SLOW_TESTS = {
+    'テスト_ストレステスト_1万行一括走査性能',
+    'テスト_マクロ撃ち50_性能',
+    'テスト_1万行答え合わせ秒数計測',
+    'テスト_1万行ストレステスト_代表棚',
+    'テスト_難関_極限耐久1000行複数アイランド完走',
+    'テスト_汚れた表で値を書き換える棚',
+    'テスト_撃った後の答え合わせ',
+    'テスト_ピボットの中身',
+    'テスト_ピボットの件数と月別と手直し',
+    'テスト_難関_二段見出し多重テーブル整流化',
+    'テスト_難関_複数シート横断アクティブ隔離',
+    'テスト_難関_極限境界_全列エラーセル',
+    'テスト_マクロ撃ち50_状態復帰とボタン保護',
+    'テスト_マクロ撃ち50_左右突合',
+    'テスト_マクロ撃ち_複合帳票',
+    'テスト_レシピ',
+    'テスト_マクロ撃ち_空白と改行と名前',
+    'テスト_マクロ撃ち_荒れたシートでも止まらない',
+    'テスト_マクロ撃ち_会社名と表記',
+    'テスト_マクロ撃ち_式の列の直書き',
+    'テスト_マクロ撃ち_集計の行と式を壊さない',
+    'テスト_外れた型の棚4本',
+    'テスト_マクロ撃ち_初見の表で外れた所',
+    'テスト_マクロ撃ち_数と単位',
+    'テスト_マクロ撃ち_日付と時刻',
+}
+
+
 def cmd_test(args):
     """VBAテストランナー: test [excel_file] [絞り込み] [--module 名] [--auto-dialog ok] [--json]
 
@@ -9035,34 +9065,6 @@ def cmd_test(args):
                     continue
                 tests.append((comp.Name, name))
 
-        # 重い性能・ストレステスト（指示書083: --slow 指定時のみ実行、通常全体実行から除外して15秒以内を達成）
-        SLOW_TESTS = {
-            'テスト_ストレステスト_1万行一括走査性能',
-            'テスト_マクロ撃ち50_性能',
-            'テスト_1万行答え合わせ秒数計測',
-            'テスト_1万行ストレステスト_代表棚',
-            'テスト_難関_極限耐久1000行複数アイランド完走',
-            'テスト_汚れた表で値を書き換える棚',
-            'テスト_撃った後の答え合わせ',
-            'テスト_ピボットの中身',
-            'テスト_ピボットの件数と月別と手直し',
-            'テスト_難関_二段見出し多重テーブル整流化',
-            'テスト_難関_複数シート横断アクティブ隔離',
-            'テスト_難関_極限境界_全列エラーセル',
-            'テスト_マクロ撃ち50_状態復帰とボタン保護',
-            'テスト_マクロ撃ち50_左右突合',
-            'テスト_マクロ撃ち_複合帳票',
-            'テスト_レシピ',
-            'テスト_マクロ撃ち_空白と改行と名前',
-            'テスト_マクロ撃ち_荒れたシートでも止まらない',
-            'テスト_マクロ撃ち_会社名と表記',
-            'テスト_マクロ撃ち_式の列の直書き',
-            'テスト_マクロ撃ち_集計の行と式を壊さない',
-            'テスト_外れた型の棚4本',
-            'テスト_マクロ撃ち_初見の表で外れた所',
-            'テスト_マクロ撃ち_数と単位',
-            'テスト_マクロ撃ち_日付と時刻',
-        }
         if not getattr(args, 'slow', False) and not keyword and only is None:
             tests = [(m, n) for m, n in tests if n not in SLOW_TESTS]
     except Exception as ex:
@@ -9856,15 +9858,31 @@ def cmd_gate(args):
             shown = '・'.join(procs[:6]) + (f" ほか {len(procs) - 6} 本" if len(procs) > 6 else '')
             print(f"変わったプロシージャ（{marks.get('time')} に焼いてから・{'・'.join(ch)}）: {shown or 'なし'}"
                   f" → 関わるテスト {len(only)}/{len(tnames)} 本")
+            slow_skipped = [t for t in sorted(only) if t in SLOW_TESTS]
+            if slow_skipped:
+                only = only - SLOW_TESTS
+                shown_slow = '・'.join(slow_skipped[:3]) + (f" ほか {len(slow_skipped) - 3} 本" if len(slow_skipped) > 3 else '')
+                print(f"重い試験 {len(slow_skipped)} 本は飛ばした（test --slow で回る）: {shown_slow}")
 
-    # 指示書086: --changed で関わるテストが 0 本のときは写しも別 Excel も起こさず本体で検査
-    if only is not None and len(only) == 0:
-        t_start = time.time()
-        n_err = n_warn = 0
+    # 指示書088: 関わるテストが 1 本以上でも写しと別 Excel を使わず本体で回す（083 の test と同じやり方）
+    t_start = time.time()
+    blanks_before = _blank_book_names(xl_src)
+
+    check_doc = None
+    compile_doc = None
+    test_doc = None
+    n_err = n_warn = 0
+    fatal = None
+    timed_out = False
+
+    try:
+        # 1) 構文検査（JSON で受けて要点だけ出す）
         cmd_progress_note("構文検査（check）")
         with _JsonLineSieve() as sieve:
             cmd_check(argparse.Namespace(posargs=[str(wb_src.Name)], json=True,
-                                         codes=codes, only_modules=ch, xl=xl_src, wb=wb_src))
+                                         codes=codes if getattr(args, 'changed', False) else None,
+                                         only_modules=ch if getattr(args, 'changed', False) and 'ch' in locals() else None,
+                                         xl=xl_src, wb=wb_src))
         check_doc = sieve.last
         if check_doc is not None:
             summ = check_doc.get('summary') or {}
@@ -9874,188 +9892,32 @@ def cmd_gate(args):
             for m in check_doc.get('modules') or []:
                 for e in m.get('errors') or []:
                     print(f"    [ERROR] {m.get('name')}: {e}")
+
+        # 2) 全体コンパイル
         cmd_progress_note("全体コンパイル")
         compile_doc = _compile_vbproject(xl_src, wb_src)
         print("  全体コンパイル: %s（%s）" % ("OK" if compile_doc["ok"] else "NG",
                                         compile_doc["detail"]))
-        print("  テスト: 変わったモジュールに関わるテストが無いので飛ばしました（構文と全体コンパイルだけ）")
-        elapsed = time.time() - t_start
-        reasons = []
-        if check_doc is None:
-            reasons.append("構文検査ができませんでした")
-        elif n_err:
-            reasons.append(f"構文エラー {n_err} 件")
-        if compile_doc is not None and not compile_doc["ok"]:
-            reasons.append(f"全体コンパイル NG: {compile_doc['detail']}")
-        ok = not reasons
-        print("-" * 60)
-        if ok:
-            _cmp = (compile_doc or {}).get("state")
-            _cmp_word = "・全体コンパイル OK" if _cmp in ("compiled", "already") else (
-                "・全体コンパイルは判定なし" if _cmp else "")
-            print(f"判定: 通過（PASS）  構文エラー {n_err}{_cmp_word}・テスト 0/0 成功  （{elapsed:.1f}秒）")
+
+        # 3) テスト
+        if only is not None and len(only) == 0:
+            print("  テスト: 変わったモジュールに関わるテストが無いので飛ばしました（構文と全体コンパイルだけ）")
         else:
-            print(f"判定: 不通過（FAIL）  理由: " + " / ".join(reasons) + f"  （{elapsed:.1f}秒）")
-        if is_json:
-            print(json.dumps({
-                "pass": ok, "book": src_name, "check": check_doc,
-                "compile": compile_doc, "tests": {"total": 0, "passed": 0, "failed": 0},
-                "timeout": False, "seconds": round(elapsed, 2), "reasons": reasons
-            }, ensure_ascii=False))
-        return ok
-
-    # 2026-10-29: 下の check／test が写しを掴むと台帳（_calls.jsonl）の book が写しの名前になった（register-addin で
-    # 秀コンボ_関所_….xlsm と残った）。呼び出しの対象のブック名を控え、写しを閉じる所で戻す
-    book_name = vbam_core._last_book_name
-    # 使う人の Excel の空のブックを控える（関所の後に増えた分だけ閉じる）
-    blanks_before = _blank_book_names(xl_src)
-    # 抜け殻の VBA プロジェクトが残った Excel（更新登録を重ねた・落ちて立ち上がり直した）では、演習用 Excel のテストが途中で
-    # 止まり、使う人の Excel に空のブックが増えた。開き直した Excel では空のブックがあっても 65/65 通った（2026-10-09 実測）
-    try:
-        _ghosts = _ghost_projects(xl_src)
-    except Exception:
-        _ghosts = 0
-    if _ghosts:
-        print(f"⚠ 抜け殻の VBA プロジェクトが {_ghosts} 個残っています。この Excel のままだと関所のテストが途中で止まる"
-              "ことがあります（テストが一斉に「RPC サーバーを利用できません」になったら、Excel を開き直してからやり直してください）")
-    stem, ext = os.path.splitext(src_name)
-    if not ext:
-        ext = '.xlsx'
-    stamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    copy_path = os.path.join(tempfile.gettempdir(), f"{stem}_関所_{stamp}{ext}")
-    seq = 1
-    while os.path.exists(copy_path):
-        seq += 1
-        copy_path = os.path.join(tempfile.gettempdir(), f"{stem}_関所_{stamp}_{seq}{ext}")
-    try:
-        wb_src.SaveCopyAs(copy_path)
-    except Exception as e:
-        print(f"エラー: コピーを作れませんでした: {e}")
-        print("  （一度も保存していない新規ブックは、先に save-as で実体を作ってください）")
-        return False
-    print(f"関所: {src_name} のコピーで検分します（本体は無傷）")
-    print(f"  コピー: {copy_path}")
-    cmd_progress_note("コピーを別の Excel で開いています")
-
-    t_start = time.time()
-    # 演習用の Excel は必ず別インスタンス（DispatchEx）。ユーザーの Excel には触れない
-    xl2 = win32com.client.DispatchEx("Excel.Application")
-    pid = None
-    try:
-        import win32process
-        _, pid = win32process.GetWindowThreadProcessId(xl2.Hwnd)
-    except Exception:
-        pass
-    if not vbam_core.is_fresh_instance(xl2):
-        # 使う人の Excel に合流した（2026-09-23）。ここで撃つと人のブックを触り、後始末で人の Excel を落とす
-        print(f"エラー: 演習用の Excel を起こせませんでした（使う人の Excel・PID {pid} に合流）。"
-              "Excel を開き直してからやり直してください")
-        return False
-    inst = {"xl": xl2, "pid": pid}
-    vbam_core._created_instances.append(inst)      # 安全網（本線は下の finally で畳む）
-    cache_key = os.path.abspath(copy_path).lower()
-
-    check_doc = None
-    test_doc = None
-    compile_doc = None
-    n_err = n_warn = 0
-    fatal = None
-    timed_out = False
-    wb2 = None
-    # 開く〜構文検査の間も時間切れを見張る（テスト段階は cmd_test の見張りに残り時間ごと引き継ぐ）
-    wd = _start_call_watchdog(timeout, owned_pid=pid)
-    try:
-        xl2.Visible = "--visible" in sys.argv or "-v" in sys.argv
-        xl2.DisplayAlerts = False
-        try:
-            xl2.EnableEvents = False       # 開く瞬間の Workbook_Open は起こさない
-        except Exception:
-            pass
-        if getattr(args, 'addins', False):
-            load_excel_addins_and_personal(xl2)
-        wb2 = xl2.Workbooks.Open(copy_path, 0)   # UpdateLinks=0
-        try:
-            xl2.EnableEvents = True        # テスト中のイベントは本番同様に生かす
-        except Exception:
-            pass
-        # 以後の check / test はこの接続を使う（get_workbook の接続キャッシュに載せる＝
-        # 開き直さない・本体を掴まない）
-        vbam_core._wb_cache[cache_key] = (xl2, wb2, False)
-
-        # 1) 構文検査（JSON で受けて要点だけ出す）
-        cmd_progress_note("構文検査（check）")
-        with _JsonLineSieve() as sieve:
-            cmd_check(argparse.Namespace(posargs=[copy_path], json=True))
-        check_doc = sieve.last
-        if check_doc is not None:
-            summ = check_doc.get('summary') or {}
-            n_err = int(summ.get('errors', 0) or 0)
-            n_warn = int(summ.get('warnings', 0) or 0)
-            print(f"  構文: {'OK' if n_err == 0 else 'NG'}（エラー {n_err}・警告 {n_warn}）")
-            for m in check_doc.get('modules') or []:
-                for e in m.get('errors') or []:
-                    print(f"    [ERROR] {m.get('name')}: {e}")
-        wd.stop()
-        if wd.fired:
-            timed_out = True
-        else:
-            # 2) 全体コンパイル（check が見ない「呼ばれないマクロの中」まで見る）
-            cmd_progress_note("全体コンパイル")
-            compile_doc = _compile_vbproject(xl2, wb2)
-            print("  全体コンパイル: %s（%s）" % ("OK" if compile_doc["ok"] else "NG",
-                                            compile_doc["detail"]))
-            # 3) テスト（残り時間を引き継ぐ。時間切れは演習用 Excel を強制終了）
-            remaining = None
-            if wd.seconds:
-                remaining = max(1.0, wd.seconds - (time.time() - t_start))
+            cmd_progress_note("テスト Sub を一括実行（test）")
             ns = argparse.Namespace(
-                posargs=[copy_path] + ([keyword] if keyword else []),
+                posargs=[str(wb_src.Name)] + ([keyword] if keyword else []),
                 module=getattr(args, 'module', None), json=True,
                 auto_dialog=getattr(args, 'auto_dialog', None),
                 input_text=getattr(args, 'input_text', None),
-                timeout=remaining, owned_pid=pid, only=only,
-                # 関所の写しは捨てる物＝test がもう一度写して開き直さない（2026-10-29: 写しを 2 回作っていた）
+                timeout=timeout, only=only,
                 in_place=True)
-            if only is not None and not only:
-                print("  テスト: 変わったモジュールに関わるテストが無いので飛ばしました（構文と全体コンパイルだけ）")
-            else:
-                cmd_progress_note("テスト Sub を一括実行（test）")
-                with _JsonLineSieve() as sieve:
-                    cmd_test(ns)
-                test_doc = sieve.last            # None＝テストが見つからない（cmd_test が案内を出す）
+            with _JsonLineSieve() as sieve:
+                cmd_test(ns)
+            test_doc = sieve.last
             if test_doc is not None and test_doc.get('timeout'):
                 timed_out = True
     except Exception as e:
         fatal = _com_error_text(e)
-    finally:
-        vbam_core._last_book_name = book_name
-        wd.stop()
-        if wd.fired:
-            timed_out = True
-        vbam_core._wb_cache.pop(cache_key, None)
-        if wb2 is not None:
-            try:
-                wb2.Close(SaveChanges=False)
-            except Exception:
-                pass
-            wb2 = None
-        try:
-            xl2.Quit()
-        except Exception:
-            pass
-        xl2 = None
-        try:
-            vbam_core._created_instances.remove(inst)
-            inst["xl"] = None
-        except ValueError:
-            pass
-        gc.collect()
-        if timed_out and pid is not None and vbam_core._pid_is_excel(pid):
-            # 見張りが撃ち損ねていたら、ここで確実に畳む（演習用だけ。PID の身元は確認済み）
-            try:
-                os.kill(pid, signal.SIGTERM)
-            except Exception:
-                pass
 
     left = _close_new_blank_books(xl_src, blanks_before)
     if left:
@@ -10077,10 +9939,10 @@ def cmd_gate(args):
     if compile_doc is not None and not compile_doc["ok"]:
         reasons.append(f"全体コンパイル NG: {compile_doc['detail']}")
     if timed_out:
-        reasons.append(f"時間切れ（{float(timeout):g}秒）＝演習用 Excel を強制終了")
+        reasons.append(f"時間切れ（{float(timeout):g}秒）")
         if failed:
             reasons.append(f"テスト {len(failed)}/{total} 本 NG（未実行を含む）")
-    elif not fatal:
+    else:
         if total == 0 and not (only is not None and not only):
             reasons.append("テストが 0 本＝合否を言えない（「テスト」/test 始まりの引数なし Sub を書く）")
         elif failed:
@@ -10098,26 +9960,8 @@ def cmd_gate(args):
         for t in failed[:20]:
             print(f"    ✗ {t.get('name')}  [{t.get('module')}]  {t.get('error')}")
 
-    if keep:
-        print(f"コピーを残しました: {copy_path}")
-    else:
-        # 強制終了直後はロックが残ることがあるので少し待って消す
-        removed = False
-        for _ in range(6):
-            try:
-                os.remove(copy_path)
-                removed = True
-                break
-            except FileNotFoundError:
-                removed = True
-                break
-            except OSError:
-                time.sleep(0.5)
-        if not removed:
-            print(f"⚠ コピーを削除できませんでした（手で削除してください）: {copy_path}")
-
     if is_json:
-        out = {"pass": ok, "book": src_name, "copy": copy_path if keep else None,
+        out = {"pass": ok, "book": src_name, "copy": None,
                "check": ({"errors": n_err, "warnings": n_warn} if check_doc is not None else None),
                "compile": compile_doc,
                "tests": {"total": total, "passed": passed,

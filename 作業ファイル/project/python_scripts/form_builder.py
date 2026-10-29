@@ -20,12 +20,91 @@ form_builder.py - UserForm作成のための共通ユーティリティ
 """
 
 import gc
+import json
 import os
 import re
+import time
 import pythoncom
 import win32com.client
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+# ================================================================
+# 台帳記録ヘルパー（指示書089・089の2: 所属ブック名を正しく記録）
+# ================================================================
+
+_CURRENT_FB_BOOK = None
+
+
+def _find_book_from_frm(frm):
+    """コントロールの親 (frm) から所属ブック名を取得する（指示書089の2）"""
+    global _CURRENT_FB_BOOK
+    if frm is None:
+        return _CURRENT_FB_BOOK
+    wb = getattr(frm, "_wb", None) or getattr(frm, "workbook", None)
+    if wb and hasattr(wb, "Name"):
+        return str(wb.Name)
+    cur = frm
+    for _ in range(5):
+        try:
+            vbp = getattr(cur, "Collection", None)
+            if vbp is not None:
+                proj = getattr(vbp, "Parent", None)
+                if proj is not None:
+                    parent_wb = getattr(proj, "Parent", None)
+                    if parent_wb is not None and hasattr(parent_wb, "Name"):
+                        return str(parent_wb.Name)
+        except Exception:
+            pass
+        try:
+            p = getattr(cur, "Parent", None)
+            if p is None or p == cur:
+                break
+            cur = p
+        except Exception:
+            break
+    return _CURRENT_FB_BOOK
+
+
+def _log_form_builder_call(cmd, args_str, sec, ok=True, book=None, why=None):
+    try:
+        import vbam_core
+        book_name = book or _CURRENT_FB_BOOK
+        rec = {
+            "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "cmd": cmd,
+            "args": str(args_str)[:80],
+            "sec": round(float(sec), 3),
+            "ok": (None if ok is None else bool(ok)),
+            "book": book_name,
+            "via": "py"
+        }
+        if why and ok is not True:
+            rec["why"] = str(why)[:120]
+        call_log = getattr(vbam_core, "_CALL_LOG_FILE", None) or os.path.join(SCRIPT_DIR, "_calls.jsonl")
+        with open(call_log, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+def _log_ctl(func_name):
+    def deco(fn):
+        def wrapper(frm, name, *args, **kwargs):
+            t0 = time.time()
+            book_name = _find_book_from_frm(frm) or _CURRENT_FB_BOOK
+            try:
+                res = fn(frm, name, *args, **kwargs)
+                _log_form_builder_call("form-builder", f"{func_name} {name}", time.time() - t0, ok=True, book=book_name)
+                return res
+            except Exception as ex:
+                _log_form_builder_call("form-builder", f"{func_name} {name}", time.time() - t0, ok=False, book=book_name, why=str(ex))
+                raise
+        wrapper.__name__ = fn.__name__
+        wrapper.__doc__ = fn.__doc__
+        return wrapper
+    return deco
 
 
 # ================================================================
@@ -52,6 +131,7 @@ def check_control_name(name):
 # コントロール追加ヘルパー
 # ================================================================
 
+@_log_ctl("add_btn")
 def add_btn(frm, name, caption, left, top, width, height, *, font_size=12, font_bold=False):
     """CommandButton を追加する"""
     check_control_name(name)
@@ -64,6 +144,7 @@ def add_btn(frm, name, caption, left, top, width, height, *, font_size=12, font_
     return b
 
 
+@_log_ctl("add_lbl")
 def add_lbl(frm, name, caption, left, top, width, height, *,
             align=1, fore=None, back=None, font_size=12, font_bold=False):
     """Label を追加する (align: 1=左, 2=中央, 3=右)"""
@@ -82,6 +163,7 @@ def add_lbl(frm, name, caption, left, top, width, height, *,
     return lbl
 
 
+@_log_ctl("add_txt")
 def add_txt(frm, name, left, top, width, height, *,
             value="", multiline=False, scrollbars=0, font_size=12):
     """TextBox を追加する"""
@@ -97,6 +179,7 @@ def add_txt(frm, name, left, top, width, height, *,
     return t
 
 
+@_log_ctl("add_lst")
 def add_lst(frm, name, left, top, width, height, *, font_size=12):
     """ListBox を追加する"""
     check_control_name(name)
@@ -106,6 +189,7 @@ def add_lst(frm, name, left, top, width, height, *, font_size=12):
     return lb
 
 
+@_log_ctl("add_combo")
 def add_combo(frm, name, left, top, width, height, *, font_size=12):
     """ComboBox を追加する"""
     check_control_name(name)
@@ -115,6 +199,7 @@ def add_combo(frm, name, left, top, width, height, *, font_size=12):
     return cb
 
 
+@_log_ctl("add_chk")
 def add_chk(frm, name, caption, left, top, width, height, *, font_size=12):
     """CheckBox を追加する"""
     check_control_name(name)
@@ -125,6 +210,7 @@ def add_chk(frm, name, caption, left, top, width, height, *, font_size=12):
     return c
 
 
+@_log_ctl("add_opt")
 def add_opt(frm, name, caption, left, top, width, height, *, font_size=12):
     """OptionButton を追加する"""
     check_control_name(name)
@@ -135,6 +221,7 @@ def add_opt(frm, name, caption, left, top, width, height, *, font_size=12):
     return o
 
 
+@_log_ctl("add_frame")
 def add_frame(frm, name, caption, left, top, width, height, *, font_size=12):
     """Frame を追加する"""
     check_control_name(name)
@@ -145,6 +232,7 @@ def add_frame(frm, name, caption, left, top, width, height, *, font_size=12):
     return f2
 
 
+@_log_ctl("add_img")
 def add_img(frm, name, left, top, width, height):
     """Image を追加する"""
     check_control_name(name)
@@ -153,6 +241,7 @@ def add_img(frm, name, left, top, width, height):
     return img
 
 
+@_log_ctl("add_spin")
 def add_spin(frm, name, left, top, width, height):
     """SpinButton を追加する"""
     check_control_name(name)
@@ -161,6 +250,7 @@ def add_spin(frm, name, left, top, width, height):
     return sp
 
 
+@_log_ctl("add_scroll")
 def add_scroll(frm, name, left, top, width, height, *, orientation=0):
     """ScrollBar を追加する (orientation: 0=水平, 1=垂直)"""
     check_control_name(name)
@@ -231,9 +321,12 @@ class FormBuilder:
     """
 
     def __init__(self, xl, wb):
+        global _CURRENT_FB_BOOK
         self._xl = xl
         self._wb = wb
         self._backed_up = set()      # この接続で控えを取ったフォーム（壊す前に 1 回だけ）
+        if wb and hasattr(wb, "Name"):
+            _CURRENT_FB_BOOK = str(wb.Name)
 
     # ---- ファクトリ ----
 
@@ -298,6 +391,9 @@ class FormBuilder:
     # ---- コンテキストマネージャ ----
 
     def __enter__(self):
+        global _CURRENT_FB_BOOK
+        if self._wb and hasattr(self._wb, "Name"):
+            _CURRENT_FB_BOOK = str(self._wb.Name)
         return self
 
     def __exit__(self, *_):
@@ -353,6 +449,16 @@ class FormBuilder:
         指定名のフォームを探して返す。なければ新規作成する。
         caption / width / height を指定するとプロパティも設定する。
         """
+        t0 = time.time()
+        try:
+            res = self._get_or_create_inner(form_name, caption=caption, width=width, height=height)
+            _log_form_builder_call("form-builder", f"get_or_create {form_name}", time.time() - t0, ok=True, book=getattr(self._wb, "Name", None))
+            return res
+        except Exception as ex:
+            _log_form_builder_call("form-builder", f"get_or_create {form_name}", time.time() - t0, ok=False, book=getattr(self._wb, "Name", None), why=str(ex))
+            raise
+
+    def _get_or_create_inner(self, form_name, *, caption=None, width=None, height=None):
         frm_comp = None
         for comp in self.vbproject.VBComponents:
             if comp.Name == form_name:
@@ -434,6 +540,16 @@ class FormBuilder:
 
     def delete_form(self, form_name):
         """指定名のフォームを削除する (存在しない場合は何もしない)"""
+        t0 = time.time()
+        try:
+            res = self._delete_form_inner(form_name)
+            _log_form_builder_call("form-builder", f"delete_form {form_name}", time.time() - t0, ok=True, book=getattr(self._wb, "Name", None))
+            return res
+        except Exception as ex:
+            _log_form_builder_call("form-builder", f"delete_form {form_name}", time.time() - t0, ok=False, book=getattr(self._wb, "Name", None), why=str(ex))
+            raise
+
+    def _delete_form_inner(self, form_name):
         for comp in self.vbproject.VBComponents:
             if comp.Name == form_name:
                 self._backup_form_once(comp)
@@ -445,6 +561,18 @@ class FormBuilder:
         print(f"{form_name} は存在しません")
 
     def clear_controls(self, frm_comp):
+        """フォームの既存コントロールをすべて削除し、Designer オブジェクトを返す。"""
+        t0 = time.time()
+        cname = getattr(frm_comp, "Name", "unknown")
+        try:
+            res = self._clear_controls_inner(frm_comp)
+            _log_form_builder_call("form-builder", f"clear_controls {cname}", time.time() - t0, ok=True, book=getattr(self._wb, "Name", None))
+            return res
+        except Exception as ex:
+            _log_form_builder_call("form-builder", f"clear_controls {cname}", time.time() - t0, ok=False, book=getattr(self._wb, "Name", None), why=str(ex))
+            raise
+
+    def _clear_controls_inner(self, frm_comp):
         """フォームの既存コントロールをすべて削除し、Designer オブジェクトを返す。
 
         本当に残ったものだけを報告する。判定は Remove の戻りではなく
@@ -483,34 +611,42 @@ class FormBuilder:
         既存コードは全削除してから上書き。
         vba_file 省略時はスクリプトと同じ場所の _last_form_code.vba を使う。
         """
-        if vba_file is None:
-            vba_file = os.path.join(SCRIPT_DIR, "_last_form_code.vba")
-        abs_vba = os.path.abspath(vba_file)
-        with open(abs_vba, "r", encoding="utf-8") as fp:
-            code = fp.read()
-        # 識別子ガード（注入点側の多層防御）: 先頭 _ 等の無効なプロシージャ名は
-        # AddFromString が黙って受け入れてコンパイルで死ぬ。既存コードを消す前に止める。
-        import vba_manager
-        bad = vba_manager._find_invalid_procedure_names(re.sub(r'\r\n|\r', '\n', code))
-        if bad:
-            for ln, _nm, reason in bad:
-                print(f"エラー: 行{ln}: プロシージャ名が VBA の識別子規則に反しています: {reason}")
-            raise ValueError("VBA 識別子規則違反のため注入を中止しました（フォームの既存コードは残っています）")
-        # VBE は CP932 でコードを持つ。書けない文字（— ✓ 絵文字など）は黙って「?」に化けるので、既存コードを消す前に止める
-        # （replace-procedure・code-replace と同じ・2026-10-28 点検）
+        t0 = time.time()
+        cname = getattr(frm_comp, "Name", "unknown")
+        vf_base = os.path.basename(vba_file) if vba_file else "_last_form_code.vba"
         try:
-            code.encode('cp932')
-        except UnicodeEncodeError as e:
-            raise ValueError(f"CP932（Shift_JIS）で書けない文字 '{code[e.start:e.end]}' があるため注入を中止しました"
-                             "（フォームの既存コードは残っています）")
-        self._backup_form_once(frm_comp)
-        cm = frm_comp.CodeModule
-        if cm.CountOfLines > 0:
-            cm.DeleteLines(1, cm.CountOfLines)
-        # 改行を正規CRLFに揃える（改行二重化ガード／AddFromString直前の防御統一）
-        code = re.sub(r'\r+\n?', '\n', code).replace('\n', '\r\n')
-        cm.AddFromString(code)
-        print(f"VBAコード注入完了 ({os.path.basename(vba_file)})")
+            if vba_file is None:
+                vba_file = os.path.join(SCRIPT_DIR, "_last_form_code.vba")
+            abs_vba = os.path.abspath(vba_file)
+            with open(abs_vba, "r", encoding="utf-8") as fp:
+                code = fp.read()
+            # 識別子ガード（注入点側の多層防御）: 先頭 _ 等の無効なプロシージャ名は
+            # AddFromString が黙って受け入れてコンパイルで死ぬ。既存コードを消す前に止める。
+            import vba_manager
+            bad = vba_manager._find_invalid_procedure_names(re.sub(r'\r\n|\r', '\n', code))
+            if bad:
+                for ln, _nm, reason in bad:
+                    print(f"エラー: 行{ln}: プロシージャ名が VBA の識別子規則に反しています: {reason}")
+                raise ValueError("VBA 識別子規則違反のため注入を中止しました（フォームの既存コードは残っています）")
+            # VBE は CP932 でコードを持つ。書けない文字（— ✓ 絵文字など）は黙って「?」に化けるので、既存コードを消す前に止める
+            # （replace-procedure・code-replace と同じ・2026-10-28 点検）
+            try:
+                code.encode('cp932')
+            except UnicodeEncodeError as e:
+                raise ValueError(f"CP932（Shift_JIS）で書けない文字 '{code[e.start:e.end]}' があるため注入を中止しました"
+                                 "（フォームの既存コードは残っています）")
+            self._backup_form_once(frm_comp)
+            cm = frm_comp.CodeModule
+            if cm.CountOfLines > 0:
+                cm.DeleteLines(1, cm.CountOfLines)
+            # 改行を正規CRLFに揃える（改行二重化ガード／AddFromString直前の防御統一）
+            code = re.sub(r'\r+\n?', '\n', code).replace('\n', '\r\n')
+            cm.AddFromString(code)
+            print(f"VBAコード注入完了 ({os.path.basename(vba_file)})")
+            _log_form_builder_call("form-builder", f"inject_vba {cname} {vf_base}", time.time() - t0, ok=True, book=getattr(self._wb, "Name", None))
+        except Exception as ex:
+            _log_form_builder_call("form-builder", f"inject_vba {cname} {vf_base}", time.time() - t0, ok=False, book=getattr(self._wb, "Name", None), why=str(ex))
+            raise
 
     def save(self):
         """ブックを上書き保存する"""
