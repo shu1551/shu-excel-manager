@@ -6788,3 +6788,20 @@ def test_gate_check_asks_for_a_sub_command_that_deletes(tmp_path, monkeypatch):
     _answer_when_asked(log, "no")
     msg = _srv._gate_check("sheet delete 集計 -y", wait=5)
     assert msg is not None and "sheet delete" in msg and "却下" in msg
+
+
+def test_compact_diff_shows_only_around_the_change_of_a_long_line():
+    """長い頭の行（' 依頼の組: が 2,000 字）の直しは、変わった所の前後だけを見せる（2026-10-29 出力の見直し）。"""
+    import difflib
+    import vbam_vba as vv
+    head = "' 依頼の組: " + "・".join(f"語{i}+語{i + 1}" for i in range(300))
+    old = ["Sub 棚()", head, "    x = 1", "End Sub"]
+    new = ["Sub 棚()", head.replace("語150+語151", "語150+直した語"), "    x = 1", "End Sub"]
+    out = vv._compact_diff(list(difflib.unified_diff(old, new, lineterm="")))
+    assert not any(ln.startswith(("---", "+++")) for ln in out)
+    minus = [ln for ln in out if ln.startswith("-")]
+    plus = [ln for ln in out if ln.startswith("+")]
+    assert len(minus) == 1 and len(plus) == 1
+    assert "直した語" in plus[0] and "語151" in minus[0]
+    assert len(plus[0]) < 160 and f"（{len(new[1])} 字の行）" in plus[0]
+    assert all(len(ln) < 200 for ln in out)

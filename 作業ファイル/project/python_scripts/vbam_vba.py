@@ -2710,6 +2710,51 @@ def _project_code_fn(target_file):
     return _read
 
 
+def _clip_pair(old, new, around=40):
+    """長い行の組（- と +）を、変わった所の前後 around 字だけに縮める → (旧, 新)。"""
+    p = 0
+    while p < min(len(old), len(new)) and old[p] == new[p]:
+        p += 1
+    s = 0
+    while s < min(len(old), len(new)) - p and old[-1 - s] == new[-1 - s]:
+        s += 1
+    lo = max(0, p - around)
+
+    def cut(t):
+        hi = min(len(t), len(t) - s + around)
+        return ('…' if lo else '') + t[lo:hi] + ('…' if hi < len(t) else '') + f"（{len(t)} 字の行）"
+    return cut(old), cut(new)
+
+
+def _compact_diff(diff, wide=120, around=40):
+    """unified_diff の行を、読む分だけにする（2026-10-29: 1 行 2,000 字の「' 依頼の組:」が - と + で丸ごと 2 回出て、
+    小さな直しの返事が何千字にもなっていた）。--- / +++ の頭は省き、wide 字より長い行は変わった所の前後 around 字だけ、
+    文脈の長い行は頭だけ。"""
+    out, k = [], 0
+    rows = [ln for ln in diff if not ln.startswith(('---', '+++'))]
+    while k < len(rows):
+        if rows[k].startswith('-'):
+            j = k
+            while j < len(rows) and rows[j].startswith('-'):
+                j += 1
+            m = j
+            while m < len(rows) and rows[m].startswith('+'):
+                m += 1
+            olds, news = rows[k:j], rows[j:m]
+            if len(olds) == len(news):
+                pairs = [_clip_pair(o[1:], n[1:], around) if max(len(o), len(n)) > wide + 1 else (o[1:], n[1:])
+                         for o, n in zip(olds, news)]
+                out += ['-' + o for o, _ in pairs] + ['+' + n for _, n in pairs]
+            else:
+                out += [r if len(r) <= wide else r[:wide] + f"…（{len(r) - 1} 字の行）" for r in olds + news]
+            k = m
+            continue
+        r = rows[k]
+        out.append(r if len(r) <= wide else r[:around * 2] + f"…（{len(r) - 1} 字の行）")
+        k += 1
+    return out
+
+
 @remembers_unsaved
 def cmd_replace_procedure(args):
     """プロシージャを置換 (コードファイル省略時は _last_proc.vba を使用)"""
@@ -2836,7 +2881,8 @@ def cmd_replace_procedure(args):
             print(f"  例: py vba_manager.py replace-procedure --module {matched_modules[0]}")
             return False
 
-    if make_backup(wb.FullName, macro_name) is None and not getattr(args, 'force', False):
+    book_backup = make_backup(wb.FullName, macro_name, quiet=True)
+    if book_backup is None and not getattr(args, 'force', False):
         print("エラー: バックアップが取れないため中止しました（--force で強行可）。")
         print("  ※ 未保存の新規ブックはバックアップできません。一度保存してから実行してください。")
         return False
@@ -2902,10 +2948,8 @@ def cmd_replace_procedure(args):
     ))
 
     if diff:
-        print("\n--- 変更差分 (Diff) ---")
-        for line in diff:
+        for line in _compact_diff(diff):
             print(line)
-        print("----------------------\n")
         # 2026-10-27 番頭点検: 書き換えのついでに「なぜそうしたか」の経緯コメント（日付入り）や
         # 失敗時のステータスバー通知（StatusBar = "..."）を消していないか機械検査する
         if not getattr(args, 'force', False):
@@ -2943,9 +2987,9 @@ def cmd_replace_procedure(args):
             return False
 
     # モジュール単位のバックアップ（Attribute経路の Import 失敗時の復旧素材を兼ねる）
-    module_backup = make_module_backup(wb, target_comp.Name)
-
-    print(f"プロシージャ '{macro_name}' を置換中...")
+    module_backup = make_module_backup(wb, target_comp.Name, quiet=True)
+    # 控えはブックとモジュールの 2 本を 1 行で（2026-10-29: 2 行と「置換中...」で返事が伸びていた）
+    print("控え: backups\\" + "・".join(os.path.basename(b) for b in (book_backup, module_backup) if b))
 
     for comp in wb.VBProject.VBComponents:
         if comp.Name.lower() != target_comp.Name.lower():
@@ -6741,11 +6785,12 @@ def cmd_code_replace(args):
             print("キャンセルされました。")
             return False
 
-    if make_backup(wb.FullName, "code_replace") is None and not getattr(args, 'force', False):
+    book_backup = make_backup(wb.FullName, "code_replace", quiet=True)
+    if book_backup is None and not getattr(args, 'force', False):
         print("エラー: バックアップが取れないため中止しました（--force で強行可）。")
         return False
-    for comp, _ in plans:
-        make_module_backup(wb, comp.Name)
+    backups = [book_backup] + [make_module_backup(wb, comp.Name, quiet=True) for comp, _ in plans]
+    print("控え: backups\\" + "・".join(os.path.basename(b) for b in backups if b))
 
     # 変更行だけを書き換える
     for comp, changes in plans:
@@ -7630,8 +7675,11 @@ def _shelf_parity_gate(xl, wb, why=None):
         print("\n".join("  " + ln for ln in lines))
         print("  直すのは棚の頭（依頼の語・依頼の組・階級）か写し（vbam_prefire.shelf_pick）。分かって焼くなら --no-check")
         return False
-    print("棚の当たり方の検査: 通りました")
-    print("\n".join("  " + ln for ln in lines))
+    # 通ったときは見出しの行だけを 1 行に（2026-10-29: 焼くたびに十数行が返事に出ていた）。⚠ があれば中身も出す
+    heads = [ln.strip() for ln in lines if not ln.startswith('  ')]
+    print("棚の当たり方の検査: 通りました（" + "・".join(heads) + "）")
+    if any(h.startswith('⚠') for h in heads):
+        print("\n".join("  " + ln for ln in lines if ln.startswith('  ')))
     # 警告を読まずに焼かない（2026-10-28 番頭点検）: 前に焼いた後の shelf --train の after に誤爆がある／当たり先が変わった
     # ＝止まりはしないが人が読むべき知らせ。--why "理由" が無ければ焼かない（理由は台帳 _calls.jsonl に残る）
     try:
@@ -7684,8 +7732,7 @@ def _test_gate_before_burn(wb):
                                          addins=False, module=None))
     lines = [ln for ln in buf.getvalue().splitlines() if ln.startswith(('判定:', '    ✗', '結果:'))]
     if ok:
-        print("テストの関所: 通りました")
-        print("\n".join("  " + ln for ln in lines))
+        print("テストの関所: 通りました（" + "・".join(ln.strip() for ln in lines if not ln.startswith('    ✗')) + "）")
         return True
     print("エラー: テストの関所（gate）で止まりました。焼きません")
     print("\n".join("  " + ln for ln in lines))
@@ -7789,12 +7836,12 @@ def cmd_register_addin(args):
     for prop in ('ScreenUpdating', 'EnableEvents', 'DisplayAlerts'):
         with contextlib.suppress(Exception):
             prev[prop] = bool(getattr(xl, prop))
-    print(f"更新登録: {book} → {addin_path}")
     # 読み込み中の .xlam をそのまま上書きすると、登録一覧は Installed=True のままなのに
     # VBA プロジェクトだけ Excel から外れる＝どのブックからもアドインのマクロが使えなくなる。
     # 焼く前に外し、焼いた後に入れ直す（2026-09-23 に実害）。
     # 他のブックのボタンがこのアドインのマクロを指していれば控える（外して入れ直すと焼きの一時ファイルに付け替わる）
     buttons = _addin_buttons_snapshot(xl, wb, addin_file)
+    done = []                          # 成功の知らせ（最後に 1 行）
     unloaded = False
     addin = _find_addin(xl, addin_file)
     if addin is not None:
@@ -7802,7 +7849,6 @@ def cmd_register_addin(args):
             if bool(addin.Installed):
                 addin.Installed = False
                 unloaded = True
-                print(f"  焼く前にアドインを外しました: {addin_file}")
         except Exception as ex:
             print(f"  ⚠ 外せませんでした（このまま焼きます）: {ex}")
     # 使う人の Excel（焼く台とは別の Excel）でも外す。読み込んだままだと .xlam が掴まれて上書きできず、
@@ -7834,7 +7880,8 @@ def cmd_register_addin(args):
             print(f"⚠ .xlam の日時が変わっていません（{when}）。フォームが開いていた・別のブックが前に出ていた等で"
                   "途中で止まったかもしれません")
             return False
-        print(f"焼けました: {addin_path}  {os.path.getsize(addin_path):,} バイト  {when}")
+        # 焼けた・載った・抜け殻なしは最後に 1 行で言う（2026-10-29: 成功でも 6〜7 行出ていた）
+        done.append(f"焼けました: {book} → {addin_file}（{os.path.getsize(addin_path):,} バイト・{when}）")
         return True
     finally:
         if unloaded:
@@ -7842,7 +7889,6 @@ def cmd_register_addin(args):
             try:
                 if back is not None:
                     back.Installed = True
-                    print(f"  アドインを入れ直しました: {addin_file}")
             except Exception as ex:
                 print(f"⚠ アドインを入れ直せませんでした: {ex}")
         # 使う人の Excel に入れ直して、その Excel の中で載ったかを見る（焼く台の確認だけで「載った」と言わない）
@@ -7862,22 +7908,18 @@ def cmd_register_addin(args):
                     if not bool(a.Installed):
                         a.Installed = True
                 if _addin_project_loaded(app, addin_path):
-                    print(f"使っている Excel（PID {pid}）: {addin_file} が載りました（ショートカットが効きます）")
+                    done.append(f"使っている Excel（PID {pid}）にも載った")
                 else:
                     print(f"⚠ 使っている Excel（PID {pid}）に {addin_file} が載っていません。"
                           "［ファイル］→［オプション］→［アドイン］でチェックを入れ直してください")
             except Exception as ex:
                 print(f"⚠ 使っている Excel にアドインを入れ直せませんでした: {ex}")
         if _addin_project_loaded(xl, addin_path):
-            if others:
-                print(f"読み込み確認: 焼いた Excel にも {addin_file} が載っています")
-            else:
-                print(f"読み込み確認: {addin_file} は今の Excel に載っています"
-                      "（このままどのブックからもショートカットが効きます）")
+            done.append("今の Excel に載った")
             if buttons:
-                done = _addin_buttons_restore(xl, buttons, addin_file)
+                n_btn = _addin_buttons_restore(xl, buttons, addin_file)
                 books = '・'.join(sorted({b[0] for b in buttons}))
-                print(f"ボタンの割り当てを付け直しました: {done}/{len(buttons)} 個（{books}）")
+                done.append(f"ボタンを付け直した {n_btn}/{len(buttons)} 個（{books}）")
         else:
             print(f"⚠ {addin_file} が今の Excel に載っていません。Excel を開き直すか、"
                   "［ファイル］→［オプション］→［アドイン］でチェックを入れ直してください")
@@ -7888,7 +7930,9 @@ def cmd_register_addin(args):
             print(f"⚠ 抜け殻の VBA プロジェクトが {ghosts} 個残っています（ファイル名なし）。"
                   "Excel を閉じて開き直すと消えます（閉じても EXCEL.EXE が残るなら道具の常駐が参照を握っている）")
         else:
-            print("抜け殻: なし（古いアドインはきれいに閉じました）")
+            done.append("抜け殻なし")
+        if done and done[0].startswith("焼けました"):
+            print("・".join(done))
         _restore_after_register(xl, book, book_full, was_visible, prev)
 
 
