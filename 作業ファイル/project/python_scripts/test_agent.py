@@ -2532,6 +2532,50 @@ def test_row_states_matches_per_row_read_with_few_queries():
         vv._row_states(lambda a, b: (None, False), 1, 3)
 
 
+def test_wait_compile_settled_returns_at_once_on_success_and_waits_full_otherwise():
+    """compile の後の待ち: 成功（項目が使えなくなり窓も無い）ならすぐ抜け、それ以外は今までと同じ最長 0.4 秒まで待つ。"""
+    import vbam_vba as vb
+
+    class Clock:
+        def __init__(self):
+            self.t = 0.0
+            self.slept = 0.0
+
+        def now(self):
+            return self.t
+
+        def sleep(self, s):
+            self.t += s
+            self.slept += s
+
+    # 押した直後に成功 → 1 秒も待たない
+    c = Clock()
+    assert vb._wait_compile_settled(lambda: False, lambda: 0, sleep=c.sleep, now=c.now) is True and c.slept == 0
+    # 数回目の見張りで成功 → そこで抜ける（0.4 秒には届かない）
+    c = Clock()
+    n = {'k': 0}
+
+    def en():
+        n['k'] += 1
+        return n['k'] < 4
+    assert vb._wait_compile_settled(en, lambda: 0, sleep=c.sleep, now=c.now) is True and 0 < c.slept < 0.4
+    # 項目がずっと使える（エラー）→ 従来どおり 0.4 秒きっちり待つ
+    c = Clock()
+    assert vb._wait_compile_settled(lambda: True, lambda: 0, sleep=c.sleep, now=c.now) is False
+    assert abs(c.slept - 0.4) < 1e-9
+    # 窓が出ている → 項目が使えなくなっていても抜けずに待つ
+    c = Clock()
+    assert vb._wait_compile_settled(lambda: False, lambda: 1, sleep=c.sleep, now=c.now) is False
+    assert abs(c.slept - 0.4) < 1e-9
+    # 読めない（例外）→ 従来どおり待つ
+    c = Clock()
+
+    def boom():
+        raise RuntimeError("COM")
+    assert vb._wait_compile_settled(boom, lambda: 0, sleep=c.sleep, now=c.now) is False
+    assert abs(c.slept - 0.4) < 1e-9
+
+
 def test_shelf_reads_split_modules_in_name_order():
     """棚が「表の整理_〜」に分かれても読む（2026-09-23 分割の下ごしらえ）。並びは名前順・下請けは目録に入れない。"""
     import vbam_core as vc

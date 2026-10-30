@@ -9752,6 +9752,23 @@ def _compile_fix_hint(loc, body=""):
     return f"直す: code-replace \"{text}\" \"新しい行\" --module {mod} -y"
 
 
+def _wait_compile_settled(is_enabled, dialog_count, timeout=0.4, step=0.02, sleep=time.sleep, now=time.monotonic):
+    """コンパイルを押した後、エラーの窓が出るなら出きるまで待つ（純 Python）。成功なら項目が使えない状態（Enabled=False）に
+    なり窓も出ていないので、そこで待たずに抜ける。それ以外（項目がまだ使える・窓が出た・読めない）は最長 timeout まで待つ＝
+    失敗時の待ちは今までの固定 0.4 秒と同じ。is_enabled()・dialog_count() は呼ぶたびに今の値を返す。"""
+    end = now() + timeout
+    while True:
+        try:
+            if not is_enabled() and not dialog_count():
+                return True
+        except Exception:
+            pass
+        left = end - now()
+        if left <= 0:
+            return False
+        sleep(min(step, left))
+
+
 def _compile_vbproject(xl, wb):
     """VBE の「デバッグ > VBAProject のコンパイル」を外から押して合否を返す。
 
@@ -9819,7 +9836,7 @@ def _compile_vbproject(xl, wb):
         watcher.stop()
         return {"ok": True, "state": "unavailable",
                 "detail": "コンパイルを押せませんでした: %s" % _com_error_text(ex)}
-    time.sleep(0.4)                            # 出るなら出きるまで待つ
+    _wait_compile_settled(lambda: bool(ctl.Enabled), lambda: getattr(watcher, 'count', 0))   # 出るなら出きるまで待つ（成功なら待たない）
     watcher.stop()
 
     body = (getattr(watcher, 'last_text', '') or '').strip()
