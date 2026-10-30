@@ -2492,6 +2492,46 @@ def test_shelf_run_reports_page_setup_row_height_and_filter_changes_20260924():
     assert vv._sheet_extras_changes(b, b) == [] and vv._sheet_extras_changes({}, {}) == []
 
 
+def test_row_states_matches_per_row_read_with_few_queries():
+    """行の高さ・非表示を範囲 1 回ずつ聞く読み方が、1 行ずつ読んだ結果と一字も違わず、聞く回数が桁違いに少ない。"""
+    import random
+    import vbam_view as vv
+
+    def fake(rows):
+        calls = []
+
+        def query(a, b):
+            calls.append((a, b))
+            seg = rows[a - 1:b]
+            hs = {h for h, _ in seg}
+            hd = {x for _, x in seg}
+            return (next(iter(hs)) if len(hs) == 1 else None, next(iter(hd)) if len(hd) == 1 else None)
+        return query, calls
+
+    # 全部同じ → 1 回で済む
+    rows = [(18.0, False)] * 3000
+    q, calls = fake(rows)
+    assert vv._row_states(q, 1, 3000) == rows and len(calls) == 1
+    # 見出しだけ高い・途中に隠れた行 → 行ごとの結果と同じで、聞く回数は数十回
+    rows = [(30.0, False)] + [(18.0, False)] * 999 + [(0.0, True)] * 20 + [(18.0, False)] * 1980
+    q, calls = fake(rows)
+    assert vv._row_states(q, 1, 3000) == rows and len(calls) < 60
+    # 高さが 2 桁の丸め（15.75 など）は行ごとの読み方と同じ丸めで返る
+    q, _ = fake([(15.754, False)] * 4)
+    assert vv._row_states(q, 1, 4) == [(15.75, False)] * 4
+    # 乱数で何度でも: 行ごとに読んだ結果と一致する
+    rnd = random.Random(20261030)
+    for _ in range(200):
+        n = rnd.randint(1, 120)
+        rows = [(rnd.choice([18.0, 30.0, 0.0]), rnd.random() < 0.2) for _ in range(n)]
+        q, _ = fake(rows)
+        assert vv._row_states(q, 1, n) == rows
+    # 空の範囲・1 行なのに混在と返る壊れた答えの扱い
+    assert vv._row_states(lambda a, b: (None, None), 1, 0) == []
+    with pytest.raises(ValueError):
+        vv._row_states(lambda a, b: (None, False), 1, 3)
+
+
 def test_shelf_reads_split_modules_in_name_order():
     """棚が「表の整理_〜」に分かれても読む（2026-09-23 分割の下ごしらえ）。並びは名前順・下請けは目録に入れない。"""
     import vbam_core as vc
