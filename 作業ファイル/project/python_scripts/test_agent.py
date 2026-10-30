@@ -2492,6 +2492,138 @@ def test_shelf_run_reports_page_setup_row_height_and_filter_changes_20260924():
     assert vv._sheet_extras_changes(b, b) == [] and vv._sheet_extras_changes({}, {}) == []
 
 
+def test_row_states_matches_per_row_read_with_few_queries():
+    """行の高さ・非表示を範囲 1 回ずつ聞く読み方が、1 行ずつ読んだ結果と一字も違わず、聞く回数が桁違いに少ない。"""
+    import random
+    import vbam_view as vv
+
+    def fake(rows):
+        calls = []
+
+        def query(a, b):
+            calls.append((a, b))
+            seg = rows[a - 1:b]
+            hs = {h for h, _ in seg}
+            hd = {x for _, x in seg}
+            return (next(iter(hs)) if len(hs) == 1 else None, next(iter(hd)) if len(hd) == 1 else None)
+        return query, calls
+
+    # 全部同じ → 1 回で済む
+    rows = [(18.0, False)] * 3000
+    q, calls = fake(rows)
+    assert vv._row_states(q, 1, 3000) == rows and len(calls) == 1
+    # 見出しだけ高い・途中に隠れた行 → 行ごとの結果と同じで、聞く回数は数十回
+    rows = [(30.0, False)] + [(18.0, False)] * 999 + [(0.0, True)] * 20 + [(18.0, False)] * 1980
+    q, calls = fake(rows)
+    assert vv._row_states(q, 1, 3000) == rows and len(calls) < 60
+    # 高さが 2 桁の丸め（15.75 など）は行ごとの読み方と同じ丸めで返る
+    q, _ = fake([(15.754, False)] * 4)
+    assert vv._row_states(q, 1, 4) == [(15.75, False)] * 4
+    # 乱数で何度でも: 行ごとに読んだ結果と一致する
+    rnd = random.Random(20261030)
+    for _ in range(200):
+        n = rnd.randint(1, 120)
+        rows = [(rnd.choice([18.0, 30.0, 0.0]), rnd.random() < 0.2) for _ in range(n)]
+        q, _ = fake(rows)
+        assert vv._row_states(q, 1, n) == rows
+    # 空の範囲・1 行なのに混在と返る壊れた答えの扱い
+    assert vv._row_states(lambda a, b: (None, None), 1, 0) == []
+    with pytest.raises(ValueError):
+        vv._row_states(lambda a, b: (None, False), 1, 3)
+
+
+def test_wait_compile_settled_returns_at_once_on_success_and_waits_full_otherwise():
+    """compile の後の待ち: 成功（項目が使えなくなり窓も無い）ならすぐ抜け、それ以外は今までと同じ最長 0.4 秒まで待つ。"""
+    import vbam_vba as vb
+
+    class Clock:
+        def __init__(self):
+            self.t = 0.0
+            self.slept = 0.0
+
+        def now(self):
+            return self.t
+
+        def sleep(self, s):
+            self.t += s
+            self.slept += s
+
+    # 押した直後に成功 → 1 秒も待たない
+    c = Clock()
+    assert vb._wait_compile_settled(lambda: False, lambda: 0, sleep=c.sleep, now=c.now) is True and c.slept == 0
+    # 数回目の見張りで成功 → そこで抜ける（0.4 秒には届かない）
+    c = Clock()
+    n = {'k': 0}
+
+    def en():
+        n['k'] += 1
+        return n['k'] < 4
+    assert vb._wait_compile_settled(en, lambda: 0, sleep=c.sleep, now=c.now) is True and 0 < c.slept < 0.4
+    # 項目がずっと使える（エラー）→ 従来どおり 0.4 秒きっちり待つ
+    c = Clock()
+    assert vb._wait_compile_settled(lambda: True, lambda: 0, sleep=c.sleep, now=c.now) is False
+    assert abs(c.slept - 0.4) < 1e-9
+    # 窓が出ている → 項目が使えなくなっていても抜けずに待つ
+    c = Clock()
+    assert vb._wait_compile_settled(lambda: False, lambda: 1, sleep=c.sleep, now=c.now) is False
+    assert abs(c.slept - 0.4) < 1e-9
+    # 読めない（例外）→ 従来どおり待つ
+    c = Clock()
+
+    def boom():
+        raise RuntimeError("COM")
+    assert vb._wait_compile_settled(boom, lambda: 0, sleep=c.sleep, now=c.now) is False
+    assert abs(c.slept - 0.4) < 1e-9
+
+
+def test_wait_after_click_leaves_early_when_settled_and_never_waits_longer_than_before():
+    """form-click の押した後の待ち: 窓が処理し終え Excel も入力を受けられるなら少し置いて抜け、
+    そろわない・読めないときは以前の固定 0.6 秒を超えない。"""
+    import vbam_edit as ve
+
+    class Clock:
+        def __init__(self):
+            self.t = 0.0
+
+        def now(self):
+            return self.t
+
+        def sleep(self, s):
+            self.t += s
+
+    def run(replied, ready, **kw):
+        c = Clock()
+        r = ve._wait_after_click(replied, ready, sleep=c.sleep, now=c.now, **kw)
+        return r, c.t
+
+    # すぐそろう（Excel あり）→ 余裕 0.1 秒だけ
+    r, t = run(lambda: True, lambda: True)
+    assert r is True and abs(t - 0.1) < 1e-9
+    # Excel を取っていない（ready なし）→ 窓の返事だけを見て、余裕は長めの 0.3 秒
+    r, t = run(lambda: True, None)
+    assert r is True and abs(t - 0.3) < 1e-9
+    # 数回見張ってからそろう → 0.6 秒より前に抜ける
+    n = {'k': 0}
+
+    def rep():
+        n['k'] += 1
+        return n['k'] >= 5
+    r, t = run(rep, lambda: True)
+    assert r is True and 0.1 < t < 0.6
+    # 窓が答えない・Excel が受けられない・読めない → ちょうど 0.6 秒（以前と同じ）で諦める
+    for rep_, rdy in ((lambda: False, lambda: True), (lambda: True, lambda: False), (lambda: True, lambda: 1 / 0)):
+        r, t = run(rep_, rdy)
+        assert r is False and abs(t - 0.6) < 1e-9
+    # 抜けるのが遅い時でも、余裕を足して 0.6 秒を超えない
+    n['k'] = 0
+
+    def late():
+        n['k'] += 1
+        return n['k'] >= 29
+    r, t = run(late, lambda: True)
+    assert t <= 0.6 + 1e-9
+
+
 def test_shelf_reads_split_modules_in_name_order():
     """棚が「表の整理_〜」に分かれても読む（2026-09-23 分割の下ごしらえ）。並びは名前順・下請けは目録に入れない。"""
     import vbam_core as vc
