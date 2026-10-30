@@ -2576,6 +2576,54 @@ def test_wait_compile_settled_returns_at_once_on_success_and_waits_full_otherwis
     assert abs(c.slept - 0.4) < 1e-9
 
 
+def test_wait_after_click_leaves_early_when_settled_and_never_waits_longer_than_before():
+    """form-click の押した後の待ち: 窓が処理し終え Excel も入力を受けられるなら少し置いて抜け、
+    そろわない・読めないときは以前の固定 0.6 秒を超えない。"""
+    import vbam_edit as ve
+
+    class Clock:
+        def __init__(self):
+            self.t = 0.0
+
+        def now(self):
+            return self.t
+
+        def sleep(self, s):
+            self.t += s
+
+    def run(replied, ready, **kw):
+        c = Clock()
+        r = ve._wait_after_click(replied, ready, sleep=c.sleep, now=c.now, **kw)
+        return r, c.t
+
+    # すぐそろう（Excel あり）→ 余裕 0.1 秒だけ
+    r, t = run(lambda: True, lambda: True)
+    assert r is True and abs(t - 0.1) < 1e-9
+    # Excel を取っていない（ready なし）→ 窓の返事だけを見て、余裕は長めの 0.3 秒
+    r, t = run(lambda: True, None)
+    assert r is True and abs(t - 0.3) < 1e-9
+    # 数回見張ってからそろう → 0.6 秒より前に抜ける
+    n = {'k': 0}
+
+    def rep():
+        n['k'] += 1
+        return n['k'] >= 5
+    r, t = run(rep, lambda: True)
+    assert r is True and 0.1 < t < 0.6
+    # 窓が答えない・Excel が受けられない・読めない → ちょうど 0.6 秒（以前と同じ）で諦める
+    for rep_, rdy in ((lambda: False, lambda: True), (lambda: True, lambda: False), (lambda: True, lambda: 1 / 0)):
+        r, t = run(rep_, rdy)
+        assert r is False and abs(t - 0.6) < 1e-9
+    # 抜けるのが遅い時でも、余裕を足して 0.6 秒を超えない
+    n['k'] = 0
+
+    def late():
+        n['k'] += 1
+        return n['k'] >= 29
+    r, t = run(late, lambda: True)
+    assert t <= 0.6 + 1e-9
+
+
 def test_shelf_reads_split_modules_in_name_order():
     """棚が「表の整理_〜」に分かれても読む（2026-09-23 分割の下ごしらえ）。並びは名前順・下請けは目録に入れない。"""
     import vbam_core as vc

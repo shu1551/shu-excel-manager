@@ -4484,6 +4484,28 @@ def _form_owner_is_active_book(form_name):
         return False
 
 
+def _wait_after_click(replied, is_ready, settle_ready=0.1, settle_blind=0.3, timeout=0.6, step=0.02,
+                      sleep=time.sleep, now=time.monotonic):
+    """form-click で押した後、ボタンのマクロが走り終わるのを待つ（純 Python）。以前は固定 0.6 秒。
+    replied()＝Excel の窓がここまでのメッセージ（押下と離し）を処理し終えたか、is_ready()＝Excel が入力を受けられるか
+    （None なら Excel を取っていないので聞かない）。両方そろったら少し置いて（settle）抜ける。そろわない・読めないときは
+    今までどおり timeout まで待つ＝以前より長くはならない。押す前の 0.15 秒・0.1 秒の間（実機で要ると分かった物）は触らない。"""
+    end = now() + timeout
+    settle = settle_ready if is_ready is not None else settle_blind
+    while True:
+        try:
+            if replied() and (is_ready is None or is_ready()):
+                break
+        except Exception:
+            pass
+        left = end - now()
+        if left <= 0:
+            return False
+        sleep(min(step, left))
+    sleep(max(0.0, min(settle, end - now())))
+    return True
+
+
 def cmd_form_click(args):
     """表示中の UserForm のボタンを外から押す: form-click [excel_file] <フォーム名> <コントロール名か見出し> [--learn]
 
@@ -4731,7 +4753,19 @@ def cmd_form_click(args):
     win32gui.PostMessage(picked, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lp)
     time.sleep(0.1)
     win32gui.PostMessage(picked, win32con.WM_LBUTTONUP, 0, lp)
-    time.sleep(0.6)
+
+    def _replied():
+        # 同じ窓の持ち主（Excel の本体スレッド）が、さっきの押下・離しまでを処理し終えるとこの空メッセージに答える。
+        # 押した結果フォームが閉じて窓が無くなったときも「処理し終えた」
+        if not win32gui.IsWindow(picked):
+            return True
+        fn = ctypes.windll.user32.SendMessageTimeoutW
+        fn.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_size_t, ctypes.c_ssize_t,
+                       ctypes.c_uint, ctypes.c_uint, ctypes.POINTER(ctypes.c_size_t)]
+        fn.restype = ctypes.c_ssize_t
+        res = ctypes.c_size_t(0)
+        return bool(fn(picked, win32con.WM_NULL, 0, 0, 0x0002, 50, ctypes.byref(res)))      # SMTO_ABORTIFHUNG・50ms
+    _wait_after_click(_replied, (lambda: bool(xl.Ready)) if xl is not None else None)
     if old_ctx:
         try:
             ctypes.windll.user32.SetThreadDpiAwarenessContext(ctypes.c_void_p(old_ctx))
