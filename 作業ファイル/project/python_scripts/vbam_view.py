@@ -3592,6 +3592,28 @@ _EXTRA_PAGE_KEYS = (('Zoom', '拡大縮小'), ('FitToPagesWide', '横のペー�
                     ('Orientation', '向き'), ('PrintTitleRows', '見出しの繰り返し'), ('PrintArea', '印刷範囲'))
 
 
+def _row_states(query, first, last):
+    """行 first〜last の (高さ, 非表示) を 1 行ずつの並びで返す（純 Python）。query(a, b) は a〜b 行の範囲に 1 回聞いて
+    (高さ, 非表示) を返し、混在している項目は None（Excel の範囲の RowHeight・Hidden と同じ）。同じ値が続く区間は 1 回で採り、
+    混在のときだけ半分に割る＝聞く回数が行数でなく「値の変わり目」の数で決まる（以前は 1 行ごとに 4 回聞いていた）。"""
+    out = []
+
+    def walk(a, b):
+        h, hid = query(a, b)
+        if h is not None and hid is not None:
+            out.extend([(round(float(h), 2), bool(hid))] * (b - a + 1))
+            return
+        if a == b:
+            raise ValueError("1 行なのに混在と返った: %d" % a)
+        m = (a + b) // 2
+        walk(a, m)
+        walk(m + 1, b)
+
+    if last >= first:
+        walk(first, last)
+    return out
+
+
 def _sheet_extras_state(ws, rows_max=3000):
     """セルの値・書式の差分では見えない物の姿（印刷設定・行の高さと非表示・絞り込み）。読めなければ {}（2026-09-24）。"""
     st = {}
@@ -3602,7 +3624,11 @@ def _sheet_extras_state(ws, rows_max=3000):
         pass
     try:
         last = min(int(ws.UsedRange.Row) + int(ws.UsedRange.Rows.Count), rows_max)
-        st['rows'] = [(round(float(ws.Rows(r).RowHeight), 2), bool(ws.Rows(r).Hidden)) for r in range(1, last + 1)]
+
+        def _ask(a, b):
+            rr = ws.Range("%d:%d" % (a, b))
+            return rr.RowHeight, rr.Hidden
+        st['rows'] = _row_states(_ask, 1, last)
     except Exception:
         pass
     try:
