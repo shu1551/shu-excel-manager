@@ -1092,6 +1092,14 @@ def _get_workbook_uncached(target_file_arg=None, load_addins=False, readonly=Fal
                     hits.append(wb)
             except Exception:
                 continue
+        if not hits:
+            try:
+                xl_act = _get_active_excel()
+                for wb in xl_act.Workbooks:
+                    if str(wb.Name).lower() == target_file_arg.lower():
+                        hits.append(wb)
+            except Exception:
+                pass
         if len(hits) == 1:
             wb = hits[0]
             xl = wb.Application

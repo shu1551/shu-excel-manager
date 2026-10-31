@@ -79,7 +79,7 @@ def execute_step(step, step_idx, wb, ws_target=None):
                     wb.Application.Run(f"'{wb.Name}'!VMTestOpen")
                 except Exception as e:
                     return False, f"手 {step_idx} (open): フォーム '{form_name}' を開けませんでした ({e})"
-        time.sleep(0.05)
+        time.sleep(0.25)
         return True, "OK"
 
     elif "set" in step:
@@ -98,6 +98,7 @@ def execute_step(step, step_idx, wb, ws_target=None):
                 return False, f"手 {step_idx} (set): 値の設定に失敗しました ({set_dict})"
         except Exception as e:
             return False, f"手 {step_idx} (set): 例外が発生しました ({e})"
+        time.sleep(0.15)
         return True, "OK"
 
     elif "key" in step:
@@ -207,7 +208,7 @@ def execute_step(step, step_idx, wb, ws_target=None):
     return False, f"手 {step_idx}: 未知の操作です ({list(step.keys())})"
 
 
-def generate_auto_test_script(form_name, title, sheet_name, cols_spec, sample_input=None, base_rows=0):
+def generate_auto_test_script(form_name, title, sheet_name, cols_spec, sample_input=None, base_rows=0, book_name=""):
     """設計図から自動テスト台本（JSON）を組み立てる（登録1回、必須空1回、Esc閉じ1回）"""
     sample_input = sample_input or {}
     steps = [
@@ -218,7 +219,7 @@ def generate_auto_test_script(form_name, title, sheet_name, cols_spec, sample_in
         {"close": form_name, "caption": title}
     ]
     script = {
-        "book": "",
+        "book": book_name,
         "form": form_name,
         "caption": title,
         "sheet": sheet_name,
@@ -237,7 +238,15 @@ def run_form_test(script_path_or_dict, keep=False, excel_file=None):
     steps = data["steps"]
 
     xl, wb = get_workbook(target_book)
-    ws = wb.ActiveSheet
+    wb.Application.StatusBar = False
+    sheet_name = data.get("sheet")
+    if sheet_name:
+        try:
+            ws = wb.Worksheets(sheet_name)
+        except Exception:
+            ws = wb.ActiveSheet
+    else:
+        ws = wb.ActiveSheet
     # 台本は登録ボタンを実際に押して表へ書く（終わると元に戻す）。道具の本体ブックでは動かさない
     # （2026-10-31: アクティブが秀コンボ.xlsm に戻っていて、本体にテスト用フォームを作って押してしまった）
     if str(wb.Name).startswith("秀コンボ"):

@@ -266,3 +266,90 @@ def test_forbidden_dark_contrast_rule():
     }]
     findings = lint_form("F_Test", info, controls)
     assert any("コントラスト比不足" in f for f in findings)
+
+
+def test_generate_vba_stub_with_date_column_no_syntax_error():
+    """101: generate_vba_stub に入社日などの日付列を渡したとき InStr の除算エラーが起きないこと"""
+    import form_layout
+    rows = [
+        form_layout.row(form_layout.lbl("入社日"), form_layout.txt("txt入社日"))
+    ]
+    bind_info = {
+        "sheet": "Sheet1",
+        "columns": {"txt入社日": "入社日"}
+    }
+    vba_file = form_layout.generate_vba_stub(rows, assist=True, bind_info=bind_info, keys=True)
+    with open(vba_file, "r", encoding="utf-8") as f:
+        code = f.read()
+    assert 'InStr(sDate, "/")' in code
+
+
+def test_analyze_columns_handles_sparse_empty_cells():
+    """空欄セルを含む列でも非空セルから日付判定が正しく行われることを検証"""
+    import vbam_formbuild
+    from unittest.mock import MagicMock
+
+    mock_ws = MagicMock()
+    mock_rng = MagicMock()
+    mock_rng.Rows.Count = 4
+    mock_rng.Columns.Count = 2
+
+    def cell_side_effect(r, c):
+        cell = MagicMock()
+        cell.NumberFormatLocal = "G/標準"
+        cell.Validation.Type = 0
+        cell.Column = c
+        cell.Value = "ID" if c == 1 else "完了日"
+        return cell
+
+    mock_rng.Cells.side_effect = cell_side_effect
+
+    mock_data_rng = MagicMock()
+    mock_data_rng.Value2 = (
+        ("A001", ""),
+        ("A002", ""),
+        ("A003", "2026/02/15"),
+    )
+    mock_data_rng.Formula = (
+        ("A001", ""),
+        ("A002", ""),
+        ("A003", "2026/02/15"),
+    )
+    mock_ws.Range.return_value = mock_data_rng
+
+    cols_spec, text_cols, formula_cols = vbam_formbuild.analyze_table_columns(mock_ws, mock_rng)
+    assert len(cols_spec) == 2
+    date_col = cols_spec[1]
+    assert date_col["is_date"] is True
+
+
+def test_form_from_table_aborts_when_build_fails():
+    """フォーム構築失敗時にテストを実行せず中断することを検証"""
+    import vbam_formbuild
+    from unittest.mock import MagicMock, patch
+
+    mock_wb = MagicMock()
+    mock_ws = MagicMock()
+    mock_ws.ProtectContents = False
+    mock_ws.Name = "Sheet1"
+    mock_wb.ActiveSheet = mock_ws
+    mock_rng = MagicMock()
+    mock_rng.Rows.Count = 3
+    mock_rng.Columns.Count = 2
+    mock_rng.Cells.Count = 6
+    mock_ws.Range.return_value = mock_rng
+
+    args = MagicMock()
+    args.posargs = ["A1:B3"]
+    args.build = True
+    args.test_flag = True
+    args.dry_run = False
+    args.list_flag = False
+
+    with patch("vbam_formbuild.get_workbook", return_value=(None, mock_wb)), \
+         patch("vbam_formbuild.analyze_table_columns", return_value=([{"header": "A", "name": "txtA", "control": "txt", "required": False, "hint": ""}], [], [])), \
+         patch("vbam_formbuild.cmd_form_build", return_value=False), \
+         patch("vbam_formtest.run_form_test") as mock_run_test:
+        ok = vbam_formbuild.cmd_form_from_table(args)
+        assert ok is False
+        mock_run_test.assert_not_called()

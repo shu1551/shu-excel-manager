@@ -1124,7 +1124,7 @@ def generate_vba_stub(rows, out_path=None, assist=True, bind_info=None, keys=Tru
                     lines.append(f"    Dim sDate As String: sDate = Trim({nm}.Text)")
                     lines.append("    If Len(sDate) = 8 And IsNumeric(sDate) Then")
                     lines.append(f'        {nm}.Text = Left(sDate, 4) & "/" & Mid(sDate, 5, 2) & "/" & Right(sDate, 2)')
-                    lines.append("    ElseIf InStr(sDate, "/") > 0 And IsDate(sDate) Then")
+                    lines.append('    ElseIf InStr(sDate, "/") > 0 And IsDate(sDate) Then')
                     lines.append(f'        {nm}.Text = Format(CDate(sDate), "yyyy/mm/dd")')
                     lines.append("    End If")
                 lines.append("End Sub")
