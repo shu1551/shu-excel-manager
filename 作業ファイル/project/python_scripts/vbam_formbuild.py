@@ -1059,6 +1059,32 @@ def cmd_form_from_table(args):
         })()
         cmd_form_build(build_args)
 
+        if getattr(args, 'test_flag', False) and not getattr(args, 'dry_run', False):
+            if getattr(args, 'list_flag', False):
+                print("form-test: 一覧フォームは台本の対象外です（入力フォームだけで --test を使ってください）")
+            else:
+                from vbam_formtest import generate_auto_test_script, run_form_test
+                sample = {}
+                for c in cols_spec:
+                    items = c.get("items") or []
+                    if c["control"] == "combo" and items:
+                        sample[c["name"]] = items[0]
+                    elif c["control"] == "chk":
+                        sample[c["name"]] = True
+                    elif c.get("is_date"):
+                        sample[c["name"]] = "2026/01/01"
+                    elif c.get("is_currency") or c.get("align_right"):
+                        sample[c["name"]] = "100"
+                    else:
+                        sample[c["name"]] = "試験"
+                # ボタンを押す手のため、閉じているうちにフォームの位置を控える
+                from vbam_edit import cmd_form_click
+                learn_args = type("Args", (), {"posargs": [form_name], "learn_flag": True})()
+                cmd_form_click(learn_args)
+                script = generate_auto_test_script(form_name, title, ws.Name, cols_spec, sample, base_rows=max(0, target_rng.Rows.Count - 1))
+                ok, msg, _ = run_form_test(script)
+                print(f"form-test: {msg}")
+
     return True
 
 
