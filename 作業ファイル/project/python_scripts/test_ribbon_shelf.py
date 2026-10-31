@@ -64,6 +64,7 @@ def _catalog_rows():
     return [ln.split('\t') for ln in lines[1:] if ln]
 
 
+@pytest.mark.core
 def test_catalog_columns_and_kinds():
     """目録の各行は 5 列。分けは 3 つのどれか。棚にしない物は行き先が空、ほかは行き先がある。棚にする物の行き先は新しい 6 本"""
     rows = _catalog_rows()

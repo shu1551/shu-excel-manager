@@ -61,6 +61,7 @@ def temp_macro_excel(tmp_path):
             xl = None
 
 
+@pytest.mark.core
 def test_run_macro_zero_divide_trace(temp_macro_excel):
     """ゼロ除算エラー時に行番号ラベル (Erl) とモジュール・プロシージャが特定できるか"""
     xl, wb, file_path = temp_macro_excel
@@ -99,6 +100,7 @@ def test_run_macro_zero_divide_trace(temp_macro_excel):
     assert "TestErrorMod.TestDivZero" in ve["location"]
 
 
+@pytest.mark.core
 def test_run_macro_runtime_1004_trace(temp_macro_excel):
     """行番号なしの実行時エラーでモジュール・プロシージャ・開始行が特定できるか"""
     xl, wb, file_path = temp_macro_excel

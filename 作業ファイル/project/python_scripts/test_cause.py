@@ -1,3 +1,4 @@
+import pytest
 # -*- coding: utf-8 -*-
 """vbam_cause（式と値から原因を決める）の試験。題はオフィス田中「ExcelのAI活用」で Copilot が外した例（2026-10-02）。"""
 import datetime
@@ -79,6 +80,7 @@ def test_names_and_udfs_are_explained():
     assert any('TEST は名前' in x for x in out) and any('CHECK は VBA の自作関数' in x for x in out)
 
 
+@pytest.mark.core
 def test_no_values_mode_hides_values():
     fa = [['番号', '名前', '', '番号', '名前'], ['', '=VLOOKUP(A2,$D$2:$E$3,2,FALSE)', '', '', ''], ['', '', '', '', '']]
     fv = [['番号', '名前', None, '番号', '名前'], [102.0, NA, None, '機密番号', '機密太郎'], [None, None, None, '103', '佐倉']]

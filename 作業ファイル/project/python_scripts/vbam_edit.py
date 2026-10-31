@@ -4923,6 +4923,254 @@ def cmd_form_read(args):
     return True
 
 
+
+
+_FORM_SET_MODULE = "VMFormSet"
+_FORM_SET_CODE = """Function VMFS(ByVal frmName As String, ByVal specs As String) As String
+    Dim frm As Object, ctl As Object, i As Long, j As Long
+    Dim lines() As String, parts() As String, res As String
+    Dim matched As Boolean, cName As String, cVal As String
+    Dim curVal As String, status As String, msg As String
+    On Error Resume Next
+
+    If frmName = "" Then
+        If VBA.UserForms.Count = 1 Then
+            Set frm = VBA.UserForms(0)
+            matched = True
+        ElseIf VBA.UserForms.Count > 1 Then
+            Dim mult As String: mult = "ERROR:MULTIPLE"
+            For Each frm In VBA.UserForms
+                mult = mult & vbTab & frm.Name
+            Next frm
+            VMFS = mult
+            Exit Function
+        Else
+            VMFS = "ERROR:NOFORM"
+            Exit Function
+        End If
+    Else
+        For Each frm In VBA.UserForms
+            If LCase(frm.Name) = LCase(frmName) Or LCase(frm.Name) = LCase(frmName) & "フォーム" Then
+                matched = True: Exit For
+            End If
+        Next frm
+    End If
+
+    If Not matched Or frm Is Nothing Then
+        VMFS = "ERROR:NOFORM"
+        Exit Function
+    End If
+
+    lines = Split(specs, vbLf)
+    For i = 0 To UBound(lines)
+        If Trim(lines(i)) <> "" Then
+            parts = Split(lines(i), vbTab)
+            cName = parts(0)
+            cVal = parts(1)
+            Set ctl = Nothing
+            Err.Clear
+            Set ctl = frm.Controls(cName)
+            If Err.Number <> 0 Or ctl Is Nothing Then
+                res = res & cName & vbTab & "FAIL" & vbTab & "" & vbTab & "NOTFOUND" & vbLf
+            Else
+                status = "OK": msg = "": curVal = ""
+                Select Case TypeName(ctl)
+                    Case "TextBox"
+                        ctl.Text = cVal
+                        curVal = ctl.Text
+                    Case "ComboBox"
+                        Dim foundItem As Boolean: foundItem = False
+                        For j = 0 To ctl.ListCount - 1
+                            If ctl.List(j) = cVal Then
+                                ctl.ListIndex = j
+                                foundItem = True
+                                Exit For
+                            End If
+                        Next j
+                        If Not foundItem Then
+                            If ctl.Style = 2 Then
+                                status = "FAIL"
+                                msg = "DropDownList項目外"
+                            Else
+                                ctl.Text = cVal
+                            End If
+                        End If
+                        curVal = ctl.Text
+                    Case "CheckBox", "OptionButton", "ToggleButton"
+                        Dim bVal As Boolean
+                        bVal = (LCase(cVal) = "true" Or cVal = "1" Or LCase(cVal) = "yes")
+                        ctl.Value = bVal
+                        curVal = CStr(ctl.Value)
+                    Case "ListBox"
+                        Dim matchFound As Boolean: matchFound = False
+                        Dim valArr() As String
+                        valArr = Split(cVal, ",")
+                        For j = 0 To ctl.ListCount - 1
+                            Dim k As Long
+                            For k = 0 To UBound(valArr)
+                                If Trim(ctl.List(j)) = Trim(valArr(k)) Then
+                                    ctl.Selected(j) = True
+                                    matchFound = True
+                                End If
+                            Next k
+                        Next j
+                        If Not matchFound Then
+                            status = "FAIL"
+                            msg = "ListBox項目外"
+                        End If
+                        curVal = cVal
+                    Case Else
+                        ctl.Value = cVal
+                        curVal = CStr(ctl.Value)
+                End Select
+                If Err.Number <> 0 Then
+                    status = "FAIL"
+                    msg = Err.Description
+                    Err.Clear
+                End If
+                res = res & cName & vbTab & status & vbTab & curVal & vbTab & msg & vbLf
+            End If
+        End If
+    Next i
+
+    VMFS = res
+End Function
+"""
+
+
+def cmd_form_set(args):
+    """表示中の UserForm の欄に値を入れる: form-set [フォーム名] 部品名=値 ..."""
+    import time
+    import difflib
+    t0 = time.time()
+
+    posargs = list(getattr(args, 'posargs', []) or [])
+    if not posargs:
+        print("エラー: 設定する項目を指定してください（例: form-set txtName=山田 cmbKind=法人）")
+        return False
+
+    form_name = ""
+    kv_pairs = []
+
+    # 最初の引数が キー=値 形式でないならフォーム名とみなす
+    if "=" not in posargs[0]:
+        form_name = posargs[0]
+        kv_pairs = posargs[1:]
+    else:
+        kv_pairs = posargs
+
+    if not kv_pairs:
+        print("エラー: 設定する項目（部品名=値）を指定してください")
+        return False
+
+    # キー=値 の解析
+    specs_list = []
+    for pair in kv_pairs:
+        if "=" not in pair:
+            print(f"エラー: 引数 '{pair}' は 部品名=値 の形式ではありません")
+            return False
+        k, v = pair.split("=", 1)
+        specs_list.append((k.strip(), v))
+
+    specs_str = "\n".join(f"{k}\t{v}" for k, v in specs_list)
+
+    xl, wb = get_workbook(None)
+    books, owners, seen = [], [], set()
+    try:
+        books = [xl.Workbooks.Item(i) for i in range(1, int(xl.Workbooks.Count) + 1)]
+        for i in range(1, int(xl.AddIns.Count) + 1):
+            try:
+                ad = xl.AddIns.Item(i)
+                if ad.Installed:
+                    books.append(xl.Workbooks(str(ad.Name)))
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    for b in books:
+        try:
+            nm = str(b.Name)
+            if nm not in seen and (not form_name or any(c.Name == form_name for c in b.VBProject.VBComponents)):
+                seen.add(nm)
+                owners.append(b)
+        except Exception:
+            continue
+
+    if not owners:
+        owners = [wb]
+
+    raw_res = "NOFORM"
+    for owner in owners:
+        was_saved = False
+        try:
+            was_saved = bool(owner.Saved)
+        except Exception:
+            pass
+        comps = owner.VBProject.VBComponents
+        comp = None
+        try:
+            for c in comps:
+                if c.Name == _FORM_SET_MODULE:
+                    comps.Remove(c)
+                    break
+            comp = comps.Add(1)
+            comp.Name = _FORM_SET_MODULE
+            comp.CodeModule.AddFromString(_FORM_SET_CODE)
+            q = str(owner.Name).replace("'", "''")
+            raw_res = str(xl.Run(f"'{q}'!{_FORM_SET_MODULE}.VMFS", form_name, specs_str) or '')
+            if not raw_res.startswith("ERROR:NOFORM"):
+                break
+        except Exception as ex:
+            print(f"エラー: フォームに値を設定できませんでした: {ex}")
+            return False
+        finally:
+            if comp is not None:
+                try:
+                    comps.Remove(comp)
+                except Exception:
+                    pass
+            if was_saved:
+                try:
+                    owner.Saved = True
+                except Exception:
+                    pass
+
+    sec = round(time.time() - t0, 3)
+
+    if raw_res.startswith("ERROR:NOFORM"):
+        print("表示中のフォームはありません（先にフォームを開いてください）")
+        return False
+    elif raw_res.startswith("ERROR:MULTIPLE"):
+        frms = raw_res.split("\t")[1:]
+        print(f"エラー: 表示中のフォームが複数あります（フォーム名を指定してください）: {', '.join(frms)}")
+        return False
+
+    # 結果の整形表示
+    all_ok = True
+    lines = raw_res.strip().split("\n")
+    print(f"===== form-set 実行結果 ({sec} 秒) =====")
+    for line in lines:
+        if not line:
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 2:
+            c_name, status = parts[0], parts[1]
+            c_val = parts[2] if len(parts) >= 3 else ""
+            msg = parts[3] if len(parts) >= 4 else ""
+            if status == "OK":
+                print(f"  {c_name} = {c_val} (OK)")
+            elif msg == "NOTFOUND":
+                all_ok = False
+                print(f"  {c_name}: 見つかりません (FAIL)")
+            else:
+                all_ok = False
+                print(f"  {c_name}: 設定失敗 ({msg}) [現在値: {c_val}]")
+
+    call_log_write("form-set", {"form": form_name, "pairs": len(specs_list)}, sec=sec, ok=all_ok)
+    return all_ok
+
+
 def cmd_close_form(args):
     """表示中の UserForm を閉じる: close-form [キャプション] [--list] [--wait 秒]
 
@@ -6107,6 +6355,8 @@ __all__ = [
     'cmd_close_form',
     'cmd_form_click',
     'cmd_form_read',
+    'cmd_form_set',
+    'cmd_form_key',
     'cmd_vbe_reset',
     'cmd_col',
     'cmd_comment',
@@ -6216,3 +6466,86 @@ def _a1(row, col):
         col, m = divmod(col - 1, 26)
         s = chr(65 + m) + s
     return f"{s}{row}"
+
+
+def cmd_form_key(args):
+    """表示中の UserForm にキーを直接送る: form-key [excel_file] <フォーム名> <キー名>
+
+    フォーカスやアクティブウィンドウに関わらず、フォームの窓（HWND）に直接
+    WM_KEYDOWN / WM_KEYUP メッセージを送る。
+    キー名: enter | esc | tab | ctrl+tab | down | up | left | right
+    """
+    import ctypes
+    from ctypes import wintypes
+    import time
+    from vbam_core import parse_target_and_rest, get_workbook
+
+    target_file, rest = parse_target_and_rest(args.posargs)
+    if not rest:
+        print("エラー: フォーム名またはキー名を指定してください（例: form-key F_顧客入力 enter）")
+        return False
+
+    # rest の解釈: [フォーム名, キー名] または [キー名]（表示中フォームが1つの場合）
+    forms = _list_form_windows()
+    if not forms:
+        print("エラー: 表示中の UserForm が見つかりません。")
+        return False
+
+    form_name = None
+    key_name = None
+
+    if len(rest) == 1:
+        if len(forms) == 1:
+            target_hwnd, target_cap = forms[0]
+            form_name = target_cap or "表示中フォーム"
+            key_name = rest[0].lower()
+        else:
+            print("エラー: 複数のフォームが表示されています。フォーム名を指定してください。")
+            return False
+    else:
+        cand_name, key_name = rest[0], rest[1].lower()
+        matched = _pick_form_windows(forms, cand_name)
+        if not matched:
+            print(f"エラー: フォーム '{cand_name}' のウィンドウが見つかりません。")
+            return False
+        target_hwnd, form_name = matched[0]
+
+    VK_MAP = {
+        'enter': 0x0D,
+        'return': 0x0D,
+        'esc': 0x1B,
+        'escape': 0x1B,
+        'tab': 0x09,
+        'down': 0x28,
+        'up': 0x26,
+        'left': 0x25,
+        'right': 0x27,
+    }
+
+    user32 = ctypes.windll.user32
+    WM_KEYDOWN = 0x0100
+    WM_KEYUP = 0x0101
+
+    if key_name == 'ctrl+tab':
+        VK_CONTROL = 0x11
+        VK_TAB = 0x09
+        # Ctrl 押下 -> Tab 押下 -> Tab 解除 -> Ctrl 解除
+        user32.PostMessageW(target_hwnd, WM_KEYDOWN, VK_CONTROL, 0)
+        time.sleep(0.02)
+        user32.PostMessageW(target_hwnd, WM_KEYDOWN, VK_TAB, 0)
+        time.sleep(0.02)
+        user32.PostMessageW(target_hwnd, WM_KEYUP, VK_TAB, 0)
+        time.sleep(0.02)
+        user32.PostMessageW(target_hwnd, WM_KEYUP, VK_CONTROL, 0)
+        print(f"form-key: {form_name} (hwnd {hex(target_hwnd)}) に 'ctrl+tab' を直接送信しました")
+        return True
+    elif key_name in VK_MAP:
+        vk = VK_MAP[key_name]
+        user32.PostMessageW(target_hwnd, WM_KEYDOWN, vk, 0)
+        time.sleep(0.02)
+        user32.PostMessageW(target_hwnd, WM_KEYUP, vk, 0)
+        print(f"form-key: {form_name} (hwnd {hex(target_hwnd)}) に '{key_name}' を直接送信しました")
+        return True
+    else:
+        print(f"エラー: 未対応のキー名 '{key_name}' です（対応: enter, esc, tab, ctrl+tab, up, down, left, right）")
+        return False

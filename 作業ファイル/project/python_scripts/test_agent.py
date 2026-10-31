@@ -69,6 +69,7 @@ finally:
 import vbam_vba as vv
 
 
+@pytest.mark.core
 def test_look_mixed_fonts_seen_by_materials_and_gate():
     """文字の色・大きさ・太字がばらばらの表を、材料も合格判定も見ていなかった（2026-09-11）。"""
     import types
@@ -101,6 +102,7 @@ def test_look_mixed_fonts_seen_by_materials_and_gate():
 import vbam_edit as ve                                              # noqa: E402
 
 
+@pytest.mark.core
 def test_build_sheet_ask_is_wired_and_prompt_is_one_shot(tmp_path, monkeypatch):
     # 手2: --ask / --ai / --model / --new-book が argparse に通る。プロンプトは規則＋例＋依頼の 1 通
     import vbam_build as vb
@@ -151,6 +153,7 @@ def test_build_sheet_ask_is_wired_and_prompt_is_one_shot(tmp_path, monkeypatch):
 
 # ---- agent（2026-09-03・既存シートの「読む→聞く→書く→整える」ループを Python が回す）----
 
+@pytest.mark.core
 def test_agent_is_wired():
     import vbam_agent as va
     table = vm._command_table()
@@ -162,6 +165,7 @@ def test_agent_is_wired():
     assert ns.ai == "gemini" and ns.max_turns == "3" and ns.dry_run and not unknown
 
 
+@pytest.mark.core
 def test_agent_prompt_and_reply_shape():
     import vbam_agent as va
     prompt = va._first_prompt("郵便番号を揃えて", "Book1", "名簿", "使用範囲: A1:E9\n（材料）")
@@ -192,6 +196,7 @@ def test_agent_prompt_and_reply_shape():
         va._parse_reply('{"actions": "A1"}')
 
 
+@pytest.mark.core
 def test_agent_actions_to_tokens_and_guards():
     import vbam_agent as va
     import pytest
@@ -221,6 +226,7 @@ def test_agent_actions_to_tokens_and_guards():
     assert results[0][1] is False and "実行していません" in results[0][2]
 
 
+@pytest.mark.core
 def test_agent_table_ops_to_tokens():
     """表の足回り 14 本（2026-09-04）。「並べ替えて」を黙って落とした実測から足した手。"""
     import vbam_agent as va
@@ -301,6 +307,7 @@ def test_agent_table_ops_to_tokens():
     assert toks == ["export-pdf", p, "--range", "'名簿'!A1:F19"]
 
 
+@pytest.mark.core
 def test_agent_tokens_pass_the_real_cli_parser():
     """agent が組み立てた引数列が、本物の CLI パーサを通るか（2026-09-04）。
 
@@ -363,6 +370,7 @@ def test_agent_tokens_pass_the_real_cli_parser():
         assert got.command == toks[0]
 
 
+@pytest.mark.core
 def test_agent_macro_read_ops_and_run_gate():
     """macro の読む手 3 本と run の関所（2026-09-04）。run は --rehearse のときだけ。"""
     import vbam_agent as va
@@ -437,6 +445,7 @@ def test_compound_notice_flags_a_request_spanning_macro_and_sheet():
     assert notice and "シートの仕事も含まれています" in notice and "--mode sheet" in notice
 
 
+@pytest.mark.core
 def test_compound_notice_flags_an_embedded_macro_name_when_routed_to_sheet():
     """8安: sheet に振られたが依頼文に実在のマクロ名があるときの案内。"""
     import vbam_agent as va
@@ -468,6 +477,7 @@ def test_compound_notice_flags_a_build_that_also_asks_for_a_pivot():
         assert va._compound_notice('build', plain, None) == '', plain
 
 
+@pytest.mark.core
 def test_grade_materials_hands_the_pivot_inventory_to_the_grader(monkeypatch):
     """2026-09-09: 採点係は materials（そのシートのセル）しか渡されておらず、正しく作ったピボットを
 
@@ -492,6 +502,7 @@ def test_grade_materials_hands_the_pivot_inventory_to_the_grader(monkeypatch):
     assert '【ブックにある重い物' not in va._grade_materials('名簿', object())
 
 
+@pytest.mark.core
 def test_pivot_covering_finds_the_pivot_under_a_range():
     """2026-09-09: ピボットは見出し行・ラベル行と本文で表示形式が違う。
 
@@ -577,6 +588,7 @@ def test_agent_macro_create_hand_and_route():
     assert va._route("VBA で作った表を新しいシートに写して", macro_names=["集計"]) == 'build'
 
 
+@pytest.mark.core
 def test_agent_pins_target_book(tmp_path):
     # 対象ブックの固定: 保存済みならフルパスを先頭の位置引数に足す。未保存（Book1）は足さない（Activate で固定）
     import vbam_agent as va
@@ -642,6 +654,7 @@ def test_agent_big_table_normalize_rules():
     assert rules[0][0] == 'regex' and rules[0][1][0].sub(rules[0][1][1], "0000002") == "000-0002"
 
 
+@pytest.mark.core
 def test_agent_big_table_profile_and_hands():
     import vbam_agent as va
     import pytest
@@ -1105,6 +1118,7 @@ def test_user_env_write_then_delete_removes_the_entry():
             pass
 
 
+@pytest.mark.core
 def test_set_key_and_clear_key_are_wired():
     p = vm.build_parser()
     assert p.parse_args(["set-key", "gemini"]).posargs == ["gemini"]
@@ -1115,6 +1129,7 @@ def test_set_key_and_clear_key_are_wired():
     assert vm.raw_command(cmds["clear-key"]) is va.cmd_clear_key
 
 
+@pytest.mark.core
 def test_set_key_refuses_a_broken_paste_without_writing(monkeypatch):
     """貼り付け事故は書く前に止める（環境変数に触らない）。"""
     wrote = []
@@ -1162,6 +1177,7 @@ def test_vault_forgets_by_itself_when_the_time_is_up(monkeypatch, tmp_path):
     assert va._store_read() == {}                       # 読もうとした時点で消えている
 
 
+@pytest.mark.core
 def test_clear_key_removes_both_the_vault_and_the_old_environment(monkeypatch, tmp_path, capsys):
     _tmp_store(monkeypatch, tmp_path)
     va._key_save("gemini", "AIzaSyABCDEFGHIJKLMN1234x7Qd", days=30)
@@ -1172,6 +1188,7 @@ def test_clear_key_removes_both_the_vault_and_the_old_environment(monkeypatch, t
     assert "金庫から消しました" in capsys.readouterr().out
 
 
+@pytest.mark.core
 def test_clear_key_fails_when_the_old_environment_value_survives(monkeypatch, tmp_path, capsys):
     """消したあと読み直して、残っていれば失敗として返す（消したつもりを許さない）。"""
     _tmp_store(monkeypatch, tmp_path)
@@ -1182,6 +1199,7 @@ def test_clear_key_fails_when_the_old_environment_value_survives(monkeypatch, tm
     assert "消せていません" in capsys.readouterr().out
 
 
+@pytest.mark.core
 def test_agent_heavy_hands_tokens_and_guards():
     # 2026-09-04: 重い道具 7 本（table / pivot / pivot_field / pivot_calc / slicer / powerquery / datamodel）を AI の手に配線
     import vbam_agent as va
@@ -1347,6 +1365,7 @@ def test_recipe_entry_is_pinned_to_sheet():
     assert va._route("会員名簿を新しいシートに作って", forced='sheet') == 'sheet'
 
 
+@pytest.mark.core
 def test_format_choices_and_systemexit_are_caught():
     """2: align:"middle" で argparse が SystemExit(2)＝ループごと死んでいた。"""
     import vbam_agent as va
@@ -1508,6 +1527,7 @@ def test_target_sheet_cannot_be_renamed_and_addresses_are_bounded():
     assert va._check_addr("xfd1048576") == "XFD1048576"
 
 
+@pytest.mark.core
 def test_find_looks_at_the_target_sheet():
     """10: --sheet が非アクティブのとき find がアクティブシートを探していた。"""
     import vbam_agent as va
@@ -1519,6 +1539,7 @@ def test_find_looks_at_the_target_sheet():
     assert ns.sheet_opt == "名簿" and not unknown
 
 
+@pytest.mark.core
 def test_lock_sees_another_thread_of_the_same_process(tmp_path, monkeypatch):
     """15: MCP の世代交代（同じ PID の別スレッド）を素通ししていた。"""
     import vbam_agent as va
@@ -1539,6 +1560,7 @@ def test_lock_sees_another_thread_of_the_same_process(tmp_path, monkeypatch):
         assert _json.loads(lock.read_text(encoding='utf-8'))['thread'] == threading.get_ident()
 
 
+@pytest.mark.core
 def test_code_replace_defaults_to_the_module_being_repaired():
     """17: module を省くとブック全体が置換の対象になっていた。"""
     import vbam_agent as va
@@ -1684,6 +1706,7 @@ def test_other_sheets_are_counted_too():
     assert va._other_sheets_in([{"op": "pivot", "action": "create", "range": "A1:E9", "at": "H3"}]) == set()
 
 
+@pytest.mark.core
 def test_plan_checklist_blocks_a_silent_drop():
     """33: 「未」が残ったまま done を言わせない（落とし物の防止を構造で強制する）。"""
     import vbam_agent as va
@@ -1814,6 +1837,7 @@ def test_clean_plan_decides_rules_without_ai():
     assert vc.clean_plan(g2, 0)['blanks'] == [(4, 1)]
 
 
+@pytest.mark.core
 def test_rows_and_columns_can_be_deleted_only_with_approval():
     """10: 行・列を消す手を開けた（2026-09-05）。控えで戻せる（⑥⑦）が、承認の言葉が要る。"""
     import vbam_agent as va
@@ -2025,6 +2049,7 @@ def test_undo_meta_grows_to_every_written_sheet(tmp_path, monkeypatch):
     assert va._undo_sheets({}) == [] and va._undo_sheets(None) == []
 
 
+@pytest.mark.core
 def test_undo_restores_every_recorded_sheet():
     """7（後半）: undo_agent が覚書のシートを 1 枚ずつ戻す（1 枚目だけで終わらない）。"""
     import inspect as _inspect
@@ -2279,6 +2304,7 @@ def test_agent_lock_ignores_broken_lock_file(tmp_path, monkeypatch):
         pass
 
 
+@pytest.mark.core
 def test_agent_clear_range_and_unmerge_hands():
     """結合の解除（format --unmerge）と範囲クリア（clear_range）。帳票を元の場所で一覧に直す手。"""
     import vbam_agent as va
@@ -2370,6 +2396,7 @@ def test_same_second_runs_get_their_own_backup_and_run_id(tmp_path, monkeypatch)
     assert [vl._run_id(), vl._run_id(), vl._run_id()] == ["20260923_184635", "20260923_184635_2", "20260923_184635_3"]
 
 
+@pytest.mark.core
 def test_format_changes_compares_borders_on_the_before_range():
     """右に表を足して使用範囲が広がっても、元の表の罫線を「あり → なし」と言わない（2026-09-23 選んだ列の項目別件数表を右に作る）。"""
     class B:
@@ -2405,6 +2432,7 @@ def test_format_changes_compares_borders_on_the_before_range():
     assert [r for r in vu._format_changes(before, ws) if r['what'].startswith('罫線')] == []
 
 
+@pytest.mark.core
 def test_seiri_notes_do_not_misread_title_rows_side_tables_and_memo_rows_20260923():
     """Gemini の試し（お試し版 テスト用1・4）で出た seiri の誤報 3 つ。
 
@@ -2449,6 +2477,7 @@ def test_seiri_notes_do_not_misread_title_rows_side_tables_and_memo_rows_2026092
     assert "表の中の空欄: C7" in text2 and "表の中の空行: 行8" in text2 and "行12" not in text2
 
 
+@pytest.mark.core
 def test_shelf_plan_fires_every_clause_and_pick_reads_handbooks_and_mishearing_20260924():
     """② 外れた依頼を棚へ（2026-09-24）: 頼みが 2 つ以上なら節ごとに棚を引いて並べる・手順書は名前で撃つ・
     「票」を「表」と読む（帳票・伝票は残す）・「直して」に調べるだけの棚を当てない。VBA の先撃ちと同じ答え。"""
@@ -2476,6 +2505,7 @@ def test_shelf_plan_fires_every_clause_and_pick_reads_handbooks_and_mishearing_2
     assert vp.shelf_pick("帳票を一覧に直して", E2) == '帳票を右に1行1件の一覧にする'   # 「直して」で頼む本体＝調べるだけの棚の止めから外す（VBA と同じ・2026-10-01）
 
 
+@pytest.mark.core
 def test_shelf_run_reports_page_setup_row_height_and_filter_changes_20260924():
     """印刷設定・行の高さだけを変えるマクロで shelf-run が「何も変わりませんでした」と言っていた（2026-09-24）。"""
     import vbam_view as vv
@@ -2492,6 +2522,7 @@ def test_shelf_run_reports_page_setup_row_height_and_filter_changes_20260924():
     assert vv._sheet_extras_changes(b, b) == [] and vv._sheet_extras_changes({}, {}) == []
 
 
+@pytest.mark.core
 def test_shelf_reads_split_modules_in_name_order():
     """棚が「表の整理_〜」に分かれても読む（2026-09-23 分割の下ごしらえ）。並びは名前順・下請けは目録に入れない。"""
     import vbam_core as vc
@@ -2530,6 +2561,7 @@ def test_shelf_reads_split_modules_in_name_order():
     assert vc.is_shelf_module("表の整理_作る") and not vc.is_shelf_module("表の整理の一覧")
 
 
+@pytest.mark.core
 def test_seiri_notes_for_a_roster():
     """名簿で言えなかった 4 つ（実測 3）: 番号の抜け・未来の生年月日・電話の桁・同姓同名。郵便番号の同じ値は重複と言わない。"""
     import datetime as dt
@@ -2549,6 +2581,7 @@ def test_seiri_notes_for_a_roster():
     assert any(h[1] == "番号の列を連番に振り直す" for h in hints)
 
 
+@pytest.mark.core
 def test_agent_materials_warns_about_calc_mode_and_protection():
     """手動計算・保護シートは「書いたのに直らない」の正体。材料に出す。"""
     import vbam_agent as va
@@ -2717,6 +2750,7 @@ def test_formula_blocks_rewrite_only_formula_cells_and_fold_them_into_rectangles
     assert vu._formula_blocks([["値", 1]]) == []
 
 
+@pytest.mark.core
 def test_code_replace_zero_match_is_reported_as_a_failure():
     """4: 1 行も当たらなくても成功で返り、AI は「直した」と思って done にしていた。"""
     import vbam_agent as va
@@ -2843,6 +2877,7 @@ def test_text_of_keeps_the_time():
     assert va._text_of(datetime.datetime(2024, 4, 1)) == "2024/4/1"
 
 
+@pytest.mark.core
 def test_fill_has_a_ceiling_and_guards_the_first_cell():
     """8: 列全体を渡すと 100 万行に膨らみ、先頭セルは検査の外で無条件に潰していた。"""
     import vbam_agent as va
@@ -2888,6 +2923,7 @@ def test_macro_material_says_when_the_code_was_cut():
     assert "replace で全文を書き直さないでください" in src
 
 
+@pytest.mark.core
 def test_audit_targets_picks_the_written_ranges_only():
     """仕上げ検査を当てる先は、書いた手の番地だけ（read や pivot は拾わない）。"""
     import vbam_agent as va
@@ -3440,6 +3476,7 @@ def test_inv_catches_hidden_rows_and_crushed_formulas():
     assert va._inv_compare(before, now, "実射1") == []
 
 
+@pytest.mark.core
 def test_uncovered_formula_cells_catches_unread_ranges():
     """見ていない範囲を「なし」と報告させない（2026-09-05・本物の 161 列の表で出た欠陥）。
 
@@ -3820,6 +3857,7 @@ def test_cont_answer_is_read_by_itself_not_from_the_head_of_the_request():
         va._APPROVAL_CTX.update(old)
 
 
+@pytest.mark.core
 def test_copy_range_is_refused_when_it_would_overwrite_someone_elses_value():
     """copy_range もコピー先に人の値があれば実行前に止める（2026-10-28 点検・門が write_cells／write_grid にしか無かった）。"""
     import vbam_agent as va
@@ -3871,6 +3909,7 @@ def _inv_snap(**kw):
     return base
 
 
+@pytest.mark.core
 def test_the_invariants_now_watch_merges_tables_charts_calc_and_the_sheet_order():
     """③: 頼んでいない変化に、結合・テーブル・グラフ・使用範囲・シートの並び・計算モードを足した。
 
@@ -4040,6 +4079,7 @@ def test_a_formula_that_moved_down_a_row_is_not_called_crushed():
     assert va._shape_changed({'values': [[1, 2]]}, {'values': [[1, 2]]}) is False
 
 
+@pytest.mark.core
 def test_other_sheet_references_may_shift_when_rows_are_inserted():
     """③の直し 2: 行を足すと Excel が他シートの参照を自分で直す。それは「壊れた」ではない。
 
@@ -4202,6 +4242,7 @@ def test_prevalidate_refuses_the_whole_reply_when_one_hand_is_bad():
     va._approval_set("")
 
 
+@pytest.mark.core
 def test_row_col_split_names_and_new_hands_are_wired():
     import pytest
     import vbam_agent as va
@@ -4524,6 +4565,7 @@ def test_the_request_paths_are_peeked_before_the_first_turn(tmp_path):
     assert '**ありません**' in va._peek_files_note(f'「{tmp_path / "無い.csv"}」を取り込んで')
 
 
+@pytest.mark.core
 def test_every_hand_translates_to_what_the_cli_accepts():
     """pytest にも実射にも出ていなかった手の翻訳（JSON → CLI の引数列）を 1 本ずつ当てる（2026-09-10）。
 
@@ -4647,6 +4689,7 @@ def test_every_hand_translates_to_what_the_cli_accepts():
         assert f"'{a}'" in edit, a
 
 
+@pytest.mark.core
 def test_plan_discovered_items_report_silence_and_ledger_metrics():
     import vbam_agent as va
     old = [{'item': 'A', 'state': '済'}]
@@ -4705,6 +4748,7 @@ def test_grader_noticed_items_go_to_the_report_not_to_unmet():
     assert '往復 {turn}/{limit}' in src                        # 「5/4」を出さない
 
 
+@pytest.mark.core
 def test_table_blanks_are_counted_in_materials():
     """テスト用2 の C10（フリガナ）が空欄なのに誰も言わなかった（2026-09-06 夕）。道具が数えて材料に出す。"""
     import vbam_agent as va
@@ -4897,6 +4941,7 @@ def test_merged_done_gate_message_carries_the_unseen_results(tmp_path, monkeypat
     assert "【前回の結果】" in sent[1] and "write_cells 1 セル" in sent[1] and "罫線がありません" in sent[1]
 
 
+@pytest.mark.core
 def test_rules_for_folds_the_heavy_block_unless_needed():
     """3: 重い道具の段は、依頼にも材料にもその語が無ければ 1 行に畳む。"""
     import vbam_agent as va
@@ -4950,6 +4995,7 @@ def test_id_columns_and_zenkaku_digits():
     assert va._zenkaku_digits("１０１２") and not va._zenkaku_digits("1012")
 
 
+@pytest.mark.core
 def test_save_undo_meta_writes_neighbor_only_for_a_real_backup(tmp_path, monkeypatch):
     """15: 控えのファイルが無い覚書（テストの 'p'・'x'）は隣に .json を残さない＝プロジェクト直下の残骸を作らない。"""
     import json
@@ -5067,6 +5113,7 @@ def test_grader_sees_the_sheets_the_run_created():
     assert "【このループで作った別のシート】の欄も現物です" in va._GRADE_PROMPT
 
 
+@pytest.mark.core
 def test_pivot_field_may_omit_the_field_name():
     """field を書き落とした group_date / top_n で 1 往復まるごと捨てない（2026-09-06 深夜）。
 
@@ -5122,6 +5169,7 @@ def test_pivot_field_may_omit_the_field_name():
     assert _guess_row_field(two, 'top-n') is None       # 2 本あるときは当てない
 
 
+@pytest.mark.core
 def test_sheet_add_is_idempotent_and_sheet_op_reads_name_aliases():
     """同じ名前の sheet add は失敗にしない／sheet_op の名前は name 以外の置き場からも読む。
 
@@ -6276,6 +6324,7 @@ _NzBox.Formula2 = property(lambda self: self.Formula, _nz_formula2_set)
 _NzBox.Select = lambda self: setattr(self.ws, 'selected', (self.r1, self.c1))
 
 
+@pytest.mark.core
 def test_fill_down_and_right_extend_the_formula_with_relative_references():
     import vbam_agent as va
     ws = _NzSheet({"B2": 100, "C2": 3, "B3": 200, "C3": 0, "B4": 300, "C4": 5})
@@ -6890,6 +6939,7 @@ def _looks_world():
     return ws, wb
 
 
+@pytest.mark.core
 def test_grade_structure_reads_what_cells_do_not_show():
     import vbam_agent as va
     ws, wb = _xm_world()
@@ -7074,6 +7124,7 @@ def test_heavy_materials_lists_every_kind_and_survives_unreadable_parts():
     assert va._HEAVY_NONZERO_RE.search("\n".join(empty)) is None                  # 0 本だけ＝採点係に足さない
 
 
+@pytest.mark.core
 def test_find_replace_no_longer_refuses_a_replacement_that_contains_the_search_20260911():
     """断って 1 往復を捨てさせる代わりに、CLI 側が既に置き換え後のセルを飛ばす（二重当ては起きない）。"""
     import vbam_agent as va
@@ -7162,6 +7213,7 @@ def test_regex_dollar_backrefs_and_validation_aliases_20260911():
         assert toks[-2:] == ["--list", "相談中,受注済み,失注"]
 
 
+@pytest.mark.core
 def test_validation_candidates_are_picked_up_whatever_the_name_20260911():
     """AI は候補を list・source・value と往復ごとに違う名前で書いた（7 回で 3 通り）。名前を問わず拾う。"""
     import vbam_agent as va

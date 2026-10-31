@@ -27,6 +27,8 @@ def pytest_addoption(parser):
 def pytest_configure(config):
     config.addinivalue_line(
         "markers", "e2e: 実機の Excel/VBE を起こすテスト（--run-e2e で有効）")
+    config.addinivalue_line(
+        "markers", "core: 芯のテスト（ふだん撃つ約200本）")
     if os.environ.get("VBAM_PYTEST_LIMIT"):
         _start_watchdog(_LIMIT_SEC)
     else:

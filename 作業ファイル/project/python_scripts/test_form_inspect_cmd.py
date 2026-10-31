@@ -90,6 +90,7 @@ def temp_form_excel(tmp_path):
         gc.collect()
 
 
+@pytest.mark.core
 def test_form_inspect_json_output(temp_form_excel):
     """【実機試験: 既存UserFormのレイアウトJSON吸い出し】
     配置された全コントロール（名前、座標、幅、高さ、キャプション）が

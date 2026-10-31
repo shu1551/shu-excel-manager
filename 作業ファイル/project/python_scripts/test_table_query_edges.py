@@ -226,6 +226,7 @@ def test_table_column_rename_and_remove(temp_open_excel):
     assert lo.ListColumns.Count == 1
 
 
+@pytest.mark.core
 def test_powerquery_refresh_no_queries_clean(temp_open_excel):
     """クエリや接続がないブックでも powerquery refresh がクラッシュせず安全に終了すること"""
     xl, wb, ws, file_path = temp_open_excel

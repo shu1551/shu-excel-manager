@@ -1,3 +1,4 @@
+import pytest
 # -*- coding: utf-8 -*-
 """関所（gate）が写しを開いても、呼び出し台帳（_calls.jsonl）の book が呼び出しの対象のままになる試験（2026-10-29）。
 
@@ -82,6 +83,7 @@ def _rig(monkeypatch, tmp_path, src):
     return seen
 
 
+@pytest.mark.core
 def test_gate_keeps_the_target_book_name_for_the_call_log(monkeypatch, tmp_path):
     """指示書088: gate を本体で回し、台帳の名前が呼び出し対象のまま記録されることを確かめる試験"""
     src = _FakeWb("秀コンボ.xlsm")
@@ -94,6 +96,7 @@ def test_gate_keeps_the_target_book_name_for_the_call_log(monkeypatch, tmp_path)
     assert vbam_core._last_book_name == "秀コンボ.xlsm"
 
 
+@pytest.mark.core
 def test_register_addin_test_gate_logs_the_burned_book(monkeypatch, tmp_path):
     """指示書088: 焼く前の gate が本体で回っても、台帳に焼く対象のブック名が正しく残る試験"""
     src = _FakeWb("秀コンボ.xlsm")
@@ -110,6 +113,7 @@ def test_register_addin_test_gate_logs_the_burned_book(monkeypatch, tmp_path):
     assert rec["book"] == "秀コンボ.xlsm"
 
 
+@pytest.mark.core
 def test_gate_restores_the_book_name_even_when_the_check_fails(monkeypatch, tmp_path):
     """指示書088: 構文検査で失敗しても、台帳の対象ブック名が正しく残る試験"""
     seen = _rig(monkeypatch, tmp_path, _FakeWb("台帳.xlsm"))

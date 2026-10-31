@@ -1,3 +1,54 @@
+
+
+def _vba_color_to_rgb(col):
+    """VBA の色値（整数または &H...）を RGB (0~255) に変換する"""
+    if col is None:
+        return (0, 0, 0)
+    if isinstance(col, str):
+        col_str = col.strip("&H").strip("&")
+        try:
+            val = int(col_str, 16)
+        except ValueError:
+            return (0, 0, 0)
+    else:
+        val = int(col)
+
+    # システム色 (&H800000xx&)
+    if val < 0 or (val & 0x80000000):
+        sys_idx = val & 0xFF
+        # 代表的なシステム色
+        sys_map = {
+            0x0F: (240, 240, 240), # BTNFACE
+            0x12: (0, 0, 0),       # BTNTEXT
+            0x05: (255, 255, 255), # WINDOW (白)
+            0x08: (0, 0, 0),       # WINDOWTEXT (黒)
+            0x0D: (0, 120, 215),   # HIGHLIGHT (青)
+            0x0E: (255, 255, 255), # HIGHLIGHTTEXT (白)
+        }
+        return sys_map.get(sys_idx, (240, 240, 240))
+
+    r = val & 0xFF
+    g = (val >> 8) & 0xFF
+    b = (val >> 16) & 0xFF
+    return (r, g, b)
+
+def _relative_luminance(rgb):
+    """sRGB から相対輝度 L を計算する"""
+    def chan(c):
+        s = c / 255.0
+        return s / 12.92 if s <= 0.03928 else ((s + 0.055) / 1.055) ** 2.4
+    r, g, b = rgb
+    return 0.2126 * chan(r) + 0.7152 * chan(g) + 0.0722 * chan(b)
+
+def contrast_ratio(c1, c2):
+    """2色のコントラスト比 (1.0 ~ 21.0) を計算する"""
+    rgb1 = _vba_color_to_rgb(c1)
+    rgb2 = _vba_color_to_rgb(c2)
+    l1 = _relative_luminance(rgb1)
+    l2 = _relative_luminance(rgb2)
+    top = max(l1, l2) + 0.05
+    bot = min(l1, l2) + 0.05
+    return top / bot
 # -*- coding: utf-8 -*-
 """
 form_inspect.py — UserForm を「1回のCOM接続」でまとめて把握する。
@@ -420,7 +471,7 @@ def lint_form(form_name, info, controls, code=None):
     OVERLAP_EPS = 2.0
     by_parent = {}
     for c in ok_items:
-        by_parent.setdefault(c["parent"], []).append(c)
+        by_parent.setdefault(c.get("parent"), []).append(c)
     for parent, items in by_parent.items():
         for i in range(len(items)):
             for j in range(i + 1, len(items)):
@@ -435,7 +486,7 @@ def lint_form(form_name, info, controls, code=None):
     iw, ih = info.get("inside_width"), info.get("inside_height")
     if iw and ih:
         for c in ok_items:
-            if c["parent"] not in (None, form_name):
+            if c.get("parent") not in (None, form_name):
                 continue
             if c["left"] < 0 or c["top"] < 0 \
                or c["left"] + c["width"] > iw + 0.5 or c["top"] + c["height"] > ih + 0.5:
@@ -470,7 +521,7 @@ def lint_form(form_name, info, controls, code=None):
     for c in ok_items:
         if (c.get("type") or "").startswith("Label") and c.get("bold"):
             continue
-        if c["font_size"] is not None:
+        if c.get("font_size") is not None:
             sizes.setdefault(c["font_size"], []).append(c["name"])
     if len(sizes) > 1:
         major = max(sizes, key=lambda k: len(sizes[k]))
@@ -484,11 +535,11 @@ def lint_form(form_name, info, controls, code=None):
     #    フォーカスが一覧＝PageDown が効く）のが正で、画面上は下にあっても正しい。
     #    ここで「不一致」と報告すると、それを見た者が tab-order で視線順に「直し」て
     #    フォーカスを壊す（2026-07-11 実害）。
-    tabbed = [c for c in ok_items if c["tab_index"] is not None
-              and c["parent"] in (None, form_name)
+    tabbed = [c for c in ok_items if c.get("tab_index") is not None
+              and c.get("parent") in (None, form_name)
               and not (c.get("type") or "").startswith("ListBox")]
     visual = sorted(tabbed, key=lambda c: (round((c["top"] + c["height"] / 2) / 14), c["left"]))
-    actual = sorted(tabbed, key=lambda c: c["tab_index"])
+    actual = sorted(tabbed, key=lambda c: c.get("tab_index", 0))
     mism = [(v["name"]) for v, a in zip(visual, actual) if v["name"] != a["name"]]
     if mism:
         findings.append(f"TabIndex が視線順と不一致: {', '.join(mism[:6])}"
@@ -499,7 +550,7 @@ def lint_form(form_name, info, controls, code=None):
     #    比較はフォーム全体ではなく「同じ列（Left が近い）」の入力同士に限る。
     #    Left がバラバラな入力を比較すると、無関係な別セクション同士を
     #    揃え忘れ扱いしてしまう（倍率回転フォームで実際に誤検知した）。
-    inputs = [c for c in ok_items if c["parent"] in (None, form_name)
+    inputs = [c for c in ok_items if c.get("parent") in (None, form_name)
               and (c.get("type") or "").startswith(("TextBox", "ComboBox", "ListBox"))]
     by_left = {}
     for c in inputs:
@@ -519,7 +570,7 @@ def lint_form(form_name, info, controls, code=None):
     for c in labels:
         cy = c["top"] + c["height"] / 2
         near = [i for i in ok_items
-                if i["parent"] == c["parent"] and i is not c
+                if i.get("parent") == c.get("parent") and i is not c
                 and (i.get("type") or "").startswith(("TextBox", "ComboBox"))
                 and i["top"] < cy < i["top"] + i["height"]]
         for i in near:
@@ -573,6 +624,48 @@ def lint_form(form_name, info, controls, code=None):
     #    一度も繋がらず、性質の違う区画が並ぶだけの小さいフォームでは区画数が
     #    そのまま発火するだけだったため撤去した。
 
+    
+    # 8. 画面サイズ（1366x768以内）
+    fw = info.get("width")
+    fh = info.get("height")
+    if fw and fw > 1366:
+        findings.append(f"画面幅超過: フォーム幅 {fw:g}pt が 1366pt を超えています")
+    if fh and fh > 768:
+        findings.append(f"画面高さ超過: フォーム高さ {fh:g}pt が 768pt を超えています")
+
+    # 9. 字の切れ（caption がコントロール幅を超えていないか）
+    for c in ok_items:
+        cap = c.get("caption")
+        w = c.get("width")
+        fs = c.get("font_size") or 11
+        if cap and w and c.get("type", "").startswith(("Label", "CommandButton", "CheckBox", "OptionButton")):
+            # 概算幅計算
+            approx_w = 0.0
+            import unicodedata
+            for ch in cap:
+                approx_w += fs if unicodedata.east_asian_width(ch) in ('F', 'W', 'A') else fs * 0.55
+            # パディング考慮
+            pad = 16 if c.get("type", "").startswith("CommandButton") else 6
+            if approx_w + pad > w + 2.0:
+                findings.append(f"字の切れ: {c['name']} (字幅約{int(approx_w+pad)}pt > 部品幅{int(w)}pt: '{cap}')")
+
+    # 10. ボタンの大きさの違い（同じ button_bar / 水平帯で幅・高さがバラバラ）
+    if len(btns) >= 2:
+        for band, bs in bands.items():
+            if len(bs) >= 2:
+                ws = sorted({round(c["width"]) for c in bs})
+                if len(ws) > 1 and max(ws) - min(ws) >= 4:
+                    findings.append(f"ボタン幅不揃い: 幅{ws}pt ({', '.join(c['name'] for c in bs)})")
+
+    # 11. 明るさの比（コントラスト比 4.5 以上）
+    for c in ok_items:
+        fg = c.get("forecolor") if "forecolor" in c else c.get("ForeColor")
+        bg = c.get("backcolor") if "backcolor" in c else c.get("BackColor")
+        if fg is not None and bg is not None:
+            cr = contrast_ratio(bg, fg)
+            if cr < 4.5:
+                findings.append(f"コントラスト比不足: {c['name']} (比率 {cr:.2f} < 4.5)")
+
     return findings
 
 
@@ -583,6 +676,48 @@ def print_lint(form_name, info, controls, echo=print, code=None):
         echo("  問題なし（重なり・はみ出し・不揃い・タブ順のずれは検出されず）")
     for s in findings:
         echo(f"  [!] {s}")
+    
+    # 8. 画面サイズ（1366x768以内）
+    fw = info.get("width")
+    fh = info.get("height")
+    if fw and fw > 1366:
+        findings.append(f"画面幅超過: フォーム幅 {fw:g}pt が 1366pt を超えています")
+    if fh and fh > 768:
+        findings.append(f"画面高さ超過: フォーム高さ {fh:g}pt が 768pt を超えています")
+
+    # 9. 字の切れ（caption がコントロール幅を超えていないか）
+    for c in ok_items:
+        cap = c.get("caption")
+        w = c.get("width")
+        fs = c.get("font_size") or 11
+        if cap and w and c.get("type", "").startswith(("Label", "CommandButton", "CheckBox", "OptionButton")):
+            # 概算幅計算
+            approx_w = 0.0
+            import unicodedata
+            for ch in cap:
+                approx_w += fs if unicodedata.east_asian_width(ch) in ('F', 'W', 'A') else fs * 0.55
+            # パディング考慮
+            pad = 16 if c.get("type", "").startswith("CommandButton") else 6
+            if approx_w + pad > w + 2.0:
+                findings.append(f"字の切れ: {c['name']} (字幅約{int(approx_w+pad)}pt > 部品幅{int(w)}pt: '{cap}')")
+
+    # 10. ボタンの大きさの違い（同じ button_bar / 水平帯で幅・高さがバラバラ）
+    if len(btns) >= 2:
+        for band, bs in bands.items():
+            if len(bs) >= 2:
+                ws = sorted({round(c["width"]) for c in bs})
+                if len(ws) > 1 and max(ws) - min(ws) >= 4:
+                    findings.append(f"ボタン幅不揃い: 幅{ws}pt ({', '.join(c['name'] for c in bs)})")
+
+    # 11. 明るさの比（コントラスト比 4.5 以上）
+    for c in ok_items:
+        fg = c.get("forecolor") if "forecolor" in c else c.get("ForeColor")
+        bg = c.get("backcolor") if "backcolor" in c else c.get("BackColor")
+        if fg is not None and bg is not None:
+            cr = contrast_ratio(bg, fg)
+            if cr < 4.5:
+                findings.append(f"コントラスト比不足: {c['name']} (比率 {cr:.2f} < 4.5)")
+
     return findings
 
 
@@ -807,12 +942,12 @@ def to_layout_code(form_name, info, controls):
     復元できないため、生成コードは出発点として使い、人が仕上げる前提。
     """
     ok_items = [c for c in controls if "error" not in c and c["left"] is not None]
-    top_items = [c for c in ok_items if c["parent"] in (None, form_name)
+    top_items = [c for c in ok_items if c.get("parent") in (None, form_name)
                  and not (c.get("type") or "").startswith(("Frame", "MultiPage"))]
     frames = [c for c in ok_items if (c.get("type") or "").startswith("Frame")
-              and c["parent"] in (None, form_name)]
+              and c.get("parent") in (None, form_name)]
     mpages = [c for c in ok_items if (c.get("type") or "").startswith("MultiPage")
-              and c["parent"] in (None, form_name)]
+              and c.get("parent") in (None, form_name)]
 
     inputs = [c for c in top_items
               if (c.get("type") or "").startswith(("TextBox", "ComboBox", "ListBox"))]

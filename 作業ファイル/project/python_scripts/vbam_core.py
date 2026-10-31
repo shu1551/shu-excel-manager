@@ -3423,6 +3423,28 @@ def classify_unstick_dialog(title, body, buttons):
             clean_lbl = (b_label or '').replace('&', '').strip().upper()
             if clean_lbl == 'OK' or b_id == 1:
                 return 'reset_ok', (b_hwnd, b_label, b_id)
+    # 3. マクロなしブックへの保存確認ダイアログ
+        # 4. 上書き確認ダイアログ
+    if "置き換えますか" in text or "既にあります" in text or "既に存在します" in text:
+        for b_hwnd, b_label, b_id in buttons:
+            clean_lbl = (b_label or '').replace('&', '').strip()
+            if "はい" in clean_lbl or clean_lbl.upper() == "YES":
+                return 'overwrite_yes', (b_hwnd, b_label, b_id)
+        return 'manual', None
+
+    if "マクロなしのブックに保存できません" in text or "vb プロジェクト" in text or "自動保存をオフにするには" in text:
+        for b_hwnd, b_label, b_id in buttons:
+            clean_lbl = (b_label or '').replace('&', '').strip()
+            if "保存" in clean_lbl and "消去" not in clean_lbl:
+                return 'save_ok', (b_hwnd, b_label, b_id)
+        return 'manual', None
+        return 'manual', None
+    # 3. マクロなしブックへの保存確認ダイアログ
+    if "マクロなしのブックに保存できません" in text or "vb プロジェクト" in text or "自動保存をオフにするには" in text:
+        for b_hwnd, b_label, b_id in buttons:
+            clean_lbl = (b_label or '').replace('&', '').strip()
+            if "保存" in clean_lbl and "消去" not in clean_lbl:
+                return 'save_ok', (b_hwnd, b_label, b_id)
         return 'manual', None
     return 'manual', None
 
@@ -3611,6 +3633,8 @@ def cmd_unstick(args):
                 print(f"    ボタン: [{btns}]")
                 if d['action'] == 'reset_ok':
                     print("    方針: --fix で［OK］を押して解除できます")
+                elif d['action'] == 'save_ok':
+                    print("    方針: --fix で［保存］を押して解除できます")
                 elif d['action'] == 'recovery_keep':
                     lbl = d['target_btn'][1] if d['target_btn'] else '残す'
                     print(f"    方針: --fix で［{lbl}］を押して解除できます")
@@ -3639,7 +3663,7 @@ def cmd_unstick(args):
     # 1. ダイアログの処理
     manual_dialogs = []
     for d in info['dialogs']:
-        if d['action'] in ('reset_ok', 'recovery_keep') and d['target_btn']:
+        if d['action'] in ('reset_ok', 'recovery_keep', 'save_ok', 'overwrite_yes') and d['target_btn']:
             target = d['target_btn'][0]
             label = d['target_btn'][1]
             try:

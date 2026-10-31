@@ -58,6 +58,7 @@ def temp_excel_sheet(tmp_path):
             xl = None
 
 
+@pytest.mark.core
 def test_cond_format_list_and_clean_audit(temp_excel_sheet):
     """健全な条件付き書式の逆解析 (list) と診断 (audit) が正しく動くか"""
     xl, wb, ws, file_path = temp_excel_sheet

@@ -264,6 +264,7 @@ def test_plan_full_longer_match_on_skipped_job_blocks_short_match():
     assert vp._ask_strength('集約|まとめ|集計', '全部まとめて集計') == 3 and vp._ask_strength('x(', 'x') == 0
 
 
+@pytest.mark.core
 def test_rehearse_drop_recomputes_plan_by_name():
     reg = vp.registry_from_text(_FURI, owner='o')
     p = vp.plan_full("決算統計区分に振り直して", reg, {'予算科目コード', '支出額'})
@@ -417,6 +418,7 @@ def test_plan_full_skips_a_job_whose_shape_is_missing():
     assert vp.plan_full('この表を絞り込んで', reg, None, None)['extras']
 
 
+@pytest.mark.core
 def test_shape_signals_pivot_and_chart_words():
     import vbam_prefire as vp
     k = ['ss', 'sn', 'sn']
@@ -424,6 +426,7 @@ def test_shape_signals_pivot_and_chart_words():
     assert {'ピボット', 'グラフ'} <= vp.shape_signals(v, k, has_pivot=True, has_chart=True)
     assert not ({'ピボット', 'グラフ'} & vp.shape_signals(v, k))
 
+@pytest.mark.core
 def test_pivot_sort_and_judgement_words_20261022_046():
     """指示書046: ピボットの並べ替えは表の並べ替えの棚に取られない（除外 ピボット・ピポット）／判断を頼む言い方は AI の役目。"""
     text = "\n".join([
@@ -466,6 +469,7 @@ def test_shelf_plan_shitekara_split():
     assert res == ['全列が同じ重複行を削除する', '表の中の空行を削除して詰める']
 
 
+@pytest.mark.core
 def test_lint_stops_hidden_shelf_with_argument_20261029():
     """引数のある Sub に依頼の語がある＝撃たれるのに目録とマクロ一覧に出ない棚を止める（2026-10-29）。
     使わない引数「勇退」で 32 本を隠し、そのうち 19 本が先撃ちで撃たれ続けていた。引数のある手伝い（_本体）と引数なしの入口は通す"""

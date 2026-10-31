@@ -1363,6 +1363,12 @@ _CAPABILITIES = {
                   "残り（エラーセルと原因・人の判断が要る気づき・###）だけを出す（2026-09-13・09-25）"),
         ("表の整理", "seiri と同じ"),
         ("build-sheet", "設計図（JSON）からシートを一枚組み上げる（新規シート／--overwrite で既存を消して組み直す）"),
+        ("form-build", "設計図（JSON）からフォームを組む（--sample/--dry-run/--png/--stub）"),
+        ("form-from-table", "表の見出しと中身から入力フォームの設計図を作る（--build で構築）"),
+        ("create-sample-table", "検証用の汚れた表を捨てブックに作成する"),
+        ("form-set", "表示中のフォームの欄に値を入れる（form-set [form] name=val ...）"),
+        ("form-lint", "UserForm の見た目検査（重なり・はみ出し・字切れ・比率4.5以上）"),
+        ("form-survey", "フォームを集計してテーマ仕様を導出する"),
         ("agent", "依頼文をシート 1 枚に対して回す（AI が JSON で手を返し、道具が書いて読み戻す。保存はしない）"),
         ("set-key", "APIキーを預かる（ユーザー環境変数へ書く。ブックには触らない・ファイルにも書かない）"),
         ("sheet", "シート操作"), ("table", "テーブル"), ("name", "名前定義"),
@@ -1397,6 +1403,8 @@ _CAPABILITIES = {
     "execute": [
         ("run-macro", "マクロを本体で実行（何が起きるかは静的に読めない）"),
         ("form-click", "表示中のフォームのボタンを外から押す（そのボタンのマクロが走る。何が起きるかは静的に読めない）"),
+        ("form-key", "表示中のフォームにキーを直接送信（フォーカス無関係・他アプリに漏れない）"),
+        ("form-test", "台本（JSON）に従ってフォームのテストを一括自動実行"),
         ("rehearse", "コピーに試し撃ち（本体は無傷。ただし任意コードは走る）"),
         ("test", "テスト Sub の一括実行"),
         ("gate", "関所（コピーで構文検査＋テスト実行）"),
@@ -8563,6 +8571,18 @@ def cmd_register_addin(args):
         t_step = _split("後片付け", t_step)
         if done and done[0].startswith("焼けました"):
             print(register_next_step())
+            # 指示書 091の7: prebuild_addin.py があれば裏で切り離して起こす
+            prebuild_py = os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'publish', 'prebuild_addin.py'))
+            if os.path.isfile(prebuild_py):
+                try:
+                    import subprocess
+                    subprocess.Popen([sys.executable, prebuild_py],
+                                     creationflags=0x00000008 | 0x08000000,
+                                     close_fds=True, stdin=subprocess.DEVNULL,
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    print("公開用の写しを裏で組み始めました")
+                except Exception:
+                    pass
         if splits:
             total_sec = time.perf_counter() - t_start
             breakdown_str = "内訳: " + "・".join(f"{name} {sec:.2f}秒" for name, sec in splits)

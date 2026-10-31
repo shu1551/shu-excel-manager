@@ -80,6 +80,7 @@ def _bas(body_lines):
             + 'End Sub\r\n').encode('cp932')
 
 
+@pytest.mark.core
 def test_history_folds_identical_bodies_and_diffs(tmp_path, monkeypatch, capsys):
     bdir = tmp_path / "backups"
     bdir.mkdir()
@@ -105,6 +106,7 @@ def test_history_folds_identical_bodies_and_diffs(tmp_path, monkeypatch, capsys)
     assert n_all == 4 and len(versions_all) == 3
 
 
+@pytest.mark.core
 def test_history_deep_needs_book_and_says_when_nothing_found(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(lg, "BACKUP_DIR", str(tmp_path / "nothing"))
     monkeypatch.setattr(lg, "SCRIPT_DIR", str(tmp_path))
@@ -129,6 +131,7 @@ def test_read_closed_book_reads_japanese_module_names():
     assert not any(ln.startswith("Attribute ") for ln in mods["写真貼り付け"].split("\n"))
 
 
+@pytest.mark.core
 @_needs_fixture
 def test_list_file_lists_modules(capsys):
     ns = argparse.Namespace(posargs=[FIXTURE], json=True)
@@ -145,6 +148,7 @@ def test_list_file_lists_modules(capsys):
     assert "閉じたブック:" in out and "[フォーム] メニューForm" in out and "Excel は開いていない" in out
 
 
+@pytest.mark.core
 @_needs_fixture
 def test_grep_files_finds_errorgo_with_vbe_line_number(capsys):
     # 練習台の欠陥①: 写真貼り付け.写真の貼り付け 82 行目 `On Error GoTo Errorgo`（行番号は VBE の CodeModule と同じ）
@@ -160,6 +164,7 @@ def test_grep_files_finds_errorgo_with_vbe_line_number(capsys):
     assert doc['total'] == 1 and doc['hits'][0]['line'] == 82 and doc['hits'][0]['proc'] == "写真の貼り付け"
 
 
+@pytest.mark.core
 @_needs_fixture
 def test_grep_files_reports_missing_targets_and_regex(capsys):
     ns = argparse.Namespace(posargs=["On\\s+Err\\s+GoTo", FIXTURE, "no_such_dir_xyz"], regex=True, ignore_case=False,
@@ -170,6 +175,7 @@ def test_grep_files_reports_missing_targets_and_regex(capsys):
     assert "[図形一覧form] 名前_Click:" in out and "On Err GoTo koko" in out          # 練習台の欠陥②
 
 
+@pytest.mark.core
 @_needs_fixture
 def test_versions_lists_copies_newest_first_with_diff_note(tmp_path, monkeypatch, capsys):
     import shutil
@@ -193,6 +199,7 @@ def test_versions_lists_copies_newest_first_with_diff_note(tmp_path, monkeypatch
     assert "2 冊" in out and "← 最新" in out and "[開いている]" in out and "最新とコードは同じ" in out
 
 
+@pytest.mark.core
 @_needs_fixture
 def test_versions_reads_only_the_newest_backups_unless_all(tmp_path, monkeypatch, capsys):
     """backups の控えは百冊単位（ポスターで 127 冊）＝既定は新しい 3 冊だけ読んで残りは数だけ言う。"""
@@ -223,6 +230,7 @@ def test_versions_reads_only_the_newest_backups_unless_all(tmp_path, monkeypatch
     assert len(reads) == 1 and "他 4 冊の控え" in capsys.readouterr().out
 
 
+@pytest.mark.core
 @_needs_fixture
 def test_export_file_writes_cp932_modules(tmp_path, capsys):
     ns = argparse.Namespace(posargs=[FIXTURE], dir_opt=str(tmp_path / "out"), json=True)
@@ -246,6 +254,7 @@ def test_expand_targets_folders_files_and_missing(tmp_path):
 # 配線
 # ================================================================
 
+@pytest.mark.core
 def test_lineage_commands_are_wired():
     table = vm._command_table()
     for name, fn in (("versions", lg.cmd_versions), ("history", lg.cmd_history), ("list-file", lg.cmd_list_file),
@@ -260,6 +269,7 @@ def test_lineage_commands_are_wired():
     assert ns.dir_opt == ["a", "b"] and ns.all is True and ns.max_hits is None
 
 
+@pytest.mark.core
 @_needs_fixture
 def test_export_file_only_named_modules(tmp_path, capsys):
     """export-file <ファイル> <モジュール> でそれだけ書き出す（前は「余分な引数」で断った・2026-09-24）。"""

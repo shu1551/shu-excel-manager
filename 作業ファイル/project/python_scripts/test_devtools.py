@@ -47,6 +47,7 @@ def test_rename_plan_ascii_case_insensitive():
     assert [n.strip() for _, _, n in plan] == ["Call Helper2", "Helper2", "Sub Helper2()"]
 
 
+@pytest.mark.core
 def test_rename_procedure_wired_and_refuses_bad_name(capsys):
     assert vm.raw_command(vm._command_table()["rename-procedure"]) is dt.cmd_rename_procedure
     ns = argparse.Namespace(posargs=["A", "_b"], module_opt=None, yes=True, dry_run=True, force=False)
@@ -131,6 +132,7 @@ class _ScComp:
             f.write(self.text.encode("cp932"))
 
 
+@pytest.mark.core
 def test_set_shortcut_moves_key_from_old_owners(monkeypatch, capsys):
     """2026-09-20 読者の報告: 同じキーを別のマクロに掛けても Excel は両方に残し、名前の順で先の方を動かす
     ＝道具は「持ち主が替わる」と言うだけで新しい方に掛けていた。古い持ち主から外してから掛ける（同じモジュールは 1 回で）。"""
@@ -176,6 +178,7 @@ def test_persist_shortcut_rewrites_both_procs_in_one_import(monkeypatch):
     assert 'Attribute ScZ.VB_ProcData.VB_Invoke_Func = "J\\n14"' in seen[0] and "ScA.VB_ProcData" not in seen[0]
 
 
+@pytest.mark.core
 def test_list_shortcuts_marks_same_key(monkeypatch, capsys):
     from types import SimpleNamespace
     import vbam_vba as vv
@@ -220,6 +223,7 @@ def test_backup_series_strips_stamp_and_seq():
     assert dt._backup_series("book_Mod_20260916_101010.bas") == "book_Mod_#.bas"
 
 
+@pytest.mark.core
 def test_backup_prune_dry_run_does_not_delete(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(dt, "BACKUP_DIR", str(tmp_path))
     old = tmp_path / "b_M_20260101_000000.bas"
@@ -270,6 +274,7 @@ def test_export_history_note_removes_identical_folder(tmp_path, capsys):
     assert "同じ" in capsys.readouterr().out
 
 
+@pytest.mark.core
 def test_export_all_parser_has_history():
     p = vm.build_parser()
     ns = p.parse_args(["export-all", "--history"])
@@ -296,6 +301,7 @@ def test_format_bas_text_keeps_procdata_attribute_under_declaration():
     assert "' --- 変数宣言 ---" in out and "Dim y As Long" in out
 
 
+@pytest.mark.core
 def test_format_bas_text_keeps_comments_between_subs_and_trailing():
     # 2026-09-16 実射で発覚: Sub と Sub の間の説明コメント（10 行）が整形で消えていた
     src = ("Sub A()\n    x = 1\nEnd Sub\n\n"
@@ -314,6 +320,7 @@ def test_format_bas_text_keeps_comments_between_subs_and_trailing():
 # 進み具合（status）と台帳の包み
 # ================================================================
 
+@pytest.mark.core
 def test_cmd_progress_write_note_read(monkeypatch):
     rec = vc.cmd_progress_write('run', cmd='export-all', args=argparse.Namespace(posargs=['a', 'b', 'c', 'd']))
     assert rec['args'] == 'a b c' and rec['pid'] == os.getpid()
@@ -341,6 +348,7 @@ def test_logged_wrapper_writes_progress_start_and_done(monkeypatch):
     assert after['state'] == 'done' and after['ok'] is True and after['cmd'] == 'fake-thing'
 
 
+@pytest.mark.core
 def test_status_reports_running_and_agent(monkeypatch, capsys):
     assert vm.raw_command(vm._command_table()["status"]) is dt.cmd_status
     vc.cmd_progress_write('run', cmd='gate', args=argparse.Namespace(posargs=[]), note="全体コンパイル")
@@ -355,6 +363,7 @@ def test_status_reports_running_and_agent(monkeypatch, capsys):
     assert vc.cmd_progress_read()['cmd'] == 'gate'
 
 
+@pytest.mark.core
 def test_status_detects_dead_process(monkeypatch, capsys):
     vc.cmd_progress_write('run', cmd='checkup', args=argparse.Namespace(posargs=[]))
     monkeypatch.setattr(dt, "_pid_alive", lambda pid: False)
@@ -405,6 +414,7 @@ def test_snap_sheet_light_reads_formula_once():
     assert snap['hidden'] == () and snap['tables'] == {} and snap['merged'] is None
 
 
+@pytest.mark.core
 def test_snapshot_book_light_for_sheets_not_own(monkeypatch):
     monkeypatch.setattr(vi, "_snap_sheet", lambda sh: {'used': 'A1:A1', 'values': [['x']], 'formulas': {}, 'hidden': (3,),
                                                        'cf': 0, 'validation': '', 'filter': '', 'merged': None,
@@ -497,6 +507,7 @@ def _repair_parts(**over):
     return parts
 
 
+@pytest.mark.core
 def test_repair_report_order_and_untruncated_code():
     code = "Sub 写真の貼り付け()\n" + "\n".join(f"    x{i} = {i}" for i in range(300)) + "\nEnd Sub\n"
     parts = _repair_parts(
@@ -526,6 +537,7 @@ def test_repair_report_order_and_untruncated_code():
     assert vmac._GET_MODULE_RE.search(text).group(1) == "写真貼り付け", "agent の材料がモジュール名を拾える形"
 
 
+@pytest.mark.core
 def test_repair_report_says_when_there_is_nothing():
     text = "\n".join(dt._repair_report(_repair_parts()))
     assert "（ショートカット・ボタン・フォームからは呼ばれていない" in text
@@ -571,6 +583,7 @@ def test_latest_module_backup_picks_newest_of_that_book_and_module(tmp_path, mon
 # patch-procedure & 書き込み検証のユニットテスト
 # ================================================================
 
+@pytest.mark.core
 def test_patch_procedure_parser_and_wiring():
     # パーサーのパース検証
     p = vm.build_parser()
@@ -591,6 +604,7 @@ def test_patch_procedure_parser_and_wiring():
     assert "patch-procedure" in write_cmds
 
 
+@pytest.mark.core
 def test_patch_procedure_logic_counts_and_validation(monkeypatch, capsys):
     import vbam_vba as vv
 
@@ -745,6 +759,7 @@ def test_report_write_result_error_and_hash_detection(capsys):
 # unstick（Excel の詰まり判定テスト）
 # ================================================================
 
+@pytest.mark.core
 def test_unstick_classify_reset_dialog():
     """「プロジェクトがリセットされます」ダイアログで OK ボタンが特定されること。"""
     title = "Microsoft Visual Basic"
@@ -794,6 +809,7 @@ def test_unstick_command_wired():
     assert vm.raw_command(table["unstick"]) is vc.cmd_unstick
 
 
+@pytest.mark.core
 def test_import_module_and_close_vbe_wired():
     """import-module と close-vbe コマンドがテーブルに配線されていること。"""
     table = vm._command_table()
@@ -826,6 +842,7 @@ class _FakeApp:
         self.VBE = _FakeVBE(vbe_visible)
 
 
+@pytest.mark.core
 def test_close_vbe_hides_by_com_and_never_posts_wm_close(monkeypatch):
     """close-vbe は VBE を COM で隠すだけ。窓に WM_CLOSE を送ると Excel ごと閉じる（2026-10-16 再現）。"""
     import win32gui
@@ -844,6 +861,7 @@ def test_close_vbe_hides_by_com_and_never_posts_wm_close(monkeypatch):
     assert posted == []
 
 
+@pytest.mark.core
 def test_restore_after_register_makes_excel_visible_and_reopens_book(tmp_path):
     """更新登録の後は「Excel が見えていて、焼く元のブックが開いている」に戻す（2026-10-16）。"""
     import vbam_vba as vv
@@ -979,6 +997,7 @@ def test_vba_save_says_when_the_book_had_unsaved_changes_before(monkeypatch, cap
     assert vc._unsaved_before == {} and vc._unsaved_said == set()
 
 
+@pytest.mark.core
 def test_open_tells_an_encrypted_book_from_a_plain_one(tmp_path):
     """パスワード付きの .xlsx は OLE の箱（D0CF11E0）・ふだんは zip（2026-10-29 総点検 18）。.xls は見分けない。"""
     import vbam_edit as ve

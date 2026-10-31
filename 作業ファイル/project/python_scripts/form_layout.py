@@ -41,10 +41,24 @@ import unicodedata
 import zlib
 
 from form_builder import FormBuilder, check_control_name
+import json
+
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BACKUP_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, '..', '..', 'backups'))
 PREVIEW_FILE = os.path.join(SCRIPT_DIR, '_last_layout_preview.png')
+
+THEME_FILE = os.path.join(SCRIPT_DIR, 'form_theme.json')
+
+def load_theme():
+    if os.path.exists(THEME_FILE):
+        try:
+            with open(THEME_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return None
+
 STUB_FILE = os.path.join(SCRIPT_DIR, '_last_form_code.vba')
 
 # ================================================================
@@ -599,7 +613,349 @@ def _iter_rows(rows):
                 yield from _iter_rows(pg['rows'])
 
 
-def generate_vba_stub(rows, out_path=None):
+
+def _generate_bind_click_code(elems, all_rows, bind):
+    lines = []
+    sheet_name = bind.get("sheet", "")
+    table_name = bind.get("table", "")
+    columns_map = bind.get("columns", {})
+    text_columns = set(bind.get("text_columns", []))
+    col_types = bind.get("column_types", {})
+    col_positions = bind.get("column_positions", {})
+    formula_cols = bind.get("formula_columns", [])
+    start_col = bind.get("start_col", 1)
+
+    # 必須項目の入力チェック
+    for row_elems in all_rows:
+        label = row_elems[0].get('caption') if row_elems and row_elems[0]['kind'] == 'lbl' else None
+        for e in row_elems:
+            if e.get('required'):
+                lbl_text = label or e['name']
+                lines.append(f'    If Trim({e["name"]}.Value) = "" Then')
+                lines.append(f'        MsgBox "{lbl_text} を入力してください", vbExclamation')
+                lines.append(f'        {e["name"]}.SetFocus')
+                lines.append('        Exit Sub')
+                lines.append('    End If')
+
+    # 型と書式のバリデーション
+    for ctl_name, t_info in col_types.items():
+        t_type = t_info if isinstance(t_info, str) else t_info.get("type", "text")
+        hdr = columns_map.get(ctl_name, ctl_name)
+        if t_type == "date":
+            lines.append(f'    If Trim({ctl_name}.Value) <> "" Then')
+            lines.append(f'        If Not IsDate({ctl_name}.Value) Then')
+            lines.append(f'            MsgBox "【{hdr}】は日付形式で入力してください (例: 2026/10/30)", vbExclamation')
+            lines.append(f'            {ctl_name}.SetFocus')
+            lines.append('            Exit Sub')
+            lines.append('        End If')
+            lines.append('    End If')
+        elif t_type in ("number", "currency"):
+            lines.append(f'    If Trim({ctl_name}.Value) <> "" Then')
+            lines.append(f'        If Not IsNumeric(Replace(Trim({ctl_name}.Value), ",", "")) Then')
+            lines.append(f'            MsgBox "【{hdr}】は数値で入力してください", vbExclamation')
+            lines.append(f'            {ctl_name}.SetFocus')
+            lines.append('            Exit Sub')
+            lines.append('        End If')
+            lines.append('    End If')
+        elif t_type == "combo":
+            items = t_info.get("items") if isinstance(t_info, dict) else None
+            if items:
+                lines.append(f'    If Trim({ctl_name}.Value) <> "" Then')
+                conds = " And ".join([f'{ctl_name}.Value <> "{it}"' for it in items])
+                lines.append(f'        If {conds} Then')
+                lines.append(f'            MsgBox "【{hdr}】は一覧から選択してください", vbExclamation')
+                lines.append(f'            {ctl_name}.SetFocus')
+                lines.append('            Exit Sub')
+                lines.append('        End If')
+                lines.append('    End If')
+
+    lines.append('    Dim ws As Worksheet')
+    if table_name:
+        lines.append('    Dim lo As ListObject')
+        lines.append('    Dim lr As ListRow')
+    else:
+        lines.append('    Dim targetRow As Long')
+
+    lines.append('    On Error Resume Next')
+    if sheet_name:
+        lines.append(f'    Set ws = ThisWorkbook.Worksheets("{sheet_name}")')
+    else:
+        lines.append('    Set ws = ActiveSheet')
+    lines.append('    On Error GoTo 0')
+    lines.append('    If ws Is Nothing Then Set ws = ActiveSheet')
+    lines.append('')
+    lines.append('    If ws.ProtectContents Then')
+    lines.append('        MsgBox "シートが保護されているため登録できません。", vbCritical')
+    lines.append('        Exit Sub')
+    lines.append('    End If')
+    lines.append('')
+
+    if table_name:
+        lines.append(f'    Set lo = ws.ListObjects("{table_name}")')
+        lines.append('    Set lr = lo.ListRows.Add')
+        for ctl_name, header in columns_map.items():
+            pos = col_positions.get(ctl_name)
+            if not pos:
+                continue
+            t_info = col_types.get(ctl_name, "text")
+            t_type = t_info if isinstance(t_info, str) else t_info.get("type", "text")
+            if header in text_columns:
+                lines.append(f'    lr.Range.Cells(1, {pos}).NumberFormatLocal = "@"')
+                lines.append(f'    lr.Range.Cells(1, {pos}).Value = CStr({ctl_name}.Value)')
+            elif t_type == "date":
+                lines.append(f'    If Trim({ctl_name}.Value) <> "" Then lr.Range.Cells(1, {pos}).Value = CDate({ctl_name}.Value) Else lr.Range.Cells(1, {pos}).ClearContents')
+            elif t_type in ("number", "currency"):
+                lines.append(f'    If Trim({ctl_name}.Value) <> "" Then lr.Range.Cells(1, {pos}).Value = CDbl(Replace({ctl_name}.Value, ",", "")) Else lr.Range.Cells(1, {pos}).ClearContents')
+            elif t_type == "bool":
+                true_val = t_info.get("true_val", "True") if isinstance(t_info, dict) else "True"
+                false_val = t_info.get("false_val", "False") if isinstance(t_info, dict) else "False"
+                val_t_expr = f'"{true_val}"' if isinstance(true_val, str) and true_val not in ("True", "False") else str(true_val)
+                val_f_expr = f'"{false_val}"' if isinstance(false_val, str) and false_val not in ("True", "False") else str(false_val)
+                lines.append(f'    If {ctl_name}.Value = True Then')
+                lines.append(f'        lr.Range.Cells(1, {pos}).Value = {val_t_expr}')
+                lines.append('    Else')
+                lines.append(f'        lr.Range.Cells(1, {pos}).Value = {val_f_expr}')
+                lines.append('    End If')
+            else:
+                lines.append(f'    lr.Range.Cells(1, {pos}).Value = {ctl_name}.Value')
+    else:
+        lines.append(f'    targetRow = ws.Cells(ws.Rows.Count, {start_col}).End(xlUp).Row + 1')
+        for ctl_name, header in columns_map.items():
+            pos = col_positions.get(ctl_name)
+            if not pos:
+                continue
+            abs_col = start_col + pos - 1
+            t_info = col_types.get(ctl_name, "text")
+            t_type = t_info if isinstance(t_info, str) else t_info.get("type", "text")
+            if header in text_columns:
+                lines.append(f'    ws.Cells(targetRow, {abs_col}).NumberFormatLocal = "@"')
+                lines.append(f'    ws.Cells(targetRow, {abs_col}).Value = CStr({ctl_name}.Value)')
+            elif t_type == "date":
+                lines.append(f'    If Trim({ctl_name}.Value) <> "" Then ws.Cells(targetRow, {abs_col}).Value = CDate({ctl_name}.Value) Else ws.Cells(targetRow, {abs_col}).ClearContents')
+            elif t_type in ("number", "currency"):
+                lines.append(f'    If Trim({ctl_name}.Value) <> "" Then ws.Cells(targetRow, {abs_col}).Value = CDbl(Replace({ctl_name}.Value, ",", "")) Else ws.Cells(targetRow, {abs_col}).ClearContents')
+            elif t_type == "bool":
+                true_val = t_info.get("true_val", "True") if isinstance(t_info, dict) else "True"
+                false_val = t_info.get("false_val", "False") if isinstance(t_info, dict) else "False"
+                val_t_expr = f'"{true_val}"' if isinstance(true_val, str) and true_val not in ("True", "False") else str(true_val)
+                val_f_expr = f'"{false_val}"' if isinstance(false_val, str) and false_val not in ("True", "False") else str(false_val)
+                lines.append(f'    If {ctl_name}.Value = True Then')
+                lines.append(f'        ws.Cells(targetRow, {abs_col}).Value = {val_t_expr}')
+                lines.append('    Else')
+                lines.append(f'        ws.Cells(targetRow, {abs_col}).Value = {val_f_expr}')
+                lines.append('    End If')
+            else:
+                lines.append(f'    ws.Cells(targetRow, {abs_col}).Value = {ctl_name}.Value')
+
+        for f_pos in formula_cols:
+            abs_f_col = start_col + f_pos - 1
+            lines.append(f'    If targetRow > 2 Then')
+            lines.append(f'        ws.Cells(targetRow - 1, {abs_f_col}).Copy ws.Cells(targetRow, {abs_f_col})')
+            lines.append('    End If')
+
+    input_ctls = [e for e in elems if e['kind'] in ('txt', 'combo', 'chk')]
+    for ic in input_ctls:
+        if ic['kind'] == 'chk':
+            lines.append(f'    {ic["name"]}.Value = False')
+        elif ic['kind'] == 'combo':
+            lines.append(f'    {ic["name"]}.ListIndex = -1')
+        else:
+            lines.append(f'    {ic["name"]}.Value = ""')
+
+    first_in = next((ic for ic in input_ctls if ic['kind'] in ('txt', 'combo')), None)
+    if first_in:
+        lines.append(f'    {first_in["name"]}.SetFocus')
+
+    if table_name:
+        lines.append('    Application.StatusBar = "登録しました (" & lr.Index & "行目)"')
+    else:
+        lines.append('    Application.StatusBar = "登録しました (" & targetRow & "行目)"')
+
+    return lines
+
+
+
+def _generate_list_form_vba(bind_info, out_path=None):
+    bind = bind_info or {}
+    sheet_name = bind.get("sheet", "")
+    table_name = bind.get("table", "")
+    start_col = bind.get("start_col", 1)
+    num_cols = len(bind.get("columns", {})) or 6
+    entry_form = bind.get("entry_form", "")
+
+    lines = [
+        "Option Explicit",
+        "",
+        "Private mAllData As Variant",
+        "Private mRowCount As Long",
+        "Private mColCount As Long",
+        f'Private Const M_SHEET As String = "{sheet_name}"',
+        f'Private Const M_TABLE As String = "{table_name}"',
+        f'Private Const M_START_COL As Long = {start_col}',
+        f'Private Const M_NUM_COLS As Long = {num_cols}',
+        "",
+        "Private Sub UserForm_Initialize()",
+        "    LoadData",
+        '    RefreshList ""',
+        "    On Error Resume Next",
+        "    txtSearch.SetFocus",
+        "End Sub",
+        "",
+        "Private Sub UserForm_Activate()",
+        "    On Error Resume Next",
+        "    txtSearch.SetFocus",
+        "End Sub",
+        "",
+        "Private Sub LoadData()",
+        "    Dim ws As Worksheet",
+        "    Dim rng As Range",
+        "    On Error Resume Next",
+        "    If M_SHEET <> "" Then Set ws = ThisWorkbook.Worksheets(M_SHEET)",
+        "    On Error GoTo 0",
+        "    If ws Is Nothing Then Set ws = ActiveSheet",
+        "",
+        "    If M_TABLE <> "" Then",
+        "        On Error Resume Next",
+        "        Set rng = ws.ListObjects(M_TABLE).DataBodyRange",
+        "        On Error GoTo 0",
+        "    End If",
+        "    If rng Is Nothing Then",
+        "        Dim lastRow As Long",
+        "        lastRow = ws.Cells(ws.Rows.Count, M_START_COL).End(xlUp).Row",
+        "        If lastRow >= 2 Then",
+        "            Set rng = ws.Range(ws.Cells(2, M_START_COL), ws.Cells(lastRow, M_START_COL + M_NUM_COLS - 1))",
+        "        End If",
+        "    End If",
+        "",
+        "    If Not rng Is Nothing Then",
+        "        mAllData = rng.Value2",
+        "        If IsArray(mAllData) Then",
+        "            mRowCount = UBound(mAllData, 1)",
+        "            mColCount = UBound(mAllData, 2)",
+        "        Else",
+        "            mRowCount = 1",
+        "            mColCount = 1",
+        "            Dim tmp(1 To 1, 1 To 1) As Variant",
+        "            tmp(1, 1) = mAllData",
+        "            mAllData = tmp",
+        "        End If",
+        "    Else",
+        "        mRowCount = 0",
+        "        mColCount = 0",
+        "    End If",
+        "End Sub",
+        "",
+        "Private Sub RefreshList(ByVal keyword As String)",
+        "    lstData.Clear",
+        "    If mRowCount = 0 Then",
+        '        lblCount.Caption = "0 件中 0 件"',
+        "        Exit Sub",
+        "    End If",
+        "",
+        "    Dim kw As String",
+        "    kw = LCase(StrConv(Trim(keyword), vbNarrow))",
+        "",
+        "    Dim r As Long, c As Long, matchCount As Long",
+        "    Dim isMatch As Boolean, rowText As String",
+        "",
+        "    For r = 1 To mRowCount",
+        '        If kw = "" Then',
+        "            isMatch = True",
+        "        Else",
+        '            rowText = ""',
+        "            For c = 1 To mColCount",
+        '                rowText = rowText & " " & StrConv(CStr(mAllData(r, c)), vbNarrow)',
+        "            Next c",
+        "            isMatch = (InStr(1, LCase(rowText), kw) > 0)",
+        "        End If",
+        "",
+        "        If isMatch Then",
+        "            matchCount = matchCount + 1",
+        "            lstData.AddItem CStr(mAllData(r, 1))",
+        "            Dim maxShowCol As Long: maxShowCol = mColCount",
+        "            If maxShowCol > 6 Then maxShowCol = 6",
+        "            For c = 2 To maxShowCol",
+        "                lstData.List(lstData.ListCount - 1, c - 1) = CStr(mAllData(r, c))",
+        "            Next c",
+        "        End If",
+        "    Next r",
+        "",
+        '    lblCount.Caption = mRowCount & " 件中 " & matchCount & " 件"',
+        "End Sub",
+        "",
+        "Private Sub txtSearch_Change()",
+        "    RefreshList txtSearch.Text",
+        "End Sub",
+        "",
+        "Private Sub txtSearch_KeyDown(ByVal KeyCode As MSForms.ReturnInteger, ByVal Shift As Integer)",
+        "    If KeyCode = vbKeyDown Then",
+        "        KeyCode = 0",
+        "        If lstData.ListCount > 0 Then",
+        "            lstData.ListIndex = 0",
+        "            lstData.SetFocus",
+        "        End If",
+        "    ElseIf KeyCode = vbKeyReturn Then",
+        "        KeyCode = 0",
+        "        Call btnEdit_Click",
+        "    End If",
+        "End Sub",
+        "",
+        "Private Sub lstData_DblClick(ByVal Cancel As MSForms.ReturnBoolean)",
+        "    Call btnEdit_Click",
+        "End Sub",
+        "",
+        "Private Sub lstData_KeyDown(ByVal KeyCode As MSForms.ReturnInteger, ByVal Shift As Integer)",
+        "    If KeyCode = vbKeyReturn Then",
+        "        KeyCode = 0",
+        "        Call btnEdit_Click",
+        "    End If",
+        "End Sub",
+        "",
+        "Private Sub btnCancel_Click()",
+        "    Unload Me",
+        "End Sub",
+        "",
+        "Private Sub btnNew_Click()",
+    ]
+    if entry_form:
+        lines.append(f"    {entry_form}.Show")
+        lines.append("    LoadData")
+        lines.append("    RefreshList txtSearch.Text")
+    else:
+        lines.append('    MsgBox "新規入力フォームが開きます", vbInformation')
+    lines.extend([
+        "End Sub",
+        "",
+        "Private Sub btnEdit_Click()",
+        "    If lstData.ListIndex < 0 Then",
+        '        MsgBox "編集する行を選択してください", vbExclamation',
+        "        Exit Sub",
+        "    End If",
+    ])
+    if entry_form:
+        lines.append(f"    ' 選択行のデータを {entry_form} に渡して開く")
+        lines.append(f"    {entry_form}.Show")
+        lines.append("    LoadData")
+        lines.append("    RefreshList txtSearch.Text")
+    else:
+        lines.append('    MsgBox "選択した行（" & (lstData.ListIndex + 1) & "番目）を編集します", vbInformation')
+    lines.extend([
+        "End Sub",
+        ""
+    ])
+
+    code = "\n".join(lines).rstrip() + "\n"
+    out_path = out_path or STUB_FILE
+    with open(out_path, 'w', encoding='utf-8') as f:
+        f.write(code)
+    print(f"一覧検索イベント雛形を生成: {out_path}")
+    return out_path
+
+
+def generate_vba_stub(rows, out_path=None, assist=True, bind_info=None, keys=True, is_list_form=False):
+    if is_list_form:
+        return _generate_list_form_vba(bind_info, out_path=out_path)
+
     """コントロール構成からイベントプロシージャの骨組みを機械生成して UTF-8 で保存する。
 
     - UserForm_Initialize: combo/lst の items を AddItem、spin_txt の初期同期、
@@ -645,6 +1001,13 @@ def generate_vba_stub(rows, out_path=None):
         lines.append("End Sub")
         lines.append("")
 
+    if keys and first_input:
+        lines.append("Private Sub UserForm_Activate()")
+        lines.append("    On Error Resume Next")
+        lines.append(f"    {first_input['name']}.SetFocus")
+        lines.append("End Sub")
+        lines.append("")
+
     for e in elems:
         if e['kind'] == 'spin':
             lines.append(f"Private Sub {e['name']}_Change()")
@@ -666,16 +1029,87 @@ def generate_vba_stub(rows, out_path=None):
         elif e.get('cancel'):
             lines.append("    Unload Me")
         else:
-            if e.get('default') and required:
-                for name, label in required:
-                    lines.append(f'    If Trim({name}.Value) = "" Then')
-                    lines.append(f'        MsgBox "{label} を入力してください", vbExclamation')
-                    lines.append(f'        {name}.SetFocus')
-                    lines.append("        Exit Sub")
-                    lines.append("    End If")
-            lines.append(f"    ' TODO: {e['caption']} の処理")
+            if bind_info and (e.get('default') or e.get('name') in ('btnOK', 'btnSave', 'btnRegister')):
+                bind_lines = _generate_bind_click_code(elems, all_rows, bind_info)
+                lines.extend(bind_lines)
+            else:
+                if e.get('default') and required:
+                    for name, label in required:
+                        lines.append(f'    If Trim({name}.Value) = "" Then')
+                        lines.append(f'        MsgBox "{label} を入力してください", vbExclamation')
+                        lines.append(f'        {name}.SetFocus')
+                        lines.append("        Exit Sub")
+                        lines.append("    End If")
+                lines.append(f"    ' TODO: {e['caption']} の処理")
         lines.append("End Sub")
         lines.append("")
+
+
+
+    if keys:
+        # 入力可能な1行コントロールの抽出
+        input_elems = [e for e in elems if e['kind'] in ('txt', 'combo') and not e.get('multiline')]
+        # MultiPage の存在確認
+        def _find_mp(r_list):
+            for r in r_list:
+                if r.get('kind') == 'multipage':
+                    return r
+                if r.get('kind') == 'frame':
+                    res = _find_mp(r.get('rows', []))
+                    if res:
+                        return res
+            return None
+
+        mp_elem = _find_mp(rows)
+        mp_name = mp_elem.get('name', 'mpMain') if mp_elem else None
+
+        for idx, e in enumerate(input_elems):
+            nm = e['name']
+            is_last = (idx == len(input_elems) - 1)
+            next_nm = input_elems[idx + 1]['name'] if not is_last else None
+
+            lines.append(f"Private Sub {nm}_KeyDown(ByVal KeyCode As MSForms.ReturnInteger, ByVal Shift As Integer)")
+            lines.append("    If KeyCode = vbKeyReturn And Shift = 0 Then")
+            lines.append("        KeyCode = 0")
+            if is_last:
+                lines.append("        Call btnOK_Click")
+            else:
+                lines.append(f"        {next_nm}.SetFocus")
+            if mp_name:
+                lines.append("    ElseIf Shift = 2 And KeyCode = vbKeyTab Then")
+                lines.append("        KeyCode = 0")
+                lines.append(f"        {mp_name}.Value = ({mp_name}.Value + 1) Mod {mp_name}.Pages.Count")
+            lines.append("    End If")
+            lines.append("End Sub")
+            lines.append("")
+
+    if assist:
+        for e in elems:
+            if e['kind'] in ('txt', 'combo'):
+                nm = e['name']
+                # 焦点の色（Enter / Exit）
+                lines.append(f"Private Sub {nm}_Enter()")
+                lines.append(f"    On Error Resume Next: {nm}.BackColor = &H00FFF5E6&")
+                lines.append("End Sub")
+                lines.append("")
+                lines.append(f"Private Sub {nm}_Exit(ByVal Cancel As MSForms.ReturnBoolean)")
+                lines.append(f"    On Error Resume Next: {nm}.BackColor = &H80000005&")
+                # 数値/金額のカンマ区切り補助
+                name_l = nm.lower()
+                if any(k in name_l for k in ('amount', 'price', 'kingaku', 'tanka', 'su', 'cost', 'fee', '金額', '単価', '数量', '給与', '手当')):
+                    lines.append(f'    If IsNumeric(Replace({nm}.Text, ",", "")) Then')
+                    lines.append(f'        {nm}.Text = Format(CDbl(Replace({nm}.Text, ",", "")), "#,##0")')
+                    lines.append("    End If")
+                # 日付の自動整形補助
+                elif any(k in name_l for k in ('date', 'hi', '日付', '年月日', '生年月日', '入社日')):
+                    lines.append(f"    Dim sDate As String: sDate = Trim({nm}.Text)")
+                    lines.append("    If Len(sDate) = 8 And IsNumeric(sDate) Then")
+                    lines.append(f'        {nm}.Text = Left(sDate, 4) & "/" & Mid(sDate, 5, 2) & "/" & Right(sDate, 2)')
+                    lines.append("    ElseIf InStr(sDate, "/") > 0 And IsDate(sDate) Then")
+                    lines.append(f'        {nm}.Text = Format(CDate(sDate), "yyyy/mm/dd")')
+                    lines.append("    End If")
+                lines.append("End Sub")
+                lines.append("")
 
     code = "\n".join(lines).rstrip() + "\n"
     out_path = out_path or STUB_FILE
@@ -757,6 +1191,10 @@ def _place_control(container, e, left, top, w, h, tab_state):
         if e.get('multiline'):
             ct.MultiLine = True
             ct.ScrollBars = 2
+            try:
+                ct.EnterKeyBehavior = True
+            except Exception:
+                pass
     if kind == 'opt' and e.get('group'):
         try:
             ct.GroupName = e['group']
@@ -768,13 +1206,30 @@ def _place_control(container, e, left, top, w, h, tab_state):
             ct.Max = e.get('max', 100)
         except Exception:
             pass
+    if kind == 'combo':
+        try:
+            ct.MatchEntry = 1  # fmMatchEntryComplete
+        except Exception:
+            pass
+    if kind == 'lst':
+        if e.get('column_count'):
+            try:
+                ct.ColumnCount = e['column_count']
+            except Exception:
+                pass
+        if e.get('column_widths'):
+            try:
+                ct.ColumnWidths = str(e['column_widths'])
+            except Exception:
+                pass
     if kind in ('combo', 'lst') and e.get('rowsource'):
         try:
             ct.RowSource = e['rowsource']
         except Exception as ex:
             print(f"⚠ {name} の RowSource 設定に失敗（続行）: {ex}")
     if kind == 'btn':
-        if e.get('default'):
+        # keys 有効時は TextBox の EnterKeyDown が発火できるよう Default=False にする
+        if e.get('default') and not tab_state.get('keys_enabled', True):
             ct.Default = True
         if e.get('cancel'):
             ct.Cancel = True
@@ -806,7 +1261,8 @@ def _place_control(container, e, left, top, w, h, tab_state):
 
 
 def build_form(form_name, caption, rows, width=None, vba_file=None,
-               vba_stub=False, png=False, save=True, launcher=None, force=False):
+               vba_stub=False, png=False, save=True, launcher=None, force=False,
+               bind_info=None, keys=True):
     """宣言的レイアウトからフォームを構築する。
 
     width: コンテンツ幅の明示（省略時は自動）。vba_file: UTF-8 の .vba を注入。
@@ -832,7 +1288,8 @@ def build_form(form_name, caption, rows, width=None, vba_file=None,
     form_h = content_h + STYLE['chrome_h']
 
     if vba_stub and not vba_file:
-        vba_file = generate_vba_stub(rows)
+        is_list = (bind_info and bind_info.get('kind') == 'list') or any(e.get('name') == 'lstData' for row_elems in list(_iter_rows(rows)) for e in row_elems)
+        vba_file = generate_vba_stub(rows, assist=True, bind_info=bind_info, keys=keys, is_list_form=is_list)
 
     with FormBuilder.connect() as fb:
         backed = _backup_existing_form(fb, form_name)
@@ -845,7 +1302,7 @@ def build_form(form_name, caption, rows, width=None, vba_file=None,
         frm = fb.get_or_create(form_name, caption=caption,
                                width=form_w, height=form_h)
         f = fb.clear_controls(frm)
-        tab_state = {'tab': 0, 'lbl_seq': 0}
+        tab_state = {'tab': 0, 'lbl_seq': 0, 'keys_enabled': keys}
         n = 0
         for e, left, top, w, h in placements:
             if e['kind'] == 'frame':

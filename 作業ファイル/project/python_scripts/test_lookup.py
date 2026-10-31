@@ -1,3 +1,4 @@
+import pytest
 # -*- coding: utf-8 -*-
 """vbam_lookup（列・行の挿入／削除で VLOOKUP などの直書きの番号を直す）のテスト（2026-10-01）。純 Python・COM なし。"""
 import vbam_lookup as vl
@@ -7,6 +8,7 @@ def _plan(f, op, start, count, axis='col', own='売上', target='売上'):
     return vl.plan_formula(f, own, target, axis, op, start, count)
 
 
+@pytest.mark.core
 def test_scan_vlookup_hlookup_index_literals():
     items = vl.scan_lookups('=VLOOKUP(A2,$I$2:$K$60,3,FALSE)+HLOOKUP(B1,A1:F3,2,0)+INDEX(A1:D9,5,2)')
     assert [(i['fn'], i['kind'], i['val']) for i in items] == [('VLOOKUP', 'col', 3), ('HLOOKUP', 'row', 2),
