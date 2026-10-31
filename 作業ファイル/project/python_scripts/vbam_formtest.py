@@ -238,6 +238,10 @@ def run_form_test(script_path_or_dict, keep=False, excel_file=None):
 
     xl, wb = get_workbook(target_book)
     ws = wb.ActiveSheet
+    # 台本は登録ボタンを実際に押して表へ書く（終わると元に戻す）。道具の本体ブックでは動かさない
+    # （2026-10-31: アクティブが秀コンボ.xlsm に戻っていて、本体にテスト用フォームを作って押してしまった）
+    if str(wb.Name).startswith("秀コンボ"):
+        return False, f"失敗: 秀コンボ（道具の本体）では台本テストを動かしません。試し用のブックを前に出してください（今: {wb.Name}）", time.time() - start_time
 
     backup = None if keep else backup_sheet_data(ws)
 

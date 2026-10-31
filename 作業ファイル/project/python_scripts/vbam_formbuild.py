@@ -944,6 +944,14 @@ def _create_control_elem(c):
         return txt_dict
 
 
+def _resolve_form_name(name, table_name):
+    """フォーム名を決める。指定名・表名のどちらも、先頭の F_ を外してから記号を除き F_ を 1 回だけ付ける（F_F_ にしない）"""
+    base = name or table_name or "DataInput"
+    if base.startswith("F_"):
+        base = base[2:]
+    return _sanitize_var_name(base, prefix="F_")
+
+
 def cmd_form_from_table(args):
     """表の見出しと中身から入力フォームの設計図を作る: form-from-table [テーブル名|範囲] [--name フォーム名] [--build] [--png]"""
     import time
@@ -1006,11 +1014,7 @@ def cmd_form_from_table(args):
         return False
 
     # フォーム名
-    form_name = getattr(args, 'name', None)
-    if not form_name:
-        form_name = f"F_{table_name}" if table_name else "F_DataInput"
-    if not form_name.startswith("F_"):
-        form_name = _sanitize_var_name(form_name, prefix="F_")
+    form_name = _resolve_form_name(getattr(args, 'name', None), table_name)
 
     title = f"{table_name} 登録" if table_name else "データ登録"
 

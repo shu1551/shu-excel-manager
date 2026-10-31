@@ -309,19 +309,11 @@ def test_form_from_table_argparse_dest_matches_handler():
 
 
 def test_form_name_prefix_not_duplicated():
-    """5. --name F_試験 と渡したとき設計図の name が F_F_試験 にならず F_試験 のままであること"""
+    """5. --name F_試験 と渡したとき F_F_試験 にならない。F_ で始まる名前の記号も除く（本物の関数を呼ぶ）"""
     import vbam_formbuild
-    name_input = "F_試験"
-    if not name_input.startswith("F_"):
-        res = vbam_formbuild._sanitize_var_name(name_input, prefix="F_")
-    else:
-        res = name_input
-    assert res == "F_試験"
-    assert not res.startswith("F_F_")
-
-    raw_name = "試験"
-    if not raw_name.startswith("F_"):
-        res_raw = vbam_formbuild._sanitize_var_name(raw_name, prefix="F_")
-    else:
-        res_raw = raw_name
-    assert res_raw == "F_試験"
+    r = vbam_formbuild._resolve_form_name
+    assert r("F_試験", None) == "F_試験"
+    assert r("試験", None) == "F_試験"
+    assert r(None, "顧客") == "F_顧客"
+    assert r(None, None) == "F_DataInput"
+    assert r("F_顧客(名)", None) == "F_顧客_名"
