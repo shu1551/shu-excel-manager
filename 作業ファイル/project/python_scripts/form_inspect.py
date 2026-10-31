@@ -1183,12 +1183,34 @@ def render_form_png(xl, wb, form_name, out_path, echo=print, overlay=None,
         if not hwnd:
             echo("フォームウィンドウ (ThunderDFrame) が見つかりません。")
             return None
-        try:
-            win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0,
-                                  win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
-            win32gui.SetForegroundWindow(hwnd)
-        except Exception as e:
-            echo(f"  最前面化の警告 (続行): {e}")
+        # BitBlt は画面そのものを撮る＝別の窓（Alt+Tab の切替画面など）が前にあると写り込む。
+        # 最前面に出せたことを確かめ、出せなければ撮らずに失敗を返す（別の窓の絵を成功として返さない）
+        in_front = False
+        last_err = None
+        for _try in range(5):
+            try:
+                win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0,
+                                      win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
+                win32gui.SetForegroundWindow(hwnd)
+            except Exception as e:
+                last_err = e
+            time.sleep(0.3)
+            # 前面かどうかではなく、窓の中心・四隅近くに見えているのが本当にこのフォームか（灰色のタイトルでも撮れる）
+            try:
+                fl, ft, fr, fb = win32gui.GetWindowRect(hwnd)
+                pts = [((fl + fr) // 2, (ft + fb) // 2), (fl + 40, ft + 40), (fr - 40, fb - 40)]
+                in_front = all(
+                    win32gui.GetAncestor(win32gui.WindowFromPoint(p), win32con.GA_ROOT) == hwnd
+                    for p in pts)
+            except Exception as e:
+                last_err = e
+            if in_front:
+                break
+        if not in_front:
+            echo("フォームを最前面に出せなかったため撮影しません（別の窓が前にあります。"
+                 "画面の操作を止めてから撮り直してください）"
+                 + (f" [{last_err}]" if last_err else ""))
+            return None
         ctypes.windll.user32.UpdateWindow(hwnd)
         time.sleep(0.4)
 
