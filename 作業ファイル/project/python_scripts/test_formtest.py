@@ -166,3 +166,19 @@ def test_restore_sheet_data_clears_used_range():
     restore_sheet_data(ws, backup)
     ws.UsedRange.ClearContents.assert_called_once()
     ws.Range.assert_called_with("A1:E4")
+    # 消してから書き戻す順（逆だと書き戻した値まで消える）
+    names = [c[0] for c in ws.mock_calls]
+    assert names.index("UsedRange.ClearContents") < names.index("Range")
+
+
+def test_run_form_test_refuses_main_tool_workbook(monkeypatch):
+    """道具の本体ブック（秀コンボ）では台本を動かさない（登録ボタンを実際に押すため）"""
+    import vbam_core
+    from vbam_formtest import run_form_test
+    wb = MagicMock()
+    wb.Name = "秀コンボ.xlsm"
+    monkeypatch.setattr(vbam_core, "get_workbook", lambda f=None: (MagicMock(), wb))
+    ok, msg, _ = run_form_test({"steps": [{"click": "btnOK", "form": "F_x"}]})
+    assert ok is False
+    assert "秀コンボ" in msg
+    wb.ActiveSheet.UsedRange.ClearContents.assert_not_called()
