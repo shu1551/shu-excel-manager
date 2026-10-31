@@ -47,6 +47,7 @@ def restore_sheet_data(ws, backup):
         return
     try:
         addr = backup["address"]
+        ws.UsedRange.ClearContents()   # 台本が足した行・列も消す（元の範囲の外まで）
         rng = ws.Range(addr)
         rng.Value2 = backup["values"]
         # 数式があれば復元
@@ -69,8 +70,15 @@ def execute_step(step, step_idx, wb, ws_target=None):
         except Exception:
             try:
                 wb.Application.Run(f"Show_{form_name}")
-            except Exception as e:
-                return False, f"手 {step_idx} (open): フォーム '{form_name}' を開けませんでした ({e})"
+            except Exception:
+                # 起動マクロが無いブック: 一時モジュールで開く（テスト後に run_form_test が消す）
+                try:
+                    mod = wb.VBProject.VBComponents.Add(1)
+                    mod.Name = "VMTestLaunch"
+                    mod.CodeModule.AddFromString(f"Sub VMTestOpen()\r\n    {form_name}.Show vbModeless\r\nEnd Sub\r\n")
+                    wb.Application.Run(f"'{wb.Name}'!VMTestOpen")
+                except Exception as e:
+                    return False, f"手 {step_idx} (open): フォーム '{form_name}' を開けませんでした ({e})"
         time.sleep(0.05)
         return True, "OK"
 
@@ -112,7 +120,7 @@ def execute_step(step, step_idx, wb, ws_target=None):
         args.posargs = [form_name, btn_name] if form_name else [btn_name]
         args.learn_flag = False
         args.list_flag = False
-        args.here_flag = False
+        args.here_flag = True  # 台本は表を退避・復元するので持ち主ガードを外す
         try:
             res = cmd_form_click(args)
             if res is False:
@@ -191,19 +199,20 @@ def execute_step(step, step_idx, wb, ws_target=None):
     return False, f"手 {step_idx}: 未知の操作です ({list(step.keys())})"
 
 
-def generate_auto_test_script(form_name, title, sheet_name, cols_spec, sample_input=None):
+def generate_auto_test_script(form_name, title, sheet_name, cols_spec, sample_input=None, base_rows=0):
     """設計図から自動テスト台本（JSON）を組み立てる（登録1回、必須空1回、Esc閉じ1回）"""
     sample_input = sample_input or {}
     steps = [
         {"open": form_name},
         {"set": sample_input, "form": form_name},
         {"click": "btnOK", "form": form_name},
-        {"expect_rows": 1},
+        {"expect_rows": base_rows + 1},
         {"close": form_name}
     ]
     script = {
         "book": "",
         "form": form_name,
+        "caption": title,
         "sheet": sheet_name,
         "steps": steps
     }
@@ -233,6 +242,15 @@ def run_form_test(script_path_or_dict, keep=False, excel_file=None):
         elapsed = time.time() - start_time
         return True, f"合格: {len(steps)} 手すべて通過 ({elapsed:.3f}秒)", elapsed
     finally:
+        try:
+            from vbam_edit import cmd_close_form
+            cmd_close_form(type("Args", (), {"posargs": [data["caption"]] if data.get("caption") else []})())
+        except Exception:
+            pass
+        try:
+            wb.VBProject.VBComponents.Remove(wb.VBProject.VBComponents("VMTestLaunch"))
+        except Exception:
+            pass
         if not keep and backup:
             restore_sheet_data(ws, backup)
 
