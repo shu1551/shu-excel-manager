@@ -190,10 +190,13 @@ def execute_step(step, step_idx, wb, ws_target=None):
 
     elif "close" in step:
         args = MagicMock()
-        args.posargs = [step["close"]]
+        # フォームは窓の題名（キャプション）でしか閉じられない。台本の caption を優先する
+        args.posargs = [step.get("caption") or step["close"]]
         args.list_flag = False
         args.wait_opt = "1"
-        cmd_close_form(args)
+        from vbam_edit import _list_form_windows, _pick_form_windows
+        if _pick_form_windows(_list_form_windows(), args.posargs[0]):
+            cmd_close_form(args)
         return True, "OK"
 
     return False, f"手 {step_idx}: 未知の操作です ({list(step.keys())})"
@@ -207,7 +210,7 @@ def generate_auto_test_script(form_name, title, sheet_name, cols_spec, sample_in
         {"set": sample_input, "form": form_name},
         {"click": "btnOK", "form": form_name},
         {"expect_rows": base_rows + 1},
-        {"close": form_name}
+        {"close": form_name, "caption": title}
     ]
     script = {
         "book": "",
@@ -243,8 +246,9 @@ def run_form_test(script_path_or_dict, keep=False, excel_file=None):
         return True, f"合格: {len(steps)} 手すべて通過 ({elapsed:.3f}秒)", elapsed
     finally:
         try:
-            from vbam_edit import cmd_close_form
-            cmd_close_form(type("Args", (), {"posargs": [data["caption"]] if data.get("caption") else []})())
+            from vbam_edit import cmd_close_form, _list_form_windows, _pick_form_windows
+            if data.get("caption") and _pick_form_windows(_list_form_windows(), data["caption"]):
+                cmd_close_form(type("Args", (), {"posargs": [data["caption"]]})())
         except Exception:
             pass
         try:

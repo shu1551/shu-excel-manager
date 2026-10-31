@@ -145,3 +145,24 @@ def test_execute_step_expect_rows_mismatch():
     assert "手 7 (expect_rows)" in msg
     assert "期待=5" in msg
     assert "実際=3" in msg
+
+
+def test_generate_auto_test_script_expect_rows():
+    """3. generate_auto_test_script(..., base_rows=3) の expect_rows が 4 になること"""
+    script = generate_auto_test_script("F_Test", "Test Form", "Sheet1", [], base_rows=3)
+    step_expect = [s for s in script["steps"] if "expect_rows" in s]
+    assert len(step_expect) == 1
+    assert step_expect[0]["expect_rows"] == 4
+
+
+def test_restore_sheet_data_clears_used_range():
+    """4. restore_sheet_data で ws.UsedRange.ClearContents() が呼ばれ、増えた行が消えること"""
+    ws = MagicMock()
+    backup = {
+        "address": "A1:E4",
+        "values": [["ID", "氏名"]],
+        "formulas": None
+    }
+    restore_sheet_data(ws, backup)
+    ws.UsedRange.ClearContents.assert_called_once()
+    ws.Range.assert_called_with("A1:E4")

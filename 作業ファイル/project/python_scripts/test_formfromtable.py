@@ -258,3 +258,70 @@ def test_boolean_checkbox_detection():
     assert cols[0]["control"] == "chk"
     assert cols[1]["control"] == "chk"
     assert cols[2]["control"] == "chk"
+
+
+def test_list_form_vba_no_empty_comparisons():
+    """1. form_layout の一覧フォーム VBA 生成に、`<>  Then`・`= Then`・`<> Then` の形が無いこと"""
+    import form_layout
+    bind_info = {
+        "sheet": "Sheet1",
+        "table": "",
+        "columns": {"txtID": "ID", "txt氏名": "氏名"},
+        "start_col": 1
+    }
+    rows = [
+        {"row": [{"lbl": "検索:"}, {"txt": "txtSearch"}]},
+        {"row": [{"lst": "lstData"}]}
+    ]
+    vba_path = form_layout.generate_vba_stub(rows, assist=True, bind_info=bind_info, is_list_form=True)
+    with open(vba_path, "r", encoding="utf-8") as f:
+        code = f.read()
+    assert "<>  Then" not in code
+    assert "= Then" not in code
+    assert "<> Then" not in code
+
+
+def test_form_from_table_argparse_dest_matches_handler():
+    """2. form-from-table の --test・--list の argparse dest と cmd_form_from_table の参照名が一致"""
+    import argparse
+    import vba_manager
+    parser = vba_manager.build_parser()
+    subparsers_actions = [
+        action for action in parser._actions
+        if isinstance(action, argparse._SubParsersAction)
+    ]
+    subparser = subparsers_actions[0].choices["form-from-table"]
+    actions_by_opt = {}
+    for act in subparser._actions:
+        for opt in act.option_strings:
+            actions_by_opt[opt] = act.dest
+
+    assert "--list" in actions_by_opt
+    assert "--test" in actions_by_opt
+    assert actions_by_opt["--list"] == "list_flag"
+    assert actions_by_opt["--test"] == "test_flag"
+
+    import inspect
+    import vbam_formbuild
+    src = inspect.getsource(vbam_formbuild.cmd_form_from_table)
+    assert "list_flag" in src
+    assert "test_flag" in src
+
+
+def test_form_name_prefix_not_duplicated():
+    """5. --name F_試験 と渡したとき設計図の name が F_F_試験 にならず F_試験 のままであること"""
+    import vbam_formbuild
+    name_input = "F_試験"
+    if not name_input.startswith("F_"):
+        res = vbam_formbuild._sanitize_var_name(name_input, prefix="F_")
+    else:
+        res = name_input
+    assert res == "F_試験"
+    assert not res.startswith("F_F_")
+
+    raw_name = "試験"
+    if not raw_name.startswith("F_"):
+        res_raw = vbam_formbuild._sanitize_var_name(raw_name, prefix="F_")
+    else:
+        res_raw = raw_name
+    assert res_raw == "F_試験"

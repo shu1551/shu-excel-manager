@@ -22,7 +22,7 @@ Function •\‚Ì–{•¶‚ÌÅIs(ws As Object) As Long
     Dim need As Long, full As Long, lastData As Long, blanks As Long, started As Boolean, after As Boolean
     Dim cnt() As Long, sumRow() As Boolean, s As String
     Set ur = ws.UsedRange
-    •\‚Ì–{•¶‚ÌÅIs = ur.row + ur.rows.Count - 1
+    •\‚Ì–{•¶‚ÌÅIs = ur.Row + ur.rows.Count - 1
     v = ur.Value
     If Not IsArray(v) Then Exit Function
     ReDim cnt(1 To UBound(v, 1))
@@ -69,7 +69,7 @@ Function •\‚Ì–{•¶‚ÌÅIs(ws As Object) As Long
             Exit For                     ' ‹ósE‡Œv‚Ìs‚ÌŒã‚ÌA’l‚Ì­‚È‚¢s•\‚Ì‰º‚Ìƒƒ‚
         End If
     Next i
-    If lastData > 0 Then •\‚Ì–{•¶‚ÌÅIs = ur.row + lastData - 1
+    If lastData > 0 Then •\‚Ì–{•¶‚ÌÅIs = ur.Row + lastData - 1
 End Function
 
 ' •\‚Ì–{•¶‚Ì‚·‚®‰ºi‹ós 1 ‚Â‚Ü‚Åj‚É‚ ‚é‡Œv‚Ìsi–³‚¯‚ê‚Î 0jB•\‚Ì‰º‚É‡Œvs‚ğ‘«‚· ‚ªA•\‚Ì‰º‚ÉŠù‚É‚ ‚é‡Œv‚Ìs‚ğ
@@ -77,7 +77,7 @@ End Function
 Function •\‚Ì‰º‚Ì‡Œvs(ws As Object, lastRow As Long) As Long
     Dim ur As Object, r As Long, c As Long, n As Long, s As String, Bottom As Long
     Set ur = ws.UsedRange
-    Bottom = ur.row + ur.rows.Count - 1
+    Bottom = ur.Row + ur.rows.Count - 1
     For r = lastRow + 1 To lastRow + 2
         If r > Bottom Then Exit Function
         n = 0
@@ -134,9 +134,9 @@ Sub •\‚Ìdã‚°()
         End With
     End If
     For c = r.Column To r.Column + r.Columns.Count - 1
-        hname = CStr(r.Worksheet.Cells(r.row, c).Value)
+        hname = CStr(r.Worksheet.Cells(r.Row, c).Value)
         nNum = 0: nDate = 0: nAll = 0
-        For rr = r.row + 1 To r.row + r.rows.Count - 1
+        For rr = r.Row + 1 To r.Row + r.rows.Count - 1
             v = r.Worksheet.Cells(rr, c).Value
             If Not isEmpty(v) And Not IsError(v) Then
                 nAll = nAll + 1
@@ -147,7 +147,7 @@ Sub •\‚Ìdã‚°()
                 End If
             End If
         Next rr
-        With r.Worksheet.Range(r.Worksheet.Cells(r.row + 1, c), r.Worksheet.Cells(r.row + r.rows.Count - 1, c))
+        With r.Worksheet.Range(r.Worksheet.Cells(r.Row + 1, c), r.Worksheet.Cells(r.Row + r.rows.Count - 1, c))
             If InStr(hname, "”Ô†") > 0 Or InStr(hname, "No") > 0 Or InStr(hname, "‚m‚n") > 0 Or hname = "ID" Or InStr(hname, "ƒR[ƒh") > 0 Then
                 .HorizontalAlignment = xlCenter
             ElseIf nAll > 0 And nDate >= nAll * 0.6 Then
@@ -223,7 +223,7 @@ Function ‰E‚Ìo‚µæ(ws As Object, ByVal hdrRow As Long, ByVal Šù’è—ñ As Long, By
     Next c
     If Šù’è—ñ > urRight Then
         ‰E‚Ìo‚µæ = Šù’è—ñ
-    ElseIf Application.WorksheetFunction.CountA(ws.Range(ws.Cells(ur.row, Šù’è—ñ), ws.Cells(ur.row + ur.rows.Count - 1, Šù’è—ñ + • - 1))) = 0 Then
+    ElseIf Application.WorksheetFunction.CountA(ws.Range(ws.Cells(ur.Row, Šù’è—ñ), ws.Cells(ur.Row + ur.rows.Count - 1, Šù’è—ñ + • - 1))) = 0 Then
         ‰E‚Ìo‚µæ = Šù’è—ñ
     Else
         ‰E‚Ìo‚µæ = urRight + 2
@@ -263,7 +263,7 @@ Function Œ©o‚µ‚Ì‰º‚Ì’i(ByVal ws As Object, ByVal hdrRow As Long, ByVal c1 As Lo
     Œ©o‚µ‚Ì‰º‚Ì’i = hdrRow
     For c = c1 To c2
         If ws.Cells(hdrRow + 1, c).MergeCells Then
-            If ws.Cells(hdrRow + 1, c).MergeArea.row = hdrRow Then vMerge = True
+            If ws.Cells(hdrRow + 1, c).MergeArea.Row = hdrRow Then vMerge = True
         Else
             v = ws.Cells(hdrRow + 1, c).Value
             If ƒZƒ‹‚Ìš(v) <> "" Then
@@ -336,7 +336,7 @@ Function –¾×‚Ì•\‚Ì”ÍˆÍ(ByVal ws As Object, ByRef why As String) As Object
     Dim filled As Long, txt As Long, v As Variant
     why = ""
     Set ur = ws.UsedRange
-    For r = ur.row To ur.row + ur.rows.Count - 1
+    For r = ur.Row To ur.Row + ur.rows.Count - 1
         filled = 0: txt = 0
         For c = ur.Column To ur.Column + ur.Columns.Count - 1
             v = ws.Cells(r, c).Value
@@ -494,7 +494,7 @@ End Function
 Sub ‘O‚Ìo—Í‚ğÁ‚·(ByVal ws As Object, ByVal hdrRow As Long, ByVal c1 As Long, ByVal • As Long)
     Dim c2 As Long, lastR As Long, r As Long, blank As Long, Bottom As Long
     c2 = c1 + • - 1
-    Bottom = ws.UsedRange.row + ws.UsedRange.rows.Count - 1
+    Bottom = ws.UsedRange.Row + ws.UsedRange.rows.Count - 1
     lastR = hdrRow
     r = hdrRow + 1
     Do While blank < 2 And r <= Bottom
@@ -798,7 +798,7 @@ Function —Š‚İ‚ÅƒOƒ‰ƒt‚ğì‚é(ByVal ws As Worksheet, ByVal —Š As String, ByVal í—
     End If
 
     Set ur = ws.UsedRange
-    ¶ = ur.Column: ‰E = ur.Column + ur.Columns.Count - 1: ã = ur.row
+    ¶ = ur.Column: ‰E = ur.Column + ur.Columns.Count - 1: ã = ur.Row
     For r = ã To ã + ur.rows.Count - 1
         ” = 0: š = 0
         For c = ¶ To ‰E

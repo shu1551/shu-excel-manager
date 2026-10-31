@@ -12,7 +12,11 @@ import argparse
 
 from vbam_core import (SCRIPT_DIR, get_workbook, parse_target_and_rest, job_clock_note,
                        call_log_write, BACKUP_DIR)
+import importlib
 import form_layout
+importlib.reload(form_layout)
+import form_builder
+importlib.reload(form_builder)
 from form_builder import FormBuilder
 
 _LAST_FORM_SPEC_FILE = os.path.join(SCRIPT_DIR, '_last_form_spec.json')
@@ -200,7 +204,9 @@ def _parse_elem_item(elem, pos_desc):
         name = val if isinstance(val, str) else elem.get("name", "")
         return form_layout.lst(name, width=elem.get("width"), height=elem.get("height"),
                                rows_visible=elem.get("rows_visible", 6), items=elem.get("items", []),
-                               rowsource=elem.get("rowsource"), font=elem.get("font"))
+                               rowsource=elem.get("rowsource"), font=elem.get("font"),
+                               column_count=elem.get("column_count"),
+                               column_widths=elem.get("column_widths"))
 
     elif matched_key == "chk":
         name = val if isinstance(val, str) else elem.get("name", "")

@@ -195,7 +195,7 @@ def combo(name, width=None, items=None, rowsource=None, tab_index=None, font=Non
 
 
 def lst(name, width=None, height=None, rows_visible=6, items=None, rowsource=None,
-        tab_index=None, font=None):
+        tab_index=None, font=None, column_count=None, column_widths=None):
     """リストボックス。height 省略時は rows_visible 行ぶん。rowsource はシート範囲直結
 
     一覧系フォームは ListBox が TabIndex 0（開いた瞬間のフォーカスが一覧＝PageDown
@@ -204,7 +204,8 @@ def lst(name, width=None, height=None, rows_visible=6, items=None, rowsource=Non
     check_control_name(name)
     return {'kind': 'lst', 'name': name, 'width': width,
             'height': height or (rows_visible * 12 + 6), 'items': items or [],
-            'rowsource': rowsource, 'tab_index': tab_index, 'font': font}
+            'rowsource': rowsource, 'tab_index': tab_index, 'font': font,
+            'column_count': column_count, 'column_widths': column_widths}
 
 
 def chk(name, caption, width=None, tab_index=None, font=None):
@@ -796,6 +797,10 @@ def _generate_list_form_vba(bind_info, out_path=None):
         "",
         "Private Sub UserForm_Initialize()",
         "    LoadData",
+        "    Dim showCols As Long: showCols = mColCount",
+        "    If showCols > 6 Then showCols = 6",
+        "    If showCols < 1 Then showCols = 1",
+        "    lstData.ColumnCount = showCols",
         '    RefreshList ""',
         "    On Error Resume Next",
         "    txtSearch.SetFocus",
@@ -828,7 +833,7 @@ def _generate_list_form_vba(bind_info, out_path=None):
         "    End If",
         "",
         "    If Not rng Is Nothing Then",
-        "        mAllData = rng.Value2",
+        "        mAllData = rng.Value",
         "        If IsArray(mAllData) Then",
         "            mRowCount = UBound(mAllData, 1)",
         "            mColCount = UBound(mAllData, 2)",
@@ -844,6 +849,20 @@ def _generate_list_form_vba(bind_info, out_path=None):
         "        mColCount = 0",
         "    End If",
         "End Sub",
+        "",
+        "Private Function CellStr(ByVal v As Variant) As String",
+        "    If IsError(v) Then",
+        '        CellStr = ""',
+        "    ElseIf VarType(v) = vbDate Then",
+        "        If v = Int(v) Then",
+        '            CellStr = Format(v, "yyyy/mm/dd")',
+        "        Else",
+        '            CellStr = Format(v, "yyyy/mm/dd hh:nn")',
+        "        End If",
+        "    Else",
+        "        CellStr = CStr(v)",
+        "    End If",
+        "End Function",
         "",
         "Private Sub RefreshList(ByVal keyword As String)",
         "    lstData.Clear",
@@ -864,18 +883,18 @@ def _generate_list_form_vba(bind_info, out_path=None):
         "        Else",
         '            rowText = ""',
         "            For c = 1 To mColCount",
-        '                rowText = rowText & " " & StrConv(CStr(mAllData(r, c)), vbNarrow)',
+        '                rowText = rowText & " " & StrConv(CellStr(mAllData(r, c)), vbNarrow)',
         "            Next c",
         "            isMatch = (InStr(1, LCase(rowText), kw) > 0)",
         "        End If",
         "",
         "        If isMatch Then",
         "            matchCount = matchCount + 1",
-        "            lstData.AddItem CStr(mAllData(r, 1))",
+        "            lstData.AddItem CellStr(mAllData(r, 1))",
         "            Dim maxShowCol As Long: maxShowCol = mColCount",
         "            If maxShowCol > 6 Then maxShowCol = 6",
         "            For c = 2 To maxShowCol",
-        "                lstData.List(lstData.ListCount - 1, c - 1) = CStr(mAllData(r, c))",
+        "                lstData.List(lstData.ListCount - 1, c - 1) = CellStr(mAllData(r, c))",
         "            Next c",
         "        End If",
         "    Next r",
