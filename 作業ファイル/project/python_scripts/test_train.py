@@ -54,6 +54,7 @@ def test_validate_needs_enough_rows_and_a_third_held(tmp_path):
     assert vt.validate(rows[:5])[0][0].startswith('頼みが 5 個')
 
 
+@pytest.mark.core
 def test_freeze_then_any_edit_is_caught_but_pinning_a_shelf_is_allowed(tmp_path):
     d = str(tmp_path / 'r')
     _write_phrases(d, _rows())
@@ -141,6 +142,7 @@ def test_results_roundtrip(tmp_path):
 
 
 # ---- 仕分け ----
+@pytest.mark.core
 def test_sort_adds_words_only_for_types_missed_in_two_or_more_phrasings():
     rows = _res([('列を分ける', '列をカンマで分けて', False, '棚', '棚A'),
                  ('列を分ける', 'この列を区切って分けて', False, '棚', '棚A'),     # 同じ型 2 つの言い方で外れ

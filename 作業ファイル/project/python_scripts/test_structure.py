@@ -1,3 +1,4 @@
+import pytest
 # -*- coding: utf-8 -*-
 """structure（値を出さずにブックの構造だけ）と値なしの切り替え・check VBM020/021 の純 Python の部品（2026-10-01）。"""
 import datetime
@@ -34,6 +35,7 @@ def test_numfmts_from_styles_xml_no_duplicates_and_unescaped():
     assert vs.numfmts_from_styles_xml(xml) == [(176, '"機密"#,##0"円"'), (177, '@"様"')]
 
 
+@pytest.mark.core
 def test_mask_connection_hides_password():
     s = 'Provider=SQLOLEDB;Data Source=srv;User ID=a;Password=secret;Pwd="x;y"'
     m = vs.mask_connection(s)
@@ -103,6 +105,7 @@ def test_points_merge_lines_of_same_rule():
     assert len(pts) == 1 and pts[0][2] == 'M の 3・4 行目'
 
 
+@pytest.mark.core
 def test_no_values_mode_env_overrides(monkeypatch, tmp_path):
     monkeypatch.setattr(vs, '_NV_FILE', str(tmp_path / 'no_values.flag'))
     monkeypatch.delenv('EXCEL_MANAGER_NO_VALUES', raising=False)
@@ -125,6 +128,7 @@ def test_changes_table_hides_values_in_no_values_mode(monkeypatch):
     assert 'A2' in out and '機密' not in out
 
 
+@pytest.mark.core
 def test_check_vbm020_legacy_rules():
     lines = ['n = Cells.Count', 'm = rng.Cells.Count', 'k = ActiveSheet.Cells.CountLarge',
              'Set f = Application.FileSearch', 'x.SaveAs "a", FileFormat:=43', 'x.SaveAs "a", FileFormat:=56',

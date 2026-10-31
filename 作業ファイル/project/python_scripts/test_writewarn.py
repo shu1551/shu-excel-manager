@@ -1,3 +1,4 @@
+import pytest
 # -*- coding: utf-8 -*-
 """書込後の知らせ（入力規則に合わない値・#SPILL! の原因）のテスト（2026-10-01）。COM なし（差し替えの偽物で）。"""
 import vbam_edit as ve
@@ -50,6 +51,7 @@ class _Many:
         return _Many(got)
 
 
+@pytest.mark.core
 def test_rule_text_for_list_and_range():
     assert ve._validation_rule_text(_Val(3, '赤,青')) == 'リスト: 赤,青'
     assert ve._validation_rule_text(_Val(1, '1', '10')) == '整数: 1〜10'

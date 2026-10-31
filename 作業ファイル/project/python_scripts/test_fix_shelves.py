@@ -90,6 +90,7 @@ def _exam_rows():
     return [(r[0], r[1]) for r in rows]
 
 
+@pytest.mark.core
 def test_new_shelf_heads_follow_existing_shelves():
     """3 本の頭は Sub の下の 6 行に 依頼の語・依頼の組・扱う・見出し・形・変えてよい: 数式（既存の棚と同じ書き方）。登録簿にも先撃ちの並びにも入る"""
     d = _need_dir()

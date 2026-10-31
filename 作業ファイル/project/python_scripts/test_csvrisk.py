@@ -14,6 +14,7 @@ import vbam_csvrisk as cr
     ('12E5', 'sci_notation'), ('1e3', 'sci_notation'), ('E5', None),
     ('+81', 'plus'), ('+81.5', 'plus'), ('=SUM(A1)', 'formula'), ('', None), ('  ', None), ('りんご', None), ('A001', None),
 ])
+@pytest.mark.core
 def test_damage_kind(v, kind):
     assert cr.damage_kind(v) == kind
 

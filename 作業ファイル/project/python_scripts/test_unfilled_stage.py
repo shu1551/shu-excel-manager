@@ -1,3 +1,4 @@
+import pytest
 # -*- coding: utf-8 -*-
 """dirt_notes の「未記入の段」（見出しの頭の語が同じ列の組が、ある行でそろって空）の試験（2026-10-29）。純 Python・COM なし。
 
@@ -17,6 +18,7 @@ def _blanks(notes):
     return next((n for n in notes if "表の中の空欄" in n), "")
 
 
+@pytest.mark.core
 def test_lending_book_return_stage():
     grid = [
         ["番号", "品名", "貸出日", "返却日", "返却担当"],

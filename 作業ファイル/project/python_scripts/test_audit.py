@@ -28,6 +28,7 @@ def test_address_conversions():
     assert va._rowcol_to_a1(1, 27) == "AB2"
 
 
+@pytest.mark.core
 def test_formula_linter_detects_errors():
     # 数式エラー (#DIV/0!)
     formulas = [["=1/0"]]
@@ -40,6 +41,7 @@ def test_formula_linter_detects_errors():
     assert issues[0]["cell"] == "A1"
 
 
+@pytest.mark.core
 def test_formula_linter_detects_hardcoded_constants():
     # =A1*1.1 (消費税等)
     formulas = [["=A1*1.1"], ["=A2+500"], ["=A3*1"]]
@@ -183,6 +185,7 @@ def test_data_cleaner_outliers_skip_total_rows():
     assert [i for i in va.check_data_cleaner(vals2, 0, 0) if i["type"] == "outlier_value"] == []
 
 
+@pytest.mark.core
 def test_audit_report_formatting():
     issues = [
         {"cell": "A1", "severity": "critical", "type": "formula_error", "msg": "エラー", "formula": "=1/0"},
@@ -199,6 +202,7 @@ def test_audit_report_formatting():
     assert "【クレンジング (Info)】" in report
 
 
+@pytest.mark.core
 def test_diagnose_and_style_map_parser_and_wiring():
     p = vm.build_parser()
     
@@ -346,6 +350,7 @@ def test_text_number_safe_to_convert():
     assert not va._text_number_safe_to_convert("1234567890123456")  # 16 桁
 
 
+@pytest.mark.core
 def test_diagnose_fix_requires_yes():
     p = vm.build_parser()
     ns = p.parse_args(["diagnose", "--fix"])

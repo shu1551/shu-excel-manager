@@ -63,6 +63,7 @@ def temp_macro_excel(tmp_path):
         gc.collect()
 
 
+@pytest.mark.core
 def test_vba_lint_detects_implicit_variant_and_unused(temp_macro_excel):
     """【実機試験: 暗黙のVariant & 未使用変数の検出】
     Dim x, y As Long (xがVariant) および Dim unused As Long を実機モジュールに注入し、

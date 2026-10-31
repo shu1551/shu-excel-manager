@@ -37,6 +37,7 @@ def _has_edge(mer, a_text, b_text, label=None, dotted=None):
     return False
 
 
+@pytest.mark.core
 def test_if_else_and_exit_sub():
     code = ("Sub 試験()\n"
             "    Dim x As Long\n"

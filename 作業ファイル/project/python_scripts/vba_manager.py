@@ -144,6 +144,8 @@ from vbam_edit import *  # noqa: F401,F403
 from vbam_heavy import *  # noqa: F401,F403
 from vbam_form2vba import *  # noqa: F401,F403
 from vbam_build import *  # noqa: F401,F403
+from vbam_formbuild import *
+from vbam_formtest import cmd_form_test  # noqa: F401,F403
 from vbam_devtools import *  # noqa: F401,F403  (2026-09-16 職場向け VBA ツール作りの手)
 from vbam_lineage import *  # noqa: F401,F403  (2026-09-17 系譜と閉じたブック: versions・history・list-file・grep-files・export-file)
 from vbam_audit import *  # noqa: F401,F403  (2026-09-17 数式・データ総合診断エンジン)
@@ -998,10 +1000,64 @@ def build_parser():
     p.add_argument("--model", default=None, help="モデル名（既定 claude-code=sonnet / gemini-3.7-flash / claude-haiku-4-5-20251001。gemini で始まる名前なら --ai 省略時も gemini）")
     p.add_argument("--new-book", dest="new_book", action="store_true",
                    help="まっさらな新しいブックに組み上げる（訓練場。人のブックに触らない）")
+
     p.add_argument("--recipes", action="store_true", help="手順書（帳票の型）の一覧")
     p.add_argument("--recipe", default=None, help="手順書の名前で組み上げる（名簿・備品台帳・月次集計表・請求明細・出勤簿）")
     p.add_argument("--fire", action="store_true",
                    help="手順書の自動実射: まっさらなブックに全部（または名指しのもの）を組んで検査し、保存せず閉じる")
+
+    # form-build [excel_file] [設計図.json] [--png] [--stub] [--launcher モジュール] [--dry-run] [--sample]
+        # form-survey [excel_file]
+    p = sub.add_parser("form-survey", help="秀コンボなどのフォームを集計してテーマ仕様を導出する")
+    p.add_argument("posargs", nargs="*")
+
+        # form-lint [excel_file] <form_name>
+    p = sub.add_parser("form-lint", help="UserForm の見た目検査（重なり・はみ出し・字切れ・コントラスト比）")
+    p.add_argument("posargs", nargs="*", help="[excel_file] form_name")
+
+        # form-set [form_name] 部品名=値 ...
+    p = sub.add_parser("form-set", help="表示中のフォームの欄に値を入れる（form-set [form] name=val ...）")
+    p.add_argument("posargs", nargs="*", help="[form_name] key=val ...")
+
+        # form-from-table [table|range] [--name フォーム名] [--build] [--png] [--dry-run]
+        # create-sample-table
+    p = sub.add_parser("create-sample-table", help="検証用の汚れた表（10列）を捨てブックに作成する")
+    p.add_argument("posargs", nargs="*")
+
+    p = sub.add_parser("form-from-table", help="表の見出しと中身から入力フォームの設計図を作る（--build で構築）")
+    p.add_argument("posargs", nargs="*", help="[table_name | range]")
+    p.add_argument("--name", default=None, help="生成するフォーム名")
+    p.add_argument("--build", action="store_true", help="続けて form-build でフォームを組む")
+    p.add_argument("--list", dest="list_flag", action="store_true", help="一覧と検索のフォームを組む")
+    p.add_argument("--test", dest="test_flag", action="store_true", help="組んだ直後に台本を作って form-test を実行")
+    p.add_argument("--png", action="store_true", help="実機画像を撮影して保存")
+    p.add_argument("--dry-run", dest="dry_run", action="store_true", help="Excel に触らずプレビューのみ")
+
+    p = sub.add_parser("form-test",
+                       help="台本（JSON）に従ってフォームの開く・入れる・押す・表を確かめるを自動実行する")
+    p.add_argument("posargs", nargs="*", help="[excel_file] script.json")
+    p.add_argument("--keep", action="store_true", help="テスト後の表の自動復元を行わず変更を残す")
+
+    p = sub.add_parser("form-build",
+                       help="設計図（JSON）からフォームを組む（--sample / --dry-run / --png / --stub）")
+    p.add_argument("posargs", nargs="*",
+                   help="[excel_file] spec_file.json")
+    p.add_argument("--png", action="store_true",
+                   help="構築後にフォームの実表示画像（_last_form.png）を保存")
+    p.add_argument("--stub", action="store_true",
+                   help="イベント雛形コード（Initialize / Click）を生成して注入")
+    p.add_argument("--launcher", default=None,
+                   help="フォームを開く Sub を標準モジュールに自動追加")
+    p.add_argument("--dry-run", dest="dry_run", action="store_true",
+                   help="Excel に触らず配置図 PNG のみ生成（設計の試行錯誤用）")
+    p.add_argument("--sample", action="store_true",
+                   help="見本の設計図を _last_form_spec.json に書き出す")
+    p.add_argument("--force", action="store_true",
+                   help="退避に失敗しても強制続行")
+    p.add_argument("--new-book", dest="new_book", action="store_true",
+                   help="まっさらな新しいブックに組み上げる（安全。他のブックに触らない）")
+    p.add_argument("--no-bind", dest="no_bind", action="store_true",
+                   help="表への書き込みコード（bind）を付けず空の雛形にする")
 
     # set-key / clear-key（2026-09-04・APIキーの預かり。人に環境変数の画面をやらせない）
     p = sub.add_parser("set-key", aliases=["キー設定"],
@@ -1216,6 +1272,10 @@ def build_parser():
                    help="フォームの持ち主のブックが前に出ていても押す（シートを書き換えないボタンだけ。2026-10-22）")
     p.add_argument("--list", action="store_true", dest="list_flag",
                    help="フォームのコントロール一覧を表示する（2026-10-30 指示書089の3）")
+    p = sub.add_parser("form-key",     # form-key [excel_file] <フォーム名> <キー名>
+                       help="表示中の UserForm にキーを直接送る（WM_KEYDOWN を窓に直撃。他アプリにキーが漏れない）")
+    p.add_argument("posargs", nargs="*")
+
     p = sub.add_parser("form-read",    # form-read <フォーム名>
                        help="表示中の UserForm の中身を読む（入力欄の文字・リストの項目と選択・チェックの状態・見出し）。何も書き換えない")
     p.add_argument("posargs", nargs="*")
@@ -2152,6 +2212,13 @@ def _raw_command_table():
         "diagnose":          cmd_diagnose,
         "style-map":         cmd_style_map,
         "build-sheet":       cmd_build_sheet,
+        "form-test":         cmd_form_test,
+        "form-build":        cmd_form_build,
+        "form-from-table":   cmd_form_from_table,
+        "create-sample-table": cmd_create_sample_table,
+        "form-set":          cmd_form_set,
+        "form-lint":         cmd_form_lint,
+        "form-survey":       cmd_form_survey,
         "agent":             cmd_agent,
         "エージェント":         cmd_agent,
         "set-key":           cmd_set_key,
@@ -2173,6 +2240,7 @@ def _raw_command_table():
         "close":             cmd_close,
         "close-form":        cmd_close_form,
         "form-click":        cmd_form_click,
+        "form-key":          cmd_form_key,
         "form-read":         cmd_form_read,
         "vbe-reset":         cmd_vbe_reset,
         "unstick":           cmd_unstick,

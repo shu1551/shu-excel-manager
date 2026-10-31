@@ -841,6 +841,7 @@ def test_find_vbe_compile_control_returns_none_when_absent():
     assert vm._find_vbe_compile_control(xl.VBE) is None
 
 
+@pytest.mark.core
 def test_compile_vbproject_says_already_when_button_disabled(monkeypatch):
     ctl = _FakeCtl(id_=578, enabled=False)
     xl, wb = _compile_fixture(ctl)
@@ -849,6 +850,7 @@ def test_compile_vbproject_says_already_when_button_disabled(monkeypatch):
     assert ctl.executed == 0          # 押す必要がないので押さない
 
 
+@pytest.mark.core
 def test_compile_vbproject_ok_when_button_goes_disabled(monkeypatch):
     monkeypatch.setattr(vm.time, "sleep", lambda *_: None)
     # 差し替えは実体のある vbam_vba 側に当てる（vba_manager 側は再エクスポートの別名）
@@ -1007,6 +1009,7 @@ def _diff_args(old_path, new_path):
     return argparse.Namespace(posargs=[str(old_path), str(new_path)], max_opt=None)
 
 
+@pytest.mark.core
 def test_snapshot_diff_merged_unscanned_suppresses_pseudo_diff(tmp_path, capsys):
     # 旧=結合未走査 / 新=結合あり。セル差分でシートは表示されるが、
     # 「結合追加」の疑似差分は出さず、比較していない旨を注記する
@@ -1024,6 +1027,7 @@ def test_snapshot_diff_merged_unscanned_suppresses_pseudo_diff(tmp_path, capsys)
     assert "セル変更: 1件" in out
 
 
+@pytest.mark.core
 def test_snapshot_diff_merged_unscanned_note_survives_hidden_sheet(tmp_path, capsys):
     # 結合以外に差分がなくシート自体が非表示でも、「比較できていない」事実は落とさない
     p1, p2 = tmp_path / "old.json", tmp_path / "new.json"
@@ -1181,6 +1185,7 @@ def test_vbm018_vbscript_regexp_and_vbm019_text_import():
     assert [(g[0]) for g in got] == ['取り込む', '開く']                                  # 型の指定がある 2 つは出ない
 
 
+@pytest.mark.core
 def test_check_bas_rejects_invalid_identifier(tmp_path):
     p = tmp_path / "m.bas"
     p.write_bytes('Attribute VB_Name = "M"\r\nSub _tmp検証()\r\nEnd Sub\r\n'.encode('cp932'))
@@ -1229,6 +1234,8 @@ def test_injection_route_ledger():
         # 固定の読み取り用モジュール VMFormRead（_FORM_READ_CODE＝固定のコード）を入れて VBA の中から読み、すぐ消す。
         # 生成コードにユーザー入力は埋めない（フォーム名は Run の引数で渡す）＝識別子の流入なし
         ('vbam_edit.py', 'cmd_form_read'),
+        # 2026-10-31: form-set（表示中フォームに値を入れる）。固定モジュール VMFormSet（_FORM_SET_CODE固定コード）を一時注入し即削除
+        ('vbam_edit.py', 'cmd_form_set'),
         # 2026-08-17: form-to-vba（UserForm→作成マクロ）。捨てブックに作成マクロを入れて
         # 実際に組み立て、元と照合するだけの検証経路。入れる先は使い捨ての新規ブックで、
         # 中身は自分が生成した VBA（フォーム名・プロシージャ名とも元フォーム由来）＝
@@ -1599,6 +1606,7 @@ def test_close_not_open_book_fails(capsys):
     assert "開いていません" in capsys.readouterr().out
 
 
+@pytest.mark.core
 def test_close_form_rejects_multiple_targets(capsys):
     ns = _ap.Namespace(posargs=["A", "B"], list_flag=False, wait_opt=None)
     assert vm.cmd_close_form(ns) is False
@@ -1622,6 +1630,7 @@ def test_close_form_is_wired():
     assert ns.posargs == ["Excelコンボ"]
 
 
+@pytest.mark.core
 def test_rehearse_requires_macro_name(capsys):
     assert vm.cmd_rehearse(_ap.Namespace(posargs=[])) is False
     assert "使い方" in capsys.readouterr().out
@@ -1747,6 +1756,7 @@ def test_log_call_swallows_write_errors(tmp_path, monkeypatch):
 
 # ---- GATE_COMMANDS / _gate_check（承認ゲート） ----
 
+@pytest.mark.core
 @_needs_srv
 def test_gate_commands_are_exactly_the_irreversible_ones():
     # 線引きは「読み/書き」ではなく「戻せる/戻せない」。退避→restore で戻せる
@@ -1768,6 +1778,7 @@ def test_gate_check_is_noop_without_env(monkeypatch):
     assert _srv._gate_check("delete-module shu009 -y") is None
 
 
+@pytest.mark.core
 @_needs_srv
 def test_gate_check_passes_non_gated_commands(tmp_path, monkeypatch):
     _aiwin(tmp_path, monkeypatch)
@@ -1778,6 +1789,7 @@ def test_gate_check_passes_non_gated_commands(tmp_path, monkeypatch):
     assert _srv._gate_check("sheet add 集計") is None and _srv._gate_check("row insert 5") is None
 
 
+@pytest.mark.core
 @_needs_srv
 def test_gate_check_blocks_when_user_rejects(tmp_path, monkeypatch):
     log = _aiwin(tmp_path, monkeypatch)
@@ -1803,6 +1815,7 @@ def test_gate_check_accepts_bom_answer(tmp_path, monkeypatch):
     assert _srv._gate_check("save-as out.xlsm", wait=5) is None
 
 
+@pytest.mark.core
 @_needs_srv
 def test_gate_check_fails_closed_when_no_answer(tmp_path, monkeypatch):
     # 返事が無いときは実行しない側に倒す（黙って実行するのが最悪）
@@ -1931,6 +1944,7 @@ def test_submit_denial_prevents_execution(tmp_path, monkeypatch):
     assert "write-range A1 999" in log.read_text(encoding="utf-8")  # 記録は残す
 
 
+@pytest.mark.core
 @_needs_srv
 def test_submit_runs_when_not_gated(monkeypatch):
     monkeypatch.delenv("AI_WIN_LOG", raising=False)
@@ -2213,6 +2227,7 @@ def test_parser_show_flag_on_write_commands():
 
 
 # ---- write-cells / tidy 複数範囲 / 仕事の時計（2026-09-02 夜・往復数を減らす改修）----
+@pytest.mark.core
 def test_parser_accepts_write_cells_and_multi_range_tidy():
     p = vm.build_parser()
     ns, unknown = p.parse_known_args(["write-cells", "C7", "000-0002", "D7", "x y", "--show"])
@@ -2257,6 +2272,7 @@ def test_parser_accepts_no_col_format():
     assert ns.no_col_format is False
 
 
+@pytest.mark.core
 def test_write_cells_rejects_unpaired_args(capsys):
     ns = _ap.Namespace(posargs=["C7"], tsv_opt=None, raw=False, sheet_opt=None, show=False)
     assert vm.cmd_write_cells(ns) is False
@@ -2315,6 +2331,7 @@ def test_any_excel_process_true_when_tasklist_itself_fails(monkeypatch):
     assert vc._any_excel_process() is True
 
 
+@pytest.mark.core
 def test_get_workbook_uncached_fails_fast_without_com_when_excel_absent(monkeypatch):
     # Excel が1つも無いと分かったら、ROT走査やGetActiveObject等のCOM呼び出しに
     # 進む前に打ち切る（進んだら止まりうる＝2026-09-03 の穴）。COM側の関数が
@@ -2372,6 +2389,7 @@ def test_open_maybe_repair_retries_with_corruptload_on_failure(capsys):
 
 # ---- build-sheet（2026-09-03・設計図からシートを組み上げる「作る犬」の手1）----
 
+@pytest.mark.core
 def test_build_sheet_is_wired():
     # 表と argparse の両方に配線（片肺を防ぐ）
     import vbam_build as vb
@@ -2561,6 +2579,7 @@ _JA_ALIASES = {'健康診断', '影響範囲', '予行演習', 'テスト',
                'キー設定', 'キー削除', 'format', '開いているフォーム'}
 
 
+@pytest.mark.core
 def test_capabilities_classifies_every_command():
     # コマンドを足して分類を忘れたらここで落ちる（分類漏れの番人）
     table = set(vm._command_table())
@@ -2575,6 +2594,7 @@ def test_capabilities_names_are_unique():
     assert len(names) == len(set(names))
 
 
+@pytest.mark.core
 def test_capabilities_destructive_set_is_explicit():
     d = {n for n, _ in vv._CAPABILITIES["destructive"]}
     assert d == {'delete-procedure', 'delete-module', 'clear-range',
@@ -2604,6 +2624,7 @@ def test_rules_imported_four_cite_their_origin():
                         'VBM023': 'オフィス田中 VBA高速化テクニック'}
 
 
+@pytest.mark.core
 def test_xlflow_commands_are_wired():
     # 表と argparse の両方に配線されていること（片肺を防ぐ）
     table = vm._command_table()
@@ -2714,6 +2735,7 @@ def test_keep_grid_text_leaves_typed_columns_alone():
 import io                                                            # noqa: E402
 
 
+@pytest.mark.core
 @_needs_srv
 def test_write_grid_writes_tsv_and_calls_write_range_show(tmp_path, monkeypatch):
     tsv_path = tmp_path / "_last_values.tsv"
@@ -2732,6 +2754,7 @@ def test_write_grid_writes_tsv_and_calls_write_range_show(tmp_path, monkeypatch)
     assert seen["line"] == f'write-range "F5:G13" --tsv "{tsv_path}" --show'
 
 
+@pytest.mark.core
 @_needs_srv
 def test_replace_procedure_takes_code_and_replaces_in_one_call(tmp_path, monkeypatch):
     """set_procedure_code → replace_procedure の 2 手を、code を渡せば 1 手に（2026-09-13・Gemini の提案）。
@@ -2948,6 +2971,7 @@ def test_hash_scan_reads_the_range_once_and_asks_only_the_tight_cells_20260913()
     assert asked == [(2, 2)]                                     # 1250000 だけ聞いた。12 も文字も聞かない
 
 
+@pytest.mark.core
 def test_tidy_evens_out_a_mixed_number_format_20260911():
     """#,##0 と標準がまだらの金額列を、tidy は「既に書式あり」と見て素通りし、仕上げ検査も見逃した。"""
     from vbam_edit import audit_table, _tidy_column_styles
@@ -3193,6 +3217,7 @@ def test_katakana_words_with_key_or_code_are_not_id_columns():
     assert not ve._looks_like_key('キーボード') and ve._looks_like_key('照合キー')
 
 
+@pytest.mark.core
 def test_tidy_keeps_money_whole_and_skips_blank_rows_20260913():
     """お試し版テスト用1: 平均 10,162.5 が 1 つあるだけで金額 20 行が 7,200.00 に、空の行と合計欄の左にも罫線が付いた。"""
     import vbam_edit as ve
@@ -3406,6 +3431,7 @@ def test_shelf_catalog_folds_the_shelf_and_marks_macros_that_open_a_window_20260
     assert owner_multi == "秀コンボ.xlam"
 
 
+@pytest.mark.core
 def test_trace_reads_refs_across_sheets_and_skips_function_names_20260923():
     """trace の字面読み: 別シート・絶対参照・範囲は拾い、関数名（LOG10）と文字列の中は拾わない。"""
     import vbam_view as vw
@@ -3423,6 +3449,7 @@ def test_trace_reads_refs_across_sheets_and_skips_function_names_20260923():
     assert vw._trace_range_cells("B2", "D3") == (6, "B2", "D3")
 
 
+@pytest.mark.core
 def test_trace_walk_folds_ranges_and_stops_on_circular_reference_20260923():
     """trace の木: 範囲は先頭と末尾と件数に畳み、同じ番地に戻ったら循環として止める。"""
     import vbam_view as vw
@@ -4124,6 +4151,7 @@ def test_any_excel_process_uses_last_pid_before_tasklist(monkeypatch):
     assert vc._any_excel_process() is False
 
 
+@pytest.mark.core
 def test_call_log_write_and_stats(monkeypatch, tmp_path, capsys):
     """呼び出し台帳: 1 行ずつ足し、stats がコマンド別・遅かった呼び出し・呼び出しの間を出す。"""
     import json
@@ -4572,6 +4600,7 @@ def test_extract_proc_fallback_refuses_when_ambiguous():
     assert vv._extract_proc(wb, "M3", "Z") == (None, None)
 
 
+@pytest.mark.core
 def test_replace_procedure_reads_positional_module_name(monkeypatch, tmp_path, capsys):
     code = tmp_path / "p.vba"
     code.write_text("Sub FindBorders()\nEnd Sub\n", encoding="utf-8")
@@ -4644,6 +4673,7 @@ def test_call_log_keeps_why_a_call_failed(monkeypatch, tmp_path):
     assert "'X'" not in s["why_top"][0]["why"], "名前はならして同じ理由にまとめる"
 
 
+@pytest.mark.core
 def test_every_example_in_mcp_docs_parses():
     """MCP の説明（vba の説明文と instructions）に書いた手本の手が、本物の読み取りを通る（2026-09-24:
     「add-module Module1 -y」が「不明な引数: -y」で落ちていた＝読んだ AI が毎回 1 往復損する）。
@@ -4679,6 +4709,7 @@ def test_every_example_in_mcp_docs_parses():
     assert not bad, f"説明の手本が読み取りを通らない: {bad}"
 
 
+@pytest.mark.core
 def test_usage_examples_parse_and_show_on_mistake_20260924():
     """形を外したときに返す手本（_USAGE_EXAMPLES）は、それ自体が読み取りを通り、外したときの返事に出る
     （2026-09-24: Antigravity の Gemini の記録で、使い方だけが返って撃ち直した往復が 36 回）。"""
@@ -4931,6 +4962,7 @@ def test_shelf_lint_stops_rate_literals_only_when_new_20261028():
     assert not [1 for lv, n, _m in vp.shelf_lint(old, base) if n == '率の直書き']
 
 
+@pytest.mark.core
 def test_register_addin_needs_why_for_unread_warnings_20261028(monkeypatch, capsys):
     """警告を読まずに焼かない: 当たり先が変わった／train の after に誤爆があれば、--why が無い限り焼かない。
     --why が無いときは控えを進めない（hold_changed）＝撃ち直しても警告が消えない。"""
@@ -5002,6 +5034,7 @@ def test_register_addin_runs_test_gate_before_burn_20261021(monkeypatch, capsys)
     assert vv._test_gate_before_burn(with_test) is True
 
 
+@pytest.mark.core
 def test_batch_stdin_and_shell_help_20261021(monkeypatch, capsys):
     """10/20 の「意図的に無視」の注記を足す直しで、batch - の `text = sys.stdin.read()` と shell の
     `parser = build_parser()` が消えていた（NameError）。標準入力の batch と shell の help が通ることを見る。"""
@@ -5135,6 +5168,7 @@ def test_shape_list_and_delete_words_are_options_20260924():
     assert msg is None and not ns.delete and ns.posargs == ["G1"]
 
 
+@pytest.mark.core
 def test_every_example_in_skill_docs_parses():
     """SKILL.md と参照（commands.md 等）に書いた手本の手が、本物の読み取りを通る（2026-09-24 総点検: 330 個中
     「checkup --unack」が値なしで書かれていて通らなかった）。行末の「# 説明」は外し、<名前> は 1 に、[省略可] は外して形だけ見る。"""
@@ -5345,6 +5379,7 @@ def _fake_book_with_procs(mods):
     return wb
 
 
+@pytest.mark.core
 def test_delete_procedure_module_form_and_many(monkeypatch, capsys):
     """delete-procedure は「モジュール Sub名」と Sub名の複数を受け、控え 1 冊・保存 1 回（2026-09-24）。"""
     import argparse
@@ -5386,6 +5421,7 @@ def test_call_log_why_takes_exception_text(monkeypatch):
     assert got["ok"] is False and got["why"].startswith("Excel が起動していません")
 
 
+@pytest.mark.core
 def test_shelf_run_sheet_moves_to_the_book_that_has_it():
     """--sheet のシートが前のブックに無ければ、それを持つ 1 冊へ移る（2026-09-24 17:25 秀コンボが前に出て Book2!明細 に撃てなかった）。"""
     import vbam_view as vw
@@ -5427,6 +5463,7 @@ def test_shelf_run_sheet_moves_to_the_book_that_has_it():
     assert wb is None and "Book2 / Book3" in msg
 
 
+@pytest.mark.core
 def test_parse_command_tokens_takes_common_slips(monkeypatch):
     """形の外れの受け止め（2026-09-24 会話記録 30 日の外れから）。直せるものは直して撃ち、残りは選択肢と近い名前を返す。"""
     import vba_manager as vmm
@@ -5831,6 +5868,7 @@ def test_cmd_test_has_no_book_specific_cleanup_20261007():
     assert "秀コンボ" not in body and "modMacroUchi50" not in body
 
 
+@pytest.mark.core
 def test_recipe_save_and_delete_20261022(tmp_path):
     """recipe-save でレシピが TSV に保存され、置換・削除が正常に動くこと。"""
     import vbam_recipes as vr
@@ -6459,6 +6497,7 @@ def test_find_replace_also_rewrites_formulas_when_the_new_text_contains_the_old(
     assert "2セル" in out and "元の式のまま残したセル: B4" in out
 
 
+@pytest.mark.core
 def test_sheet_add_and_copy_see_names_that_differ_only_in_case(monkeypatch, capsys):
     """Excel のシート名は大文字と小文字を区別しない。'Data' がある所に 'data' を足すと、名前付けで落ちて残骸が残っていた。"""
     import inspect
@@ -6755,6 +6794,7 @@ def test_find_replace_keeps_text_that_excel_would_turn_into_a_date(monkeypatch, 
     assert book[(1, 2)] == "1-2" and "文字列として保持" in capsys.readouterr().out
 
 
+@pytest.mark.core
 def test_save_as_puts_a_bare_name_next_to_the_workbook(monkeypatch, tmp_path):
     """save-as 新名.xlsx は、道具のフォルダ（python_scripts）ではなく、そのブックのフォルダに置く（2026-10-28 点検）。"""
     import vbam_edit as ve
@@ -6972,6 +7012,7 @@ def test_book_head_and_register_next_step_20261029(tmp_path):
     assert "publish_all.py -m" in vv.register_next_step(publisher=str(pub))
 
 
+@pytest.mark.core
 def test_stats_slow_20261029(tmp_path):
     """079: stats --slow の集計（合計順・test分割・目安名指し・1.3倍名指し・壊れた行スキップ）。"""
     import json, time, datetime
@@ -7464,6 +7505,7 @@ def test_project_code_cache_detects_external_vbe_edit_20261030():
     assert "vbeAddedLine" in latest_code, f"VBE で足した行が全コードに含まれていない: {latest_code}"
 
 
+@pytest.mark.core
 def test_deferred_save_flow_mcp_and_cli_20261030(monkeypatch, tmp_path):
     """091の3・091の4: 登録時は返事の後ろで保存待ちが回ること、未登録時はその場で保存されること、台帳に save(後ろ) が残ること。"""
     import vbam_core as vc
