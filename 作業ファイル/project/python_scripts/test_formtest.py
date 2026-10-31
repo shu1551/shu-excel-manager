@@ -254,7 +254,42 @@ def test_execute_step_set_sleeps_after_completion():
 
 
 def test_cmd_form_click_sends_double_stroke_for_focus_transition():
-    """フォーカス移動で1回目が消費されるのを防ぐためPostMessageでLBUTTONDOWNが2回送出されることを検証"""
+    """twice_flag（form-test の台本）のときだけ LBUTTONDOWN が 2 回送られる"""
+    import vbam_edit
+    import json
+    from unittest.mock import MagicMock, patch, mock_open
+
+    args = MagicMock()
+    args.posargs = ["F_T8", "btnOK"]
+    args.learn_flag = False
+    args.list_flag = False
+    args.here_flag = True
+    args.twice_flag = True
+
+    geo_data = {"btnOK": [100.0, 100.0, 50.0, 20.0, "OK"]}
+
+    with patch("vbam_edit._list_form_windows", return_value=[(12345, "データ登録")]), \
+         patch("vbam_edit._form_geometry_path", return_value="_dummy_geo.json"), \
+         patch("os.path.isfile", return_value=True), \
+         patch("builtins.open", mock_open(read_data=json.dumps(geo_data))), \
+         patch("win32gui.EnumChildWindows", side_effect=lambda hwnd, cb, acc: acc.append(9999)), \
+         patch("win32gui.ChildWindowFromPointEx", return_value=9999), \
+         patch("win32gui.SendMessage"), \
+         patch("win32gui.PostMessage") as mock_post, \
+         patch("win32gui.GetClientRect", return_value=(0, 0, 500, 400)), \
+         patch("win32gui.GetClassName", return_value="F3 Server"), \
+         patch("time.sleep"):
+        res = vbam_edit.cmd_form_click(args)
+        assert res is True
+        # WM_LBUTTONDOWN (0x0201) が2回送られていることを確認
+        down_calls = [c for c in mock_post.call_args_list if c[0][1] == 0x0201]
+        assert len(down_calls) == 2
+
+
+
+
+def test_cmd_form_click_default_is_single_stroke():
+    """既定では 1 回だけ（任意のフォームの切り替え・削除ボタンを 2 回効かせない）"""
     import vbam_edit
     import json
     from unittest.mock import MagicMock, patch, mock_open
@@ -282,5 +317,5 @@ def test_cmd_form_click_sends_double_stroke_for_focus_transition():
         assert res is True
         # WM_LBUTTONDOWN (0x0201) が2回送られていることを確認
         down_calls = [c for c in mock_post.call_args_list if c[0][1] == 0x0201]
-        assert len(down_calls) == 2
+        assert len(down_calls) == 1
 

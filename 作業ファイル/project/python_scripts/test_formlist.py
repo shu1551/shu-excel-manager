@@ -44,9 +44,9 @@ def test_list_form_max_columns_and_widths():
     assert lst_elem["column_count"] == 6
     widths = lst_elem["column_widths"].split(";")
     assert len(widths) == 6
-    # 2番目(date)と3番目(currency)は 60、他は 80
-    assert widths[2] == "60"
-    assert widths[3] == "60"
+    # 日付は 80（yyyy/mm/dd が最後まで見える幅）、金額は 64、他は 80
+    assert widths[2] == "80"
+    assert widths[3] == "64"
     assert widths[0] == "80"
 
 

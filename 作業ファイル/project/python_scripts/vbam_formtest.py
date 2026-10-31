@@ -72,6 +72,10 @@ def execute_step(step, step_idx, wb, ws_target=None):
                 wb.Application.Run(f"Show_{form_name}")
             except Exception:
                 # 起動マクロが無いブック: 一時モジュールで開く（テスト後に run_form_test が消す）
+                import vba_manager
+                bad = vba_manager.check_vba_identifier(form_name)
+                if bad:
+                    return False, f"手 {step_idx} (open): フォーム名が VBA の識別子として不正です ({bad})"
                 try:
                     mod = wb.VBProject.VBComponents.Add(1)
                     mod.Name = "VMTestLaunch"
@@ -122,6 +126,7 @@ def execute_step(step, step_idx, wb, ws_target=None):
         args.learn_flag = False
         args.list_flag = False
         args.here_flag = True  # 台本は表を退避・復元するので持ち主ガードを外す
+        args.twice_flag = True
         try:
             res = cmd_form_click(args)
             if res is False:

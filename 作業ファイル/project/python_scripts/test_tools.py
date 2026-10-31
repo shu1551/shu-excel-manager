@@ -1214,6 +1214,7 @@ def test_injection_route_ledger():
         ('form_builder.py', 'inject_vba'),          # 注入前に識別子検査（既存コード削除より前）
         ('form_inspect.py', 'render_form_png'),     # 機械固定名 tmpFormInspect* のみ＝安全
         ('form_layout.py', 'build_form'),           # 起動マクロ名を check_vba_identifier で検査
+        ('vbam_formtest.py', 'execute_step'),      # 一時の起動モジュール: フォーム名を check_vba_identifier で検査してから注入
         ('form_tool.py', 'cmd_copy_form'),          # 新フォーム名を check_vba_identifier で検査
         ('live_sync_vba.py', 'update_module'),      # 既存コード往復＋固定名マクロ追記のみ＝新規名の流入なし
                                                     # （2026-07-14: 失敗時に旧コードを書き戻すため関数へ切り出し）

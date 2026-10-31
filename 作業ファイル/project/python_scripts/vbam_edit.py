@@ -4737,9 +4737,12 @@ def cmd_form_click(args):
     time.sleep(0.1)
     win32gui.PostMessage(picked, win32con.WM_LBUTTONUP, 0, lp)
     time.sleep(0.1)
-    win32gui.PostMessage(picked, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lp)
-    time.sleep(0.1)
-    win32gui.PostMessage(picked, win32con.WM_LBUTTONUP, 0, lp)
+    # 2 回押しは form-test の台本だけ（ComboBox から移った直後は 1 回目がフォーカス移動に消えることがある）。
+    # 既定では 1 回だけ＝任意のフォームの切り替え・削除ボタンを 2 回効かせない
+    if getattr(args, 'twice_flag', False) is True:
+        win32gui.PostMessage(picked, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lp)
+        time.sleep(0.1)
+        win32gui.PostMessage(picked, win32con.WM_LBUTTONUP, 0, lp)
     time.sleep(0.6)
     if old_ctx:
         try:
