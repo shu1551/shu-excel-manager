@@ -1025,21 +1025,21 @@ Private Function 基_表を読む(ByVal ws As Worksheet, ByRef 見r As Long, ByRef 左 
     Set lo = 基_表のテーブル(ws)
     If Not lo Is Nothing Then
         If lo.ShowHeaders Then
-            見r = lo.HeaderRowRange.row
+            見r = lo.HeaderRowRange.Row
             左 = lo.Range.Column
             右 = 左 + lo.Range.Columns.Count - 1
             If lo.DataBodyRange Is Nothing Then
                 末r = 見r
             Else
-                末r = lo.DataBodyRange.row + lo.DataBodyRange.rows.Count - 1
+                末r = lo.DataBodyRange.Row + lo.DataBodyRange.rows.Count - 1
             End If
-            If lo.ShowTotals Then 合r = lo.TotalsRowRange.row
+            If lo.ShowTotals Then 合r = lo.TotalsRowRange.Row
             基_表を読む = True
             Exit Function
         End If
     End If
     Set ur = ws.UsedRange
-    For r = ur.row To ur.row + ur.rows.Count - 1
+    For r = ur.Row To ur.Row + ur.rows.Count - 1
         filled = 0: txt = 0
         For c = ur.Column To ur.Column + ur.Columns.Count - 1
             v = ws.Cells(r, c).Value

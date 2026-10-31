@@ -93,7 +93,7 @@ def test_list_form_case_width_insensitive_search():
         pass
 
     assert "kw = LCase(StrConv(Trim(keyword), vbNarrow))" in code
-    assert "StrConv(CStr(mAllData(r, c)), vbNarrow)" in code
+    assert "StrConv(CellStr(mAllData(r, c)), vbNarrow)" in code
     assert "InStr(1, LCase(rowText), kw)" in code
 
 

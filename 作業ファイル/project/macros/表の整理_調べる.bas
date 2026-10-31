@@ -26,11 +26,11 @@ Sub 選んだ列の重複する値を一覧にする()
     If ws.UsedRange Is Nothing Then Exit Sub
 
     keyCol = Selection.Cells(1, 1).Column
-    hdrRow = Selection.Cells(1, 1).row
+    hdrRow = Selection.Cells(1, 1).Row
 
     Dim ur As Range
     Set ur = ws.UsedRange
-    lastRow = ur.row + ur.rows.Count - 1
+    lastRow = ur.Row + ur.rows.Count - 1
     If lastRow <= hdrRow Then Exit Sub
 
     Dim oldScreen As Boolean, oldCalc As XlCalculation, oldEvents As Boolean
@@ -204,7 +204,7 @@ Sub 選んだ列が空欄の行を一覧にする()
 
     Set ws = ActiveSheet
     selCol = Selection.Cells(1, 1).Column
-    hdrRow = Selection.Cells(1, 1).row
+    hdrRow = Selection.Cells(1, 1).Row
 
     Set ur = ws.UsedRange
     lastRow = 表の本文の最終行(ws)      ' 表の下のメモの行を空欄と言わない（2026-09-24 総点検）
@@ -285,10 +285,10 @@ Sub 合計行が明細の和と合うか確かめる()
     Dim ur As Object
     Set ur = ws.UsedRange
     Dim urTop As Long, urLeft As Long, urRight As Long, urBottom As Long
-    urTop = ur.row
+    urTop = ur.Row
     urLeft = ur.Column
     urRight = ur.Column + ur.Columns.Count - 1
-    urBottom = ur.row + ur.rows.Count - 1
+    urBottom = ur.Row + ur.rows.Count - 1
 
     ' 見出しの行を探す: 空でないセルが2つ以上並ぶ最初の行
     Dim hdrRow As Long
@@ -443,7 +443,7 @@ Sub 同日同額の二重計上を一覧にする()
     Dim ur As Range
     Set ur = ws.UsedRange
     Dim urTop As Long, urLeft As Long, urRight As Long, urBottom As Long
-    urTop = ur.row
+    urTop = ur.Row
     urLeft = ur.Column
     urRight = ur.Column + ur.Columns.Count - 1
     urBottom = 表の本文の最終行(ws)
@@ -694,7 +694,7 @@ Sub おかしな日付の行を一覧にする()
     Dim selCol As Long
     selCol = Selection.Cells(1, 1).Column
     Dim hdrRow As Long
-    hdrRow = Selection.Cells(1, 1).row
+    hdrRow = Selection.Cells(1, 1).Row
 
     Dim ur As Range
     Set ur = ws.UsedRange
@@ -889,7 +889,7 @@ Sub エラー値のセルを一覧にする()
     Dim ur As Range
     Set ur = ws.UsedRange
     Dim urTop As Long, urLeft As Long, urRows As Long, urCols As Long
-    urTop = ur.row
+    urTop = ur.Row
     urLeft = ur.Column
     urRows = ur.rows.Count
     urCols = ur.Columns.Count
@@ -1022,7 +1022,7 @@ Sub 選んだ列の名前の揺れを一覧にする()
     Set ws = ActiveSheet
 
     Dim hdrRow As Long
-    hdrRow = Selection.Cells(1, 1).row
+    hdrRow = Selection.Cells(1, 1).Row
 
     Dim tblLeft As Long, tblRight As Long
     ' 左端＝見出しの行で最初に値のある列（A 列固定だと、表が C3 から始まる表で右端を取り違えた。2026-09-22）
@@ -1041,7 +1041,7 @@ Sub 選んだ列の名前の揺れを一覧にする()
     Next c
 
     Dim urLast As Long
-    urLast = ws.UsedRange.row + ws.UsedRange.rows.Count - 1
+    urLast = ws.UsedRange.Row + ws.UsedRange.rows.Count - 1
 
     Dim lastRow As Long
     lastRow = hdrRow
@@ -1067,7 +1067,7 @@ Sub 選んだ列の名前の揺れを一覧にする()
     ' 前の結果は、見出しの行から下の 3 列だけ消す（列まるごと消して、同じ列の表題・注記まで消し、表題の結合セルでは 1004 で止まった。2026-09-22）
     Dim clrLast As Long
     clrLast = urLast
-    If ws.Cells(ws.rows.Count, outCol).End(xlUp).row > clrLast Then clrLast = ws.Cells(ws.rows.Count, outCol).End(xlUp).row
+    If ws.Cells(ws.rows.Count, outCol).End(xlUp).Row > clrLast Then clrLast = ws.Cells(ws.rows.Count, outCol).End(xlUp).Row
     ws.Range(ws.Cells(hdrRow, outCol), ws.Cells(clrLast, outCol + 2)).ClearContents
 
     ws.Cells(hdrRow, outCol).Value = "まとめる名前"
@@ -1218,9 +1218,9 @@ Sub 表のおかしい所を右に報告する()
     Set ur = ws.UsedRange
     On Error GoTo 0
     If ur Is Nothing Then Exit Sub
-    urTop = ur.row: urLeft = ur.Column
+    urTop = ur.Row: urLeft = ur.Column
     urRight = ur.Column + ur.Columns.Count - 1
-    urBottom = ur.row + ur.rows.Count - 1
+    urBottom = ur.Row + ur.rows.Count - 1
 
     For r = urTop To urBottom
         cnt = 0
@@ -1439,9 +1439,9 @@ Sub 数式の危ない所を右に報告する()
         Exit Sub
     End If
     正規.Global = True
-    urTop = ur.row: urLeft = ur.Column
+    urTop = ur.Row: urLeft = ur.Column
     urRight = ur.Column + ur.Columns.Count - 1
-    urBottom = ur.row + ur.rows.Count - 1
+    urBottom = ur.Row + ur.rows.Count - 1
 
     ' 報告の置き場: 前の報告があればそこへ書き直す（撃ち直すたびに使用範囲の右へ報告が増え、前の報告まで調べていた・2026-09-24 総点検）。
     ' 調べるのは報告より左だけ
@@ -1644,7 +1644,7 @@ Sub 引き継ぎの説明シートを作る()
             If ur Is Nothing Then GoTo 次のシート
 
             hdrRow = 0
-            For r = ur.row To ur.row + ur.rows.Count - 1
+            For r = ur.Row To ur.Row + ur.rows.Count - 1
                 cnt = 0
                 For c = ur.Column To ur.Column + ur.Columns.Count - 1
                     If Not IsError(ws.Cells(r, c).Value) Then
@@ -1655,10 +1655,10 @@ Sub 引き継ぎの説明シートを作る()
             Next r
 
             入力列 = "": 計算列 = ""
-            If hdrRow > 0 And hdrRow < ur.row + ur.rows.Count - 1 Then
+            If hdrRow > 0 And hdrRow < ur.Row + ur.rows.Count - 1 Then
                 For c = ur.Column To ur.Column + ur.Columns.Count - 1
                     n式 = 0: n手 = 0
-                    For r = hdrRow + 1 To ur.row + ur.rows.Count - 1
+                    For r = hdrRow + 1 To ur.Row + ur.rows.Count - 1
                         If ws.Cells(r, c).HasFormula Then
                             n式 = n式 + 1
                         ElseIf Not IsError(ws.Cells(r, c).Value) Then
@@ -1689,7 +1689,7 @@ Sub 引き継ぎの説明シートを作る()
 
             sh.Cells(outRow, 1).Value = ws.Name
             sh.Cells(outRow, 2).Value = ur.Address(0, 0)
-            sh.Cells(outRow, 3).Value = IIf(hdrRow > 0, ur.row + ur.rows.Count - 1 - hdrRow, 0)
+            sh.Cells(outRow, 3).Value = IIf(hdrRow > 0, ur.Row + ur.rows.Count - 1 - hdrRow, 0)
             sh.Cells(outRow, 4).Value = IIf(入力列 = "", "（なし）", Mid$(入力列, 2))
             sh.Cells(outRow, 5).Value = IIf(計算列 = "", "（なし）", Mid$(計算列, 2))
             sh.Cells(outRow, 6).Value = "'" & 式範囲
@@ -1924,7 +1924,7 @@ Sub 表の見出しと列の型を一覧にする()
     Set out = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
     out.Name = nm
     out.Range("A1").Value = "調査：表の作り　" & ws.Name
-    out.Range("A2").Value = "範囲 " & tb.Address(False, False) & "　見出し行 " & tb.row & "　データ " & Format(nr - 1, "#,##0") & " 行　" & nc2 & " 列 " & 注
+    out.Range("A2").Value = "範囲 " & tb.Address(False, False) & "　見出し行 " & tb.Row & "　データ " & Format(nr - 1, "#,##0") & " 行　" & nc2 & " 列 " & 注
     out.Range("A3").Value = "見出し行は範囲の先頭行とみなしています。列の意味は決められないので、見出しと例を並べています。"
     hR = 5: nc = 11
     out.Range("A5:K5").Value = Array("列", "見出し", "入力あり", "空欄", "型", "種類の数", "最小", "最大", "文字の数字", "エラー", "例") ' 書き戻し: 新しい所
@@ -2342,7 +2342,7 @@ Sub 印刷ページ数と切れ目を一覧にする()
             For i = 1 To sh.HPageBreaks.Count
                 If i > 30 Then hb = hb & " …": Exit For
                 If Len(hb) > 0 Then hb = hb & ", "
-                hb = hb & sh.HPageBreaks(i).Location.row & "行目"
+                hb = hb & sh.HPageBreaks(i).Location.Row & "行目"
             Next i
             For i = 1 To sh.VPageBreaks.Count
                 If i > 30 Then vb2 = vb2 & " …": Exit For
@@ -2457,9 +2457,9 @@ Sub 非表示のシートと行列を一覧にする()
             x = Null      ' 混在でも False が返るので、必ず 1 行ずつ調べる
             On Error GoTo 失敗
             If IsNull(x) Then
-                lastR = ur.row + ur.rows.Count - 1
+                lastR = ur.Row + ur.rows.Count - 1
                 If lastR > 50000 Then lastR = 50000
-                i = ur.row
+                i = ur.Row
                 Do While i <= lastR
                     If sh.rows(i).Hidden Then
                         a = i
@@ -2977,13 +2977,13 @@ Sub ブックが重い原因を一覧にする()
             If Left$(セルの字(sh.Range("A1").Value), 3) = "調査：" Then GoTo 次のシート1
         End If
         Set ur = sh.UsedRange
-        endR = ur.row + ur.rows.Count - 1
+        endR = ur.Row + ur.rows.Count - 1
         endC = ur.Column + ur.Columns.Count - 1
         lastR = 0: lastC = 0
         Set lc = Nothing
         On Error Resume Next
         Set lc = sh.Cells.Find("*", SearchOrder:=1, SearchDirection:=2, LookIn:=-4123, LookAt:=2, MatchCase:=False, MatchByte:=False, SearchFormat:=False)
-        If Not lc Is Nothing Then lastR = lc.row
+        If Not lc Is Nothing Then lastR = lc.Row
         Set lc = Nothing
         Set lc = sh.Cells.Find("*", SearchOrder:=2, SearchDirection:=2, LookIn:=-4123, LookAt:=2, MatchCase:=False, MatchByte:=False, SearchFormat:=False)
         If Not lc Is Nothing Then lastC = lc.Column
@@ -3722,12 +3722,12 @@ Sub 列番号を直書きした式を一覧にする()
             If 種 = "列番号" Then
                 If 番 <= 図.Columns.Count Then
                     見出1 = CStr(図.Cells(1, 番).text)
-                    If 図.row > 1 Then 見出2 = CStr(参照シート.Cells(図.row - 1, 図.Column + 番 - 1).text)
+                    If 図.Row > 1 Then 見出2 = CStr(参照シート.Cells(図.Row - 1, 図.Column + 番 - 1).text)
                 End If
             Else
                 If 番 <= 図.rows.Count Then
                     見出1 = CStr(図.Cells(番, 1).text)
-                    If 図.Column > 1 Then 見出2 = CStr(参照シート.Cells(図.row + 番 - 1, 図.Column - 1).text)
+                    If 図.Column > 1 Then 見出2 = CStr(参照シート.Cells(図.Row + 番 - 1, 図.Column - 1).text)
                 End If
             End If
             On Error GoTo 失敗
@@ -3904,7 +3904,7 @@ Sub ブックに隠れた物を一覧にする()
         ' 5a. 離れた所にぽつんとある最後のセル
         If Not 末 Is Nothing Then
             If セルの字(末.Value) <> "" Then
-                If Application.WorksheetFunction.CountA(元.rows(末.row)) = 1 And Application.WorksheetFunction.CountA(元.Columns(末.Column)) = 1 And (末.row > 20 Or 末.Column > 10) Then
+                If Application.WorksheetFunction.CountA(元.rows(末.Row)) = 1 And Application.WorksheetFunction.CountA(元.Columns(末.Column)) = 1 And (末.Row > 20 Or 末.Column > 10) Then
                     種 = "離れた所にぽつんとあるセル"
                     場 = 元.Name & "!" & 末.Address(False, False)
                     容 = "使用範囲の最後（Ctrl+End の行き先）。その行にも列にも、ほかの値が無い（" & Len(CStr(末.Value)) & " 字）"
@@ -4155,7 +4155,7 @@ Sub ブックの構造を一覧にする()
         If ws.ProtectContents Then 保数 = 保数 + 1
         Set 域 = ws.UsedRange
         nr = 域.rows.Count: nc = 域.Columns.Count
-        r0 = 域.row: c0 = 域.Column
+        r0 = 域.Row: c0 = 域.Column
 
         位 = 詳.Count + 1
         ' 1a. 式（一括で A1・R1C1・値を読む。保護で隠した式があると一括は拒まれる＝1 セルずつ）
