@@ -174,8 +174,13 @@ def execute_step(step, step_idx, wb, ws_target=None):
     elif "expect_rows" in step:
         exp_r = int(step["expect_rows"])
         ws = ws_target or wb.ActiveSheet
-        last_row = ws.Cells(ws.Rows.Count, 1).End(-4162).Row # xlUp
-        actual_data_rows = max(0, last_row - 1)
+        # 押した直後は登録がまだ反映されていないことがある（実機で 1 回目だけ 3 行のまま）。最大 2 秒待つ
+        for _ in range(20):
+            last_row = ws.Cells(ws.Rows.Count, 1).End(-4162).Row # xlUp
+            actual_data_rows = max(0, last_row - 1)
+            if actual_data_rows == exp_r:
+                break
+            time.sleep(0.1)
         if actual_data_rows != exp_r:
             return False, f"手 {step_idx} (expect_rows): 行数不一致。期待={exp_r}, 実際={actual_data_rows}"
         return True, "OK"

@@ -829,7 +829,7 @@ def build_list_form_spec(form_name, title, sheet_name, table_name, cols_spec, ex
     """一覧と検索のフォーム設計図（kind: list）を組み立てる"""
     num_cols = len(cols_spec)
     show_cols = cols_spec[:6]
-    col_widths = ";".join(["60" if c.get("is_date") or c.get("is_currency") else "80" for c in show_cols])
+    col_widths = ";".join(["80" if c.get("is_date") else ("64" if c.get("is_currency") else "80") for c in show_cols])
 
     rows = [
         {"row": [
