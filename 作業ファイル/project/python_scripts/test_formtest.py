@@ -182,3 +182,105 @@ def test_run_form_test_refuses_main_tool_workbook(monkeypatch):
     assert ok is False
     assert "秀コンボ" in msg
     wb.ActiveSheet.UsedRange.ClearContents.assert_not_called()
+
+
+def test_run_form_test_respects_script_sheet_name(monkeypatch):
+    """101: run_form_test が台本の sheet 指定を尊重し ActiveSheet で上書きしないこと"""
+    from unittest.mock import MagicMock
+    import vbam_formtest
+
+    mock_xl = MagicMock()
+    mock_wb = MagicMock()
+    mock_wb.Name = "BookTest"
+    mock_ws_active = MagicMock()
+    mock_ws_active.Name = "ActiveSheet"
+    mock_ws_target = MagicMock()
+    mock_ws_target.Name = "TargetSheet"
+
+    mock_wb.ActiveSheet = mock_ws_active
+    mock_wb.Worksheets.side_effect = lambda name: mock_ws_target if name == "TargetSheet" else mock_ws_active
+
+    import vbam_core
+    monkeypatch.setattr(vbam_core, "get_workbook", lambda book: (mock_xl, mock_wb))
+    monkeypatch.setattr(vbam_formtest, "backup_sheet_data", lambda ws: {"address": "A1:B2", "values": [["a"]], "formulas": None})
+    monkeypatch.setattr(vbam_formtest, "restore_sheet_data", lambda ws, backup: None)
+
+    script = {
+        "book": "BookTest",
+        "form": "F_Test",
+        "caption": "Test",
+        "sheet": "TargetSheet",
+        "steps": []
+    }
+    ok, msg, _ = vbam_formtest.run_form_test(script)
+    assert ok is True
+    # Worksheets("TargetSheet") が呼ばれたこと
+    mock_wb.Worksheets.assert_called_with("TargetSheet")
+
+
+def test_get_workbook_finds_unregistered_workbook_via_active_excel():
+    """ROTに載っていない未保存ブック(Book1等)が名前指定された時、_get_active_excel経由でヒットすることを検証"""
+    import vbam_core
+    from unittest.mock import MagicMock, patch
+
+    mock_wb = MagicMock()
+    mock_wb.Name = "Book3"
+    mock_wb.Application = MagicMock()
+
+    mock_xl = MagicMock()
+    mock_xl.Workbooks = [mock_wb]
+
+    with patch("vbam_core.smart_path_resolve", return_value=None), \
+         patch("vbam_core._running_excel_workbooks", return_value=[]), \
+         patch("vbam_core._get_active_excel", return_value=mock_xl), \
+         patch("vbam_core._remember_excel_pid"):
+        xl, wb = vbam_core._get_workbook_uncached("Book3")
+        assert wb.Name == "Book3"
+
+
+def test_execute_step_set_sleeps_after_completion():
+    """form-set完了後にChangeイベント待ちのためウェイトが入ることを検証"""
+    import vbam_formtest
+    from unittest.mock import MagicMock, patch
+
+    mock_wb = MagicMock()
+    step = {"set": {"txtName": "test"}, "form": "MyForm"}
+
+    with patch("vbam_edit.cmd_form_set", return_value=True), \
+         patch("time.sleep") as mock_sleep:
+        ok, msg = vbam_formtest.execute_step(step, 1, mock_wb)
+        assert ok is True
+        mock_sleep.assert_called_with(0.15)
+
+
+def test_cmd_form_click_sends_double_stroke_for_focus_transition():
+    """フォーカス移動で1回目が消費されるのを防ぐためPostMessageでLBUTTONDOWNが2回送出されることを検証"""
+    import vbam_edit
+    import json
+    from unittest.mock import MagicMock, patch, mock_open
+
+    args = MagicMock()
+    args.posargs = ["F_T8", "btnOK"]
+    args.learn_flag = False
+    args.list_flag = False
+    args.here_flag = True
+
+    geo_data = {"btnOK": [100.0, 100.0, 50.0, 20.0, "OK"]}
+
+    with patch("vbam_edit._list_form_windows", return_value=[(12345, "データ登録")]), \
+         patch("vbam_edit._form_geometry_path", return_value="_dummy_geo.json"), \
+         patch("os.path.isfile", return_value=True), \
+         patch("builtins.open", mock_open(read_data=json.dumps(geo_data))), \
+         patch("win32gui.EnumChildWindows", side_effect=lambda hwnd, cb, acc: acc.append(9999)), \
+         patch("win32gui.ChildWindowFromPointEx", return_value=9999), \
+         patch("win32gui.SendMessage"), \
+         patch("win32gui.PostMessage") as mock_post, \
+         patch("win32gui.GetClientRect", return_value=(0, 0, 500, 400)), \
+         patch("win32gui.GetClassName", return_value="F3 Server"), \
+         patch("time.sleep"):
+        res = vbam_edit.cmd_form_click(args)
+        assert res is True
+        # WM_LBUTTONDOWN (0x0201) が2回送られていることを確認
+        down_calls = [c for c in mock_post.call_args_list if c[0][1] == 0x0201]
+        assert len(down_calls) == 2
+

@@ -461,7 +461,7 @@ class FormBuilder:
     def _get_or_create_inner(self, form_name, *, caption=None, width=None, height=None):
         frm_comp = None
         for comp in self.vbproject.VBComponents:
-            if comp.Name == form_name:
+            if comp.Name.lower() == form_name.lower():
                 frm_comp = comp
                 print(f"既存 {form_name} を再利用")
                 break

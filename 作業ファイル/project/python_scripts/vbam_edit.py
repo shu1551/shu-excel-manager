@@ -4724,10 +4724,19 @@ def cmd_form_click(args):
         tx, ty = win32gui.ScreenToClient(child, (sx, sy))
         picked = child
     lp = win32api.MAKELONG(tx, ty)
+    try:
+        win32gui.SendMessage(picked, win32con.WM_ACTIVATE, win32con.WA_ACTIVE, 0)
+        win32gui.SendMessage(picked, win32con.WM_SETFOCUS, 0, 0)
+    except Exception:
+        pass
     # MSForms は「マウスが乗った」を見てからでないと押下を受けない（先に MOUSEMOVE・押下と離しの間に少し間を置く。
     # 間なしの押下だけでは、表示した直後の窓が受け付けないことがあった・2026-10-03 実機）
     win32gui.PostMessage(picked, win32con.WM_MOUSEMOVE, 0, lp)
     time.sleep(0.15)
+    win32gui.PostMessage(picked, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lp)
+    time.sleep(0.1)
+    win32gui.PostMessage(picked, win32con.WM_LBUTTONUP, 0, lp)
+    time.sleep(0.1)
     win32gui.PostMessage(picked, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lp)
     time.sleep(0.1)
     win32gui.PostMessage(picked, win32con.WM_LBUTTONUP, 0, lp)
@@ -4737,6 +4746,7 @@ def cmd_form_click(args):
             ctypes.windll.user32.SetThreadDpiAwarenessContext(ctypes.c_void_p(old_ctx))
         except Exception:
             pass
+
     print(f"押しました: {form_name} の {target}（窓の {cx},{cy} 画素）")
     return True
 
@@ -4966,7 +4976,7 @@ _FORM_SET_CODE = """Function VMFS(ByVal frmName As String, ByVal specs As String
         If Trim(lines(i)) <> "" Then
             parts = Split(lines(i), vbTab)
             cName = parts(0)
-            cVal = parts(1)
+            cVal = Replace(Replace(parts(1), "__VBCRLF__", vbCrLf), "__VBLF__", vbLf)
             Set ctl = Nothing
             Err.Clear
             Set ctl = frm.Controls(cName)
@@ -5028,7 +5038,9 @@ _FORM_SET_CODE = """Function VMFS(ByVal frmName As String, ByVal specs As String
                     msg = Err.Description
                     Err.Clear
                 End If
-                res = res & cName & vbTab & status & vbTab & curVal & vbTab & msg & vbLf
+                Dim safeRetVal As String
+            safeRetVal = Replace(Replace(curVal, vbCrLf, " "), vbLf, " ")
+            res = res & cName & vbTab & status & vbTab & safeRetVal & vbTab & msg & vbLf
             End If
         End If
     Next i
@@ -5070,7 +5082,8 @@ def cmd_form_set(args):
             print(f"エラー: 引数 '{pair}' は 部品名=値 の形式ではありません")
             return False
         k, v = pair.split("=", 1)
-        specs_list.append((k.strip(), v))
+        v_esc = str(v).replace("\r\n", "__VBCRLF__").replace("\n", "__VBLF__")
+        specs_list.append((k.strip(), v_esc))
 
     specs_str = "\n".join(f"{k}\t{v}" for k, v in specs_list)
 

@@ -78,3 +78,18 @@ def test_form_set_empty_args(capsys):
     assert res is False
     captured = capsys.readouterr()
     assert "指定してください" in captured.out
+
+
+@pytest.mark.core
+def test_form_set_multiline_value_escaped():
+    """101: 改行を含む文字列が __VBCRLF__ / __VBLF__ にエスケープされて specs_str に入ること"""
+    raw_val = "line1\r\nline2\nline3"
+    pair = f"txtPR={raw_val}"
+    k, v = pair.split("=", 1)
+    v_esc = str(v).replace("\r\n", "__VBCRLF__").replace("\n", "__VBLF__")
+    assert "__VBCRLF__" in v_esc
+    assert "__VBLF__" in v_esc
+    assert "\n" not in v_esc
+    # VBA 側で戻したときに元の改行に復元できること
+    recovered = v_esc.replace("__VBCRLF__", "\r\n").replace("__VBLF__", "\n")
+    assert recovered == raw_val

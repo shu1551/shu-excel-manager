@@ -375,7 +375,7 @@ def cmd_form_build(args):
         )
     except Exception as be:
         print(f"エラー: フォームの構築に失敗しました: {be}")
-        return
+        return False
 
     # バックアップファイルの実体確認
     actual_backup_path = None
@@ -437,6 +437,7 @@ def cmd_form_build(args):
     if getattr(args, 'png', False):
         print(f"PNG の置き場: {_LAST_FORM_PNG}")
     print(f"所要時間: {sec} 秒")
+    return True
 
 
 def cmd_form_survey(args):
@@ -730,6 +731,7 @@ def analyze_table_columns(ws, table_range, is_list_object=False):
         is_currency = False
         example_hint = None
         align_right = False
+        non_empty = [v for v in col_vals if v not in (None, "")]
 
         # (a) 入力規則リスト
         if v_items:
@@ -737,9 +739,9 @@ def analyze_table_columns(ws, table_range, is_list_object=False):
             combo_items = v_items
 
         # (b) True/False・○/空欄（真偽値）
-        elif col_vals and set(str(v).lower() for v in col_vals).issubset({"true", "false", "0", "1", "○", "はい", "いいえ", ""}):
+        elif non_empty and set(str(v).lower() for v in non_empty).issubset({"true", "false", "0", "1", "○", "はい", "いいえ"}):
             control_type = "chk"
-            non_empty_strs = set(str(v) for v in col_vals if v not in (None, ""))
+            non_empty_strs = set(str(v) for v in non_empty)
             if "○" in non_empty_strs:
                 true_val, false_val = "○", ""
             elif "はい" in non_empty_strs:
@@ -750,30 +752,30 @@ def analyze_table_columns(ws, table_range, is_list_object=False):
                 true_val, false_val = "True", "False"
 
         # (c) 日付判定（書式または値）
-        elif any(df in num_fmt.lower() for df in ("yyyy", "yy", "m月", "d日", "e/m/d")) or (col_vals and all(re.match(r'^\d{4}[/-]\d{1,2}[/-]\d{1,2}$', str(v)) for v in col_vals[:10])):
+        elif any(df in num_fmt.lower() for df in ("yyyy", "yy", "m月", "d日", "e/m/d")) or (non_empty and all(re.match(r'^\d{4}[/-]\d{1,2}[/-]\d{1,2}$', str(v)) for v in non_empty[:10])):
             control_type = "txt"
             is_date = True
             example_hint = "例: 2026/10/30"
 
         # (d) ゼロ落ち・郵便・電話番号（00123 / 010-0001 / 018-000-0000）
-        elif num_fmt == "@" or (col_vals and any(str(v).startswith("0") and len(str(v)) > 1 and str(v).isdigit() for v in col_vals)) or any(k in h_name for k in ("郵便", "電話", "コード", "番号", "TEL", "ZIP")):
+        elif num_fmt == "@" or (non_empty and any(str(v).startswith("0") and len(str(v)) > 1 and str(v).isdigit() for v in non_empty)) or any(k in h_name for k in ("郵便", "電話", "コード", "番号", "TEL", "ZIP")):
             control_type = "txt"
             text_columns.append(h_name)
 
         # (e) 金額・数値判定
-        elif any(cf in num_fmt for cf in ("#,##0", "¥", "$", "%")) or (col_vals and all(isinstance(v, (int, float)) for v in col_vals[:10])):
+        elif any(cf in num_fmt for cf in ("#,##0", "¥", "$", "%")) or (non_empty and all(isinstance(v, (int, float)) for v in non_empty[:10])):
             control_type = "txt"
             align_right = True
             if any(k in h_name for k in ("金額", "単価", "給与", "費", "額", "残業")):
                 is_currency = True
 
         # (f) 長文判定（平均文字長 > 40）
-        elif col_vals and (sum(len(str(v)) for v in col_vals) / len(col_vals)) > 40:
+        elif non_empty and (sum(len(str(v)) for v in non_empty) / len(non_empty)) > 40:
             control_type = "txt"
             is_multiline = True
 
         # (g) 少カーディナリティの文字列（種類の少ない文字: 20種類以下 & 行の3割以下）
-        elif col_vals and all(isinstance(v, str) for v in col_vals):
+        elif non_empty and all(isinstance(v, str) for v in non_empty):
             uniq_vals = sorted(list(set(str(v) for v in col_vals if v)))
             if 2 <= len(uniq_vals) <= min(20, max(2, int(data_rows_count * 0.3))):
                 control_type = "combo"
@@ -835,7 +837,7 @@ def build_list_form_spec(form_name, title, sheet_name, table_name, cols_spec, ex
         {"row": [
             {"lbl": "検索:"},
             {"txt": "txtSearch", "width": 200},
-            {"lbl": "0 件中 0 件", "name": "lblCount"}
+            {"lbl": "0 件中 0 件", "name": "lblCount", "width": 100}
         ]},
         {"spacer": 6},
         {"row": [
@@ -1067,7 +1069,9 @@ def cmd_form_from_table(args):
             "force": False,
             "new_book": False
         })()
-        cmd_form_build(build_args)
+        if not cmd_form_build(build_args):
+            print("フォーム構築に失敗したため、テストを中断します。")
+            return False
 
         if getattr(args, 'test_flag', False) and not getattr(args, 'dry_run', False):
             if getattr(args, 'list_flag', False):
@@ -1091,7 +1095,7 @@ def cmd_form_from_table(args):
                 from vbam_edit import cmd_form_click
                 learn_args = type("Args", (), {"posargs": [form_name], "learn_flag": True})()
                 cmd_form_click(learn_args)
-                script = generate_auto_test_script(form_name, title, ws.Name, cols_spec, sample, base_rows=max(0, target_rng.Rows.Count - 1))
+                script = generate_auto_test_script(form_name, title, ws.Name, cols_spec, sample, base_rows=max(0, target_rng.Rows.Count - 1), book_name=wb.Name)
                 ok, msg, _ = run_form_test(script)
                 print(f"form-test: {msg}")
 
