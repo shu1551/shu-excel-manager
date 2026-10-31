@@ -351,9 +351,9 @@ def cmd_form_build(args):
 
     # 構築実行
     try:
-        bind_info = None if getattr(args, 'no_bind', False) else spec.get('bind')
+        bind_info = None if getattr(args, 'no_bind', False) else spec_data.get('bind')
         should_stub = getattr(args, 'stub', False) or (bind_info is not None)
-        keys_enabled = spec.get('keys', True)
+        keys_enabled = spec_data.get('keys', True)
         form_layout.build_form(
             form_name,
             caption,
@@ -1003,7 +1003,8 @@ def cmd_form_from_table(args):
     form_name = getattr(args, 'name', None)
     if not form_name:
         form_name = f"F_{table_name}" if table_name else "F_DataInput"
-    form_name = _sanitize_var_name(form_name, prefix="F_")
+    if not form_name.startswith("F_"):
+        form_name = _sanitize_var_name(form_name, prefix="F_")
 
     title = f"{table_name} 登録" if table_name else "データ登録"
 
