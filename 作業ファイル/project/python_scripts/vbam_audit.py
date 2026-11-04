@@ -822,6 +822,13 @@ def check_data_cleaner(
                 hi_far = [x for x in far if x[1] > upper_bound]
                 lo_far = [x for x in far if x[1] <= upper_bound]
                 far = (hi_far if len(hi_far) <= 2 else []) + (lo_far if len(lo_far) <= 2 else [])
+                # 外れ値を除いた残りだけで 3 桁（1,000 倍）以上の幅がある列は、行ごとに意味の違う数を縦に積んだ報告
+                # （件数 64・損益 -3,700 万・差 18.8 万を A 列のラベルで並べる）。桁違いを比べる相手がいない
+                # （2026-11-05 初見の 60 本: e026 の 72 件・前の 60 本の e059 の控えの書式）
+                far_rows = {r for r, _ in far}
+                rest = [abs(v) for r, v in num_entries if r not in far_rows and v != 0]
+                if rest and max(rest) >= min(rest) * 1000:
+                    far = []
                 for r, v in far:
                     if sorted_col and r not in cliff:
                         continue

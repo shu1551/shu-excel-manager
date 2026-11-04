@@ -737,3 +737,13 @@ def test_heldout_quiet_cases_20261105():
     grid = [["", "a", "b", "c", "d"]] + [["x", 1100 + k, 990 + k, 1340 + k, 1000 + k] for k in range(5)]
     grid.insert(3, ["月", 37073, 37104, 37135, 37165])
     assert [i for i in va.check_data_cleaner(grid, 0, 0) if i["type"] == "outlier_value"] == []
+
+
+def test_outliers_skip_stacked_report_20261105():
+    """行ごとに意味の違う数を縦に積んだ報告（件数 64・損益 -3,700 万・差 18.8 万）は、桁違いを比べる相手がいない
+    （初見の 60 本の e026・前の 60 本の e059）。値段 30〜12,000 の列の 2,500,000 は今までどおり拾う。"""
+    rep = [["Calls", 64.4], ["Deals", -37721947], ["Load", -49435451], ["Generation", 11798127],
+           ["Total MTM", -75359271], ["Prior Day MTM", -75547524], ["Delta", 188253], ["Fuel", 0.82], ["Cargo", 119000]]
+    assert _outl(rep) == []
+    price = [[480], [120], [300], [1500], [2500000], [8500], [1200], [480], [30], [90], [700], [12000], [150]]
+    assert _outl(price) == ["A5"]
