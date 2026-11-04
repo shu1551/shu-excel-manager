@@ -2116,7 +2116,7 @@ def seiri_formula_hints(fa, fr, grid, r0, c0, hidx):
     式のずれ・式の列の数字の直書き → 選んだ列の途切れた式を戻す（列の本文を選んで）／合計の行の循環参照・集計の取りこぼし → 表の下に合計行を足す。
     """
     try:
-        from vbam_audit import check_formula_linter
+        from vbam_audit import check_formula_linter, fix_of, SHELF_FILL_FORMULA, SHELF_ADD_TOTAL
         issues = check_formula_linter(fa, fr, grid, r0 - 1, c0 - 1)
     except Exception:
         return []
@@ -2134,9 +2134,11 @@ def seiri_formula_hints(fa, fr, grid, r0, c0, hidx):
         if not m:
             continue
         col, row = m.group(1), int(m.group(2))
-        if it['type'] in ('inconsistent_formula', 'value_in_formula_column') and not is_total_row(row):
+        # 直す手は dock と同じ対応表（vbam_audit.fix_of）で決める（2026-11-05）
+        fx = fix_of(it, total_row=is_total_row(row))
+        if fx['kind'] == 'shelf' and fx['name'] == SHELF_FILL_FORMULA:
             cols.setdefault(col, []).append(it['cell'])
-        elif it['type'] in ('circular_reference', 'omitted_sum_range') and is_total_row(row):
+        elif fx['kind'] == 'shelf' and fx['name'] == SHELF_ADD_TOTAL:
             tot.append(it['cell'])
     for col, cells in sorted(cols.items()):
         # 選ぶのは、その列で式か数の入った明細の行だけ（見出しの 2 段目・合計の行を含めない。P4:P15 と出して
@@ -2149,9 +2151,9 @@ def seiri_formula_hints(fa, fr, grid, r0, c0, hidx):
                 if first <= r0 + i <= last and not is_total_row(r0 + i) and 0 <= ci < len(row or [])
                 and row[ci] not in (None, "")]
         lo, hi = (min(body), max(body)) if body else (first, last)
-        out.append((1, "選んだ列の途切れた式を戻す", f"{col}{lo}:{col}{hi}", f"{col}列の式のずれ・直書き " + " ".join(cells[:4])))
+        out.append((1, SHELF_FILL_FORMULA, f"{col}{lo}:{col}{hi}", f"{col}列の式のずれ・直書き " + " ".join(cells[:4])))
     if tot:
-        out.append((4, "表の下に合計行を足す", None, "合計の行の式（循環参照・集計の取りこぼし） " + " ".join(sorted(set(tot))[:4])))
+        out.append((4, SHELF_ADD_TOTAL, None, "合計の行の式（循環参照・集計の取りこぼし） " + " ".join(sorted(set(tot))[:4])))
     return out
 
 

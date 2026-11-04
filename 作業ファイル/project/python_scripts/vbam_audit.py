@@ -74,7 +74,15 @@ def _is_total_label(s) -> bool:
     if not isinstance(s, str):
         return False
     t = s.strip()
-    return t in _TOTAL_WORDS_JA or bool(_RE_TOTAL_EN.search(t))
+    if t in _TOTAL_WORDS_JA or bool(_RE_TOTAL_EN.search(t)):
+        return True
+    # 日本語の統計表の「大森地区計」「区部計」「総数」（2026-11-05 日本語の公開ブック 60 本: 地区計の行を桁違いと出していた）。
+    # 「設計」「会計」「統計」「時計」などの言葉は合計ではない
+    t2 = re.sub(r"[\s　]+", "", t)
+    if t2 in ("総数", "総額", "全体", "全区", "全市", "全都"):
+        return True
+    return (len(t2) <= 12 and t2.endswith("計")
+            and not t2.endswith(("設計", "会計", "統計", "時計", "家計", "生計", "推計", "集計", "見積計", "計画")))
 
 
 # 式に直書きしても咎めない、単位・暦の決まった数（月→年の 12・日の 365・千の 1000 など）
@@ -368,6 +376,12 @@ def check_formula_linter(
                         # =SUM(F17:F18) で塊を取る式に「F19 が漏れ」と出していた）。同じ列なら式より上、
                         # 隣の列（累計の列）なら式と同じ行か 1 つ上まで。
                         between = (omitted_below < r) if c == sum_col else (0 <= r - omitted_below <= 1)
+                        # 範囲と式の間に別の合計の式（=SUM(AL5:AL27) の「計」）があれば、式は表の下の別の部分集計
+                        # （「都心３区」=SUM(AL5:AL7)）で、漏れではない（2026-11-05 日本語の公開ブック 60 本）
+                        if between and c == sum_col and any(
+                                re.match(r'^=\s*(SUM|SUBTOTAL|AGGREGATE)\s*\(', str(formulas[k][sum_col] or ""), re.I)
+                                for k in range(omitted_below, r)):
+                            between = False
                         if (0 <= omitted_below < num_rows and omitted_below != r and not running and between
                                 and not _is_subtotal(omitted_below, sum_col)):
                             val_below = values[omitted_below][sum_col]
@@ -657,6 +671,10 @@ def check_data_cleaner(
                 if _v == _v.strip():
                     clean_texts[_v] = clean_texts.get(_v, 0) + 1
 
+    # 全角の数字の見出し（'３'・'４'）がある列は、半角の '10'・'11' も同じ見出しの番号
+    col_zen = [any(c < len(values[r]) and isinstance(values[r][c], str) and re.fullmatch(r"[０-９]+", values[r][c].strip())
+                   for r in range(num_rows)) for c in range(num_cols)]
+
     def _is_header_cell(r, c):
         """列の数より上にある見出しのセルか（下に数が 2 つ以上・上に数が無い）。"""
         rows = col_num_rows[c]
@@ -672,11 +690,18 @@ def check_data_cleaner(
                 trimmed = v.strip()
                 # 咎めない空白（2026-11-05 dock の実測: 1,447 件の大半がこれ）: 空白だけのセル・字下げ（先頭だけの空白）・
                 # 数の列の上の見出し（'UK Gas FIN OPT '）。照合に使うのは本文の値で、見出しの末尾の空白は表の外に響かない
+                lead = v[:len(v) - len(v.lstrip(" 　"))]
+                # 字下げ: 半角 2 つ以上、または全角 1 つ以上（日本語の表は「　池上五丁目」と全角 1 字で下げる・
+                # 2026-11-05 日本語の公開ブック 60 本の 8,710 件）
                 indent_only = (v.rstrip() == v and not ("\n" in v or "\r" in v)
-                               and len(v) - len(v.lstrip(" 　")) >= 2)
+                               and (len(lead) >= 2 or "　" in lead))
                 # 照合に響くのは「同じ語が空白なしでもある」か「文字の値が並ぶ列（3 つ以上）」の中だけ。
                 # ぽつんと置いたラベル（'Total '・'DATE: '・横に並んだ見出し）の末尾の空白は誰も照合しない
                 listed = clean_texts.get(trimmed, 0) > 0 or col_texts[c] >= 3
+                # 注記・説明の文（「なお、…」・小文字の英単語が 3 つ以上続く文）は照合に使わない（2026-11-05 日本語の公開ブック）。
+                # 字数では決めない（右を空白で埋めた長い会社名の列 'NOBLE GAS MARKETING   ' は照合に響く本物）
+                if re.search(r"[、。]", trimmed) or re.search(r"\b[a-z]{2,}\s+[a-z]{2,}\s+[a-z]{2,}\b", trimmed):
+                    listed = False
                 quiet = (not trimmed) or indent_only or _is_header_cell(r, c) or not listed or _is_total_label(v)
                 if v != trimmed and len(v) > 0 and not quiet:
                     space_type = []
@@ -702,7 +727,9 @@ def check_data_cleaner(
                 # 列の数より上の見出しの年（'2000'）と、数より文字の数字が多い「番号の列」（勘定科目 '100061'）は咎めない
                 # （2026-11-05 dock の実測: 1,215 件のほとんどがこの 2 つ）
                 code_col = col_textnum[c] > len(col_num_rows[c])
-                if (_RE_TEXT_NUMBER.match(trimmed) and len(trimmed) <= 15
+                # 全角の数字（'９'）は見せるための見出しの番号で、足し算に使わない（2026-11-05 日本語の公開ブック 60 本）
+                zenkaku = bool(re.search(r"[０-９]", trimmed)) or col_zen[c]
+                if (_RE_TEXT_NUMBER.match(trimmed) and len(trimmed) <= 15 and not zenkaku
                         and not re.fullmatch(r"0\d+", trimmed) and not code_col and not _is_header_cell(r, c)):
                     issues.append({
                         "cell": addr,
@@ -857,6 +884,51 @@ def check_data_cleaner(
                     })
 
     return issues
+
+
+# ----------------------------------------------------------------
+# 診断の 1 件 → 直す手（dock と seiri が同じ表を引く・2026-11-05）
+# ----------------------------------------------------------------
+SHELF_FILL_FORMULA = '選んだ列の途切れた式を戻す'
+SHELF_ADD_TOTAL = '表の下に合計行を足す'
+
+
+def fix_of(issue: Dict[str, Any], total_row: Optional[bool] = None) -> Dict[str, str]:
+    """診断の 1 件に添える「直す手」（純 Python）。
+    kind: 'shelf'（棚のマクロ名を name に）／'tool'（道具のコマンドを name に）／'human'（人の判断。why に確かめること）。
+    total_row: その行が合計・小計の行か（seiri は表を見て分かる。dock は分からないので None）。
+    棚で直すのは、直し方が 1 つに決まる物だけ（式の列のずれ・合計の行）。答えが変わり得る物は人に回す。"""
+    t = issue.get('type')
+    if t in ('inconsistent_formula', 'value_in_formula_column') and total_row is not True:
+        return {'kind': 'shelf', 'name': SHELF_FILL_FORMULA, 'why': '列の明細を選んで撃つ（見出しと合計の行は選ばない）'}
+    if t in ('circular_reference', 'omitted_sum_range'):
+        if total_row:
+            return {'kind': 'shelf', 'name': SHELF_ADD_TOTAL, 'why': '合計の行を足し直す'}
+        if total_row is None:
+            return {'kind': 'human', 'name': '',
+                    'why': f'表の下の合計の行なら shelf-run {SHELF_ADD_TOTAL}。部分集計なら作りかを確かめる'}
+        return {'kind': 'human', 'name': '', 'why': '範囲に入れるつもりかを確かめる（部分集計・別の塊のことがある）'}
+    if t in ('hidden_whitespace', 'text_number'):
+        return {'kind': 'tool', 'name': 'diagnose --fix',
+                'why': '前後の空白を除く・文字の数字を数にする（控えつき・承認の語が要る・先頭ゼロの番号は触らない）'}
+    if t == 'formula_error':
+        return {'kind': 'human', 'name': '', 'why': '下の「エラーの原因」を見て式を直す'}
+    if t == 'hardcoded_constant':
+        return {'kind': 'human', 'name': '', 'why': '変わり得る数なら条件のセルに出して参照する'}
+    if t == 'approx_match':
+        return {'kind': 'human', 'name': '', 'why': '完全一致のつもりなら FALSE（MATCH は 0）を足す。答えが変わり得る'}
+    if t in ('outlier_value', 'outlier'):
+        return {'kind': 'human', 'name': '', 'why': '入力の誤りか本当の値かを確かめる'}
+    return {'kind': 'human', 'name': '', 'why': ''}
+
+
+def fix_label(fx: Dict[str, str]) -> str:
+    """直す手の見せ方（dock の表の 1 列）。"""
+    if fx['kind'] == 'shelf':
+        return f"shelf-run {fx['name']}"
+    if fx['kind'] == 'tool':
+        return fx['name']
+    return '人: ' + (fx['why'] or '確かめる')
 
 
 def audit_score(issues: List[Dict[str, Any]]) -> int:

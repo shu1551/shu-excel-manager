@@ -747,3 +747,29 @@ def test_outliers_skip_stacked_report_20261105():
     assert _outl(rep) == []
     price = [[480], [120], [300], [1500], [2500000], [8500], [1200], [480], [30], [90], [700], [12000], [150]]
     assert _outl(price) == ["A5"]
+
+
+def test_japanese_public_books_quiet_cases_20261105():
+    """日本語の公開ブック（東京都と区市のオープンデータ）60 本で出た誤爆の型: 全角 1 字の字下げ・注記の文の空白・
+    「〇〇地区計」「総数」の行・全角の番号の見出しの列・「計」の下の「都心３区」の部分集計。"""
+    vals = [["地区", "人口"], ["大森地区計", 127467], ["　池上五丁目", 3512], ["　池上六丁目", 3400], ["　中央四丁目", 3300],
+            ["　山王二丁目", 3450], [" なお、「２か所以上の所に掲記」は再掲である。", None]]
+    iss = va.check_data_cleaner(vals, 0, 0)
+    assert [i for i in iss if i["type"] in ("hidden_whitespace", "outlier_value")] == []
+    assert va._is_total_label("大森地区計") and va._is_total_label("総 数")
+    assert not va._is_total_label("設計") and not va._is_total_label("統計")
+    nums = [["３", 79792], ["４", 72381], ["９", 126760], ["10", 130549], ["11", 128000], [5, 1]]
+    assert [i for i in va.check_data_cleaner(nums, 0, 0) if i["type"] == "text_number"] == []
+    # 「計」の行の下の「都心３区」=SUM(A1:A3) は部分集計（漏れではない）
+    fa = [[571], [114], [82], [59], [28], ["=SUM(A1:A5)"], [None], ["=SUM(A1:A3)"]]
+    fr = [[571], [114], [82], [59], [28], ["=SUM(R[-5]C:R[-1]C)"], [None], ["=SUM(R[-7]C:R[-5]C)"]]
+    vv_ = [[571], [114], [82], [59], [28], [854], [None], [767]]
+    assert [i for i in va.check_formula_linter(fa, fr, vv_, 0, 0) if i["type"] == "omitted_sum_range"] == []
+
+
+def test_padded_names_stay_but_notes_go_20261105():
+    """右を空白で埋めた長い会社名の列は照合に響く本物（言う）。説明の文の空白は言わない。"""
+    vals = [["Customer"], ["NOBLE GAS MARKETING INC   "], ["EL PASO MERCHANT ENERGY  "], ["INFINITE ENERGY"],
+            ["CITRUS TRADING"], ["the price is set by the index  "]]
+    hit = [i["cell"] for i in va.check_data_cleaner(vals, 0, 0) if i["type"] == "hidden_whitespace"]
+    assert hit == ["A2", "A3"]

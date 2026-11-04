@@ -75,6 +75,98 @@ def summarize(sheet_issues):
     return allv, va.audit_score(allv)
 
 
+# 値を見る種類（列ごとにまとめる）。ほかは式を見る種類（同じ形＝R1C1 の式ごとにまとめる）
+_VALUE_TYPES = {'hidden_whitespace', 'text_number', 'outlier_value', 'outlier', 'value_in_formula_column'}
+
+
+def _split_cell(cell):
+    """'シート!A12' → (シート, 'A', 12)。"""
+    sh, _, a = str(cell).rpartition('!')
+    m = re.match(r'([A-Z]+)(\d+)$', a)
+    return (sh, m.group(1), int(m.group(2))) if m else (sh, a, 0)
+
+
+def _box(cells):
+    """番地の並び → 囲む範囲 'A1:C9'（1 つなら番地そのもの）。"""
+    import vbam_lookup as vl
+    parts = [_split_cell(c) for c in cells]
+    cols = [vl.col_num(p[1]) for p in parts if p[2]]
+    rows = [p[2] for p in parts if p[2]]
+    if not rows:
+        return ''
+    import vbam_audit as va
+    a = va._rowcol_to_a1(min(rows) - 1, min(cols) - 1)
+    b = va._rowcol_to_a1(max(rows) - 1, max(cols) - 1)
+    return a if a == b else f"{a}:{b}"
+
+
+def _shape_of_msg(msg):
+    """内容の文の中の値（数・引用の文字）を伏せた形（同じ種類の文をまとめる鍵）。"""
+    s = re.sub(r"'[^']*'", "'…'", str(msg or ''))
+    return re.sub(r'-?\d[\d,.]*(?:e[+-]?\d+)?', '#', s)
+
+
+def group_issues(issues, r1c1=None):
+    """病巣の issue を「同じシート・同じ種類・同じ形の式（R1C1）」ごと（値の種類は同じ列ごと）にまとめる（純 Python）。
+    2026-11-05 の実測: Enron の公開ブック 60 本の指摘の 7 割が、同じ式のコピーを 1 件ずつ数えたもの（*16 を 3,530 回など）。
+    返すのは [{'severity', 'type', 'cells', 'msg', 'formula'}]（重い順・件数の多い順）。点数には使わない（数は変えない）。"""
+    r1c1 = r1c1 or {}
+    groups = {}
+    for i in issues:
+        sh, col, _row = _split_cell(i.get('cell', ''))
+        if i.get('type') in _VALUE_TYPES:
+            key = (i.get('severity'), i.get('type'), sh, 'col:' + col, _shape_of_msg(i.get('msg')))
+        else:
+            shape = r1c1.get(i.get('cell')) or _shape_of_msg(i.get('formula') or i.get('msg'))
+            key = (i.get('severity'), i.get('type'), sh, shape, _shape_of_msg(i.get('msg')))
+        g = groups.setdefault(key, {'severity': i.get('severity'), 'type': i.get('type'), 'cells': [],
+                                    'msg': i.get('msg', ''), 'formula': i.get('formula', '')})
+        g['cells'].append(i.get('cell', ''))
+    order = {'critical': 0, 'warning': 1, 'info': 2}
+    return sorted(groups.values(), key=lambda g: (order.get(g['severity'], 3), -len(g['cells'])))
+
+
+def group_lookups(items, r1c1=None):
+    """壊れやすい式の [(シート, 番地, 関数, 内容)] を同じ形の式ごとにまとめる → [(シート, [番地], 関数, 内容)]。"""
+    r1c1 = r1c1 or {}
+    groups = {}
+    for sh, a, fn, what in items:
+        key = (sh, fn, what, r1c1.get(f"{sh}!{a}", a))
+        groups.setdefault(key, [sh, [], fn, what])[1].append(a)
+    return sorted((tuple(g) for g in groups.values()), key=lambda g: -len(g[1]))
+
+
+def fix_hint(g):
+    """まとめた 1 行の「直す手」（vbam_audit.fix_of と同じ対応表）。棚の物は選ぶ範囲まで書く。"""
+    import vbam_audit as va
+    fx = va.fix_of(g)
+    if fx['kind'] == 'shelf' and fx['name'] == va.SHELF_FILL_FORMULA:
+        sh = g['cells'][0].rpartition('!')[0]
+        return f"shelf-run {fx['name']} --select {_box(g['cells'])}" + (f" --sheet {sh}" if sh else '')
+    return va.fix_label(fx)
+
+
+def fix_summary(groups):
+    """直す手のまとめの 1 行: 棚・道具で直せる件数と、人の判断の件数。次の手は seiri（dock は書かない）。"""
+    import vbam_audit as va
+    n = {'shelf': 0, 'tool': 0, 'human': 0}
+    for g in groups:
+        n[va.fix_of(g)['kind']] += len(g['cells'])
+    s = f"直す手: 棚で直せる {n['shelf']} 件・道具で直せる {n['tool']} 件・人の判断 {n['human']} 件。"
+    if n['shelf']:
+        s += "棚の物は、表を選んで `seiri` を 1 回撃てば同じ対応表で直します（dock は読むだけで書きません）。"
+    return s
+
+
+def _place(cells):
+    """まとめた番地の見せ方: 1 つなら番地、2 つ以上は「先頭 ほか N か所（囲む範囲）」。"""
+    if len(cells) == 1:
+        return cells[0]
+    sh = cells[0].rpartition('!')[0]
+    box = _box(cells)
+    return f"{cells[0]} ほか {len(cells) - 1} か所（{sh + '!' if sh else ''}{box}）"
+
+
 def grade_of(score):
     return 'A（極めて健全）' if score >= 90 else 'B（概ね良好）' if score >= 75 else 'C（要点検）' if score >= 50 else 'D（危険）'
 
@@ -122,14 +214,19 @@ def render_markdown(data, nv=False):
     if not issues:
         add("なし")
     else:
-        add("| 重さ | 種類 | 場所 | 内容 |")
-        add("|---|---|---|---|")
-        order = {'critical': 0, 'warning': 1, 'info': 2}
-        for i in sorted(issues, key=lambda x: order.get(x['severity'], 3))[:60]:
-            msg = '（値は出しません）' if nv else _md(i.get('msg', ''))
-            add(f"| {_SEV.get(i['severity'], i['severity'])} | {_TYPE_LABEL.get(i['type'], i['type'])} | {_md(i['cell'])} | {msg} |")
-        if len(issues) > 60:
-            add(f"（ほか {len(issues) - 60} 件）")
+        groups = group_issues(issues, data.get('r1c1'))
+        if len(groups) < len(issues):
+            add(f"（{len(issues)} 件を、同じ形の式・同じ列ごとに {len(groups)} 行にまとめています）")
+        add("| 重さ | 種類 | 場所 | 件数 | 内容 | 直す手 |")
+        add("|---|---|---|---:|---|---|")
+        for g in groups[:60]:
+            msg = '（値は出しません）' if nv else _md(g['msg'])
+            add(f"| {_SEV.get(g['severity'], g['severity'])} | {_TYPE_LABEL.get(g['type'], g['type'])} | "
+                f"{_md(_place(g['cells']))} | {len(g['cells'])} | {msg} | {_md(fix_hint(g))} |")
+        if len(groups) > 60:
+            add(f"（ほか {len(groups) - 60} 行・{sum(len(g['cells']) for g in groups[60:])} 件）")
+        add("")
+        add(fix_summary(groups))
     if dup_approx:
         add(f"（近似一致の {len(dup_approx)} セルは下の「壊れやすい式」に出します。ここには重ねません）")
     add("")
@@ -137,18 +234,18 @@ def render_markdown(data, nv=False):
     if not data['fragile'] and not data['approx']:
         add("なし")
     else:
-        if data['fragile']:
-            add("列を挿入・削除すると黙ってずれる（番号の直書き）:")
-            for sh, a, fn, what in data['fragile'][:30]:
-                add(f"- {_md(sh)}!{a}  {fn}  {what}")
-            if len(data['fragile']) > 30:
-                add(f"- …ほか {len(data['fragile']) - 30} 件")
-        if data['approx']:
-            add("近似一致（探す値が無いとき、エラーにならず別の行を返す）:")
-            for sh, a, fn, what in data['approx'][:30]:
-                add(f"- {_md(sh)}!{a}  {fn}  {what}")
-            if len(data['approx']) > 30:
-                add(f"- …ほか {len(data['approx']) - 30} 件")
+        for items, head in ((data['fragile'], "列を挿入・削除すると黙ってずれる（番号の直書き）:"),
+                            (data['approx'], "近似一致（探す値が無いとき、エラーにならず別の行を返す）:")):
+            if not items:
+                continue
+            add(head)
+            gs = group_lookups(items, data.get('r1c1'))
+            for sh, cells, fn, what in gs[:30]:
+                where = f"{_md(sh)}!{cells[0]}" if len(cells) == 1 else \
+                    f"{_md(sh)}!{cells[0]} ほか {len(cells) - 1} か所（{_md(sh)}!{_box([sh + '!' + c for c in cells])}）"
+                add(f"- {where}  {fn}  {what}")
+            if len(gs) > 30:
+                add(f"- …ほか {len(gs) - 30} 行・{sum(len(g[1]) for g in gs[30:])} 件")
     add("")
     add("## エラーの原因")
     if not data['causes']:
@@ -213,7 +310,7 @@ def collect_all(wb, only_sheet=None):
     import vbam_cause as vc
     d = vs.collect(wb, only_sheet)
     nv = vs.no_values_mode()
-    sheet_issues, formulas, causes, skipped = {}, [], [], []
+    sheet_issues, formulas, causes, skipped, r1c1 = {}, [], [], [], {}
     names, udfs = vc.workbook_names_udfs(wb)
     for ws in wb.Worksheets:
         if only_sheet and ws.Name != only_sheet:
@@ -236,6 +333,10 @@ def collect_all(wb, only_sheet=None):
                     a = va._rowcol_to_a1(r0 - 1 + i, c0 - 1 + j)
                     fml.add(a)
                     formulas.append((ws.Name, a, x))
+                    try:
+                        r1c1[f"{ws.Name}!{a}"] = str(f1[i][j])   # 同じ形の式をまとめて見せる鍵
+                    except Exception:
+                        pass
         sheet_issues[ws.Name] = [i for i in iss if not (i.get('type') == 'outlier_value' and i.get('cell') in fml)]
         if _has_error(fv):
             try:
@@ -260,7 +361,7 @@ def collect_all(wb, only_sheet=None):
     except Exception:
         pass
     return {'d': d, 'issues': issues, 'score': score, 'fragile': fragile, 'approx': approx,
-            'causes': causes, 'traces': traces, 'skipped': skipped}
+            'causes': causes, 'traces': traces, 'skipped': skipped, 'r1c1': r1c1}
 
 
 def cmd_dock(args):
