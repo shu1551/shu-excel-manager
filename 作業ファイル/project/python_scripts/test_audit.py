@@ -773,3 +773,35 @@ def test_padded_names_stay_but_notes_go_20261105():
             ["CITRUS TRADING"], ["the price is set by the index  "]]
     hit = [i["cell"] for i in va.check_data_cleaner(vals, 0, 0) if i["type"] == "hidden_whitespace"]
     assert hit == ["A2", "A3"]
+
+
+_SHU_H = '=IF(G{r}="","",ROUNDDOWN(SUM(MAP(TEXTSPLIT(G{r},"+"),LAMBDA(t,PRODUCT(--TEXTSPLIT(t,"*"))))),2))'
+_SHU_I = ('=IF(OR(E{r}="幕",E{r}="旗",E{r}="他"),"－　",IF(H{r}="","",LET(base,IFS(H{r}<1,IF(F{r}="有",$W$1,$W$2),'
+          'H{r}<5,IF(F{r}="有",$X$1,$X$2),H{r}<10,IF(F{r}="有",$Y$1,$Y$2),TRUE,IF(F{r}="有",$Z$1,$Z$2)),'
+          'IF(H{r}>=10,base+(ROUNDDOWN(H{r},0)-10)*100,base))))')
+_SHU_H1 = '=IF(RC[-1]="","",ROUNDDOWN(SUM(MAP(TEXTSPLIT(RC[-1],"+"),LAMBDA(t,PRODUCT(--TEXTSPLIT(t,"*"))))),2))'
+_SHU_I1 = ('=IF(OR(RC[-4]="幕",RC[-4]="旗",RC[-4]="他"),"－　",IF(RC[-1]="","",LET(base,IFS(RC[-1]<1,IF(RC[-3]="有",R1C23,R2C23),'
+           'RC[-1]<5,IF(RC[-3]="有",R1C24,R2C24),RC[-1]<10,IF(RC[-3]="有",R1C25,R2C25),TRUE,IF(RC[-3]="有",R1C26,R2C26)),'
+           'IF(RC[-1]>=10,base+(ROUNDDOWN(RC[-1],0)-10)*100,base))))')
+
+
+def test_shu_keisanhyo_20261105():
+    """シュウさんの計算表（写真）の式で: ROW()-3 の連番は言わない・見出しの行の ' 区　分' は言わない・
+    料金の決まりの直書きは「固定値 10（引く）」と数だけで言う（気づき）・LET・MAP・LAMBDA・TEXTSPLIT の式を壊れずに読む
+    （循環・エラー・隣と違う式・範囲漏れを出さない）。"""
+    hdr = ["区分", " 区　分", "有無", "寸法", "面積", "金額", "番号"]       # E〜 の見出しの行（3 行目）
+    fa, fr, vals = [hdr], [hdr], [hdr]
+    for r in range(4, 9):
+        fa.append(["野立広告板", "看板", "有", "1.5*1.26", _SHU_H.format(r=r), _SHU_I.format(r=r), f'=IF(AD{r}<>0,ROW()-3,"")'])
+        fr.append(["野立広告板", "看板", "有", "1.5*1.26", _SHU_H1, _SHU_I1, '=IF(RC[-9]<>0,ROW()-3,"")'])
+        vals.append(["野立広告板", "看板", "有", "1.5*1.26", 1.89, 900, r - 3])
+    iss = va.check_formula_linter(fa, fr, vals, 2, 3) + va.check_data_cleaner(vals, 2, 3)
+    by = {}
+    for i in iss:
+        by.setdefault(i["type"], []).append(i)
+    assert set(by) == {"hardcoded_constant"}, by.keys()
+    hc = by["hardcoded_constant"]
+    assert {i["cell"][0] for i in hc} == {"I"} and len(hc) == 5
+    assert all(i["severity"] == "info" and "固定値 10（引く）" in i["msg"] and "'-10'" not in i["msg"] for i in hc)
+    # 点数: 同じ式のコピー 5 行の気づきは 1 回（2 点）
+    assert va.audit_score(hc) == 98

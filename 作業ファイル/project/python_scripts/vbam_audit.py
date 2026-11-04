@@ -318,18 +318,24 @@ def check_formula_linter(
             # `=A1*1.1` や `+500` などの固定値。ただし `+0` や `*1` 以外
             # 別ブックの道のり（'C:\TEMP\[NYMEX 1990-1999.xls]1998'!G254 の -1999）・文字列の中の数は見ない。
             # 単位・暦の決まった数（/12・/365・/1000）は直書きが普通で、咎めると本物が埋もれる（2026-11-05 dock の実測）
-            for op, val_str in _RE_HARDCODED_CONST.findall(local_ref_text(f)):
+            # ROW()-3・COLUMN()-1 は見出しの行数・列数を引く連番の決まり文句（2026-11-05 シュウさんの計算表 AM4:AM13
+            # =IF(AD4<>0,ROW()-3,"") の 10 件）。数を直書きしても、変える場面が無い
+            scan = re.sub(r'\b(?:ROW|COLUMN)\s*\([^()]*\)\s*[-+]\s*\d+', 'ROW()', local_ref_text(f), flags=re.I)
+            for op, val_str in _RE_HARDCODED_CONST.findall(scan):
                 try:
                     val_num = float(val_str)
                 except ValueError:
                     continue
-                # 0 や 1 以外の実質的な定数計算を警告
+                # 0 や 1 以外の実質的な定数計算を言う。重さは「気づき」: 誤りではなく「変わり得る数は条件のセルに出すと
+                # 変えやすい」という勧め（2026-11-05 シュウさんの判断の依頼）。点数は同じ形の文・同じ列ごとに 1 回（audit_score）
                 if val_num not in (0.0, 1.0) and not (op in '*/' and val_num in _UNIT_CONSTANTS):
+                    how = {'+': '足す', '-': '引く', '*': '掛ける', '/': '割る'}.get(op, op)
                     issues.append({
                         "cell": addr,
-                        "severity": "warning",
+                        "severity": "info",
                         "type": "hardcoded_constant",
-                        "msg": f"数式内に固定値 '{op}{val_str}' が直書きされています（マスターセル参照推奨）",
+                        # 数は数だけで言う（ROUNDDOWN(H4,0)-10 の引き算の - を数に含めて「-10」と言っていた）
+                        "msg": f"数式内に固定値 {val_str}（{how}）が直書きされています（変わり得る数なら条件のセルを参照）",
                         "formula": f
                     })
                     break
@@ -675,8 +681,18 @@ def check_data_cleaner(
     col_zen = [any(c < len(values[r]) and isinstance(values[r][c], str) and re.fullmatch(r"[０-９]+", values[r][c].strip())
                    for r in range(num_rows)) for c in range(num_cols)]
 
+    # 見出しの行: 文字が 2 つ以上・数が無く、すぐ下の行に数が 2 つ以上ある行（2026-11-05 シュウさんの計算表の
+    # 3 行目 ' 区　分'。その列の下は文字の明細で、列ごとの見方では見出しと分からなかった）
+    def _n_num(row):
+        return sum(1 for x in row if isinstance(x, (int, float)) and not isinstance(x, bool))
+    header_rows = {r for r in range(num_rows - 1)
+                   if _n_num(values[r]) == 0 and sum(1 for x in values[r] if isinstance(x, str) and x.strip()) >= 2
+                   and _n_num(values[r + 1]) >= 2}
+
     def _is_header_cell(r, c):
-        """列の数より上にある見出しのセルか（下に数が 2 つ以上・上に数が無い）。"""
+        """見出しのセルか（見出しの行の中・または列の数より上: 下に数が 2 つ以上・上に数が無い）。"""
+        if r in header_rows:
+            return True
         rows = col_num_rows[c]
         return len(rows) >= 2 and rows[0] > r
 
@@ -935,7 +951,14 @@ def audit_score(issues: List[Dict[str, Any]]) -> int:
     """100 点満点の点数（format_audit_report と dock が同じ数を使う）。"""
     n_crit = sum(1 for i in issues if i["severity"] == "critical")
     n_warn_kinds = len({(i["type"], i["msg"]) for i in issues if i["severity"] == "warning"})
-    n_info = sum(1 for i in issues if i["severity"] == "info")
+    # 気づきは「同じ種類・同じ形の文（値を伏せた形）・同じシート」ごとに 1 回（2026-11-05）。
+    # 同じ式を 10 行コピーした直書きの数・1 列の末尾空白は 1 回の直しで済むのに、1 セルごとに 2 点引くと、
+    # 警告（文ごとに 5 点）より重くなっていた。列ごとに数えると、直書きの数が何十列に並ぶ表で 0 点になった（Enron の e039）
+    def _info_kind(i):
+        shape = re.sub(r'-?\d[\d,.]*(?:e[+-]?\d+)?', '#', re.sub(r"'[^']*'", "'…'", str(i.get("msg", ""))))
+        sh = str(i.get("cell", "")).rpartition("!")[0]
+        return (i["type"], shape, sh)
+    n_info = len({_info_kind(i) for i in issues if i["severity"] == "info"})
     score = max(0, 100 - (n_crit * 15) - (n_warn_kinds * 5) - (n_info * 2))
     return max(score, 75) if n_crit == 0 else score
 
@@ -1014,7 +1037,7 @@ def format_audit_report(
         for it in infos[:10]: # 最大10件まで表示
             lines.append(f"  • {it['cell']}: {it['msg']}")
         if len(infos) > 10:
-            lines.append(f"  … ほか {len(infos) - 10} 件の空白セル")
+            lines.append(f"  … ほか {len(infos) - 10} 件")
         lines.append("")
 
     # 推奨アクション
@@ -1022,7 +1045,7 @@ def format_audit_report(
     acts = []
     if crits:
         acts.append("集計範囲漏れ・数式エラーを優先して数式を修正してください。")
-    if any(i["type"] == "hardcoded_constant" for i in warns):
+    if any(i["type"] == "hardcoded_constant" for i in issues):
         acts.append("数式内の固定値は、別セル（設定マスタ列等）を参照するようリファクタリングを推奨します。")
     if any(i["type"] == "hidden_whitespace" for i in infos):
         acts.append("前後の空白は TRIM 関数または Python クレンジングで一括除去してください。")
