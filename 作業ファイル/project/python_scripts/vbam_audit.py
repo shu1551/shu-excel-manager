@@ -447,42 +447,61 @@ def check_formula_linter(
     circ_issues = check_circular_references(formulas, start_row, start_col)
     issues.extend(circ_issues)
 
-    # 3. 列内の非一貫数式（Inconsistent Formulas）の検知
-    # 同じ列に3個以上の数式があり、大多数が同じR1C1形式なのに、一部だけ異なるR1C1または定数の場合
-    for c in range(num_cols):
-        col_patterns = {}
-        for r in range(num_rows):
-            f_r1c1 = str(formulas_r1c1[r][c] or "")
-            if f_r1c1.startswith("="):
-                # 合計・平均の行（同じ列の上を集計する式）は数に入れない。入れると多数派の割合が薄まり、
-                # 9 行中 2 行のずれ（年計の =SUM(C6:H6)・=SUM(C10:N10)）を黙って通した（2026-09-24 通しの実測 5）
-                if _is_column_total(f_r1c1, start_row + r + 1) or _is_column_only(f_r1c1):
+    # 3. 隣と違う式（Inconsistent Formulas）の検知
+    # 2026-11-05 dock の実測（Enron の公開ブック 60 本）: 列の多数決だけで見ると、表でない計算の格子で
+    # 509 件出し Excel の判定と重なるのは 9 件だった。横に並んだ式のずれ（AA=+F6・AB=+F6・AC=+H6 の AB）は
+    # 1 件も言えなかった。多数決の少数派のうち「同じ形の式に挟まれた（前後 2 つ以内）」セルだけを言い、
+    # 列（縦）と行（横）の両方で見る。
+    flagged_inc = set()
+    for along in ("col", "row"):
+        outer = num_cols if along == "col" else num_rows
+        inner = num_rows if along == "col" else num_cols
+        for k in range(outer):
+            pats = {}
+            for t in range(inner):
+                r, c = (t, k) if along == "col" else (k, t)
+                f_r1c1 = str(formulas_r1c1[r][c] or "") if r < len(formulas_r1c1) and c < len(formulas_r1c1[r]) else ""
+                if not f_r1c1.startswith("="):
                     continue
-                col_patterns.setdefault(f_r1c1, []).append(r)
-
-        if len(col_patterns) > 1:
-            total_formula_cells = sum(len(rows) for rows in col_patterns.values())
-            if total_formula_cells >= 3:
-                # 最多パターンを特定
-                majority_pat, majority_rows = max(col_patterns.items(), key=lambda item: len(item[1]))
-                # 多数派が 3 つ以上・6 割以上なら少数派を言う（7 割では 9 行中 2 行のずれを言えなかった）
-                if len(majority_rows) >= 3 and len(majority_rows) >= total_formula_cells * 0.6:
-                    # 少数派のセルを非一貫性として警告
-                    for pat, rows in col_patterns.items():
-                        if pat != majority_pat:
-                            for r in rows:
-                                if _is_column_total(pat, start_row + r + 1):   # start_row は 0 始まり
-                                    continue      # 合計・平均の行（同じ列の上を集計する式）は形が違って当たり前
-                                addr = _rowcol_to_a1(start_row + r, start_col + c)
-                                # warning＝気づき。9/9 の数式の目（formula_notes）でも「列の中で形の違う式」は気づき扱い。
-                                # 小計行・最終行の式は正当に形が違うので、critical で agent の done を止めない（2026-09-17）
-                                issues.append({
-                                    "cell": addr,
-                                    "severity": "warning",
-                                    "type": "inconsistent_formula",
-                                    "msg": f"同列の標準数式パターンと異なります（コピペミス疑い）",
-                                    "formula": str(formulas[r][c])
-                                })
+                # 合計・平均の行（同じ列の上を集計する式）・同じ列だけ（横なら同じ行だけ）を足す式は数に入れない
+                # （9 行中 2 行のずれを黙って通した 2026-09-24 通しの実測 5・節の小計を拾う総計 2026-11-05）
+                if along == "col" and (_is_column_total(f_r1c1, start_row + r + 1) or _is_column_only(f_r1c1)):
+                    continue
+                if along == "row" and _is_row_total(f_r1c1):
+                    continue
+                # 番地の無い式（=3100000/2 の電卓）は形を比べない
+                if not _RE_R1C1_REF.search(_RE_STRING_LIT.sub('""', f_r1c1)):
+                    continue
+                pats.setdefault(f_r1c1, []).append(t)
+            if len(pats) < 2:
+                continue
+            pat_of = {t: p for p, ts in pats.items() for t in ts}
+            for t, pat in sorted(pat_of.items()):
+                # 前と後で一番近い式（2 つ以内）が同じ形 P で、自分の形はこの列（行）にぽつんと（2 つまで）
+                # （多数決の 6 割は、別の形の式が混ざる行で AB=+F6 のずれを言えなかった・2026-11-05）
+                # 横はすぐ隣だけ（値・前年差の組が横に並ぶ表で、1 つ飛ばしの式どうしを比べていた・e023）
+                reach = (1, 2) if along == "col" else (1,)
+                before = next((pat_of[t - d] for d in reach if t - d in pat_of), None)
+                after = next((pat_of[t + d] for d in reach if t + d in pat_of), None)
+                # 自分の形が 3 つ以上ある＝2 種類の式が交互に並ぶ作り（数量・金額の列の繰り返し）で、ずれではない
+                # 長い列の数個のずれ（800 行の中の LN(E32/E30) 4 つ）は拾う＝周りの形の 1/5 以下までをぽつんと見る
+                if not (before and before == after and before != pat and len(pats[before]) >= 2
+                        and len(pats[pat]) <= max(2, len(pats[before]) // 5)):
+                    continue
+                r, c = (t, k) if along == "col" else (k, t)
+                addr = _rowcol_to_a1(start_row + r, start_col + c)
+                if addr in flagged_inc:
+                    continue
+                flagged_inc.add(addr)
+                # warning＝気づき（小計行・最終行の式は正当に形が違うので、critical で agent の done を止めない・2026-09-17）
+                issues.append({
+                    "cell": addr,
+                    "severity": "warning",
+                    "type": "inconsistent_formula",
+                    "msg": ("同列の標準数式パターンと異なります（コピペミス疑い）" if along == "col"
+                            else "同じ行の左右の式と形が違います（コピペミス疑い）"),
+                    "formula": str(formulas[r][c])
+                })
 
     # 4. 式の列に数字の直書き（上下は =E2*F2 なのに G7 だけ 5000）
     issues.extend(check_values_in_formula_columns(formulas, formulas_r1c1, values, start_row, start_col))
@@ -556,6 +575,16 @@ def _is_column_only(f_r1c1):
     s = _RE_STRING_LIT.sub('""', s)
     refs = _RE_R1C1_REF.findall(s)
     return bool(refs) and all(col == '' for _row, col in refs)
+
+
+_ROW_TOTAL_RE = re.compile(r'^=(?:(?:SUM|AVERAGE|COUNTA?|MAX|MIN|MEDIAN)\(|SUBTOTAL\(\d+,)'
+                           r'RC\[-\d+\]:RC\[-\d+\]\)$', re.I)
+
+
+def _is_row_total(f_r1c1):
+    """同じ行の左を集計する式（=SUM(RC[-12]:RC[-1]) の年計の列）か。横の比べで、左の明細と形が違うのは当たり前
+    （_is_column_total の横向き）。=RC[-1]*1.1 のような横に伸ばす式は除かない（横のコピーの誤りはそこで起きる）。"""
+    return bool(_ROW_TOTAL_RE.match(str(f_r1c1 or '').replace(' ', '')))
 
 
 def _is_column_total(f_r1c1, abs_row):

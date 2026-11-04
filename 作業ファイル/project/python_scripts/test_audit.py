@@ -662,3 +662,34 @@ def test_data_cleaner_quiet_cases_20261105():
     assert [i for i in va.check_data_cleaner(col, 0, 0) if i["type"] == "outlier_value"] == []
     moves = [[v] for v in ([1.0, 2.0, -0.5, 1.5, -0.2, 0.8, -0.1, 1.2, 0.9, 1.1] * 4)]
     assert [i for i in va.check_data_cleaner(moves, 0, 0) if i["type"] == "outlier_value"] == []
+
+
+def test_inconsistent_formula_rows_and_sandwich_20261105():
+    """横に並んだ式のずれ（AA=+F6・AB=+F6・AC=+H6 の AB＝G を指すはず）を言う。列の多数決の少数派でも、
+    同じ形の式に挟まれていなければ言わない（表でない計算の格子で 509 件出し、Excel と重なったのは 9 件だった）。"""
+    fa = [["=B2", "=B2", "=D2", "=E2", "=F2"]]
+    fr = [["=R[1]C[1]", "=R[1]C", "=R[1]C[1]", "=R[1]C[1]", "=R[1]C[1]"]]
+    hit = [i["cell"] for i in va.check_formula_linter(fa, fr, [[1] * 5], 0, 0) if i["type"] == "inconsistent_formula"]
+    assert hit == ["B1"]
+    # 行の年計 =SUM(RC[-3]:RC[-1]) は横の明細と形が違っても言わない
+    fr2 = [["=R[1]C", "=R[1]C", "=R[1]C", "=SUM(RC[-3]:RC[-1])"]]
+    assert [i for i in va.check_formula_linter(fr2, fr2, [[1] * 4], 0, 0) if i["type"] == "inconsistent_formula"] == []
+    # 列の端の違う式（挟まれていない）は言わない
+    col = [["=RC[1]*RC[2]"]] * 4 + [["=RC[1]+RC[2]"]]
+    assert [i for i in va.check_formula_linter(col, col, [[1]] * 5, 0, 0) if i["type"] == "inconsistent_formula"] == []
+
+
+def test_inconsistent_formula_long_column_and_constants_20261105():
+    """800 行の列の中の数個のずれ（=LN(E32/E30)）は拾う。2 種類の式が交互に並ぶ作り・番地の無い式（=3100000/2）・
+    1 つ飛ばしの横の式（値・前年差の組）は言わない。"""
+    good, bad = "=LN(RC[-2]/R[-1]C[-2])", "=LN(RC[-2]/R[-2]C[-2])"
+    col = [[good]] * 40
+    col[10] = [bad]; col[25] = [bad]; col[33] = [bad]
+    hit = [i["cell"] for i in va.check_formula_linter(col, col, [[1]] * 40, 0, 0) if i["type"] == "inconsistent_formula"]
+    assert hit == ["A11", "A26", "A34"]
+    alt = [["=R[1]C", "=R[2]C"] * 4]
+    assert [i for i in va.check_formula_linter(alt, alt, [[1] * 8], 0, 0) if i["type"] == "inconsistent_formula"] == []
+    const = [["=R[1]C", "=3100000/2", "=R[1]C", "=R[1]C"]]
+    assert [i for i in va.check_formula_linter(const, const, [[1] * 4], 0, 0) if i["type"] == "inconsistent_formula"] == []
+    pairs = [["=R[-12]C[-1]", 5, "=RC[-1]-RC[2]", "=R[-12]C[-1]"]]
+    assert [i for i in va.check_formula_linter(pairs, pairs, [[1] * 4], 0, 0) if i["type"] == "inconsistent_formula"] == []
