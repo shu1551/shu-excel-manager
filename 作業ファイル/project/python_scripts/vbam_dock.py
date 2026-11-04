@@ -89,7 +89,10 @@ def render_markdown(data, nv=False):
     add("（既存の点検 structure・diagnose・lookup・cause・trace を 1 回で撃ってまとめたもの。" + ("値は出していません）" if nv else "）"))
     add("")
     add("## 概要と点数")
-    issues = data['issues']
+    # 近似一致は「壊れやすい式」の節に 1 か所ずつ出すので、病巣の表には重ねない（2026-11-05 Enron の公開ブック 60 本の実測:
+    # 同じ VLOOKUP を病巣 895 件・壊れやすい式 1,458 件と 2 回数えていた）。点数は diagnose と同じ数にするため全部で数える
+    dup_approx = [i for i in data['issues'] if i.get('type') == 'approx_match'] if data['approx'] else []
+    issues = [i for i in data['issues'] if not (dup_approx and i.get('type') == 'approx_match')]
     nc = sum(1 for i in issues if i['severity'] == 'critical')
     nw = sum(1 for i in issues if i['severity'] == 'warning')
     ni = sum(1 for i in issues if i['severity'] == 'info')
@@ -127,6 +130,8 @@ def render_markdown(data, nv=False):
             add(f"| {_SEV.get(i['severity'], i['severity'])} | {_TYPE_LABEL.get(i['type'], i['type'])} | {_md(i['cell'])} | {msg} |")
         if len(issues) > 60:
             add(f"（ほか {len(issues) - 60} 件）")
+    if dup_approx:
+        add(f"（近似一致の {len(dup_approx)} セルは下の「壊れやすい式」に出します。ここには重ねません）")
     add("")
     add("## 壊れやすい式")
     if not data['fragile'] and not data['approx']:

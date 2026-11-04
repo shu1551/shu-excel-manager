@@ -62,6 +62,21 @@ def test_markdown_sections_filled():
     assert 'S1!A1  VLOOKUP' in md and '近似一致' in md and '[S1] C3 が #REF!' in md and '### S1!A9' in md
 
 
+def test_markdown_does_not_count_approx_twice_20261105():
+    """近似一致は「壊れやすい式」の節に出し、病巣の表には重ねない（Enron の公開ブック 60 本で 895 件と 1,458 件の二重）。
+    点数は diagnose と同じ（全部の issue で数えた data['score'] のまま）。"""
+    iss = [{'cell': 'S1!A2', 'severity': 'warning', 'type': 'approx_match', 'msg': 'VLOOKUP が近似一致'},
+           {'cell': 'S1!B3', 'severity': 'warning', 'type': 'hardcoded_constant', 'msg': '固定値'}]
+    md = vd.render_markdown(_data(issues=iss, score=90, approx=[('S1', 'A2', 'VLOOKUP', '検索方法を省略')]))
+    table = md.split('## 病巣')[1].split('## 壊れやすい式')[0]
+    assert 'S1!A2' not in table and 'S1!B3' in table and '近似一致の 1 セルは下の' in table
+    assert '警告 1 件' in md and '点数: 90 / 100' in md
+    assert 'S1!A2  VLOOKUP  検索方法を省略' in md
+    # 壊れやすい式の節が空なら（近似一致を lookup が拾わなかったとき）、病巣の表に残す
+    md2 = vd.render_markdown(_data(issues=iss[:1]))
+    assert 'S1!A2' in md2.split('## 病巣')[1]
+
+
 def test_html_adds_dock_section():
     iss = [{'cell': 'S1!A1', 'severity': 'warning', 'type': 'hardcoded_constant', 'msg': 'm', 'formula': '=A1*3'}]
     data = _data(issues=iss, score=95)
