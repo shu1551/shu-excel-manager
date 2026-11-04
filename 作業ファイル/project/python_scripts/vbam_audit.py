@@ -488,6 +488,10 @@ def check_formula_linter(
                 if not (before and before == after and before != pat and len(pats[before]) >= 2
                         and len(pats[pat]) <= max(2, len(pats[before]) // 5)):
                     continue
+                # 違いが日数（/28・/30・/31・/365）だけの式は月ごと・年ごとの作り（2026-11-05 初見の 60 本: 月の平均を
+                # 日数で割る表の 2 月の =T290/28 を「コピペミス疑い」と言っていた）
+                if _only_day_counts_differ(pat, before):
+                    continue
                 r, c = (t, k) if along == "col" else (k, t)
                 addr = _rowcol_to_a1(start_row + r, start_col + c)
                 if addr in flagged_inc:
@@ -536,6 +540,13 @@ def check_values_in_formula_columns(formulas, formulas_r1c1, values, start_row, 
             continue
         first_a1 = str(formulas[rows[0]][c])
         rows_set = set(rows)
+        # 式と式の間の半分以上に数が入っている列は「値の行・式の行」を繰り返す作り（2026-11-05 初見の 60 本:
+        # 値・日数で割る式・0 の 3 行を繰り返す表の 144 件）。ぽつんと 1 つ紛れた数ではない
+        gaps = [(a, b) for a, b in zip(rows, rows[1:]) if b - a > 1]
+        filled = sum(1 for a, b in gaps if any(isinstance(values[k][c], (int, float)) and not isinstance(values[k][c], bool)
+                                               for k in range(a + 1, b) if k < len(values) and c < len(values[k])))
+        if gaps and filled * 2 >= len(gaps) and filled >= 2:
+            continue
         for r in range(rows[0], rows[-1] + 1):
             f = formulas[r][c]
             if isinstance(f, str) and f.startswith("="):
@@ -579,6 +590,19 @@ def _is_column_only(f_r1c1):
 
 _ROW_TOTAL_RE = re.compile(r'^=(?:(?:SUM|AVERAGE|COUNTA?|MAX|MIN|MEDIAN)\(|SUBTOTAL\(\d+,)'
                            r'RC\[-\d+\]:RC\[-\d+\]\)$', re.I)
+
+
+_DAY_COUNTS = {'28', '29', '30', '31', '365', '366'}
+_RE_NUM_LIT = re.compile(r'(?<![A-Za-z0-9_\[.])\d+(?:\.\d+)?(?![\d\]])')
+
+
+def _only_day_counts_differ(a, b):
+    """2 つの R1C1 の式が、数の直書きの日数（28〜31・365・366）だけ違うか（純 Python）。"""
+    na, nb = _RE_NUM_LIT.findall(a), _RE_NUM_LIT.findall(b)
+    if _RE_NUM_LIT.sub('#', a) != _RE_NUM_LIT.sub('#', b) or len(na) != len(nb):
+        return False
+    diff = [(x, y) for x, y in zip(na, nb) if x != y]
+    return bool(diff) and all(x in _DAY_COUNTS and y in _DAY_COUNTS for x, y in diff)
 
 
 def _is_row_total(f_r1c1):
@@ -708,6 +732,9 @@ def check_data_cleaner(
         return False
 
     total_rows = {r for r in range(num_rows) if _is_total_row(r)}
+    date_rows = {r for r in range(num_rows)
+                 if sum(1 for x in values[r] if isinstance(x, (int, float)) and not isinstance(x, bool)
+                        and float(x).is_integer() and 30000 <= x <= 60000) >= 3}
     for c in range(num_cols):
         num_entries = []
         nums_seen = 0
@@ -717,6 +744,10 @@ def check_data_cleaner(
                 nums_seen += 1
                 # 列の頭（上に数が無い）の年・日付のシリアルは見出し（1998・36951）。桁違いの的にしない（2026-11-05 dock の実測）
                 if nums_seen == 1 and float(v).is_integer() and (1900 <= v <= 2100 or 30000 <= v <= 60000):
+                    continue
+                # 日付の見出しの行（横に日付のシリアルが 3 つ以上並ぶ行）の日付も見出し（2026-11-05 初見の 60 本:
+                # 値段の表の 7 行目の月の見出し 38,000 前後を、列ごとに「桁違い」と出していた）
+                if r in date_rows and float(v).is_integer() and 30000 <= v <= 60000:
                     continue
                 if r in total_rows:
                     continue

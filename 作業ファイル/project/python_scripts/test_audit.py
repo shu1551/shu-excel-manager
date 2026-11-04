@@ -718,3 +718,22 @@ def test_outliers_quiet_cases_20261105():
     assert _outl(rank) == []
     # 並べた列でも、隣から 10 倍以上の崖は拾う（今までどおり）
     assert _outl([[v] for v in (100, 110, 120, 130, 140, 150, 100000)]) == ["A7"]
+
+
+def test_heldout_quiet_cases_20261105():
+    """初見の 60 本（前の 60 本と重ならない Enron の公開ブック）で出た誤爆の型: 月の日数で割る式の違い・
+    値の行と式の行を繰り返す作り・横に並んだ日付の見出しの行。"""
+    # =R[-1]C/30・/31・/28 の違いは月の日数
+    col = [["=R[-1]C/31"], ["=R[-1]C/30"], ["=R[-1]C/31"], ["=R[-1]C/28"], ["=R[-1]C/31"], ["=R[-1]C/30"]]
+    row = [[x[0] for x in col]]
+    assert [i for i in va.check_formula_linter(row, row, [[1] * 6], 0, 0) if i["type"] == "inconsistent_formula"] == []
+    # 値・式・0 の 3 行の繰り返しの列の値は「式の列に直書き」ではない
+    fr, vals = [], []
+    for v in (191, 230, 160, 179):
+        fr += [[v], ["=R[-1]C/30"], [0]]
+        vals += [[v], [v / 30], [0]]
+    assert va.check_values_in_formula_columns(fr, fr, vals, 0, 0) == []
+    # 日付の見出しの行（7 行目に月のシリアルが横に並ぶ）は列ごとの桁違いにしない
+    grid = [["", "a", "b", "c", "d"]] + [["x", 1100 + k, 990 + k, 1340 + k, 1000 + k] for k in range(5)]
+    grid.insert(3, ["月", 37073, 37104, 37135, 37165])
+    assert [i for i in va.check_data_cleaner(grid, 0, 0) if i["type"] == "outlier_value"] == []
