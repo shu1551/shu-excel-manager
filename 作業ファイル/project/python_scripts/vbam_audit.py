@@ -49,10 +49,44 @@ _RE_RANGE_REF = re.compile(
     r'(?<![A-Za-z0-9_\$])\$?([A-Za-z]{1,3})\$?([1-9][0-9]{0,6})\s*:\s*\$?([A-Za-z]{1,3})\$?([1-9][0-9]{0,6})(?![A-Za-z0-9_])',
     re.IGNORECASE
 )
+# 2026-11-05 dock の実測（Enron の公開ブック 60 本）: 循環参照 38,153 件がほぼ全部誤爆だった。
+# ='[外のブック.xls]Nominations'!I$23 や =Credit!A1 の「別シートの I23」を自分のシートの I23 と取り違えていた。
+# 式の中の文字列・別シート／別ブックの番地を先に消してから、このシートの番地だけを拾う。
+# 前は「(」の直後の番地（=ROUND(A1,2) の A1）も拾っていなかった＝本物の循環の見落とし。
 _RE_SINGLE_CELL_REF = re.compile(
-    r'(?<![A-Za-z0-9_\$:\'\"\(])\$?([A-Za-z]{1,3})\$?([1-9][0-9]{0,6})\b(?!\s*[:\(])',
+    r'(?<![A-Za-z0-9_\$:\'\"])\$?([A-Za-z]{1,3})\$?([1-9][0-9]{0,6})\b(?!\s*[:\(!])',
     re.IGNORECASE
 )
+_RE_STRING_LIT = re.compile(r'"(?:[^"]|"")*"')
+_RE_QUALIFIED_REF = re.compile(
+    r"(?:'(?:[^']|'')+'|\[[^\]]*\][^!\s,()+\-*/^&=<>]*|[A-Za-z0-9_.#]+)!"
+    r"\$?[A-Za-z]{1,3}\$?\d+(?:\s*:\s*\$?[A-Za-z]{1,3}\$?\d+)?",
+)
+
+
+_TOTAL_WORDS_JA = ("小計", "計", "合計", "総計", "累計")
+_RE_TOTAL_EN = re.compile(r'^(?:grand\s+|sub-?\s*)?totals?\b|\b(?:sub-?)?totals?:?$', re.I)
+
+
+def _is_total_label(s) -> bool:
+    """合計・小計の見出しの文字か。英語の Total・TOTAL:・Grand Total・Total Revenue・Net Total も
+    （2026-11-05 dock の実測: 英語のブックの合計の行が外れ値・集計漏れの的になっていた）。"""
+    if not isinstance(s, str):
+        return False
+    t = s.strip()
+    return t in _TOTAL_WORDS_JA or bool(_RE_TOTAL_EN.search(t))
+
+
+# 式に直書きしても咎めない、単位・暦の決まった数（月→年の 12・日の 365・千の 1000 など）
+_UNIT_CONSTANTS = {7.0, 12.0, 24.0, 30.0, 31.0, 52.0, 60.0, 100.0, 360.0, 365.0, 366.0, 1000.0, 1440.0, 3600.0,
+                   86400.0, 1000000.0}
+
+
+def local_ref_text(f: str) -> str:
+    """式から文字列と、別シート・別ブック（'…'!A1・Sheet2!A1:B3・[x.xls]S!A1・#REF!A1）の番地を消した残り（純 Python）。
+    残りに出てくる番地は、このシートのセル。"""
+    s = _RE_STRING_LIT.sub('""', str(f or ''))
+    return _RE_QUALIFIED_REF.sub('0', s)
 
 
 def _a1_to_rowcol(addr: str) -> Tuple[int, int]:
@@ -101,6 +135,7 @@ def check_circular_references(
             addr = _rowcol_to_a1(start_row + r, start_col + c)
             formula_map[addr] = f
             deps = set()
+            f = local_ref_text(f)
 
             # 範囲参照の展開 (例: A1:A5)
             for m in _RE_RANGE_REF.finditer(f):
@@ -176,7 +211,78 @@ def check_formula_linter(
         fx = str(formulas[rr][cc] or "")
         if re.match(r'^=\s*(SUM|SUBTOTAL|AGGREGATE)\s*\(', fx, re.I):
             return True
-        return any(str(values[rr][k] or "").strip() in ("小計", "計", "合計", "総計", "累計") for k in range(num_cols))
+        return any(_is_total_label(values[rr][k]) for k in range(num_cols))
+
+    def _r1(rr, cc):
+        if 0 <= rr < num_rows and 0 <= cc < num_cols and rr < len(formulas_r1c1) and cc < len(formulas_r1c1[rr]):
+            return str(formulas_r1c1[rr][cc] or "")
+        return ""
+
+    def _copied(rr, cc, vertical_sum):
+        """同じ形（R1C1）の式が隣にある＝コピーして並べた式。縦の合計なら左右、横の合計なら上下を見る。
+        並べた式がそろって同じ所を外しているのは作り（見出しの年・前の列の別の数）で、漏れではない（2026-11-05 dock の実測）。"""
+        me = _r1(rr, cc)
+        if not me.startswith("="):
+            return False
+        nb = ((rr, cc - 1), (rr, cc + 1)) if vertical_sum else ((rr - 1, cc), (rr + 1, cc))
+        return any(_r1(a, b) == me for a, b in nb)
+
+    # ほかの式の範囲に入っているセル（=SUM(J8:J10) の下の J11 は、J14=SUM(J11:J13) が足している＝漏れではない。
+    # 2026-11-05 dock の実測: 塊ごとに小計を取り、その小計を足し合わせる表で、塊の境目を毎回「漏れ」と出していた）
+    covered: Dict[str, set] = {}
+    for rr in range(num_rows):
+        for cc in range(num_cols):
+            fx = str(formulas[rr][cc] or "")
+            if not fx.startswith("="):
+                continue
+            me = _rowcol_to_a1(start_row + rr, start_col + cc)
+            for m in _RE_RANGE_REF.finditer(local_ref_text(fx)):
+                a_r, a_c = _a1_to_rowcol(m.group(1) + m.group(2))
+                b_r, b_c = _a1_to_rowcol(m.group(3) + m.group(4))
+                if (abs(b_r - a_r) + 1) * (abs(b_c - a_c) + 1) > 5000:
+                    continue
+                box = (min(a_r, b_r), max(a_r, b_r), min(a_c, b_c), max(a_c, b_c))
+                for tr in range(box[0], box[1] + 1):
+                    for tc in range(box[2], box[3] + 1):
+                        covered.setdefault(_rowcol_to_a1(tr, tc), set()).add((me, box))
+
+    above_left: set = set()
+
+    def _skip_omitted(val, target_cell, f, me=None):
+        """漏れと言わない値: 0（足しても答えが変わらない）・同じ式の中で別に足している番地（=SUM(J6:J36)+J37）・
+        ほかの式の範囲が数えている数・それ自身が集計の式のセル。"""
+        if val == 0:
+            return True
+        # 数えているのが「重ならない別の塊」の式のときだけ（累計の列 =SUM($A$2:A4) は隣の行の式と範囲が重なる＝
+        # 1 行だけ範囲が短い式は今までどおり漏れとして出す）
+        mine = [(a_r, b_r, a_c, b_c) for mm in _RE_RANGE_REF.finditer(local_ref_text(f))
+                for a_r, a_c in [_a1_to_rowcol(mm.group(1) + mm.group(2))]
+                for b_r, b_c in [_a1_to_rowcol(mm.group(3) + mm.group(4))]]
+        mine = [(min(a, b), max(a, b), min(c1, c2), max(c1, c2)) for a, b, c1, c2 in mine]
+
+        def _overlap(x, y):
+            return not (x[1] < y[0] or y[1] < x[0] or x[3] < y[2] or y[3] < x[2])
+        for who, box in covered.get(target_cell, set()):
+            if who != me and not any(_overlap(box, mb) for mb in mine):
+                return True
+        tr, tc = _a1_to_rowcol(target_cell)
+        tr, tc = tr - start_row, tc - start_col
+        if 0 <= tr < num_rows and 0 <= tc < num_cols and re.match(
+                r'^=\s*(SUM|SUBTOTAL|AGGREGATE)\s*\(', str(formulas[tr][tc] or ""), re.I):
+            return True
+        # 範囲の上・左の式のセル（=C12+C8 の資産計）は前の塊の計算の答え。範囲の下・右の挟まった式は今までどおり出す
+        if (0 <= tr < num_rows and 0 <= tc < num_cols and str(formulas[tr][tc] or "").startswith("=")
+                and target_cell in above_left):
+            return True
+        m = re.match(r'([A-Za-z]+)(\d+)$', target_cell)
+        if not m:
+            return False
+        pat = r'(?<![A-Za-z0-9_$])\$?' + m.group(1) + r'\$?' + m.group(2) + r'(?!\d)'
+        return re.search(pat, local_ref_text(f), re.I) is not None
+
+    def _year_or_date(val):
+        """見出しに置く年（1998）・日付のシリアル（36951＝2001/02/28）らしい整数か。"""
+        return float(val).is_integer() and (1900 <= val <= 2100 or 30000 <= val <= 60000)
 
     # 1. 各セルの数式検証（定数混入、エラー、集計漏れ）
     for r in range(num_rows):
@@ -202,13 +308,15 @@ def check_formula_linter(
 
             # B. ハードコード定数の直書き検知
             # `=A1*1.1` や `+500` などの固定値。ただし `+0` や `*1` 以外
-            for op, val_str in _RE_HARDCODED_CONST.findall(f):
+            # 別ブックの道のり（'C:\TEMP\[NYMEX 1990-1999.xls]1998'!G254 の -1999）・文字列の中の数は見ない。
+            # 単位・暦の決まった数（/12・/365・/1000）は直書きが普通で、咎めると本物が埋もれる（2026-11-05 dock の実測）
+            for op, val_str in _RE_HARDCODED_CONST.findall(local_ref_text(f)):
                 try:
                     val_num = float(val_str)
                 except ValueError:
                     continue
                 # 0 や 1 以外の実質的な定数計算を警告
-                if val_num not in (0.0, 1.0):
+                if val_num not in (0.0, 1.0) and not (op in '*/' and val_num in _UNIT_CONSTANTS):
                     issues.append({
                         "cell": addr,
                         "severity": "warning",
@@ -256,11 +364,16 @@ def check_formula_linter(
                         # （2026-09-18: B 集計の「累計の列」を鍛えたら、値は正解と同じなのに毎回ここで止まり AI に回った）
                         running = (bot_r == r)
                         omitted_below = bot_r + 1
-                        if (0 <= omitted_below < num_rows and omitted_below != r and not running
+                        # 直下の漏れは「範囲の終わりと式の間に挟まった数」だけ（2026-11-05 dock の実測: 離れた所から
+                        # =SUM(F17:F18) で塊を取る式に「F19 が漏れ」と出していた）。同じ列なら式より上、
+                        # 隣の列（累計の列）なら式と同じ行か 1 つ上まで。
+                        between = (omitted_below < r) if c == sum_col else (0 <= r - omitted_below <= 1)
+                        if (0 <= omitted_below < num_rows and omitted_below != r and not running and between
                                 and not _is_subtotal(omitted_below, sum_col)):
                             val_below = values[omitted_below][sum_col]
-                            if isinstance(val_below, (int, float)) and not isinstance(val_below, bool):
-                                target_cell = _rowcol_to_a1(start_row + omitted_below, start_col + sum_col)
+                            target_cell = _rowcol_to_a1(start_row + omitted_below, start_col + sum_col)
+                            if (isinstance(val_below, (int, float)) and not isinstance(val_below, bool)
+                                    and not _skip_omitted(val_below, target_cell, f, addr)):
                                 fixed_f = f.replace(s_to, target_cell, 1)
                                 issues.append({
                                     "cell": addr,
@@ -271,11 +384,15 @@ def check_formula_linter(
                                     "fixed_formula": fixed_f
                                 })
                         # 直上のセル漏れチェック
+                        # 直上の漏れは、同じ列で範囲の下に置いた式だけ。見出しの年・日付と、隣にコピーした同じ形の式が
+                        # そろって外している所は作り（2026-11-05 dock の実測: E2=1998 の見出し・移動平均・行ごとの合計）
                         omitted_above = top_r - 1
-                        if 0 <= omitted_above < num_rows and omitted_above != r and not _is_subtotal(omitted_above, sum_col):
+                        if (0 <= omitted_above < num_rows and omitted_above != r and c == sum_col and r > bot_r
+                                and not _is_subtotal(omitted_above, sum_col) and not _copied(r, c, True)):
                             val_above = values[omitted_above][sum_col]
-                            if isinstance(val_above, (int, float)) and not isinstance(val_above, bool):
-                                target_cell = _rowcol_to_a1(start_row + omitted_above, start_col + sum_col)
+                            target_cell = _rowcol_to_a1(start_row + omitted_above, start_col + sum_col)
+                            if (isinstance(val_above, (int, float)) and not isinstance(val_above, bool)
+                                    and not (above_left.add(target_cell) or _skip_omitted(val_above, target_cell, f, addr)) and not _year_or_date(val_above)):
                                 fixed_f = f.replace(s_from, target_cell, 1)
                                 issues.append({
                                     "cell": addr,
@@ -294,10 +411,11 @@ def check_formula_linter(
                     if 0 <= sum_row < num_rows:
                         # 直右のセル漏れチェック
                         omitted_right = right_c + 1
-                        if 0 <= omitted_right < num_cols and omitted_right != c:
+                        if 0 <= omitted_right < num_cols and omitted_right != c and r == sum_row and omitted_right < c:
                             val_right = values[sum_row][omitted_right]
-                            if isinstance(val_right, (int, float)) and not isinstance(val_right, bool):
-                                target_cell = _rowcol_to_a1(start_row + sum_row, start_col + omitted_right)
+                            target_cell = _rowcol_to_a1(start_row + sum_row, start_col + omitted_right)
+                            if (isinstance(val_right, (int, float)) and not isinstance(val_right, bool)
+                                    and not _skip_omitted(val_right, target_cell, f, addr)):
                                 fixed_f = f.replace(s_to, target_cell, 1)
                                 issues.append({
                                     "cell": addr,
@@ -309,10 +427,12 @@ def check_formula_linter(
                                 })
                         # 直左のセル漏れチェック
                         omitted_left = left_c - 1
-                        if 0 <= omitted_left < num_cols and omitted_left != c:
+                        if (0 <= omitted_left < num_cols and omitted_left != c and r == sum_row and c > right_c
+                                and not _copied(r, c, False)):
                             val_left = values[sum_row][omitted_left]
-                            if isinstance(val_left, (int, float)) and not isinstance(val_left, bool):
-                                target_cell = _rowcol_to_a1(start_row + sum_row, start_col + omitted_left)
+                            target_cell = _rowcol_to_a1(start_row + sum_row, start_col + omitted_left)
+                            if (isinstance(val_left, (int, float)) and not isinstance(val_left, bool)
+                                    and not (above_left.add(target_cell) or _skip_omitted(val_left, target_cell, f, addr)) and not _year_or_date(val_left)):
                                 fixed_f = f.replace(s_from, target_cell, 1)
                                 issues.append({
                                     "cell": addr,
@@ -336,7 +456,7 @@ def check_formula_linter(
             if f_r1c1.startswith("="):
                 # 合計・平均の行（同じ列の上を集計する式）は数に入れない。入れると多数派の割合が薄まり、
                 # 9 行中 2 行のずれ（年計の =SUM(C6:H6)・=SUM(C10:N10)）を黙って通した（2026-09-24 通しの実測 5）
-                if _is_column_total(f_r1c1, start_row + r + 1):
+                if _is_column_total(f_r1c1, start_row + r + 1) or _is_column_only(f_r1c1):
                     continue
                 col_patterns.setdefault(f_r1c1, []).append(r)
 
@@ -388,15 +508,22 @@ def check_values_in_formula_columns(formulas, formulas_r1c1, values, start_row, 
             fr = str(formulas_r1c1[r][c] or "") if r < len(formulas_r1c1) and c < len(formulas_r1c1[r]) else ""
             if fr.startswith("=") and not _is_column_total(fr, start_row + r + 1):
                 pats.setdefault(fr, []).append(r)
+        # 番地を含まない式（=#N/A の置き場・=2866+1200 の電卓）は「式の列」の形にしない（2026-11-05 dock の実測）
+        pats = {k: v for k, v in pats.items() if _RE_R1C1_REF.search(_RE_STRING_LIT.sub('""', k))}
         if not pats:
             continue
         top, rows = max(pats.items(), key=lambda kv: len(kv[1]))
         if len(rows) < min_rows:
             continue
         first_a1 = str(formulas[rows[0]][c])
+        rows_set = set(rows)
         for r in range(rows[0], rows[-1] + 1):
             f = formulas[r][c]
             if isinstance(f, str) and f.startswith("="):
+                continue
+            # 同じ形の式に上下から挟まれた数だけ（2 行以内）。同じ形の式が 3 つ、100 行に散っている列の間の数を
+            # 「直書き」と言っていた（2026-11-05 dock の実測: 塊ごとに式と入力が入れ替わる表）
+            if not (any(r - k in rows_set for k in (1, 2)) and any(r + k in rows_set for k in (1, 2))):
                 continue
             v = values[r][c] if r < len(values) and c < len(values[r]) else None
             if isinstance(v, (int, float)) and not isinstance(v, bool):
@@ -414,6 +541,21 @@ def check_values_in_formula_columns(formulas, formulas_r1c1, values, start_row, 
 # （2026-09-24 通しの確かめ: 絶対参照の合計を「コピペミス疑い」と言っていた）
 _COL_TOTAL_RE = re.compile(r'^=(?:(?:SUM|AVERAGE|COUNTA?|MAX|MIN|MEDIAN)\(|SUBTOTAL\(\d+,)'
                            r'R(\[-\d+\]|\d+)C(?:\d+)?:R(\[-\d+\]|\d+)C(?:\d+)?\)$', re.I)
+
+
+_RE_R1C1_REF = re.compile(r'(?<![A-Za-z0-9_])R(\[-?\d+\]|\d+)?C(\[-?\d+\]|\d+)?(?![A-Za-z0-9_(])')
+
+
+def _is_column_only(f_r1c1):
+    """同じ列のセルだけを足し合わせる式（=R17+R33+…・=AVERAGE(H10,H14,H18)・=SUM(R[1]C:R[21]C)）か（純 Python）。
+    節ごとの小計を拾う総計・見出しの下に置いた小計で、明細の式と形が違うのは当たり前
+    （2026-11-05 dock の実測: 「同列の標準数式パターンと異なります」の多くがこれだった）。別シートの番地を含む式は除く。"""
+    s = str(f_r1c1 or '')
+    if not s.startswith('=') or '!' in s:
+        return False
+    s = _RE_STRING_LIT.sub('""', s)
+    refs = _RE_R1C1_REF.findall(s)
+    return bool(refs) and all(col == '' for _row, col in refs)
 
 
 def _is_column_total(f_r1c1, abs_row):
@@ -444,6 +586,29 @@ def check_data_cleaner(
         return issues
     num_cols = len(values[0])
 
+    def _isnum(x):
+        return isinstance(x, (int, float)) and not isinstance(x, bool)
+
+    # 列ごとの数の行（見出しの位置と、文字の数字が「番号の列」かを見るため）
+    col_num_rows = [[r for r in range(num_rows) if c < len(values[r]) and _isnum(values[r][c])] for c in range(num_cols)]
+    col_textnum = [sum(1 for r in range(num_rows) if c < len(values[r]) and isinstance(values[r][c], str)
+                       and _RE_TEXT_NUMBER.match(values[r][c].strip())) for c in range(num_cols)]
+
+    clean_texts: Dict[str, int] = {}
+    col_texts = [0] * num_cols
+    for _r in range(num_rows):
+        for _c in range(min(num_cols, len(values[_r]))):
+            _v = values[_r][_c]
+            if isinstance(_v, str) and _v.strip():
+                col_texts[_c] += 1
+                if _v == _v.strip():
+                    clean_texts[_v] = clean_texts.get(_v, 0) + 1
+
+    def _is_header_cell(r, c):
+        """列の数より上にある見出しのセルか（下に数が 2 つ以上・上に数が無い）。"""
+        rows = col_num_rows[c]
+        return len(rows) >= 2 and rows[0] > r
+
     for r in range(num_rows):
         for c in range(num_cols):
             v = values[r][c]
@@ -452,7 +617,15 @@ def check_data_cleaner(
             if isinstance(v, str):
                 # A. 隠れ空白・前後の空白検知
                 trimmed = v.strip()
-                if v != trimmed and len(v) > 0:
+                # 咎めない空白（2026-11-05 dock の実測: 1,447 件の大半がこれ）: 空白だけのセル・字下げ（先頭だけの空白）・
+                # 数の列の上の見出し（'UK Gas FIN OPT '）。照合に使うのは本文の値で、見出しの末尾の空白は表の外に響かない
+                indent_only = (v.rstrip() == v and not ("\n" in v or "\r" in v)
+                               and len(v) - len(v.lstrip(" 　")) >= 2)
+                # 照合に響くのは「同じ語が空白なしでもある」か「文字の値が並ぶ列（3 つ以上）」の中だけ。
+                # ぽつんと置いたラベル（'Total '・'DATE: '・横に並んだ見出し）の末尾の空白は誰も照合しない
+                listed = clean_texts.get(trimmed, 0) > 0 or col_texts[c] >= 3
+                quiet = (not trimmed) or indent_only or _is_header_cell(r, c) or not listed or _is_total_label(v)
+                if v != trimmed and len(v) > 0 and not quiet:
                     space_type = []
                     if v.startswith(" ") or v.startswith("　"):
                         space_type.append("先頭空白")
@@ -473,8 +646,11 @@ def check_data_cleaner(
                 # 数値のように見えるが型が string のもの
                 # 先頭が 0 の番号（伝票番号 0001・郵便番号 007）は文字で持つのが正しい＝咎めない
                 # （2026-09-23 通しの実測 2 で伝票番号 11 セルを「SUM 集計対象外リスク」と並べていた）
+                # 列の数より上の見出しの年（'2000'）と、数より文字の数字が多い「番号の列」（勘定科目 '100061'）は咎めない
+                # （2026-11-05 dock の実測: 1,215 件のほとんどがこの 2 つ）
+                code_col = col_textnum[c] > len(col_num_rows[c])
                 if (_RE_TEXT_NUMBER.match(trimmed) and len(trimmed) <= 15
-                        and not re.fullmatch(r"0\d+", trimmed)):
+                        and not re.fullmatch(r"0\d+", trimmed) and not code_col and not _is_header_cell(r, c)):
                     issues.append({
                         "cell": addr,
                         "severity": "warning",
@@ -493,16 +669,23 @@ def check_data_cleaner(
                 t = re.sub(r"[\s　]+", "", s)
                 if t in ("計", "平均", "総平均", "total", "Total", "TOTAL") or t.endswith(("合計", "小計", "総計", "累計")):
                     return True
+                if _is_total_label(s) or re.match(r'^(?:net|average|avg)\b', s.strip(), re.I):
+                    return True
         return False
 
     total_rows = {r for r in range(num_rows) if _is_total_row(r)}
     for c in range(num_cols):
         num_entries = []
+        nums_seen = 0
         for r in range(num_rows):
-            if r in total_rows:
-                continue
             v = values[r][c]
             if isinstance(v, (int, float)) and not isinstance(v, bool):
+                nums_seen += 1
+                # 列の頭（上に数が無い）の年・日付のシリアルは見出し（1998・36951）。桁違いの的にしない（2026-11-05 dock の実測）
+                if nums_seen == 1 and float(v).is_integer() and (1900 <= v <= 2100 or 30000 <= v <= 60000):
+                    continue
+                if r in total_rows:
+                    continue
                 num_entries.append((r, float(v)))
 
         # 正の値の列に、マイナスがぽつんと 1〜2 個（符号の打ち間違い）。囲いの中に収まっていても出す
@@ -512,7 +695,8 @@ def check_data_cleaner(
         neg = [(r, v) for r, v in num_entries if v < 0]
         pos = [v for _, v in num_entries if v > 0]
         flagged = set()
-        if not signed and len(pos) >= 4 and 1 <= len(neg) <= max(1, len(num_entries) // 10):
+        # 「ぽつんと」は 2 個まで（2026-11-05 dock の実測: 410 行の値動きの列のマイナス 41 個を全部「符号の打ち間違い」と出した）
+        if not signed and len(pos) >= 4 and 1 <= len(neg) <= min(2, max(1, len(num_entries) // 10)):
             for r, v in neg:
                 flagged.add(r)
                 issues.append({

@@ -580,3 +580,85 @@ def test_diagnose_fix_does_not_write_without_a_backup():
     i_guard = src.index("if not backup:", i_backup)
     i_apply = src.index("apply_audit_fixes(", i_backup)
     assert i_backup < i_guard < i_apply and "else:" in src[i_guard:i_apply]
+
+
+# ---- 2026-11-05 dock の実測（Enron の公開ブック 60 本）で見つけた誤爆の最小の再現 ----
+
+def test_circular_ignores_other_sheet_and_other_book_cells_20261105():
+    """=Credit!A1・='[外.xls]Nominations'!I$23 の番地は別シートのセル。自分のシートの A1・I23 と取り違えて
+    循環と言っていた（1 回目 38,153 件・Excel の判定は 0 件）。"""
+    assert va.check_circular_references([["=+Credit!A1"]], 0, 0) == []
+    assert va.check_circular_references([["='C:/x/[Nov.xls]Nominations'!A$1"]], 0, 0) == []
+    assert va.check_circular_references([["=#REF!A1"]], 0, 0) == []
+    assert va.check_circular_references([['=IF("A1"="",1,2)']], 0, 0) == []
+    # 「(」の直後の番地も拾う（=ROUND(A1,2) の自己参照を見落としていた）
+    assert len(va.check_circular_references([["=ROUND(A1,2)"]], 0, 0)) == 1
+
+
+def _omitted(fa, fr, vals, r0=0, c0=0):
+    return [i["cell"] for i in va.check_formula_linter(fa, fr, vals, r0, c0) if i["type"] == "omitted_sum_range"]
+
+
+def test_omitted_sum_quiet_cases_20261105():
+    """集計漏れの誤爆の型: 見出しの年・0・式の中で別に足した番地・別の小計が数えている塊・離れた所から塊を取る式。"""
+    # 見出しの年 1998 の下の =SUM(A2:A3)
+    assert _omitted([[1998], [10], [20], ["=SUM(A2:A3)"]], [[1998], [10], [20], ["=SUM(R[-2]C:R[-1]C)"]],
+                    [[1998], [10], [20], [30]]) == []
+    # =SUM(A1:A2)+A3（A3 は式の中で足している）
+    assert _omitted([[10], [20], [5], ["=SUM(A1:A2)+A3"]], [[10], [20], [5], ["=SUM(R[-3]C:R[-2]C)+R[-1]C"]],
+                    [[10], [20], [5], [35]]) == []
+    # 塊ごとの小計: A6=SUM(A4:A5) が数えている A4 を、A7=SUM(A1:A3) の漏れと言わない
+    fa = [[1], [2], [3], [4], [5], ["=SUM(A4:A5)"], ["=SUM(A1:A3)"]]
+    assert _omitted(fa, fa, [[1], [2], [3], [4], [5], [9], [6]]) == []
+    # 0 は足しても答えが変わらない
+    assert _omitted([[10], [20], [0], ["=SUM(A1:A2)"]], [[10], [20], [0], ["=SUM(R[-3]C:R[-2]C)"]],
+                    [[10], [20], [0], [30]]) == []
+    # 挟まった数は今までどおり出す（A3 が漏れ）
+    assert _omitted([[10], [20], [5], ["=SUM(A1:A2)"]], [[10], [20], [5], ["=SUM(R[-3]C:R[-2]C)"]],
+                    [[10], [20], [5], [30]]) == ["A4"]
+    # 行ごとにコピーした =SUM(B?:C?) の左の日付の列（A）は漏れではない
+    fa = [[36951, 1, 2, "=SUM(B1:C1)"], [36952, 3, 4, "=SUM(B2:C2)"]]
+    fr = [[36951, 1, 2, "=SUM(RC[-2]:RC[-1])"], [36952, 3, 4, "=SUM(RC[-2]:RC[-1])"]]
+    assert _omitted(fa, fr, [[36951, 1, 2, 3], [36952, 3, 4, 7]]) == []
+
+
+def test_hardcoded_constant_skips_units_and_paths_20261105():
+    """/12・/365・/1000 の単位の数と、別ブックの道のりの中の数（1990-1999）は咎めない。*1.001 は出す。"""
+    def hc(f):
+        return [i for i in va.check_formula_linter([[f]], [[f]], [[1]], 0, 1) if i["type"] == "hardcoded_constant"]
+    assert hc("=A1/12") == [] and hc("=A1/1000") == [] and hc("=A1*365") == []
+    assert hc("=AVERAGE(A1,'C:/TEMP/[NYMEX 1990-1999.xls]1998'!G254)") == []
+    assert len(hc("=A1*1.001")) == 1
+
+
+def test_inconsistent_skips_same_column_summaries_20261105():
+    """節ごとの小計を拾う =A1+A3（同じ列だけを足す式）は、明細の =B1*C1 と形が違っても咎めない。"""
+    fa = [["=B1*C1"], ["=B2*C2"], ["=B3*C3"], ["=B4*C4"], ["=A1+A3"]]
+    fr = [["=RC[1]*RC[2]"]] * 4 + [["=R[-4]C+R[-2]C"]]
+    assert [i for i in va.check_formula_linter(fa, fr, [[1]] * 5, 0, 0) if i["type"] == "inconsistent_formula"] == []
+
+
+def test_value_in_formula_column_needs_neighbors_20261105():
+    """同じ形の式に上下 2 行以内で挟まれた数だけを直書きと言う。=#N/A の置き場は式の列の形にしない。"""
+    fr = [["=R[-1]C+1"]] + [[None]] * 5 + [["=R[-1]C+1"]] + [[7]] + [["=R[-1]C+1"]]
+    fa = [[x[0]] for x in fr]
+    vals = [[1], [None], [None], [None], [None], [None], [2], [7], [3]]
+    hit = va.check_values_in_formula_columns(fa, fr, vals, 0, 0)
+    assert [i["cell"] for i in hit] == ["A8"]
+    na = [["=#N/A"], ["=#N/A"], [4.45], ["=#N/A"]]
+    assert va.check_values_in_formula_columns(na, na, [[0], [0], [4.45], [0]], 0, 0) == []
+
+
+def test_data_cleaner_quiet_cases_20261105():
+    """空白だけ・字下げ・数の列の上の見出しの空白、番号の列・見出しの年の文字の数字、英語の合計の行、
+    列の頭の年・日付、値動きの列の多いマイナスは咎めない。"""
+    vals = [["Item", "2000", "Code", "Amount "], ["   NET MTM", 10, "100061", 1], [" ", 12, "100062", 2],
+            ["a", 11, "100063", 3], ["b", 13, 5, 4], ["Total", 900, "", 10]]
+    iss = va.check_data_cleaner(vals, 0, 0)
+    assert [i for i in iss if i["type"] == "hidden_whitespace"] == []
+    assert [i for i in iss if i["type"] == "text_number"] == []
+    assert [i for i in iss if i["type"] == "outlier_value"] == []
+    col = [[36951]] + [[v] for v in (0.03, 0.031, 0.029, 0.03, 0.032)]
+    assert [i for i in va.check_data_cleaner(col, 0, 0) if i["type"] == "outlier_value"] == []
+    moves = [[v] for v in ([1.0, 2.0, -0.5, 1.5, -0.2, 0.8, -0.1, 1.2, 0.9, 1.1] * 4)]
+    assert [i for i in va.check_data_cleaner(moves, 0, 0) if i["type"] == "outlier_value"] == []
