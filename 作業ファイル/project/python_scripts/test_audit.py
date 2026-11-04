@@ -693,3 +693,28 @@ def test_inconsistent_formula_long_column_and_constants_20261105():
     assert [i for i in va.check_formula_linter(const, const, [[1] * 4], 0, 0) if i["type"] == "inconsistent_formula"] == []
     pairs = [["=R[-12]C[-1]", 5, "=RC[-1]-RC[2]", "=R[-12]C[-1]"]]
     assert [i for i in va.check_formula_linter(pairs, pairs, [[1] * 4], 0, 0) if i["type"] == "inconsistent_formula"] == []
+
+
+def _outl(vals):
+    return [i["cell"] for i in va.check_data_cleaner(vals, 0, 0) if i["type"] == "outlier_value"]
+
+
+def test_outliers_quiet_cases_20261105():
+    """外れ値の誤爆の型（Enron の公開ブック 60 本: 476 件 → 本物らしい物だけ）: 2 つ目の集まり・累計の行・
+    表から離れた検算の数・上の数の和・英語の損益の見出しのマイナス・大きい順に並べた順位表。"""
+    # 2 つ目の集まり: 0.005 の刻みの列に 0.05 が 4 つ（ぽつんと 1 つではない）
+    assert _outl([[v] for v in [0.005] * 12 + [0.05] * 4]) == []
+    # 累計の行（'CUMULATIVE'）は明細と桁が違って当たり前
+    assert _outl([["", "金額"], ["CUMULATIVE", 255224], ["1", 728], ["2", 3370], ["3", 905], ["4", 1200], ["5", 640]]) == []
+    # 表の本体から空行 3 つ以上離れた数
+    col = [[v] for v in (728, 3370, 905, 1200, 640, 2200)] + [[None]] * 4 + [[3161324]]
+    assert _outl(col) == []
+    # 上の数の和（見出しの無い合計）
+    assert _outl([[v] for v in (100, 120, 130, 110, 140, 600)]) == []
+    # 英語の損益・差の見出しの列のマイナス
+    assert _outl([["Daily P&L"], [120], [340], [210], [-59.7], [450]]) == []
+    # 大きい順の順位表: 1 位と最下位のマイナスは言わない
+    rank = [["Total"]] + [[v] for v in (18060000, 11017547, 3982771, 2100000, 900000, 500000, 273, 232, -54615, -57505)]
+    assert _outl(rank) == []
+    # 並べた列でも、隣から 10 倍以上の崖は拾う（今までどおり）
+    assert _outl([[v] for v in (100, 110, 120, 130, 140, 150, 100000)]) == ["A7"]

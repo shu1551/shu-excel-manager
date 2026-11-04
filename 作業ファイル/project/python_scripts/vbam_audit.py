@@ -700,6 +700,11 @@ def check_data_cleaner(
                     return True
                 if _is_total_label(s) or re.match(r'^(?:net|average|avg)\b', s.strip(), re.I):
                     return True
+                # 累計・残高・繰越の行（'CUMULATIVE'・'(EST) BEGINNING BALANCE'・'PRIOR MONTH'・'YTD'）も明細と桁が違って当たり前
+                # （2026-11-05 dock の実測: 月のシートの 5 行目の累計を毎月「桁違い」と出していた）
+                if (re.search(r'\b(?:cumulative|balance|beginning|ending|opening|closing|prior\s+month|ytd|mtd)\b', s, re.I)
+                        or any(w in s for w in ("残高", "繰越", "前月", "期首", "期末"))):
+                    return True
         return False
 
     total_rows = {r for r in range(num_rows) if _is_total_row(r)}
@@ -720,12 +725,26 @@ def check_data_cleaner(
         # 正の値の列に、マイナスがぽつんと 1〜2 個（符号の打ち間違い）。囲いの中に収まっていても出す
         # （2026-09-23 通しの実測 2: 数量 1〜10 の列の -5 を、IQR の囲いの中なので黙って通していた）
         head = next((values[r][c] for r in range(num_rows) if isinstance(values[r][c], str) and values[r][c].strip()), "")
-        signed = any(w in str(head) for w in ("増減", "差", "損益", "収支", "残高", "調整", "前年比", "比較"))
+        signed = (any(w in str(head) for w in ("増減", "差", "損益", "収支", "残高", "調整", "前年比", "比較"))
+                  # 英語の見出し（P&L・Change・Deviation・Variance・Net・Adj）の列のマイナスは当たり前（2026-11-05 dock の実測）
+                  or bool(re.search(r'p\s*&\s*l|pnl|chg|change|diff|deviation|variance|\bnet\b|adj|gain|loss|balance|\+/-',
+                                    str(head), re.I)))
+        # 大きい順・小さい順に並べた列（担当ごとの実績の順位表）は、両端が離れているのも端がマイナスなのも当たり前
+        # （2026-11-05 dock の実測: 順位表の 1 位 1,806 万・最下位 -5.7 万を桁違い・符号の打ち間違いと出していた）
+        # 並べた列では、隣の値から 10 倍以上の崖がある値だけを桁違いと見る（150 の次の 100,000 は拾う）
+        seq = [v for _, v in num_entries]
+        sorted_col = len(seq) >= 5 and (all(a >= b for a, b in zip(seq, seq[1:])) or all(a <= b for a, b in zip(seq, seq[1:])))
+        cliff = set()
+        if sorted_col:
+            for i, (r, v) in enumerate(num_entries):
+                nb = [num_entries[j][1] for j in (i - 1, i + 1) if 0 <= j < len(num_entries)]
+                if v and nb and all(x == 0 or abs(v) >= abs(x) * 10 for x in nb) and any(x for x in nb):
+                    cliff.add(r)
         neg = [(r, v) for r, v in num_entries if v < 0]
         pos = [v for _, v in num_entries if v > 0]
         flagged = set()
         # 「ぽつんと」は 2 個まで（2026-11-05 dock の実測: 410 行の値動きの列のマイナス 41 個を全部「符号の打ち間違い」と出した）
-        if not signed and len(pos) >= 4 and 1 <= len(neg) <= min(2, max(1, len(num_entries) // 10)):
+        if not signed and not sorted_col and len(pos) >= 4 and 1 <= len(neg) <= min(2, max(1, len(num_entries) // 10)):
             for r, v in neg:
                 flagged.add(r)
                 issues.append({
@@ -766,20 +785,38 @@ def check_data_cleaner(
                         return not signed                   # 正の列にマイナス＝符号の打ち間違い（増減・差の列は当たり前）
                     return lo_in is not None and v > 0 and v * 10 <= lo_in
 
-                for r, v in num_entries:
-                    if (v < lower_bound or v > upper_bound) and _far(v):
-                        addr = _rowcol_to_a1(start_row + r, start_col + c)
-                        near = hi_in if v > upper_bound else lo_in
-                        msg = (f"値 {v:,.4g} は同じ列のほかの値（いちばん近い {near:,.4g}）から 10 倍以上離れています（桁違いの疑い）"
-                               if v > 0 and near else
-                               f"値 {v:,.4g} は同じ列のほかの値（中央値 {median:,.4g}）から離れています（符号の打ち間違いの疑い）")
-                        issues.append({
-                            "cell": addr,
-                            "severity": "warning",
-                            "type": "outlier_value",
-                            "msg": msg,
-                            "value": v
-                        })
+                far = [(r, v) for r, v in num_entries if (v < lower_bound or v > upper_bound) and _far(v)]
+                # 離れた値が同じ側に 3 つ以上＝「ぽつんと 1 つ」ではなく 2 つ目の集まり（日付と値段が同じ列・損益表の
+                # 売上と調整・0.005 と 0.05 の 2 種類の刻み）。桁違いの打ち間違いではない（2026-11-05 dock の実測: 残りの 476 件の大半）
+                hi_far = [x for x in far if x[1] > upper_bound]
+                lo_far = [x for x in far if x[1] <= upper_bound]
+                far = (hi_far if len(hi_far) <= 2 else []) + (lo_far if len(lo_far) <= 2 else [])
+                for r, v in far:
+                    if sorted_col and r not in cliff:
+                        continue
+                    # 表の本体から空行 3 つ以上離れて置いた数（表の下の検算・控えの数）は別の塊
+                    prev_r = max((rr for rr, _x in num_entries if rr < r), default=None)
+                    if prev_r is not None and r - prev_r >= 4:
+                        continue
+                    # 上の数の和（表の下に見出し無しで置いた合計・検算の数）は外れ値ではない
+                    above = [x for rr, x in num_entries if rr < r]
+                    run, k = [], r - 1
+                    while k >= 0 and isinstance(values[k][c], (int, float)) and not isinstance(values[k][c], bool):
+                        run.append(float(values[k][c])); k -= 1
+                    if v and any(s_ and abs(s_ - v) <= abs(v) * 0.01 for s_ in (sum(above), sum(run))):
+                        continue
+                    addr = _rowcol_to_a1(start_row + r, start_col + c)
+                    near = hi_in if v > upper_bound else lo_in
+                    msg = (f"値 {v:,.4g} は同じ列のほかの値（いちばん近い {near:,.4g}）から 10 倍以上離れています（桁違いの疑い）"
+                           if v > 0 and near else
+                           f"値 {v:,.4g} は同じ列のほかの値（中央値 {median:,.4g}）から離れています（符号の打ち間違いの疑い）")
+                    issues.append({
+                        "cell": addr,
+                        "severity": "warning",
+                        "type": "outlier_value",
+                        "msg": msg,
+                        "value": v
+                    })
 
     return issues
 
