@@ -47,7 +47,7 @@ vba_manager.py / form_builder.py は **アクティブな開いているブッ�
 
 表・シートの仕事は **往復 4 回が上限**。要点に無い既定・引数は `references/sheet.md`（要るときだけ Read）。
 1. 表の修正・点検 → **`seiri 頼みの文`**（頼みの語が無ければ引数なし）。表を整えるマクロ・頼みに当たる棚・tidy まで道具が 1 回で撃つ。残りが「エラーセル: なし」なら報告して終わる（screenshot も手直しも足さない）。
-2. 表を見るだけ → **`materials`**（read-range を重ねない）。式の元は `trace D31 --depth 3`、ブックの仕組みは `structure`。
+2. 表を見るだけ → **`materials`**（read-range を重ねない）。式の元は `trace D31 --depth 3`、ブックの仕組みは `structure`、全部まとめた点検は `dock`。
 3. 書く → 飛び飛びは `write-cells C7 値 C11 値 --show`、範囲・数式は `write_grid(range, tsv)`。複数の書き込みは同じ返事に並べる。文字列の化けは道具が戻す。
 4. 仕上げ → `tidy 表全体`（列を足したら元の列を含む表全体）。自分の手で見た目を変えたときだけ `screenshot` を 1 回。
 5. 棚（秀コンボのモジュール「表の整理」「表の整理_作る」「表の整理_調べる」「表の整理_書式」「表の整理_基本操作」）は、自分で書く前に `shelf --ask 依頼文`／`shelf --grep 語` → `shelf-run 名前 --select A1:A9,C1:C9`（選ぶ列は 1 列ずつカンマで）。

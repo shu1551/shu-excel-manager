@@ -150,6 +150,7 @@ from vbam_devtools import *  # noqa: F401,F403  (2026-09-16 職場向け VBA ツ
 from vbam_lineage import *  # noqa: F401,F403  (2026-09-17 系譜と閉じたブック: versions・history・list-file・grep-files・export-file)
 from vbam_audit import *  # noqa: F401,F403  (2026-09-17 数式・データ総合診断エンジン)
 from vbam_flow import *  # noqa: F401,F403  (2026-10-01 マクロの中の流れを Mermaid の流れ図に・flow)
+from vbam_dock import cmd_dock  # noqa: F401  (2026-11-05 点検の部品を 1 回で撃つ・dock)
 from vbam_structure import cmd_structure, cmd_no_values, no_values_refusal  # noqa: F401  (2026-10-01 値を出さずにブックの構造だけ・structure)
 from vbam_recipes import cmd_recipe_save  # noqa: F401  (2026-10-22 業務レシピの保存・更新・削除)
 # AI の機能（agent・set-key・clear-key）は vbam_agent 一式があるときだけ読む（2026-09-12・本体だけでも動く形に）。
@@ -378,6 +379,15 @@ def build_parser():
     p.add_argument("posargs", nargs="*")
     p.add_argument("--out", default=None, help="Markdown の出力先（省略時 _last_structure.md）")
     p.add_argument("--sheet", dest="sheet_opt", default=None, help="このシートだけ（省略時はブック全体）")
+
+    # dock [excel_file] [--sheet 名] [--out 出力.md] [--html]
+    p = sub.add_parser("dock", aliases=["ドック"],
+                       help="点検の部品（structure・diagnose・lookup・cause・trace）を 1 回で撃って 1 枚の Markdown に"
+                            "（骨・病巣と点数・壊れやすい式・エラーの原因・式のつながり）。値なしのときは値を出さない")
+    p.add_argument("posargs", nargs="*")
+    p.add_argument("--out", default=None, help="Markdown の出力先（省略時 _last_dock.md）")
+    p.add_argument("--sheet", dest="sheet_opt", default=None, help="このシートだけ（省略時はブック全体）")
+    p.add_argument("--html", action="store_true", help="diagnose の HTML 報告と同じ作りで 1 枚の HTML も出す")
 
     # no-values [on|off]
     p = sub.add_parser("no-values", aliases=["値なし"],
@@ -2139,6 +2149,8 @@ def _raw_command_table():
         "flow":              cmd_flow,            # 2026-10-01 マクロの流れ図（Mermaid）
         "structure":         cmd_structure,       # 2026-10-01 値を出さずに構造だけ（オフィス田中の診断ツールに学ぶ）
         "構造":              cmd_structure,
+        "dock":              cmd_dock,            # 2026-11-05 点検の部品を 1 回で撃って 1 枚に
+        "ドック":             cmd_dock,
         "no-values":         cmd_no_values,       # 2026-10-01 値なしの切り替え（AI に値を渡さない）
         "値なし":             cmd_no_values,
         "流れ図":              cmd_flow,

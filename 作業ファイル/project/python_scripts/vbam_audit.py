@@ -571,6 +571,15 @@ def check_data_cleaner(
     return issues
 
 
+def audit_score(issues: List[Dict[str, Any]]) -> int:
+    """100 点満点の点数（format_audit_report と dock が同じ数を使う）。"""
+    n_crit = sum(1 for i in issues if i["severity"] == "critical")
+    n_warn_kinds = len({(i["type"], i["msg"]) for i in issues if i["severity"] == "warning"})
+    n_info = sum(1 for i in issues if i["severity"] == "info")
+    score = max(0, 100 - (n_crit * 15) - (n_warn_kinds * 5) - (n_info * 2))
+    return max(score, 75) if n_crit == 0 else score
+
+
 def format_audit_report(
     sheet_name: str,
     range_addr: str,
@@ -583,11 +592,7 @@ def format_audit_report(
 
     # 100点満点のスコア算出。同じ中身の警告（1 列に同じ直書き 6 か所）は 1 つと数える＝同じ原因を 6 回減点しない。
     # 重大欠陥が 0 件なら「重大な欠陥の疑い」の C 以下にはしない（2026-09-24: 警告だけで 65 点・C と出ていた）
-    n_warn_kinds = len({(i["type"], i["msg"]) for i in issues if i["severity"] == "warning"})
-    penalty = (n_crit * 15) + (n_warn_kinds * 5) + (n_info * 2)
-    score = max(0, 100 - penalty)
-    if n_crit == 0:
-        score = max(score, 75)
+    score = audit_score(issues)
 
     lines = []
     lines.append(f"╔═══════════════════════════════════════════════════════════════╗")
@@ -1213,6 +1218,7 @@ __all__ = [
     'check_data_cleaner',
     'apply_audit_fixes',
     'format_audit_report',
+    'audit_score',
     'generate_audit_html',
     'to_2d_list',
 ]
