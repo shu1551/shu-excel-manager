@@ -1019,3 +1019,23 @@ def test_outlier_quiet_when_same_value_at_same_address_on_other_sheet():
     assert run(210) == []
     assert any(i["cell"] == "B7" for i in run(8))
     assert any(i["cell"] == "B7" for i in va.check_data_cleaner(rows, 0, 0, rows))
+
+
+def test_ws_layout_ja_holdout_types():
+    """2026-11-06 日本語ホールドアウト: 金額表記の末尾全角空白・和暦と並ぶ見出しの先頭空白・様式項目名の字下げは体裁。"""
+    def judge(col_vals, r):
+        vals = [[x] for x in col_vals]
+        v = vals[r][0]
+        return va._ws_is_layout(vals, r, 0, v, v.strip())
+    yen = ["270百万円", "250百万円\u3000", "", "20百万円\u3000"]
+    assert judge(yen, 3)
+    hdr = [" H25", "x", " H26", "y", " H27", "z", " 過去５年間平均"]
+    assert judge(hdr, 6)
+    form = ["\u3000\u3000内訳", "\u3000\u3000\u3000資産割  ", "\u3000その他", "合計"]
+    assert judge(form, 1)
+
+
+def test_ws_layout_ja_holdout_keeps_real_trailing_space():
+    """同じ列でも、半角の末尾空白(照合を邪魔する本物)は体裁にしない。"""
+    vals = [["中野区"], ["新宿区"], ["練馬区 "], ["港区"], ["渋谷区"]]
+    assert not va._ws_is_layout(vals, 2, 0, "練馬区 ", "練馬区")

@@ -905,6 +905,7 @@ def _is_column_total(f_r1c1, abs_row):
     return row_of(m.group(1)) < abs_row and row_of(m.group(2)) < abs_row
 
 
+_RE_YEN_TEXT = r"[0-9０-９][0-9０-９,.]*(?:百万|千|万|億)?円"
 _RE_FREE_TEXT_HEAD = re.compile(r"内容|説明|概要|詳細|摘要")
 
 _RE_EXT_REF_R1C1 = re.compile(r"'[^']*\[[^\]]*\.xl[^\]]*\][^']*'!(?:R(?:\[-?\d+\]|\d+)?C(?:\[-?\d+\]|\d+)?)(?::R(?:\[-?\d+\]|\d+)?C(?:\[-?\d+\]|\d+)?)?", re.I)
@@ -951,6 +952,19 @@ def _ws_is_layout(values, r, c, v, trimmed) -> bool:
         return True
     padded = bool(re.search(r" {2,}$", v))
     col = [row[c] for row in values if c < len(row) and isinstance(row[c], str) and row[c].strip()]
+    # 同じ列の字寄せ・字下げ・金額表記の体裁（2026-11-06 日本語のホールドアウト 7 件）
+    # (a) 金額表記の文字（'20百万円　'）の末尾の全角空白: 同じ列に金額表記が他にもある（空白なしの '270百万円' が混在）
+    if re.fullmatch(_RE_YEN_TEXT, trimmed) and v == trimmed + "　" * (len(v) - len(trimmed)) and v != trimmed:
+        if sum(1 for x in col if x is not v and re.fullmatch(_RE_YEN_TEXT, x.strip())) >= 1:
+            return True
+    # (b) 見出し ' 過去５年間平均' の先頭 1 字の空白: 同じ列の和暦年度（' H25'）の字寄せと同じ
+    if len(v) == len(trimmed) + 1 and v[0] in " 　" and sum(1 for x in col if re.fullmatch(r"\s[HRSTMhrstm]\d{1,2}", x)) >= 2:
+        return True
+    # (c) 様式項目名の字下げ（'　　内　資産割  '）: 先頭が全角空白で、列の 3 分の 1 以上が全角空白で始まる
+    if v.startswith("　") and not trimmed.isascii():
+        lead = sum(1 for x in col if x.startswith("　"))
+        if lead >= 3 and lead * 3 >= len(col):
+            return True
     # 同じ形の前後の空白（先頭が ' '・末尾が '　' など）を持つ文字が列の 4 分の 1 以上＝列全体の体裁
     def _sig(x):
         return (x != x.lstrip(), x != x.rstrip(), "　" in x)
