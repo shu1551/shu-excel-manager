@@ -948,3 +948,33 @@ def test_dockC3_flat_column_and_structured_refs_20261105():
     fa[6][1], f1[6][1], vv[6][1] = 99, 99, 99
     assert [i["cell"] for i in va.check_formula_linter(fa, f1, vv, 0, 0) if i["type"] == "value_in_formula_column"] == ["B7"]
 
+
+
+def test_text_number_fullwidth_minus_and_comma():
+    """全角のマイナス・全角/半角のカンマの文字の数字も言う（2026-11-06 日本語の注入）。"""
+    for s in ("－７２５", "１，８６７", "1,200"):
+        values = [[100], [200], [s], [300], [400], [500], [600]]
+        issues = va.check_data_cleaner(values, 0, 0)
+        assert any(i["type"] == "text_number" and i["cell"] == "A3" for i in issues), s
+    assert va._tn_value("－７２５") == -725 and va._tn_value("１，２００") == 1200
+
+
+def test_circular_ignores_japanese_unquoted_sheet_ref():
+    """別シート（日本語の素のシート名）の同じ番地を、自シートの循環と読まない。"""
+    f = [["=データシート!A1"], ["=1"]]
+    assert va.check_circular_references(f, 0, 0) == []
+
+
+def test_inconsistent_formula_skips_external_book_and_paren_ref():
+    f1 = [["=R[0]C[-1]/8977"]] * 3
+    assert va._RE_PAREN_SINGLE_REF.sub(r"\1", "=(RC[-1])/8977") == "=RC[-1]/8977"
+    assert va._RE_EXTERNAL_BOOK.search("='C:/x/[決算.xls]S'!R4C3")
+
+
+def test_hidden_whitespace_layout_vs_key():
+    """和暦年度の字下げ・列全体の体裁は言わず、列の中の少数派の末尾空白（照合キー）は言う。"""
+    col = [["名称"]] + [[" H%02d" % n] for n in range(10, 20)]
+    assert not [i for i in va.check_data_cleaner(col, 0, 0) if i["type"] == "hidden_whitespace"]
+    keys = [["区名"]] + [["港区"], ["新宿区"], ["中央区"], ["千代田区"], ["品川区"], ["目黒区"], ["大田区"], ["鶴見区\u3000\u3000"]]
+    keys[0:0] = [["a"], ["b"]]
+    assert [i for i in va.check_data_cleaner(keys, 0, 0) if i["type"] == "hidden_whitespace"]

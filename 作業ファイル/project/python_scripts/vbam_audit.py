@@ -48,7 +48,16 @@ _RE_SUM_FUNC = re.compile(
     re.IGNORECASE
 )
 
-_RE_TEXT_NUMBER = re.compile(r'^-?\d+(?:\.\d+)?$')
+# 全角のマイナス（－ U+FF0D・− U+2212）と 3 桁区切りのカンマ（半角・全角）も文字の数字（2026-11-06 日本語の注入: 全角のマイナス・カンマは 72/72 見落とし）
+_RE_TEXT_NUMBER = re.compile(r'^[-－−]?(?:\d+|\d{1,3}(?:[,，]\d{3})+)(?:[.．]\d+)?$')
+
+
+def _tn_value(s: str):
+    """文字の数字（全角・カンマ・全角マイナス込み）を数にする（純 Python）。"""
+    import unicodedata
+    t = unicodedata.normalize('NFKC', s.strip()).replace('−', '-').replace(',', '')
+    return float(t) if '.' in t else int(t)
+
 
 _RE_RANGE_REF = re.compile(
     r'(?<![A-Za-z0-9_\$])\$?([A-Za-z]{1,3})\$?([1-9][0-9]{0,6})\s*:\s*\$?([A-Za-z]{1,3})\$?([1-9][0-9]{0,6})(?![A-Za-z0-9_])',
@@ -64,7 +73,7 @@ _RE_SINGLE_CELL_REF = re.compile(
 )
 _RE_STRING_LIT = re.compile(r'"(?:[^"]|"")*"')
 _RE_QUALIFIED_REF = re.compile(
-    r"(?:'(?:[^']|'')+'|\[[^\]]*\][^!\s,()+\-*/^&=<>]*|[A-Za-z0-9_.#]+)!"
+    r"(?:'(?:[^']|'')+'|\[[^\]]*\][^!\s,()+\-*/^&=<>]*|[\w.#]+)!"
     r"\$?[A-Za-z]{1,3}\$?\d+(?:\s*:\s*\$?[A-Za-z]{1,3}\$?\d+)?",
 )
 
@@ -620,6 +629,8 @@ def check_formula_linter(
                 # 番地の無い式（=3100000/2 の電卓）は形を比べない
                 if not _RE_R1C1_REF.search(_RE_STRING_LIT.sub('""', f_r1c1)):
                     continue
+                # 参照 1 つを囲んだだけの括弧 =(L44)/8977 と =L44/8977 は同じ式（2026-11-06 日本語の台帳）
+                f_r1c1 = _RE_PAREN_SINGLE_REF.sub(r"\1", f_r1c1)
                 pats.setdefault(f_r1c1, []).append(t)
             if len(pats) < 2:
                 continue
@@ -659,6 +670,10 @@ def check_formula_linter(
                     continue
                 # 同じシートの式が並ぶ列に、他のシート・ブックを指す式が 1 つ混じるのは、その行だけ別の所から引く作り
                 if "!" in pat and "!" not in before:
+                    continue
+                # 他のブックを指す式（='\fs\…\[決算額調.xls]S'!R4C3・='C:\…\[一覧.xlsx]S'!…）は、引き先のブックの形に従う式で、
+                # 隣と形が違って当たり前（2026-11-06 日本語の台帳: 外部ブック参照式の誤爆 11 件）
+                if _only_external_refs(pat) or _only_external_refs(before):
                     continue
                 # 1 つの番地を写すだけの式（=+K48）が並び、写す元の行の差がまちまち＝行ごとに写す元を選んでいる列は、形が違って当たり前
                 # （写す元の行の差がそろった中の列のずれ =+F6 が =+G6 の列に混ざるのは、拾う）
@@ -834,6 +849,64 @@ def _is_column_total(f_r1c1, abs_row):
     return row_of(m.group(1)) < abs_row and row_of(m.group(2)) < abs_row
 
 
+_RE_FREE_TEXT_HEAD = re.compile(r"内容|説明|概要|詳細|摘要")
+
+_RE_EXT_REF_R1C1 = re.compile(r"'[^']*\[[^\]]*\.xl[^\]]*\][^']*'!(?:R(?:\[-?\d+\]|\d+)?C(?:\[-?\d+\]|\d+)?)(?::R(?:\[-?\d+\]|\d+)?C(?:\[-?\d+\]|\d+)?)?", re.I)
+
+
+def _only_external_refs(p: str) -> bool:
+    """他のブックを指す参照があり、その参照を除くと相対の参照（R[1]C[-1]）が残らない式か。
+    =VLOOKUP(A20,'[外.xls]S'!…) のように自分のシートの相対参照が残る式は、行のずれを比べる本命なので外さない。"""
+    if not _RE_EXTERNAL_BOOK.search(p or ""):
+        return False
+    return not re.search(r"R\[|C\[", _RE_EXT_REF_R1C1.sub("0", p))
+
+
+_RE_PAREN_SINGLE_REF = re.compile(r"\(\s*(R(?:\[-?\d+\]|\d+)?C(?:\[-?\d+\]|\d+)?)\s*\)")
+_RE_EXTERNAL_BOOK = re.compile(r"\[[^\]\[]+\.(?:xls[xmb]?|xlam?|csv)\]", re.I)
+
+
+def _ws_is_layout(values, r, c, v, trimmed) -> bool:
+    """前後の空白が体裁（字割り・様式の項目名・年度表示・単位・表題・自由記述）か（純 Python・2026-11-06 日本語の台帳 129 件）。
+    照合のキーの空白（同じ列の少数派・右を 3 つ以上の空白で埋めた固定長）は体裁にしない。
+    1) 1 字だけの文字（'㎡ '・'… '）  2) 語の途中に改行がある折り返しの文・斜線見出し
+    3) （　）で囲んだ注記  4) 同じ形（先頭・末尾・全角空白の有無）の前後の空白を持つ文字が同じ列に 2 つ以上でかつ 4 分の 1 以上（または列の 3 分の 1 以上が前後に空白を持つ）＝列全体の体裁（和暦 ' H24'・様式項目名）
+       （右を 2 つ以上の空白で埋めた固定長は除く）
+    5) 表の上 3 行で 3 つ以内のセルの行（表題・入力欄）  6) 見出しが内容・説明・概要の列（自由記述）
+    ただし英数字だけで先頭に空白の無い文字（'Other '）は照合を邪魔する本物＝体裁にしない（4・5 を外す）"""
+    if len(trimmed) <= 1:
+        return True
+    if "\n" in trimmed or "\r" in trimmed:
+        return True
+    if v != v.lstrip() and re.match(r"^[（(].*[）)]$", trimmed):
+        return True
+    for k in range(min(r, 15)):
+        h = values[k][c] if c < len(values[k]) else None
+        if isinstance(h, str) and len(h.strip()) <= 12 and _RE_FREE_TEXT_HEAD.search(h):
+            return True
+    # 英数字だけの文字の末尾の空白（'Other '・'Asset/Accrual Margin '）は、列に多くても照合を邪魔する本物
+    # （体裁として列全体に付くのは日本語の様式の字割り・字下げ・和暦年度の先頭空白。2026-11-06 英語の台帳 3 件）
+    if trimmed.isascii() and v.lstrip() == v:
+        return False
+    # 和暦の年度表示（' H24'・' R03'）の先頭空白は桁をそろえる字下げ
+    if v != v.lstrip() and re.fullmatch(r"[HRSTMhrstm]\d{1,2}", trimmed):
+        return True
+    if r <= 2 and len(values) >= 8 and sum(1 for x in values[r] if x not in (None, "")) <= 3:
+        return True
+    padded = bool(re.search(r" {2,}$", v))
+    col = [row[c] for row in values if c < len(row) and isinstance(row[c], str) and row[c].strip()]
+    # 同じ形の前後の空白（先頭が ' '・末尾が '　' など）を持つ文字が列の 4 分の 1 以上＝列全体の体裁
+    def _sig(x):
+        return (x != x.lstrip(), x != x.rstrip(), "　" in x)
+    sig = _sig(v)
+    same = sum(1 for x in col if _sig(x) == sig)
+    ws = sum(1 for x in col if x != x.strip())
+    if not padded and ((same >= 2 and same * 4 >= len(col)) or (ws >= 5 and ws * 3 >= len(col))):
+        return True
+    return False
+
+
+
 def check_data_cleaner(
     values: List[List[Any]],
     start_row: int,
@@ -893,7 +966,7 @@ def check_data_cleaner(
     def _label_num(x):
         """並びの一員になれるセル: 文字の数字、または整数の数。"""
         if _is_tn(x):
-            return float(x.strip())
+            return float(_tn_value(x))
         return float(x) if _isnum(x) and float(x).is_integer() else None
 
     def _is_label_sequence(r, c):
@@ -1033,6 +1106,8 @@ def check_data_cleaner(
                 if re.search(r"[、。]", trimmed) or re.search(r"\b[a-z]{2,}\s+[a-z]{2,}\s+[a-z]{2,}\b", trimmed):
                     listed = False
                 quiet = (not trimmed) or indent_only or _is_header_cell(r, c) or not listed or _is_total_label(v)
+                if not quiet and v != trimmed:
+                    quiet = _ws_is_layout(values, r, c, v, trimmed)
                 if v != trimmed and len(v) > 0 and not quiet:
                     space_type = []
                     if v.startswith(" ") or v.startswith("　"):
@@ -1567,7 +1642,8 @@ def _text_number_safe_to_convert(trimmed: str) -> bool:
     """
     if not _RE_TEXT_NUMBER.match(trimmed) or len(trimmed) > 15:
         return False
-    digits = trimmed.lstrip('-')
+    import unicodedata
+    digits = unicodedata.normalize('NFKC', trimmed).replace('−', '-').replace(',', '').lstrip('-')
     if len(digits) > 1 and digits[0] == '0' and digits[1] != '.':
         return False
     return True
@@ -1667,7 +1743,7 @@ def apply_audit_fixes(ws: Any, issues: List[Dict[str, Any]], id_cols: Optional[D
                                "（照合のキーの型をそろえるため、わざと文字のことがある）")
                 continue
             try:
-                num_val = float(trimmed) if "." in trimmed else int(trimmed)
+                num_val = _tn_value(trimmed)
             except ValueError:
                 continue
             cell_obj.Value = num_val
