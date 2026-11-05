@@ -978,3 +978,20 @@ def test_hidden_whitespace_layout_vs_key():
     keys = [["区名"]] + [["港区"], ["新宿区"], ["中央区"], ["千代田区"], ["品川区"], ["目黒区"], ["大田区"], ["鶴見区\u3000\u3000"]]
     keys[0:0] = [["a"], ["b"]]
     assert [i for i in va.check_data_cleaner(keys, 0, 0) if i["type"] == "hidden_whitespace"]
+
+
+def test_hardcoded_constant_skips_calendar_and_offset_types_20261106():
+    """英語ブックの誤爆の型: /2（半分）・/10000（万換算）・月別日数 28 の並び・^(-2*…) の指数・EOMONTH+20 の暦ずらし・
+    VLOOKUP/LOOKUP の中の +4 の番地オフセットは咎めない。*2・*28 単独・+500 は出す。"""
+    def hc(f):
+        return [i for i in va.check_formula_linter([[f]], [[f]], [[1]], 0, 1) if i["type"] == "hardcoded_constant"]
+    for fx in ("=3100000/2", "=(SUM(A1+B1/2)*(0.065/12))", "=E21*24*H21/10000",
+               "=ROUND((O24*31+P24*28+Q24*31+R24*30)*H24,0)", "=(1+B1/2)^(-2*(C1-D1)/365.25)",
+               "=(EOMONTH(A1,0)+20)-C1", "=VLOOKUP($A1,T,M$4+4,FALSE)", "=LOOKUP($K$15+2,A:A,B:B)"):
+        assert hc(fx) == [], fx
+    for fx in ("=A1*2", "=A1*28", "=A1+500", "=A1*1.001"):
+        assert len(hc(fx)) == 1, fx
+
+
+def test_hardcoded_constant_types_20261106_dummy():
+    assert va._enclosing_func("IF(A1,VLOOKUP(B1,T,C1+4,0))", 22) == "VLOOKUP"

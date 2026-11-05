@@ -100,8 +100,50 @@ def _is_total_label(s) -> bool:
 
 
 # 式に直書きしても咎めない、単位・暦の決まった数（月→年の 12・日の 365・千の 1000 など）
-_UNIT_CONSTANTS = {7.0, 12.0, 24.0, 30.0, 31.0, 52.0, 60.0, 100.0, 360.0, 365.0, 366.0, 1000.0, 1440.0, 3600.0,
-                   86400.0, 1000000.0}
+_UNIT_CONSTANTS = {7.0, 12.0, 24.0, 30.0, 31.0, 52.0, 60.0, 100.0, 360.0, 365.0, 365.25, 366.0, 1000.0, 1440.0, 3600.0,
+                   86400.0, 1000000.0, 10000.0, 100000000.0}   # 10000・1 億は万・億の単位換算
+# 割る数の 2 は半分・半期・平均の決まり文句（掛ける 2 は倍率で、直書きの本物がありうるので入れない）
+_UNIT_DIV_ONLY = {2.0}
+# 検索・位置の関数の引数に付いた +4・+2（列番号・行番号をずらす）は直書きの定数ではなく番地のオフセット
+_RE_OFFSET_FUNCS = ('VLOOKUP', 'HLOOKUP', 'LOOKUP', 'INDEX', 'MATCH', 'OFFSET', 'CHOOSE')
+
+
+def _enclosing_func(text: str, pos: int) -> str:
+    """text[pos] を囲む一番内側の関数名（大文字）。括弧だけなら ''。"""
+    depth = 0
+    for i in range(pos - 1, -1, -1):
+        ch = text[i]
+        if ch == ')':
+            depth += 1
+        elif ch == '(':
+            if depth == 0:
+                m = re.search(r'([A-Za-z_][A-Za-z0-9_.]*)$', text[:i])
+                return m.group(1).upper() if m else ''
+            depth -= 1
+    return ''
+
+
+def _after_month_end_func(text: str, pos: int) -> bool:
+    """数の直前が EOMONTH(…)・EDATE(…) の閉じ括弧＋演算子か（月末に日数を足す暦のずらし：EOMONTH(A1,0)+20）。"""
+    j = pos - 1
+    while j >= 0 and text[j] in ' +-':
+        j -= 1
+    if j < 0 or text[j] != ')':
+        return False
+    depth = 0
+    for i in range(j, -1, -1):
+        if text[i] == ')':
+            depth += 1
+        elif text[i] == '(':
+            depth -= 1
+            if depth == 0:
+                return re.search(r'(?:EOMONTH|EDATE)$', text[:i], re.I) is not None
+    return False
+
+
+def _is_calendar_month_mix(text: str, val_num: float) -> bool:
+    """28 を、30・31 の日数と並べて掛けている月別日数の式（O*31+P*28+Q*31+R*30…）か。"""
+    return val_num == 28.0 and bool(re.search(r'[*/]\s*3[01](?![0-9.])', text))
 
 
 def local_ref_text(f: str) -> str:
@@ -425,17 +467,25 @@ def check_formula_linter(
             scan = re.sub(r'\b(?:ROW|COLUMN)\s*\([^()]*\)\s*[-+]\s*\d+', 'ROW()', local_ref_text(f), flags=re.I)
             # 先頭のオペランドの直書き（=856-N17・=2231+C8・=515/$E$6・IF(…,99-$N$12,…)）も同じに見る
             # （2026-11-05 注入テスト: 後ろの直書き 40/40 に対し、先頭は 0/5 で見落としていた）
-            _lead = [(m_[1], m_[0], True) for m_ in _RE_HARDCODED_LEAD.findall(scan)]
-            _cands = [(op_, vs_, False) for op_, vs_ in _RE_HARDCODED_CONST.findall(scan)] + [
-                (o_, v_, True) for o_, v_, _ in _lead]
-            for op, val_str, _is_lead in _cands:
+            _lead = [(m_.group(2), m_.group(1), True, m_.start(1)) for m_ in _RE_HARDCODED_LEAD.finditer(scan)]
+            _cands = [(m_.group(1), m_.group(2), False, m_.start(2)) for m_ in _RE_HARDCODED_CONST.finditer(scan)] + _lead
+            for op, val_str, _is_lead, _pos in _cands:
                 try:
                     val_num = float(val_str)
                 except ValueError:
                     continue
                 # 0 や 1 以外の実質的な定数計算を言う。重さは「気づき」: 誤りではなく「変わり得る数は条件のセルに出すと
                 # 変えやすい」という勧め（2026-11-05 シュウさんの判断の依頼）。点数は同じ形の文・同じ列ごとに 1 回（audit_score）
-                if val_num not in (0.0, 1.0) and not (op in '*/' and val_num in _UNIT_CONSTANTS):
+                if (val_num not in (0.0, 1.0) and not (op in '*/' and val_num in _UNIT_CONSTANTS)
+                        and not (op == '/' and val_num in _UNIT_DIV_ONLY)
+                        and not (op in '*/' and _is_calendar_month_mix(scan, val_num))
+                        # 指数の係数 ^(-2*t)（符号の - は引き算ではない）
+                        and not (op == '-' and scan[max(0, _pos - 3):_pos].replace(' ', '').endswith('^(-'))
+                        and not (op in '+-' and not _is_lead and float(val_num).is_integer() and val_num <= 31
+                                 and _after_month_end_func(scan, _pos))
+                        # 検索・位置の関数の中で参照に足し引きする小さな整数（列番号・行番号のオフセット）
+                        and not (op in '+-' and not _is_lead and float(val_num).is_integer() and val_num <= 12
+                                 and _enclosing_func(scan, _pos) in _RE_OFFSET_FUNCS)):
                     how = {'+': '足す', '-': '引く', '*': '掛ける', '/': '割る'}.get(op, op)
                     if _is_lead:
                         how = {'+': '足す', '-': '引かれる数', '*': '掛ける', '/': '割られる数'}.get(op, op)
