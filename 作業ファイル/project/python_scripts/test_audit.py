@@ -1039,3 +1039,27 @@ def test_ws_layout_ja_holdout_keeps_real_trailing_space():
     """同じ列でも、半角の末尾空白(照合を邪魔する本物)は体裁にしない。"""
     vals = [["中野区"], ["新宿区"], ["練馬区 "], ["港区"], ["渋谷区"]]
     assert not va._ws_is_layout(vals, 2, 0, "練馬区 ", "練馬区")
+
+
+def test_en_remaining_fp_types_20261106():
+    """2026-11-06 英語の台帳の残り誤爆の型: 式の文字だけのセル・列構造表・手組みの平均・文字位置のずらし・検算の期待値。"""
+    # 循環: 先頭が = の文字のセル（値が式の文字そのまま）は式ではない。本物の循環は拾う
+    f = [["=SUM(A1:A3 B1:B3)", "=SUM(A1:A3 C1:C3)"]]
+    assert va.check_circular_references([["=B1+1", "=A1+1"]], 0, 0, [[2, 1]])
+    assert not va.check_circular_references(f, 0, 0, [["=SUM(A1:A3 B1:B3)", "=SUM(A1:A3 C1:C3)"]])
+    assert va.check_circular_references([["=A1+1"]], 0, 0, [[0]])
+
+    def hc(fx):
+        F = [[fx]]
+        return [i for i in va.check_formula_linter(F, F, [[0]], 0, 0) if i["type"] == "hardcoded_constant"]
+    assert not hc("=(E3+E4+E5+E6)/4")
+    assert hc("=(E3+E4+E5+E6)/10")
+    assert hc("=E3/10")
+    assert not hc("=MID(D47,2,LEN(IF(ISNUMBER(SEARCH(\"$\",D47)),SUBSTITUTE(D47,\"$\",\"\"),D47))-2)")
+    assert hc("=D47-2")
+
+    # 集計漏れ: 直下の手組みの平均（同じ列を 3 つ以上足して割る式）は漏れの相手ではない
+    fa = [[5], [6], [7], ["=AVERAGE(A1:A3)"], ["=(A1+A2+A3)/3"]]
+    r1 = [[5], [6], [7], ["=AVERAGE(R[-3]C:R[-1]C)"], ["=(R[-4]C+R[-3]C+R[-2]C)/3"]]
+    vals = [[5], [6], [7], [6], [6]]
+    assert not [i for i in va.check_formula_linter(fa, r1, vals, 0, 0) if i["type"] == "omitted_sum_range"]

@@ -142,3 +142,70 @@ def test_dock_and_seiri_name_the_same_shelf_20261105():
     dock_shelves = {va.fix_of(i)['name'] for i in issues if va.fix_of(i)['kind'] == 'shelf'}
     seiri_shelves = {h[1] for h in vv.seiri_formula_hints(fa, fr, vals, 1, 1, 0)}
     assert dock_shelves and dock_shelves <= seiri_shelves
+
+
+# ---- 2026-11-06 新しい指摘 3 種 ----
+
+def test_cf_duplicate_and_hidden_rule_20261106():
+    base = {'sheet': 'S', 'addr': 'A1:A9', 'type': 'セルの値', 'op': '>', 'f1': '=5', 'f2': '', 'sig': ('1', '2', 'True', 'None', ''), 'stop': False}
+    other = dict(base, sig=('9', '2', 'True', 'None', ''))
+    assert vd.cf_duplicate_issues([base]) == []
+    assert vd.cf_duplicate_issues([base, other]) == []                       # 書式が違えば重複ではない
+    dup = vd.cf_duplicate_issues([base, dict(base)])
+    assert len(dup) == 1 and dup[0]['type'] == 'duplicate_cf' and dup[0]['cell'] == 'A1'
+    hidden = vd.cf_duplicate_issues([dict(base, stop=True), other])
+    assert len(hidden) == 1 and '隠れて' in hidden[0]['msg']
+    assert vd.cf_duplicate_issues([dict(base, sig=None), dict(base, sig=None)]) == []
+
+
+def _grid(rows):
+    fa = [[x for x in r] for r in rows]
+    fv = [[(1.0 if isinstance(x, str) and x.startswith('=') else x) for x in r] for r in rows]
+    return (1, 1, fa, fv)
+
+
+def test_orphan_formula_20261106():
+    rows = [['a', 'b', 'c', 'd'],
+            [1, '=A2*2', '=B2+1', 5],
+            [2, '=A3*2', '=B3+1', 6],
+            [3, '=A4*2', '=B4+1', 7],
+            ['計', '=SUM(B2:B4)', '=SUM(C2:C4)', 18]]
+    fml = [('S', f"{chr(65 + j)}{i + 1}", x) for i, r in enumerate(rows) for j, x in enumerate(r)
+           if isinstance(x, str) and x.startswith('=')]
+    out = vd.find_orphan_formulas(fml, {'S': _grid(rows)})
+    assert out == []           # 合計の範囲に入る式・最下段の合計は孤立と言わない
+    rows[1][1] = '=A2*3'
+    rows[1][2] = '=A2+1'       # B 列を使う式が無くなる → B2:B4 は合計だけが使う。C を直接 A に向ける
+    for k in (2, 3):
+        rows[k][2] = f'=A{k + 1}+1'
+    rows[4][1] = 'x'
+    fml = [('S', f"{chr(65 + j)}{i + 1}", x) for i, r in enumerate(rows) for j, x in enumerate(r)
+           if isinstance(x, str) and x.startswith('=')]
+    out = vd.find_orphan_formulas(fml, {'S': _grid(rows)})
+    assert {o['cell'] for o in out} == {'B2', 'B3'}        # B4 は下に数・式が無い＝出力欄の扱いで言わない
+    assert all(o['type'] == 'orphan_formula' for o in out)
+    assert vd.find_orphan_formulas(fml + [('S', 'Z1', '=INDIRECT("B2")')], {'S': _grid(rows)}) == []
+    # 別シートの式・名前から参照されていれば孤立ではない
+    other = [('T', 'A1', '=S!B2+S!B3+S!B4')]
+    got = vd.find_orphan_formulas(fml + other, {'S': _grid(rows), 'T': (1, 1, [['=S!B2+S!B3+S!B4']], [[3.0]])})
+    assert not {o['cell'] for o in got if o['cell'] in ('B2', 'B3')}
+
+
+def test_text_date_in_date_column_20261106():
+    import vbam_audit as va
+    vals = [['日付', '金額'], [45000.0, 1], [45001.0, 2], [45002.0, 3], ['R6.9.15', 4], ['令和3年4月1日', 5], [45003.0, 6], ['H24', 7]]
+    got = [i for i in va.check_data_cleaner(vals, 0, 0) if i['type'] == 'text_date']
+    assert sorted(i['cell'] for i in got) == ['A5', 'A6', 'A8']
+    # 日付でない列（金額）に文字の和暦風があっても言わない
+    vals2 = [['名', '金額'], ['a', 12.5], ['b', 3.5], ['c', 4.5], ['H24', 8.5]]
+    assert not [i for i in va.check_data_cleaner(vals2, 0, 0) if i['type'] == 'text_date']
+
+
+def test_orphan_only_lonely_pattern_20261106():
+    # 列に並んだ同じ形の式（出力欄）は孤立と言わず、1 つだけ浮いた式だけ言う
+    fa = [[1, '=A1*2', 5], [2, '=A2*2', 6], [3, '=A3*7', 7], [4, 4, 8]]
+    r1 = [[1, '=RC[-1]*2', 5], [2, '=RC[-1]*2', 6], [3, '=RC[-1]*7', 7], [4, 4, 8]]
+    fv = [[1, 2.0, 5], [2, 4.0, 6], [3, 21.0, 7], [4, 4, 8]]
+    fml = [('S', 'B1', '=A1*2'), ('S', 'B2', '=A2*2'), ('S', 'B3', '=A3*7')]
+    out = vd.find_orphan_formulas(fml, {'S': (1, 1, fa, fv, r1)})
+    assert [o['cell'] for o in out] == ['B3']

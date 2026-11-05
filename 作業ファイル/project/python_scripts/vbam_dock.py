@@ -21,6 +21,7 @@ _TYPE_LABEL = {
     'approx_match': '近似一致', 'omitted_sum_range': '集計の範囲漏れ', 'inconsistent_formula': '隣と違う式',
     'value_in_formula_column': '式の列に値', 'hidden_whitespace': '隠れ空白', 'text_number': '文字列の数字',
     'outlier_value': '外れ値', 'outlier': '外れ値',
+    'text_date': '文字の日付', 'duplicate_cf': '重複した条件付き書式', 'orphan_formula': '孤立した式',
 }
 _SEV = {'critical': '重大', 'warning': '警告', 'info': '気づき'}
 
@@ -277,6 +278,151 @@ def render_html(data, md):
     return base.replace('</body>', extra + '</body>', 1) if '</body>' in base else base + extra
 
 
+
+# ----------------------------------------------------------------
+# 新しい指摘（2026-11-06）: 重複した条件付き書式・孤立した式
+# ----------------------------------------------------------------
+
+def _first_cell(addr):
+    m = re.match(r"\$?([A-Z]{1,3})\$?(\d+)", str(addr))
+    return f"{m.group(1)}{m.group(2)}" if m else str(addr)
+
+
+def cf_duplicate_issues(cf_rows):
+    """条件付き書式の行（vbam_structure._cf_rows の形）→ 重複・完全に隠れた規則の issue（純 Python）。
+    重複＝同じシート・同じ範囲・同じ条件・同じ書式の規則が 2 つ以上。
+    隠れ＝同じ範囲・同じ条件の規則が先にあり、それが「真のとき停止」で、あとの規則に順番が回らない。"""
+    seen, out = {}, []
+    for r in cf_rows or []:
+        sig = r.get('sig')
+        if sig is None:
+            continue
+        cond = (r['sheet'], r['addr'], r['type'], r['op'], r['f1'], r['f2'])
+        prior = seen.setdefault(cond, [])
+        label = f"{r['type']} {r['op']} {r['f1']} {r['f2']}".strip()
+        if any(p == sig for p, _ in prior):
+            out.append({'sheet': r['sheet'], 'cell': _first_cell(r['addr']), 'severity': 'info', 'type': 'duplicate_cf',
+                        'msg': f"条件付き書式の規則が、同じ範囲 {r['addr']} に同じ条件・同じ書式で重なっています（{label[:40]}）＝ルールの管理で 1 つを消す"})
+        elif any(st for _, st in prior):
+            out.append({'sheet': r['sheet'], 'cell': _first_cell(r['addr']), 'severity': 'info', 'type': 'duplicate_cf',
+                        'msg': f"条件付き書式の規則が、同じ範囲 {r['addr']} の同じ条件の先の規則（真のとき停止）に隠れて働きません（{label[:40]}）"})
+        prior.append((sig, bool(r.get('stop'))))
+    return out
+
+
+_REF_RE = re.compile(
+    r"(?:(?:'((?:[^']|'')+)'|([^\s'!=+\-*/^&<>(),;:\[\]{}\"]+))!)?"
+    r"(\$?[A-Z]{1,3}\$?\d+(?::\$?[A-Z]{1,3}\$?\d+)?|\$?[A-Z]{1,3}:\$?[A-Z]{1,3}|\$?\d+:\$?\d+)(?![\w(!.])")
+
+
+def _col_n(s):
+    import vbam_lookup as vl
+    return vl.col_num(s)
+
+
+def refs_of(formula, here):
+    """式の中のセル参照 → [(シート, r1, c1, r2, c2)]。3-D 参照があれば None（読み切れない）。"""
+    f = re.sub(r'"(?:[^"]|"")*"', '""', formula)
+    if re.search(r"[A-Za-z0-9_']:[A-Za-z0-9_']+!", f):
+        return None
+    out = []
+    for m in _REF_RE.finditer(f):
+        sh = (m.group(1) or m.group(2) or here)
+        if m.group(1):
+            sh = sh.replace("''", "'")
+        if sh.startswith('[') or ']' in sh:
+            continue
+        a = m.group(3).replace('$', '')
+        parts = a.split(':')
+        try:
+            if re.fullmatch(r'\d+', parts[0]):
+                r1, r2, c1, c2 = int(parts[0]), int(parts[-1]), 1, 16384
+            elif re.fullmatch(r'[A-Z]+', parts[0]):
+                r1, r2, c1, c2 = 1, 1048576, _col_n(parts[0]), _col_n(parts[-1])
+            else:
+                x = [re.match(r'([A-Z]+)(\d+)', p) for p in parts]
+                r1, c1 = int(x[0].group(2)), _col_n(x[0].group(1))
+                r2, c2 = int(x[-1].group(2)), _col_n(x[-1].group(1))
+        except Exception:
+            continue
+        out.append((sh, min(r1, r2), min(c1, c2), max(r1, r2), max(c1, c2)))
+    return out
+
+
+_DYNAMIC_RE = re.compile(r'\b(?:INDIRECT|OFFSET)\s*\(|\[', re.I)
+
+
+def find_orphan_formulas(formulas, grids, extra_text=(), tables=(), skip=False):
+    """孤立した式（純 Python）。
+    formulas: [(シート, 番地, 式)]・grids: {シート: (r0, c0, 式の格子, 値の格子)}・extra_text: [(シート, 式の文字)]
+    （名前・条件付き書式・入力規則・グラフの参照先）。
+    孤立＝ほかのどの式（同じシート・他シート）・名前・書式・グラフからも参照されず、合計の範囲にも入っていない、
+    参照を持つ数値の式。最終の合計・出力欄（下にも右にも数・式が無いセル）は言わない。
+    動的な参照（INDIRECT・OFFSET）・テーブルの構造化参照・3-D 参照のあるブックは読み切れないので言わない。"""
+    if skip or not formulas:
+        return []
+    for _sh, _a, f in formulas:
+        if _DYNAMIC_RE.search(re.sub(r'"(?:[^"]|"")*"', '""', f)):
+            return []
+    by_col = {}      # (シート, 列) -> [(r1, r2)]
+
+    def add(sh, r1, c1, r2, c2):
+        for c in range(c1, min(c2, c1 + 600) + 1):
+            by_col.setdefault((sh, c), []).append((r1, r2))
+    for sh, a, f in formulas:
+        rs = refs_of(f, sh)
+        if rs is None:
+            return []
+        for x in rs:
+            add(*x)
+    for sh, txt in extra_text:
+        for x in refs_of(txt, sh) or []:
+            add(*x)
+    for t in tables:
+        for x in refs_of(f"{t['sheet']}!{t['addr']}", t['sheet']) or []:
+            add(*x)
+
+    def used(sh, r, c):
+        return any(r1 <= r <= r2 for r1, r2 in by_col.get((sh, c), ()))
+
+    def num(x):
+        return isinstance(x, (int, float)) and not isinstance(x, bool)
+
+    def live(x):
+        return num(x) or (isinstance(x, str) and x.startswith('='))
+
+    pat_n = {}
+    for sh_, g_ in grids.items():
+        if len(g_) > 4 and g_[4]:
+            for row_ in g_[4]:
+                for x_ in row_:
+                    if isinstance(x_, str) and x_.startswith('='):
+                        pat_n[(sh_, x_)] = pat_n.get((sh_, x_), 0) + 1
+    out = []
+    for sh, a, f in formulas:
+        g = grids.get(sh)
+        m = re.match(r'([A-Z]+)(\d+)$', a)
+        if not g or not m:
+            continue
+        r0, c0, fa, fv = g[:4]
+        c, r = _col_n(m.group(1)), int(m.group(2))
+        i, j = r - r0, c - c0
+        if len(g) > 4 and g[4]:                 # 同じ形（R1C1）の式がシートに 2 つ以上ある＝列・行に並んだ計算は
+            if pat_n.get((sh, g[4][i][j]), 0) > 1:     # 出力欄（比率・差・小計）が多く、使われないのが普通。孤立は「1 つだけ浮いた式」に絞る
+                continue
+        if i < 0 or j < 0 or i >= len(fv) or j >= len(fv[i]) or not num(fv[i][j]):
+            continue
+        if not refs_of(f, sh) or used(sh, r, c):
+            continue
+        below = any(j < len(fa[k]) and (live(fa[k][j]) or num(fv[k][j])) for k in range(i + 1, len(fa)))
+        right = any(live(fa[i][k]) or num(fv[i][k]) for k in range(j + 1, len(fa[i])))
+        if not (below and right):
+            continue
+        out.append({'sheet': sh, 'cell': a, 'severity': 'info', 'type': 'orphan_formula', 'formula': f,
+                    'msg': "この式の結果は、ほかのどの式・名前・グラフにも使われていません（合計にも入っていません）"})
+    return out
+
+
 # ----------------------------------------------------------------
 # COM
 # ----------------------------------------------------------------
@@ -301,6 +447,33 @@ def _err_text(fv):
     """Value2 はエラーを整数で返す。linter は '#DIV/0!' の文字列で見るので文字にして渡す（格子は写し）。"""
     import vbam_cause as vc
     return [[vc._err(x) or x for x in row] for row in fv]
+
+
+
+def _has_macros(wb):
+    try:
+        return bool(wb.HasVBProject)
+    except Exception:
+        return False
+
+
+def _chart_refs(wb):
+    """グラフの系列の参照先 [(シート, '=式')]（ワークシート上のグラフ・グラフシート）。"""
+    out = []
+    try:
+        for ws in wb.Worksheets:
+            for co in ws.ChartObjects():
+                for se in co.Chart.SeriesCollection():
+                    out.append((ws.Name, str(se.Formula)))
+    except Exception:
+        pass
+    try:
+        for ch in wb.Charts:
+            for se in ch.SeriesCollection():
+                out.append(('', str(se.Formula)))
+    except Exception:
+        pass
+    return out
 
 
 def collect_all(wb, only_sheet=None):
@@ -358,6 +531,23 @@ def collect_all(wb, only_sheet=None):
                     causes.append((ws.Name, notes))
             except Exception:
                 pass
+    try:
+        for it in cf_duplicate_issues(d.get('cf')):
+            sh_ = it.pop('sheet')
+            if not only_sheet or sh_ == only_sheet:
+                sheet_issues.setdefault(sh_, []).append(it)
+        if not only_sheet:
+            extra = [(r['sheet'], f"={r['f1']}") for r in d.get('cf') or [] if r.get('f1')]
+            extra += [(r['sheet'], f"={r['f2']}") for r in d.get('cf') or [] if r.get('f2')]
+            extra += [(r['sheet'], str(r.get('formula') or '')) for r in d.get('dv') or []]
+            extra += [('', v) for v in names.values()]
+            extra += _chart_refs(wb)
+            gr = {n_: (g_[0], g_[1], g_[2], g_[4], g_[3]) for n_, g_ in grid_cache.items() if g_ is not None}
+            skip = len(gr) < len(grid_cache) or len(formulas) > 150000 or _has_macros(wb)
+            for it in find_orphan_formulas(formulas, gr, extra, d.get('tables') or [], skip):
+                sheet_issues.setdefault(it.pop('sheet'), []).append(it)
+    except Exception:
+        pass
     issues, score = summarize(sheet_issues)
     fragile, approx = lookup_findings(formulas)
     traces = []

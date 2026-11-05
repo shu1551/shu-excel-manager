@@ -5622,7 +5622,7 @@ def diagnose_notes(fa, fr, vals, r0, c0, limit=8):
     except Exception:
         pass
     try:
-        for it in check_circular_references(fa, r0 - 1, c0 - 1):
+        for it in check_circular_references(fa, r0 - 1, c0 - 1, vals):
             blockers.append(f"{it['cell']}: {it['msg']}")
     except Exception:
         pass

@@ -559,6 +559,13 @@ def _cf_rows(ws, out):
                 row['look'].append('塗り')
         except Exception:
             pass
+        try:                                       # 同じ書式かを見る鍵（塗り・文字色・太字など）。取れない種類（データバー等）は None
+            if t in (1, 2):
+                row['sig'] = (str(fc.Interior.Color) if fc.Interior.ColorIndex not in (None, -4142, -4105) else '',
+                              str(fc.Font.Color), str(fc.Font.Bold), str(fc.Font.Italic), str(fc.NumberFormat or ''))
+                row['stop'] = bool(fc.StopIfTrue)
+        except Exception:
+            pass
         whole = bool(re.search(r'(^|[,:])\$?[A-Z]{1,3}:\$?[A-Z]{1,3}($|,)', row['addr'])) or \
             bool(re.search(r'(^|[,:])\$?\d+:\$?\d+($|,)', row['addr']))
         row['whole'] = whole

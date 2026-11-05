@@ -55,6 +55,15 @@ _RE_SUM_FUNC = re.compile(
 )
 
 # 全角のマイナス（－ U+FF0D・− U+2212）と 3 桁区切りのカンマ（半角・全角）も文字の数字（2026-11-06 日本語の注入: 全角のマイナス・カンマは 72/72 見落とし）
+_SERIAL_LO, _SERIAL_HI = 20000, 80000   # 1954〜2118 年の日付のシリアル値
+_RE_TEXT_DATE = re.compile(
+    r'^(?:'
+    r'[RHSTM令平昭大明][.．]?\s*(?:\d{1,2}|元)(?:\s*[./．年-]\s*\d{1,2}(?:\s*[./．月-]\s*\d{1,2}\s*日?)?)?'
+    r'|(?:令和|平成|昭和|大正|明治)\s*(?:\d{1,2}|元)\s*年(?:\s*\d{1,2}\s*月(?:\s*\d{1,2}\s*日?)?)?'
+    r'|(?:19|20)\d{2}\s*[/.．-]\s*\d{1,2}\s*[/.．-]\s*\d{1,2}'
+    r'|(?:19|20)\d{2}\s*年\s*\d{1,2}\s*月(?:\s*\d{1,2}\s*日)?'
+    r')$')
+_RE_ERA_YEAR = re.compile(r'^(?:[RHSTM令平昭大明][.．]?\s*(?:\d{1,2}|元)|(?:令和|平成|昭和|大正|明治)\s*(?:\d{1,2}|元)\s*年?)$')
 _RE_TEXT_NUMBER = re.compile(r'^[-－−]?(?:\d+|\d{1,3}(?:[,，]\d{3})+)(?:[.．]\d+)?$')
 
 
@@ -112,6 +121,11 @@ _UNIT_CONSTANTS = {7.0, 12.0, 24.0, 30.0, 31.0, 52.0, 60.0, 100.0, 360.0, 365.0,
 _UNIT_DIV_ONLY = {2.0}
 # 検索・位置の関数の引数に付いた +4・+2（列番号・行番号をずらす）は直書きの定数ではなく番地のオフセット
 _RE_OFFSET_FUNCS = ('VLOOKUP', 'HLOOKUP', 'LOOKUP', 'INDEX', 'MATCH', 'OFFSET', 'CHOOSE')
+# 文字を切り出す関数の引数に付いた LEN(…)-2 のような字数のずらし（括弧を外す MID(x,2,LEN(x)-2) など）も文字位置のオフセット
+_TEXT_POS_FUNCS = ('MID', 'LEFT', 'RIGHT', 'REPLACE', 'FIND', 'SEARCH')
+# (C3+C4+…+C12)/10: 足した項の数で割る手組みの平均。割る数は項の数と同じで、直書きしても変わり得る数ではない
+_RE_MANUAL_AVG = re.compile(
+    r'\(\s*((?:\$?[A-Za-z]{1,3}\$?[0-9]+\s*\+\s*){2,}\$?[A-Za-z]{1,3}\$?[0-9]+)\s*\)\s*/\s*([0-9]+)(?![0-9.])')
 
 
 def _enclosing_func(text: str, pos: int) -> str:
@@ -127,6 +141,21 @@ def _enclosing_func(text: str, pos: int) -> str:
                 return m.group(1).upper() if m else ''
             depth -= 1
     return ''
+
+
+def _after_len_call(text: str) -> bool:
+    """text の終わりが LEN(…) の閉じ括弧か（入れ子の括弧も対応）。"""
+    if not text.endswith(')'):
+        return False
+    depth = 0
+    for i in range(len(text) - 1, -1, -1):
+        if text[i] == ')':
+            depth += 1
+        elif text[i] == '(':
+            depth -= 1
+            if depth == 0:
+                return re.search(r'LEN\s*$', text[:i], re.I) is not None
+    return False
 
 
 def _after_month_end_func(text: str, pos: int) -> bool:
@@ -186,8 +215,11 @@ def check_circular_references(
     formulas: List[List[Any]],
     start_row: int,
     start_col: int,
+    values: Optional[List[List[Any]]] = None,
 ) -> List[Dict[str, Any]]:
-    """数式内の循環参照（自己参照および間接循環依存）を有向グラフの閉路検出により静的特定する。"""
+    """数式内の循環参照（自己参照および間接循環依存）を有向グラフの閉路検出により静的特定する。
+    values を渡すと、式の文字がそのまま値になっているセル（先頭に ' を付けた解説・見本の文字列）は式として数えない
+    （2026-11-06 dock の実測: 解説シートの『=COUNTIFS(…B6…)』という文字列や #NULL! の見本を循環参照と言う誤爆 3 件）。"""
     issues = []
     num_rows = len(formulas)
     if num_rows == 0:
@@ -202,6 +234,12 @@ def check_circular_references(
             f = str(formulas[r][c] or "")
             if not f.startswith("="):
                 continue
+            if values is not None:
+                try:
+                    if values[r][c] == f:
+                        continue
+                except (IndexError, TypeError):
+                    pass
             addr = _rowcol_to_a1(start_row + r, start_col + c)
             formula_map[addr] = f
             deps = set()
@@ -297,6 +335,11 @@ def check_formula_linter(
         # 入口で正しく撃てたマクロの後を AI に回していた＝隣が集計の式・集計の行なら漏れではない
         fx = str(formulas[rr][cc] or "")
         if _is_vertical_agg(fx):
+            return True
+        # 同じ列のセルを 3 つ以上足し合わせて割る手組みの平均・合計（=(C3+C4+…+C12)/10）も集計のセル＝漏れの相手ではない
+        # （2026-11-06 英語の台帳: AVERAGE の直下に手計算の平均を置いた確認用の行を漏れと言う誤爆 3 件）
+        r1_ = _r1(rr, cc)
+        if r1_.startswith("=") and _is_column_only(r1_) and len(_RE_R1C1_REF.findall(_RE_STRING_LIT.sub('""', r1_))) >= 3:
             return True
         return any(_is_total_label(values[rr][k]) for k in range(num_cols))
 
@@ -475,6 +518,8 @@ def check_formula_linter(
             # （2026-11-05 注入テスト: 後ろの直書き 40/40 に対し、先頭は 0/5 で見落としていた）
             _lead = [(m_.group(2), m_.group(1), True, m_.start(1)) for m_ in _RE_HARDCODED_LEAD.finditer(scan)]
             _cands = [(m_.group(1), m_.group(2), False, m_.start(2)) for m_ in _RE_HARDCODED_CONST.finditer(scan)] + _lead
+            _avg_n = {float(m_.group(2)) for m_ in _RE_MANUAL_AVG.finditer(scan)
+                      if m_.group(1).count('+') + 1 == int(m_.group(2))}
             for op, val_str, _is_lead, _pos in _cands:
                 try:
                     val_num = float(val_str)
@@ -484,6 +529,7 @@ def check_formula_linter(
                 # 変えやすい」という勧め（2026-11-05 シュウさんの判断の依頼）。点数は同じ形の文・同じ列ごとに 1 回（audit_score）
                 if (val_num not in (0.0, 1.0) and not (op in '*/' and val_num in _UNIT_CONSTANTS)
                         and not (op == '/' and val_num in _UNIT_DIV_ONLY)
+                        and not (op == '/' and not _is_lead and val_num in _avg_n)
                         and not (op in '*/' and _is_calendar_month_mix(scan, val_num))
                         # 指数の係数 ^(-2*t)（符号の - は引き算ではない）
                         and not (op == '-' and scan[max(0, _pos - 3):_pos].replace(' ', '').endswith('^(-'))
@@ -491,7 +537,10 @@ def check_formula_linter(
                                  and _after_month_end_func(scan, _pos))
                         # 検索・位置の関数の中で参照に足し引きする小さな整数（列番号・行番号のオフセット）
                         and not (op in '+-' and not _is_lead and float(val_num).is_integer() and val_num <= 12
-                                 and _enclosing_func(scan, _pos) in _RE_OFFSET_FUNCS)):
+                                 and _enclosing_func(scan, _pos) in _RE_OFFSET_FUNCS)
+                        and not (op in '+-' and not _is_lead and float(val_num).is_integer() and val_num <= 12
+                                 and _enclosing_func(scan, _pos) in _TEXT_POS_FUNCS
+                                 and _after_len_call(scan[:_pos].rstrip(' +-')))):
                     how = {'+': '足す', '-': '引く', '*': '掛ける', '/': '割る'}.get(op, op)
                     if _is_lead:
                         how = {'+': '足す', '-': '引かれる数', '*': '掛ける', '/': '割られる数'}.get(op, op)
@@ -657,7 +706,7 @@ def check_formula_linter(
                                 })
 
     # 2. 循環参照（Circular Reference）の静的検出
-    circ_issues = check_circular_references(formulas, start_row, start_col)
+    circ_issues = check_circular_references(formulas, start_row, start_col, values)
     issues.extend(circ_issues)
 
     # 3. 隣と違う式（Inconsistent Formulas）の検知
@@ -738,6 +787,18 @@ def check_formula_linter(
                 # SUM に飛び飛びの範囲（=SUM(L19:M19,N19:P19)）を指定した式は、足す所を選んだ式
                 if re.match(r"^=\+?SUM\(", pat, re.I) and "," in pat:
                     continue
+                # 横の比べで、そのセルと同じ形の式が同じ列の上下にも 2 つ以上ある＝列ごとに役目のある表（LEN・SUBSTITUTE・LEN が
+                # 並ぶ作業列）で、行ごとに左右と形が違うのは当たり前（2026-11-06 英語の台帳: 列構造表の行方向の誤爆 3 件）。
+                # コピペミスなら、その形は列の中で自分だけ（縦の比べで拾う）
+                if along == "row":
+                    same_in_col = 0
+                    for rr in range(num_rows):
+                        if rr == r or rr >= len(formulas_r1c1) or c >= len(formulas_r1c1[rr]):
+                            continue
+                        if _RE_PAREN_SINGLE_REF.sub(r"", str(formulas_r1c1[rr][c] or "")) == pat:
+                            same_in_col += 1
+                    if same_in_col >= 2:
+                        continue
                 addr = _rowcol_to_a1(start_row + r, start_col + c)
                 if addr in flagged_inc:
                     continue
@@ -1225,6 +1286,33 @@ def check_data_cleaner(
                         "value": v
                     })
 
+    # B2. 日付の列に混ざった文字の日付（和暦 'R3.4.1'・'令和3年4月1日'・'H24'、西暦の文字 '2021/4/1'）
+    # 日付の列＝列の数の 6 割以上、かつ 3 つ以上が日付のシリアル値の整数（Value2 は日付を数で返すので書式なしで判定）。
+    for c in range(num_cols):
+        nums = [values[r][c] for r in col_num_rows[c]]
+        if len(nums) < 3:
+            continue
+        serial = [x for x in nums if float(x).is_integer() and _SERIAL_LO <= x <= _SERIAL_HI]
+        if len(serial) < 3 or len(serial) * 10 < len(nums) * 6:
+            continue
+        for r in range(num_rows):
+            v = values[r][c] if c < len(values[r]) else None
+            if not isinstance(v, str):
+                continue
+            t = v.strip()
+            if not t or not _RE_TEXT_DATE.match(t) or _is_header_cell(r, c) or r in header_rows:
+                continue
+            # 年だけの和暦（'H20'・'R03'）は年の見出しのことが多い＝同じ行にほかの年の文字があれば見出しの並びで言わない
+            if _RE_ERA_YEAR.match(t) and sum(1 for x in values[r] if isinstance(x, str) and _RE_ERA_YEAR.match(x.strip())) >= 2:
+                continue
+            issues.append({
+                "cell": _rowcol_to_a1(start_row + r, start_col + c),
+                "severity": "warning",
+                "type": "text_date",
+                "msg": f"日付の列に文字の日付 '{t[:15]}' が混ざっています（日付として並べ替え・期間の集計ができない）",
+                "value": v
+            })
+
     # C. 統計的外れ値・桁間違いの検知 (IQR法)
     # 合計・小計・平均の行は検査に入れない（2026-09-19・月別の表の「合計」の行が 4 列とも外れ値と出た。
     # 合計が明細と桁違いなのは当たり前で、入れると四分位も歪む）
@@ -1300,6 +1388,21 @@ def check_data_cleaner(
         # （式のセルは数えない: 単価の打ち間違いが 数量×単価 の金額の列にそのまま写るため）
         def _is_formula(k):
             return bool(formulas) and r < len(formulas) and k < len(formulas[r]) and str(formulas[r][k] or "").startswith("=")
+        # T9 検算の行: 同じ行の式が、この数と、同じ行のほかの式の結果を並べて比べている（D12=IF(ABS(B12-C12)<…) の C12 は
+        # 手で入れた期待値で、B12 が計算した値）。件数・合計・差が行ごとに意味の違う控えの表で、桁が違って当たり前
+        # （2026-11-06 英語の台帳: 品質検証シートの期待値 3.9e5 の誤爆 2 件）
+        if formulas and r < len(formulas):
+            for k in range(len(formulas[r])):
+                fk = str(formulas[r][k] or "")
+                if k == c or not fk.startswith("=") or not re.search(r"[<>=]|ABS\s*\(", _RE_STRING_LIT.sub('""', fk[1:])):
+                    continue
+                refs_k = {_a1_to_rowcol(m_.group(1).upper() + m_.group(2))
+                          for m_ in _RE_SINGLE_CELL_REF.finditer(local_ref_text(fk))}
+                if (start_row + r, start_col + c) in refs_k and any(
+                        rr_ == start_row + r and cc_ != start_col + c and 0 <= cc_ - start_col < len(formulas[r])
+                        and str(formulas[r][cc_ - start_col] or "").startswith("=")
+                        for rr_, cc_ in refs_k):
+                    return True
         peers = [x for k, x in enumerate(row) if _isnum(x) and k != c and x != 0 and not _is_formula(k)
                  and av / 10 <= abs(x) <= av * 10]
         # 同規模の数が 2 つ以上、または 1.5 倍以内にもう 1 つ（同規模が 1 つだけで 2 倍以上離れていると、金額の列に写った打ち間違いと区別できない）
