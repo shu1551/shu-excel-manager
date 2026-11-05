@@ -968,8 +968,11 @@ def check_data_cleaner(
     start_row: int,
     start_col: int,
     formulas: Optional[List[List[Any]]] = None,
+    peer_sheets: Optional[List[Tuple[int, int, List[List[Any]]]]] = None,
 ) -> List[Dict[str, Any]]:
-    """データクレンジング診断（隠れ空白・文字列数字・外れ値）を行う純粋ロジック。"""
+    """データクレンジング診断（隠れ空白・文字列数字・外れ値）を行う純粋ロジック。
+    peer_sheets: 同じブックのほかのシートの値 [(start_row, start_col, values), ...]（0 始まりの左上）。
+    同じ番地に同じ値が別のシートにもある数は、同じ型のシートで決まって置く値で、外れ値と言わない。"""
     issues = []
     num_rows = len(values)
     if num_rows == 0:
@@ -1268,6 +1271,13 @@ def check_data_cleaner(
         （2026-11-05 outlier の新規 93 件を実物で全件判定した台帳 ledger_outlier.tsv の誤爆 87 件の型 T1〜T7）。"""
         row = values[r]
         av = abs(v)
+        # T9 ほかのシートの同じ番地にも同じ値がある（月ごと・店ごとに同じ型で作ったシートの固定の値）
+        if peer_sheets:
+            ar_, ac_ = start_row + r, start_col + c
+            for pr_, pc_, pv_ in peer_sheets:
+                i_, j_ = ar_ - pr_, ac_ - pc_
+                if 0 <= i_ < len(pv_) and 0 <= j_ < len(pv_[i_]) and _isnum(pv_[i_][j_]) and pv_[i_][j_] == v:
+                    return True
         # T8 同じ行に日付の範囲の文字（'11月12日～12月25日'・'4/5～10/16'）があり、値がその期間の日数（両端を入れる数え方も）
         # ＝日数の列で、ほかの行より大きいのは期間が長いだけ（日本語の公開ブックの台帳: 期間日数 6 件）
         if float(v).is_integer() and v > 0 and _period_days_in_row(row, int(v)):

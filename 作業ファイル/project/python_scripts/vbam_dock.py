@@ -312,11 +312,22 @@ def collect_all(wb, only_sheet=None):
     nv = vs.no_values_mode()
     sheet_issues, formulas, causes, skipped, r1c1 = {}, [], [], [], {}
     names, udfs = vc.workbook_names_udfs(wb)
+    # 同じ番地・同じ値の比較用に、ほかのシートの値を先に集める（1 シートだけの点検では空）
+    peer_all, grid_cache = {}, {}
+    if not only_sheet:
+        for ws_ in wb.Worksheets:
+            try:
+                g_ = _grids(ws_)
+            except Exception:
+                continue
+            grid_cache[ws_.Name] = g_
+            if g_ is not None:
+                peer_all[ws_.Name] = (g_[0] - 1, g_[1] - 1, g_[4])
     for ws in wb.Worksheets:
         if only_sheet and ws.Name != only_sheet:
             continue
         try:
-            g = _grids(ws)
+            g = grid_cache[ws.Name] if ws.Name in grid_cache else _grids(ws)
         except Exception as e:
             skipped.append(f"{ws.Name}（読めません: {e}）")
             continue
@@ -325,7 +336,9 @@ def collect_all(wb, only_sheet=None):
             continue
         r0, c0, fa, f1, fv = g
         fvs = _err_text(fv)
-        iss = va.check_formula_linter(fa, f1, fvs, r0 - 1, c0 - 1) + va.check_data_cleaner(fvs, r0 - 1, c0 - 1, fa)
+        peers = [v_ for n_, v_ in peer_all.items() if n_ != ws.Name]
+        iss = (va.check_formula_linter(fa, f1, fvs, r0 - 1, c0 - 1)
+               + va.check_data_cleaner(fvs, r0 - 1, c0 - 1, fa, peers))
         fml = set()
         for i, row in enumerate(fa):
             for j, x in enumerate(row):

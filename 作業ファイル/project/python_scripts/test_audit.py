@@ -1006,3 +1006,16 @@ def test_outlier_quiet_when_value_is_period_days_in_row():
         return [i for i in va.check_data_cleaner(rows, 0, 0, rows) if i["type"] == "outlier_value"]
     assert run(44) == []
     assert any(i["cell"] == "D5" for i in run(440))
+
+
+def test_outlier_quiet_when_same_value_at_same_address_on_other_sheet():
+    """別シートの同じ番地にも同じ値がある数（同じ型で作った月ごとのシートの固定の面積）は、桁違いと言わない。
+    別シートの値が違えば（この 210 が打ち間違いなら）出す。"""
+    col = [3, 10, 5, 8, 6, 4, 210, 7]
+    rows = [["x", v] for v in col]
+    def run(peer_value):
+        peer = [["x", v] for v in col[:6] + [peer_value] + col[7:]]
+        return [i for i in va.check_data_cleaner(rows, 0, 0, rows, [(0, 0, peer)]) if i["type"] == "outlier_value"]
+    assert run(210) == []
+    assert any(i["cell"] == "B7" for i in run(8))
+    assert any(i["cell"] == "B7" for i in va.check_data_cleaner(rows, 0, 0, rows))
