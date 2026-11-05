@@ -995,3 +995,14 @@ def test_hardcoded_constant_skips_calendar_and_offset_types_20261106():
 
 def test_hardcoded_constant_types_20261106_dummy():
     assert va._enclosing_func("IF(A1,VLOOKUP(B1,T,C1+4,0))", 22) == "VLOOKUP"
+
+
+def test_outlier_quiet_when_value_is_period_days_in_row():
+    """行に '11月12日〜12月25日' があり値が日数（44）なら、日数の列の桁違いとは言わない。期間と合わない値は出す。"""
+    def run(days):
+        rows = [[1, "a", "4月5日〜4月8日", 3], [2, "b", "5月1日〜5月4日", 3], [3, "c", "6月1日〜6月3日", 2],
+                [4, "d", "7月1日〜7月4日", 4], [5, "e", "11月12日〜12月25日", days],
+                [6, "f", "8月1日〜8月3日", 3], [7, "g", "9月1日〜9月4日", 3]]
+        return [i for i in va.check_data_cleaner(rows, 0, 0, rows) if i["type"] == "outlier_value"]
+    assert run(44) == []
+    assert any(i["cell"] == "D5" for i in run(440))

@@ -43,6 +43,12 @@ _RE_HARDCODED_LEAD = re.compile(
     r'(?:^=|[(,])\s*([0-9]+(?:\.[0-9]+)?|\.[0-9]+)\s*([*+/-])\s*(?=[A-Za-z$(])'
 )
 
+# 期間の文字: '11月12日～12月25日'・'4/5-10/16'（日数の列の根拠）
+_RE_PERIOD_RANGE = re.compile(
+    r'(?:(\d{1,2})月\s*(\d{1,2})日?\s*[〜～~\-ー–]\s*(\d{1,2})月\s*(\d{1,2})日?)'
+    r'|(?:(?<![\d/])(\d{1,2})/(\d{1,2})\s*[〜～~\-ー–]\s*(\d{1,2})/(\d{1,2})(?![\d/]))'
+)
+
 _RE_SUM_FUNC = re.compile(
     r'(SUM|AVERAGE)\s*\(\s*(\$?[A-Za-z]+\$?[0-9]+)\s*:\s*(\$?[A-Za-z]+\$?[0-9]+)\s*\)',
     re.IGNORECASE
@@ -1239,11 +1245,33 @@ def check_data_cleaner(
             return row[c] - row[c - 1] == row[c + 1] - row[c] != 0
         return False
 
+    def _period_days_in_row(row, days):
+        """行の文字に '11月12日～12月25日'・'4/5-10/16' の期間があり、その日数（終わり-始め、または両端を入れて +1）が days か。"""
+        import datetime as _dt
+        for x in row:
+            if not isinstance(x, str):
+                continue
+            for m_ in _RE_PERIOD_RANGE.finditer(x):
+                a_m, a_d, b_m, b_d = (int(g) for g in (m_.group(1) or m_.group(5), m_.group(2) or m_.group(6),
+                                                       m_.group(3) or m_.group(7), m_.group(4) or m_.group(8)))
+                try:
+                    d1 = _dt.date(2001, a_m, a_d)
+                    d2 = _dt.date(2001 if (b_m, b_d) >= (a_m, a_d) else 2002, b_m, b_d)
+                except ValueError:
+                    continue
+                if days in ((d2 - d1).days, (d2 - d1).days + 1):
+                    return True
+        return False
+
     def _outlier_context_quiet(r, c, v, num_entries):
         """列の中で離れていても、行の並び・ラベル・列の長さ・列の桁の揺れから外れ値と言えない型を黙らせる
         （2026-11-05 outlier の新規 93 件を実物で全件判定した台帳 ledger_outlier.tsv の誤爆 87 件の型 T1〜T7）。"""
         row = values[r]
         av = abs(v)
+        # T8 同じ行に日付の範囲の文字（'11月12日～12月25日'・'4/5～10/16'）があり、値がその期間の日数（両端を入れる数え方も）
+        # ＝日数の列で、ほかの行より大きいのは期間が長いだけ（日本語の公開ブックの台帳: 期間日数 6 件）
+        if float(v).is_integer() and v > 0 and _period_days_in_row(row, int(v)):
+            return True
         # T2 同じ行に同規模（0.1〜10 倍）の数がある＝横に見れば外れていない（同値の繰り返し・同じ行の合算など）
         # （式のセルは数えない: 単価の打ち間違いが 数量×単価 の金額の列にそのまま写るため）
         def _is_formula(k):
