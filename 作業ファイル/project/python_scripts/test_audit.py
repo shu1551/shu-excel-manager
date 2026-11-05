@@ -853,3 +853,35 @@ def test_text_number_speaks_for_csv_amounts_and_stays_quiet_for_codes_20261105()
     # 番号の列（見出しがコード・桁数がそろう）は言わない／繰り返す区分の値は言わない
     assert tn([['勘定科目コード']] + [[f'{100000 + i * 7}'] for i in range(10)]) == []
     assert tn([['区分', '値']] + [['1', 0.5 + i] for i in range(6)]) == []
+
+
+def test_outlier_c2_real_typos_are_said_and_row_column_context_is_quiet_20261105():
+    """段 C2（outlier_value）: 本当の桁違い（1000 倍の入力ミス）は言い、同じ行の同規模・短い塊・設定の行・桁の揺れる列・
+    符号のそろわない小口は言わない。番号の列の桁欠けは別の言い方で言う。"""
+    def o(g, f=None):
+        return [i["cell"] for i in va.check_data_cleaner(g, 0, 0, f) if i["type"] == "outlier_value"]
+    prices = [120, 95, 150, 88, 130, 45000, 110, 99, 140, 105, 125, 90]
+    qty = [12, 8, 15, 9, 20000, 11, 10, 14, 7, 13, 16, 9]
+    sales = [320, 410, 290, 380, 350, 360000, 400, 330, 420, 310, 390, 370]
+    # 言う: 単価・数量・月別売上（下に合計）・小数の列の 100 倍
+    assert o([["品名", "単価"]] + [[f"P{i}", p] for i, p in enumerate(prices)]) == ["B7"]
+    assert o([["品名", "数量"]] + [[f"P{i}", q] for i, q in enumerate(qty)]) == ["B6"]
+    assert o([["月", "売上"]] + [[f"{i + 1}月", v] for i, v in enumerate(sales)] + [["合計", sum(sales)]]) == ["B7"]
+    assert o([["比率"]] + [[v] for v in [0.52, 0.48, 0.55, 0.5, 0.6, 0.45, 0.58, 0.49, 0.51, 0.57, 0.5, 52]]) == ["A13"]
+    # 単価の打ち間違いが 数量×単価 の式の金額の列に写っても言う（式のセルは同じ行の相手に数えない）
+    g = [["品名", "単価", "数量", "金額"]] + [[f"P{i}", p, 10, p * 10] for i, p in enumerate(prices)]
+    f = [["", "", "", ""]] + [["", "", "", f"=B{i + 2}*C{i + 2}"] for i in range(12)]
+    assert [x for x in o(g, f) if x != "D7"] == ["B7"]      # D7（式のセル）は dock が重ねて出さない
+    assert "B7" in o(g)        # 式の情報が無くても、同規模の相手が 1 つ（2 倍離れた金額）だけなら黙らない
+    # 言わない: 同じ行に同規模の値が並ぶ（400000 の繰り返し）・設定の行（短い塊とラベル）
+    row = [[None, 4e4, 4e5, 4e5, 4e5, 4e5], [None, 8e3, 4e5, 4e5, 4e5, 4e5], [None, 7e3, 4e5, 4e5, 4e5, 4e5],
+           [None, 5e3, 4e5, 4e5, 4e5, 4e5], [None, 6e3, 4e5, 4e5, 4e5, 4e5], [None, 9e3, 4e5, 4e5, 4e5, 4e5]]
+    assert o(row) == []
+    assert o([["Number of Rows", 32], ["Peak", 700, 2200]]) == []
+    # 番号の列の桁欠け（7 桁の Org ID の中の 1853）は桁数の言い方で言う
+    ids = [["Org ID"]] + [[1029300 + i] for i in range(10)] + [[1853], [1029311]]
+    got = [i for i in va.check_data_cleaner(ids, 0, 0) if i["type"] == "outlier_value"]
+    assert [i["cell"] for i in got] == ["A12"] and "桁数が列と違います" in got[0]["msg"]
+    # 金額の列（先頭の桁がばらばら）の 1 つだけ桁が少ないのは番号の桁欠けとは言わない
+    amt = [["給与"]] + [[x] for x in [310000, 420000, 285000, 530000, 610000, 390000, 270000, 480000, 95000, 350000]]
+    assert not [i for i in va.check_data_cleaner(amt, 0, 0) if "桁数が列と違います" in i["msg"]]

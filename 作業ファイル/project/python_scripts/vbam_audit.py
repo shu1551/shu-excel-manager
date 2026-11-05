@@ -747,6 +747,7 @@ def check_data_cleaner(
     values: List[List[Any]],
     start_row: int,
     start_col: int,
+    formulas: Optional[List[List[Any]]] = None,
 ) -> List[Dict[str, Any]]:
     """データクレンジング診断（隠れ空白・文字列数字・外れ値）を行う純粋ロジック。"""
     issues = []
@@ -1009,6 +1010,63 @@ def check_data_cleaner(
             return row[c] - row[c - 1] == row[c + 1] - row[c] != 0
         return False
 
+    def _outlier_context_quiet(r, c, v, num_entries):
+        """列の中で離れていても、行の並び・ラベル・列の長さ・列の桁の揺れから外れ値と言えない型を黙らせる
+        （2026-11-05 outlier の新規 93 件を実物で全件判定した台帳 ledger_outlier.tsv の誤爆 87 件の型 T1〜T7）。"""
+        row = values[r]
+        av = abs(v)
+        # T2 同じ行に同規模（0.1〜10 倍）の数がある＝横に見れば外れていない（同値の繰り返し・同じ行の合算など）
+        # （式のセルは数えない: 単価の打ち間違いが 数量×単価 の金額の列にそのまま写るため）
+        def _is_formula(k):
+            return bool(formulas) and r < len(formulas) and k < len(formulas[r]) and str(formulas[r][k] or "").startswith("=")
+        peers = [x for k, x in enumerate(row) if _isnum(x) and k != c and x != 0 and not _is_formula(k)
+                 and av / 10 <= abs(x) <= av * 10]
+        # 同規模の数が 2 つ以上、または 1.5 倍以内にもう 1 つ（同規模が 1 つだけで 2 倍以上離れていると、金額の列に写った打ち間違いと区別できない）
+        if av and (len(peers) >= 2 or any(av / 1.5 <= abs(x) <= av * 1.5 for x in peers)):
+            return True
+        # 同じ列の連続した数の並び（r を含む）の長さ。T3 5 個未満の短い塊は設定・控え・記入欄で、比べる相手がいない
+        a = r
+        while a - 1 >= 0 and c < len(values[a - 1]) and _isnum(values[a - 1][c]):
+            a -= 1
+        b = r
+        while b + 1 < num_rows and c < len(values[b + 1]) and _isnum(values[b + 1][c]):
+            b += 1
+        run = b - a + 1
+        if run < 5:
+            return True
+        others = [abs(x) for rr, x in num_entries if rr != r and x != 0]
+        # T4 列の非ゼロが 3 件未満（比べる相手がいない）
+        if len(others) + 1 < 3:
+            return True
+        # T3 行に文字のラベルがあり数が 3 つまで、列の塊も短い＝「Peak 700 2200」「Number of Rows 32」の設定の行
+        n_row_nums = sum(1 for x in row if _isnum(x))
+        if n_row_nums <= 3 and run <= 6 and any(isinstance(x, str) and x.strip() and not _is_tn(x) for x in row):
+            return True
+        # T7 行ごとに桁の違う数を積んだ列（残りの最大が最小の 1,000 倍以上。100 倍だと 30〜12,000 の単価の表の桁違いまで黙る）は、外れ検査の相手にならない
+        if others and max(others) >= min(others) * 1000:
+            return True
+        # T5 小さい側の外れ（列の中央値の 1/10 以下）は、列が全部同符号のときだけ。増減・調整が混じる列は小口が普通
+        med = sorted(others)[len(others) // 2] if others else 0
+        if av and med and av * 10 <= med and any(x < 0 for rr, x in num_entries if rr != r):
+            return True
+        # 符号を反転した対（-663,933 と 663,933）は相殺で、打ち間違いではない
+        if any(abs(x + v) <= av * 0.001 and rr != r for rr, x in num_entries if abs(rr - r) <= 1):
+            return True
+        # （合計の行がすぐ下にある表の中の数を内訳として黙らせると、合計に入った本物の桁違いまで黙るので、下の合計との照合はしない）
+        # T1 日付のシリアル（3 万〜6 万の整数が列にほかにも 2 つ以上）／桁数のそろった整数の列（番号）
+        if float(v).is_integer():
+            ints = [x for rr, x in num_entries if rr != r and float(x).is_integer()]
+            if 30000 <= v <= 60000 and sum(1 for x in ints if 30000 <= x <= 60000) >= 2:
+                return True
+            if len(ints) >= 4 and len({len(str(int(abs(x)))) for x in ints}) == 1 and len(str(int(av))) == len(str(int(abs(ints[0])))) and av >= 10000 and v > 0:
+                return True
+        # T1 見出しの番号: すぐ下が文字の見出し（'Measured'）で、上が空か文字
+        below = values[r + 1][c] if r + 1 < num_rows and c < len(values[r + 1]) else None
+        above = values[r - 1][c] if r >= 1 and c < len(values[r - 1]) else None
+        if isinstance(below, str) and below.strip() and not _is_tn(below) and (above in (None, "") or isinstance(above, str)):
+            return True
+        return False
+
     def _is_breakdown(r, c, v):
         """同じ列の連続した数の並び（r を含む）の合計が、その真上の数に合う＝合計の内訳の明細（2026-11-05 dock の台帳:
         8,294,780 の下に 447,125・1,406,895・6,440,760 と並べた内訳）。"""
@@ -1094,7 +1152,8 @@ def check_data_cleaner(
         if not signed and not sorted_col and len(pos) >= 4 and 1 <= len(neg) <= min(2, max(1, len(num_entries) // 10)):
             for r, v in neg:
                 flagged.add(r)
-                if v in dup_vals or signed_table or _row_context_quiet(r, c, v):
+                if (v in dup_vals or signed_table or _row_context_quiet(r, c, v)
+                        or _outlier_context_quiet(r, c, v, num_entries)):
                     continue
                 issues.append({
                     "cell": _rowcol_to_a1(start_row + r, start_col + c),
@@ -1139,7 +1198,7 @@ def check_data_cleaner(
                 # 売上と調整・0.005 と 0.05 の 2 種類の刻み）。桁違いの打ち間違いではない（2026-11-05 dock の実測: 残りの 476 件の大半）
                 hi_far = [x for x in far if x[1] > upper_bound]
                 lo_far = [x for x in far if x[1] <= upper_bound]
-                far = (hi_far if len(hi_far) <= 2 else []) + (lo_far if len(lo_far) <= 2 else [])
+                far = (hi_far if len(hi_far) <= 1 else []) + (lo_far if len(lo_far) <= 1 else [])
                 # 外れ値を除いた残りだけで 3 桁（1,000 倍）以上の幅がある列は、行ごとに意味の違う数を縦に積んだ報告
                 # （件数 64・損益 -3,700 万・差 18.8 万を A 列のラベルで並べる）。桁違いを比べる相手がいない
                 # （2026-11-05 初見の 60 本: e026 の 72 件・前の 60 本の e059 の控えの書式）
@@ -1150,7 +1209,8 @@ def check_data_cleaner(
                 for r, v in far:
                     if sorted_col and r not in cliff:
                         continue
-                    if v in dup_vals or (v < 0 and signed_table) or _row_context_quiet(r, c, v):
+                    if (v in dup_vals or (v < 0 and signed_table) or _row_context_quiet(r, c, v)
+                            or _outlier_context_quiet(r, c, v, num_entries)):
                         continue
                     if _is_breakdown(r, c, v) or _is_labelled_side_block(r, c):
                         continue
@@ -1177,6 +1237,34 @@ def check_data_cleaner(
                         "msg": msg,
                         "value": v
                     })
+
+    # D. 番号の列の桁数の不一致（ID・コードの桁欠け）。列の整数の 9 割以上が同じ 6 桁以上で、1 つだけ桁数が違う
+    # （2026-11-05 outlier の台帳の唯一の本物: 7 桁の Org ID の列の 1853）。金額の列は桁がまちまちなので 6 桁以上・9 割以上に限る
+    already = {i["cell"] for i in issues if i["type"] == "outlier_value"}
+    for c in range(num_cols):
+        ints = [(r, values[r][c]) for r in range(num_rows)
+                if c < len(values[r]) and _isnum(values[r][c]) and float(values[r][c]).is_integer() and values[r][c] > 0
+                and not (30000 <= values[r][c] <= 60000)]
+        if len(ints) < 6:
+            continue
+        lens = [len(str(int(x))) for _r, x in ints]
+        mode = max(set(lens), key=lens.count)
+        if mode < 6 or lens.count(mode) * 10 < len(lens) * 9:
+            continue
+        # 番号は連番で割り振るので、先頭 2 桁がそろう（10xxxxx）。金額は先頭の桁がばらばら
+        heads = [str(int(x))[:2] for (_r, x), ln in zip(ints, lens) if ln == mode]
+        if max(heads.count(h) for h in set(heads)) * 10 < len(heads) * 9:
+            continue
+        for (r, x), ln in zip(ints, lens):
+            addr = _rowcol_to_a1(start_row + r, start_col + c)
+            if ln != mode and addr not in already:
+                issues.append({
+                    "cell": addr,
+                    "severity": "warning",
+                    "type": "outlier_value",
+                    "msg": f"値 {int(x)} は桁数が列と違います（同じ列の番号は {mode} 桁がそろっています・桁欠け・入力ミスの疑い）",
+                    "value": x
+                })
 
     return issues
 

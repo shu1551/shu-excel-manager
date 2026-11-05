@@ -325,7 +325,7 @@ def collect_all(wb, only_sheet=None):
             continue
         r0, c0, fa, f1, fv = g
         fvs = _err_text(fv)
-        iss = va.check_formula_linter(fa, f1, fvs, r0 - 1, c0 - 1) + va.check_data_cleaner(fvs, r0 - 1, c0 - 1)
+        iss = va.check_formula_linter(fa, f1, fvs, r0 - 1, c0 - 1) + va.check_data_cleaner(fvs, r0 - 1, c0 - 1, fa)
         fml = set()
         for i, row in enumerate(fa):
             for j, x in enumerate(row):
