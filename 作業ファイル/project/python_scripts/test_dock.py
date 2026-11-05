@@ -209,3 +209,27 @@ def test_orphan_only_lonely_pattern_20261106():
     fml = [('S', 'B1', '=A1*2'), ('S', 'B2', '=A2*2'), ('S', 'B3', '=A3*7')]
     out = vd.find_orphan_formulas(fml, {'S': (1, 1, fa, fv, r1)})
     assert [o['cell'] for o in out] == ['B3']
+
+
+def test_principle_formula_kinds_20261106():
+    fm = [("S", "A1", "=SUM(Jan:Dec!B2)"), ("S", "A2", "=SUM(Sheet1!A1:B2)"), ("S", "A3", "=SUM('Q1:Q4'!B2)"),
+          ("S", "A4", "=[Book1.xlsx]Sheet1!A1+1"), ("S", "A5", "='C:\d\[b.xls]S'!A1"), ("S", "A6", "=[1]Sheet1!A1"),
+          ("S", "A7", "=Tbl[Col]+1"), ("S", "A8", '="[x.xlsx] a:b!c"'), ("S", "A9", "=A1:B2"),
+          ("S", "A10", "=" + "+".join(["A1"] * 120)), ("S", "A11", "=" + "IF(A1," * 8 + "1" + ",2)" * 8),
+          ("S", "A12", "=IF(A1>0,1,2)")]
+    got = {}
+    for i in vd.formula_principle_issues(fm):
+        got.setdefault(i['cell'], set()).add(i['type'])
+    assert got == {"A1": {"three_d_reference"}, "A3": {"three_d_reference"}, "A4": {"external_link"},
+                   "A5": {"external_link"}, "A6": {"external_link"}, "A10": {"long_formula"},
+                   "A11": {"long_formula"}}
+
+
+def test_principle_structure_kinds_20261106():
+    vals = [[f"r{i}", i] for i in range(10)]
+    # 縦結合: A2:A3（同じ列に明細 8 個）→ 言う。横だけ結合・明細の無い列の縦結合は言わない
+    out = vd.structure_principle_issues("S", -1, [(2, 1, 3, 1), (1, 1, 1, 2), (2, 5, 4, 5)], [], [], vals, 1, 1)
+    assert [i['type'] for i in out] == ['merged_cells'] and out[0]['cell'] == 'A2'
+    out = vd.structure_principle_issues("S", 2, [], [3], [5], vals, 1, 1)
+    assert [i['type'] for i in out] == ['hidden_content'] * 3
+    assert vd.structure_principle_issues("S", -1, [], [], [], vals, 1, 1) == []

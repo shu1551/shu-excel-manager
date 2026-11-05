@@ -22,6 +22,8 @@ _TYPE_LABEL = {
     'value_in_formula_column': '式の列に値', 'hidden_whitespace': '隠れ空白', 'text_number': '文字列の数字',
     'outlier_value': '外れ値', 'outlier': '外れ値',
     'text_date': '文字の日付', 'duplicate_cf': '重複した条件付き書式', 'orphan_formula': '孤立した式',
+    'merged_cells': '縦の結合セル', 'hidden_content': '隠した中身', 'three_d_reference': '3-D 参照',
+    'external_link': '外部ブック参照', 'long_formula': '長い式',
 }
 _SEV = {'critical': '重大', 'warning': '警告', 'info': '気づき'}
 
@@ -352,6 +354,9 @@ def refs_of(formula, here):
 _DYNAMIC_RE = re.compile(r'\b(?:INDIRECT|OFFSET)\s*\(|\[', re.I)
 
 
+ORPHAN_EMIT = False
+
+
 def find_orphan_formulas(formulas, grids, extra_text=(), tables=(), skip=False):
     """孤立した式（純 Python）。
     formulas: [(シート, 番地, 式)]・grids: {シート: (r0, c0, 式の格子, 値の格子)}・extra_text: [(シート, 式の文字)]
@@ -421,6 +426,121 @@ def find_orphan_formulas(formulas, grids, extra_text=(), tables=(), skip=False):
         out.append({'sheet': sh, 'cell': a, 'severity': 'info', 'type': 'orphan_formula', 'formula': f,
                     'msg': "この式の結果は、ほかのどの式・名前・グラフにも使われていません（合計にも入っていません）"})
     return out
+
+
+# ----------------------------------------------------------------
+# 「39 の原則」から足した型（2026-11-06）。式の文字・格子・結合/非表示の事実だけで決まるもの（純 Python）
+# ----------------------------------------------------------------
+
+_STR_RE = re.compile(r'"(?:[^"]|"")*"')
+# 3-D 参照: Sheet1:Sheet3!A1 / 'Jan:Dec'!B2（シート名の範囲）。A1:B2 の範囲や Sheet1!A1:B2 は含まない
+_3D_RE = re.compile(r"(?<![\w!.'])(?:'[^'!\[\]]+:[^'!\[\]]+'|[A-Za-z_][\w.]*:[A-Za-z_][\w.]*)!(?=\$?[A-Z]{1,3}\$?\d|\$?[A-Z]{1,3}:|\$?\d+:)")
+# 外部ブック参照: [Book.xlsx]Sheet!A1 / 'C:\dir\[Book.xls]Sheet'!A1 / [1]Sheet!A1（構造化参照 Tbl[列] は語の直後なので当たらない）
+_EXT_RE = re.compile(r"\[[^\]\[]+\.(?:xls[xmb]?|xlam|xla)\]|(?<![\w\]\)])\[\d+\](?=[A-Za-z_'])", re.IGNORECASE)
+LONG_FORMULA_CHARS = 300
+LONG_FORMULA_DEPTH = 8
+
+
+def _formula_depth(f):
+    d = m = 0
+    for ch in _STR_RE.sub('""', f):
+        if ch == '(':
+            d += 1
+            m = max(m, d)
+        elif ch == ')':
+            d -= 1
+    return m
+
+
+def formula_principle_issues(formulas):
+    """formulas: [(シート, 番地, 式)] → 原則 13（読める式）・26（単純な範囲＝3-D 参照を使わない）・31（外部参照は控えめに）。"""
+    out = []
+    for sh, a, f in formulas:
+        if not isinstance(f, str) or not f.startswith('='):
+            continue
+        t = _STR_RE.sub('""', f)
+        if _3D_RE.search(t):
+            out.append({'sheet': sh, 'cell': a, 'severity': 'info', 'type': 'three_d_reference', 'formula': f,
+                        'msg': "複数シートをまたぐ範囲（3-D 参照）です＝間にシートを挿入・移動すると集計対象が黙って変わります"})
+        if _EXT_RE.search(t):
+            out.append({'sheet': sh, 'cell': a, 'severity': 'info', 'type': 'external_link', 'formula': f,
+                        'msg': "ほかのブックを参照する式です＝リンク先が移動・改名・未更新だと古い値のまま、または壊れます"})
+        n, dp = len(f), _formula_depth(f)
+        if n >= LONG_FORMULA_CHARS or dp >= LONG_FORMULA_DEPTH:
+            why = f"{n} 文字" if n >= LONG_FORMULA_CHARS else f"かっこが {dp} 重"
+            out.append({'sheet': sh, 'cell': a, 'severity': 'info', 'type': 'long_formula', 'formula': f,
+                        'msg': f"式が長く複雑です（{why}）＝途中の計算を別のセルに分けると読めて検算できます"})
+    return out
+
+
+def structure_principle_issues(sheet, vis, merged, hidden_cols, hidden_rows, grid_vals, r0, c0):
+    """原則 16（結合しない）・17（隠すより保護）。純 Python（COM の事実を引数で受ける）。
+    vis: -1 表示・0 非表示・2 VeryHidden。merged: [(r1, c1, r2, c2)]（シートの絶対行列・1 始まり）。
+    hidden_cols / hidden_rows: 値か式の入った非表示の列番号・行番号（フィルタ・グループ化の折りたたみは除いて渡す）。"""
+    import vbam_audit as va
+    out = []
+    if vis in (0, 2):
+        out.append({'sheet': sheet, 'cell': 'A1', 'severity': 'info', 'type': 'hidden_content',
+                    'msg': ("シートが VeryHidden（通常の操作では再表示できない）です" if vis == 2 else "シートが非表示です")
+                           + "＝隠すより、数式のセルをロックしてシートを保護する"})
+    for c in hidden_cols:
+        out.append({'sheet': sheet, 'cell': va._rowcol_to_a1(max(r0 - 1, 0), c - 1), 'severity': 'info',
+                    'type': 'hidden_content', 'msg': "値・式の入った列が非表示です＝隠すより、数式のセルをロックしてシートを保護する"})
+    for r in hidden_rows:
+        out.append({'sheet': sheet, 'cell': va._rowcol_to_a1(r - 1, max(c0 - 1, 0)), 'severity': 'info',
+                    'type': 'hidden_content', 'msg': "値・式の入った行が非表示です＝隠すより、数式のセルをロックしてシートを保護する"})
+
+    def filled(r, c):
+        i, j = r - r0, c - c0
+        return 0 <= i < len(grid_vals) and 0 <= j < len(grid_vals[i]) and grid_vals[i][j] not in (None, '')
+    for r1, c1, r2, c2 in merged:
+        if r2 <= r1:                       # 縦に結合していない（見出し・タイトルの横結合は言わない）
+            continue
+        inside = {(r, c) for r in range(r1, r2 + 1) for c in range(c1, c2 + 1)}
+        col_n = sum(1 for r in range(r0, r0 + len(grid_vals)) if (r, c1) not in inside and filled(r, c1))
+        if col_n < 5:                      # 同じ列に表の明細が無い＝帳票の入力欄・ラベル。並べ替え・フィルタの対象ではない
+            continue
+        out.append({'sheet': sheet, 'cell': va._rowcol_to_a1(r1 - 1, c1 - 1), 'severity': 'info', 'type': 'merged_cells',
+                    'msg': "表の列の途中で縦にセルを結合しています＝並べ替え・絞り込み・コピーが効かなくなります（「選択範囲の中央」で代用できます）"})
+    return out
+
+
+def _structure_facts(ws, r0, c0, nr, nc, fa, fv):
+    """COM で結合・非表示の事実を集める → (vis, merged, hidden_cols, hidden_rows)。読めなければ空。"""
+    vis, merged, hc, hr = -1, [], [], []
+    try:
+        vis = int(ws.Visible)
+    except Exception:
+        pass
+
+    def live(x):
+        return x not in (None, '')
+    try:
+        for j in range(nc):
+            col = ws.Columns(c0 + j)
+            if col.Hidden and int(col.OutlineLevel) <= 1 and any(live(row[j]) for row in fv if j < len(row)):
+                hc.append(c0 + j)
+    except Exception:
+        pass
+    try:
+        if not ws.AutoFilterMode and nr <= 3000:
+            for i in range(nr):
+                if any(live(x) for x in fv[i]):
+                    rw = ws.Rows(r0 + i)
+                    if rw.Hidden and int(rw.OutlineLevel) <= 1:
+                        hr.append(r0 + i)
+    except Exception:
+        pass
+    try:
+        import vbam_view as vv
+        areas, skipped = vv._merged_areas_in_range(ws.UsedRange)
+        for ad in areas or []:
+            m = re.match(r'\$?([A-Z]+)\$?(\d+)(?::\$?([A-Z]+)\$?(\d+))?$', ad)
+            if m and m.group(3):
+                merged.append((int(m.group(2)), _col_n(m.group(1)), int(m.group(4)), _col_n(m.group(3))))
+    except Exception:
+        pass
+    return vis, merged, hc, hr
 
 
 # ----------------------------------------------------------------
@@ -524,6 +644,11 @@ def collect_all(wb, only_sheet=None):
                     except Exception:
                         pass
         sheet_issues[ws.Name] = [i for i in iss if not (i.get('type') == 'outlier_value' and i.get('cell') in fml)]
+        try:
+            _vis, _mg, _hc, _hr = _structure_facts(ws, r0, c0, len(fa), len(fa[0]) if fa else 0, fa, fvs)
+            sheet_issues[ws.Name] += structure_principle_issues(ws.Name, _vis, _mg, _hc, _hr, fvs, r0, c0)
+        except Exception:
+            pass
         if _has_error(fv):
             try:
                 notes = vc.cause_notes(fa, fv, r0, c0, names, udfs, nv)
@@ -531,6 +656,11 @@ def collect_all(wb, only_sheet=None):
                     causes.append((ws.Name, notes))
             except Exception:
                 pass
+    try:
+        for it in formula_principle_issues(formulas):
+            sheet_issues.setdefault(it.pop('sheet'), []).append(it)
+    except Exception:
+        pass
     try:
         for it in cf_duplicate_issues(d.get('cf')):
             sh_ = it.pop('sheet')
@@ -544,7 +674,8 @@ def collect_all(wb, only_sheet=None):
             extra += _chart_refs(wb)
             gr = {n_: (g_[0], g_[1], g_[2], g_[4], g_[3]) for n_, g_ in grid_cache.items() if g_ is not None}
             skip = len(gr) < len(grid_cache) or len(formulas) > 150000 or _has_macros(wb)
-            for it in find_orphan_formulas(formulas, gr, extra, d.get('tables') or [], skip):
+            # 孤立した式は、実物 27 件（290 冊）が全部出力欄（比率・合計・見出しの写し）で本物 0。拾える形（単体の補助セル）の実例が無く、出すと誤爆になるため既定では出さない（2026-11-06）
+            for it in (find_orphan_formulas(formulas, gr, extra, d.get('tables') or [], skip) if ORPHAN_EMIT else []):
                 sheet_issues.setdefault(it.pop('sheet'), []).append(it)
     except Exception:
         pass

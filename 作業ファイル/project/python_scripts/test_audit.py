@@ -1063,3 +1063,63 @@ def test_en_remaining_fp_types_20261106():
     r1 = [[5], [6], [7], ["=AVERAGE(R[-3]C:R[-1]C)"], ["=(R[-4]C+R[-3]C+R[-2]C)/3"]]
     vals = [[5], [6], [7], [6], [6]]
     assert not [i for i in va.check_formula_linter(fa, r1, vals, 0, 0) if i["type"] == "omitted_sum_range"]
+
+
+def test_seiri_dock_autofix_wiring():
+    """seiri の先撃ち: dock の隠れ空白・文字の数字だけ直し、先頭ゼロ・数式のセル・その他は変えない（2026-11-06）。"""
+    import inspect
+
+    class Cell:
+        def __init__(self, v):
+            self.Value = v
+            self.HasFormula = isinstance(v, str) and v.startswith("=")
+
+    class UR:
+        Row, Column = 1, 1
+
+        def __init__(self, grid):
+            self.grid = grid
+            self.Rows = type("X", (), {"Count": len(grid)})
+            self.Columns = type("X", (), {"Count": len(grid[0])})
+
+        @property
+        def Value2(self):
+            return tuple(tuple(c.Value for c in r) for r in self.grid)
+
+        Formula = property(lambda s: s.Value2)
+        FormulaR1C1 = property(lambda s: s.Value2)
+
+    rows = [
+        ["商品", "単価", "メモ"],
+        ["りんご ", "120", "あ"],
+        ["みかん", " 80", "い"],
+        ["ぶどう", "0123", "う"],
+        ["もも", "300", "え"],
+        ["なし", "250", "お"],
+    ]
+    grid = [[Cell(v) for v in r] for r in rows]
+
+    class WS:
+        UsedRange = UR(grid)
+
+        def Range(self, a):
+            col = ord(a[0]) - 65
+            return grid[int(a[1:]) - 1][col]
+
+    ws = WS()
+    before = [[c.Value for c in r] for r in grid]
+    fc = va.seiri_dock_autofix(ws, nv=True)
+    after = [[c.Value for c in r] for r in grid]
+    assert fc is not None
+    changed = {(i, j) for i in range(len(before)) for j in range(len(before[0])) if before[i][j] != after[i][j]}
+    # 変わるのは、dock が指摘する隠れ空白・文字の数字のセルだけ
+    flagged = {va._a1_to_rowcol(i["cell"]) for i in va.scan_range_issues(UR([[Cell(v) for v in r] for r in rows]), 6, 3)[0]
+               if i["type"] in ("hidden_whitespace", "text_number")}
+    assert changed <= {(r, c) for r, c in flagged}
+    assert after[3][1] == "0123"          # 先頭ゼロは文字のまま
+    assert fc["total"] == len(changed)
+
+    # 配線: cmd_seiri が気づきの棚（_seiri_autofix）の前に呼ぶ
+    src = inspect.getsource(vv.cmd_seiri)
+    assert "seiri_dock_autofix" in src
+    assert src.index("seiri_dock_autofix") < src.index("_seiri_autofix(xl, wb, ws)")

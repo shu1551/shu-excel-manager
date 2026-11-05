@@ -2902,6 +2902,13 @@ def cmd_seiri(args):
         _split("依頼の棚実行")
         # 気づき（重複行・空行・消えた先頭のゼロ・空白の揺れ・文字の日付・式のずれ）で棚が直せる手は、報告に並べずにここで撃つ
         # （2026-09-25 shu「検知した定型の異常を AI への宿題として突き返さず、seiri がその場でやり切る」）
+        # dock が見つけた隠れ空白・文字の数字だけ直す（diagnose --fix と同じ apply_audit_fixes・2026-11-06）
+        try:
+            if not on_pivot:
+                from vbam_audit import seiri_dock_autofix
+                seiri_dock_autofix(ws, nv=nv)
+        except Exception as e:
+            print(f"dock の自動修正を撃てませんでした: {e}（残りとして直す）")
         try:
             if not on_pivot:
                 auto_fired, tried = _seiri_autofix(xl, wb, ws)

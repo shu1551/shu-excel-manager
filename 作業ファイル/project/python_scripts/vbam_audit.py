@@ -790,7 +790,8 @@ def check_formula_linter(
                 # 横の比べで、そのセルと同じ形の式が同じ列の上下にも 2 つ以上ある＝列ごとに役目のある表（LEN・SUBSTITUTE・LEN が
                 # 並ぶ作業列）で、行ごとに左右と形が違うのは当たり前（2026-11-06 英語の台帳: 列構造表の行方向の誤爆 3 件）。
                 # コピペミスなら、その形は列の中で自分だけ（縦の比べで拾う）
-                if along == "row":
+                # （1 つの番地を写すだけの式 =+F6 が列に並ぶのは作業列ではなく、横のコピーミスの本命。e025 の見落とし 5 件）
+                if along == "row" and not _is_pure_ref(pat):
                     same_in_col = 0
                     for rr in range(num_rows):
                         if rr == r or rr >= len(formulas_r1c1) or c >= len(formulas_r1c1[rr]):
@@ -2260,6 +2261,60 @@ def _diagnose_backup(wb):
         return None
 
 
+def scan_range_issues(rng, n_rows, n_cols):
+    """範囲を一括で読んで診断する → (指摘の一覧, 値の 2 次元リスト)。cmd_diagnose と seiri の先撃ちが同じ物を使う。"""
+    start_row = int(rng.Row) - 1
+    start_col = int(rng.Column) - 1
+    # 高速一括読み取り（COMラウンドトリップを1回に集約）
+    val_raw = rng.Value2 if hasattr(rng, 'Value2') else rng.Value
+    form_raw = rng.Formula
+    form_r1c1_raw = rng.FormulaR1C1
+
+    values = to_2d_list(val_raw, n_rows, n_cols)
+    formulas = to_2d_list(form_raw, n_rows, n_cols)
+    formulas_r1c1 = to_2d_list(form_r1c1_raw, n_rows, n_cols)
+
+    # 静的解析とデータクレンジングの実行
+    f_issues = check_formula_linter(formulas, formulas_r1c1, values, start_row, start_col)
+    d_issues = check_data_cleaner(values, start_row, start_col)
+    # 外れ値は手で入れた値だけ（式のセルは元の値の外れを重ねて言うだけ・2026-09-23）
+    fml_cells = {_rowcol_to_a1(start_row + i, start_col + j)
+                 for i, row in enumerate(formulas or []) for j, v in enumerate(row or [])
+                 if isinstance(v, str) and v.startswith("=")}
+    d_issues = [i for i in d_issues if not (i.get("type") == "outlier_value" and i.get("cell") in fml_cells)]
+    return f_issues + d_issues, values
+
+
+def seiri_dock_autofix(ws, nv=False):
+    """seiri の先撃ち: dock（diagnose）が見つけた隠れ空白・文字の数字だけを apply_audit_fixes で直す。
+
+    新しい修正ロジックは持たない（先頭ゼロ・数式のセル・番号の列は apply_audit_fixes が触らない）。
+    控えは seiri が agent_backup で取ってある（戻すのは agent --undo）。→ fixed_counts か None（走査できなかった）。
+    """
+    try:
+        rng = ws.UsedRange
+        n_rows, n_cols = int(rng.Rows.Count), int(rng.Columns.Count)
+        if n_rows * n_cols > 200000:
+            return None
+        issues, values = scan_range_issues(rng, n_rows, n_cols)
+        todo = [i for i in issues if i.get("type") in ("hidden_whitespace", "text_number")]
+        if not todo:
+            return {"hidden_whitespace": 0, "text_number": 0, "total": 0}
+        res = apply_audit_fixes(ws, issues, id_columns_of(values, int(rng.Column) - 1))
+    except Exception:
+        return None
+    fc = res["fixed_counts"]
+    if fc["total"]:
+        print(f"dock の指摘を直しました: 空白除去 {fc['hidden_whitespace']}・数値化 {fc['text_number']}"
+              "（先頭ゼロ・数式のセル・番号の列は触っていません）")
+        if not nv:
+            for d in res["details"][:8]:
+                print(d)
+            if len(res["details"]) > 8:
+                print(f"  …ほか {len(res['details']) - 8} 件")
+    return fc
+
+
 def cmd_diagnose(args):
     """Excel 表・シートの数式＆データ総合監査を実行する: diagnose [excel_file] [範囲|シート名] [--json] [--fix]"""
     target_file, rest = parse_target_and_rest(args.posargs)
@@ -2293,24 +2348,7 @@ def cmd_diagnose(args):
     start_row = int(rng.Row) - 1
     start_col = int(rng.Column) - 1
 
-    # 高速一括読み取り（COMラウンドトリップを1回に集約）
-    val_raw = rng.Value2 if hasattr(rng, 'Value2') else rng.Value
-    form_raw = rng.Formula
-    form_r1c1_raw = rng.FormulaR1C1
-
-    values = to_2d_list(val_raw, n_rows, n_cols)
-    formulas = to_2d_list(form_raw, n_rows, n_cols)
-    formulas_r1c1 = to_2d_list(form_r1c1_raw, n_rows, n_cols)
-
-    # 静的解析とデータクレンジングの実行
-    f_issues = check_formula_linter(formulas, formulas_r1c1, values, start_row, start_col)
-    d_issues = check_data_cleaner(values, start_row, start_col)
-    # 外れ値は手で入れた値だけ（式のセルは元の値の外れを重ねて言うだけ・2026-09-23）
-    fml_cells = {_rowcol_to_a1(start_row + i, start_col + j)
-                 for i, row in enumerate(formulas or []) for j, v in enumerate(row or [])
-                 if isinstance(v, str) and v.startswith("=")}
-    d_issues = [i for i in d_issues if not (i.get("type") == "outlier_value" and i.get("cell") in fml_cells)]
-    all_issues = f_issues + d_issues
+    all_issues, values = scan_range_issues(rng, n_rows, n_cols)
 
     # --fix: 人の値を書き換える手＝ -y（依頼に承認の語があるときだけ付ける）と控えを要る（2026-09-17）
     fix_result = None
