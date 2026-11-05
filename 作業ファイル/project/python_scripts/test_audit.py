@@ -805,3 +805,51 @@ def test_shu_keisanhyo_20261105():
     assert all(i["severity"] == "info" and "固定値 10（引く）" in i["msg"] and "'-10'" not in i["msg"] for i in hc)
     # 点数: 同じ式のコピー 5 行の気づきは 1 回（2 点）
     assert va.audit_score(hc) == 98
+
+
+def test_dockC_quiet_and_kept_cases_20261105():
+    """段 C（台帳の誤爆の型）: 見出しの年・時刻・日の並び・記入欄の番号・内訳・同じ値の刻み・初期値・別に足す番地は言わない。本物は残す。"""
+    # 文字の数字: 時刻の並び・見出しの年・日の並びは言わない
+    vals = [["0500", 1], ["0600", 2], ["0700", 3], ["0800", 4], ["1000", 5]]
+    assert not [i for i in va.check_data_cleaner([["x", "1998", "Total"], ["a", 5, 6], ["b", 7, 8]], 0, 0) if i["type"] == "text_number"]
+    seq = [[13.0, 5.0], [14.0, 6.0], [15.0, 7.0], [16.0, 8.0], ["17", 9.0], [18.0, 1.0]]
+    assert not [i for i in va.check_data_cleaner(seq, 0, 0) if i["type"] == "text_number"]
+    # 本物: 数の列に 1 つだけ紛れた文字の数字は言う
+    amounts = [[120.5, 3.0], [98.0, 4.0], ["77", 5.0], [310.0, 6.0], [41.0, 7.0]]
+    assert [i["cell"] for i in va.check_data_cleaner(amounts, 0, 0) if i["type"] == "text_number"] == ["A3"]
+    # 外れ値: 同じ値が 2 つの刻みは言わない
+    ticks = [[5.1], [5.0], [4.9], [4.8], [4.9], [-0.005], [-0.005]]
+    assert not [i for i in va.check_data_cleaner(ticks, 0, 0) if i["type"] == "outlier_value"]
+    # 内訳: 真上の合計に合う並びは桁違いと言わない
+    brk = [[8000000.0], [10.0], [7000000.0], [450000.0], [550000.0], [6000000.0]]
+    assert not [i for i in va.check_data_cleaner(brk, 0, 0) if i["type"] == "outlier_value" and i["cell"] in ("A4", "A5")]
+    # 集計漏れ: =F5+F38 と別の式が足している先頭の残高は言わない
+    fa = [["", "=SUM(B3:B6)+B7", ""], ["", "=B1+B2", ""]]
+    # 隣と違う式: 小計の行（同じ列だけを足す式が同じ行にある）の差は言わない
+    fa = [["=B2", "=SUM(B$5,B$6)", "=SUM(C$5,C$6)"], ["=B3", "=B3*2", "=B3"]]
+    fr = [["=R[1]C", "=SUM(R5C,R6C)", "=SUM(R5C,R6C)"], ["=R[1]C", "=R[0]C*2", "=R[0]C"]]
+    assert not [i for i in va.check_formula_linter(fa, fr, [[1, 2, 3], [4, 5, 6]], 0, 0) if i["type"] == "inconsistent_formula"]
+
+
+def test_text_number_speaks_for_csv_amounts_and_stays_quiet_for_codes_20261105():
+    """段 C の追加確認: 文字の数字が言われるべき型（CSV の金額の列）と、言わなくてよい型（郵便番号・電話・年の見出し）。"""
+    amt = ['1200', '3450', '780', '15200', '99', '5400', '23100', '410', '8800', '670']
+    nums = [100.0, 250.0, 80.0, 310.0, 45.0, 60.0, 275.0, 90.0, 120.0, 33.0]
+
+    def tn(grid):
+        return [i["cell"] for i in va.check_data_cleaner(grid, 0, 0) if i["type"] == "text_number"]
+    # (a) 見出しの下に金額が全部文字・隣は本物の数
+    assert tn([['品名', '金額', '数量']] + [[f'商品{i}', amt[i], nums[i]] for i in range(10)]) == [f"B{i}" for i in range(2, 12)]
+    # (b) 文字の数字ばかりの独立した列
+    assert tn([['金額']] + [[x] for x in amt]) == [f"A{i}" for i in range(2, 12)]
+    # (c) 本物の数の列の途中に 2 個
+    assert tn([['金額']] + [[str(int(n)) if i in (3, 7) else n] for i, n in enumerate(nums)]) == ["A5", "A9"]
+    # (d) 売上の列が全部文字の数字で下に SUM（値は 0）
+    assert tn([['売上']] + [[x] for x in amt] + [[0.0]]) == [f"A{i}" for i in range(2, 12)]
+    # (e) 先頭ゼロの郵便番号・電話番号は言わない
+    assert tn([['郵便番号', '電話番号']] + [[f'{1000000 + i * 137:07d}', f'0{9012345000 + i * 7}'] for i in range(10)]) == []
+    # (f) 年の見出し行は言わない
+    assert tn([['2020', '2021', '2022', '2023', '2024']] + [[10.0 + i + j for j in range(5)] for i in range(5)]) == []
+    # 番号の列（見出しがコード・桁数がそろう）は言わない／繰り返す区分の値は言わない
+    assert tn([['勘定科目コード']] + [[f'{100000 + i * 7}'] for i in range(10)]) == []
+    assert tn([['区分', '値']] + [['1', 0.5 + i] for i in range(6)]) == []

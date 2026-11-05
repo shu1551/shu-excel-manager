@@ -254,6 +254,40 @@ def check_formula_linter(
                     for tc in range(box[2], box[3] + 1):
                         covered.setdefault(_rowcol_to_a1(tr, tc), set()).add((me, box))
 
+    # 式ごとの「1 つのセルとして指している番地」と、その逆引き（漏れと言う相手が別の式で集計のセルと一緒に使われていないかを見る）
+    formula_singles: Dict[str, set] = {}
+    ref_index: Dict[str, List[str]] = {}
+    for rr in range(num_rows):
+        for cc in range(num_cols):
+            fx = str(formulas[rr][cc] or "")
+            if not fx.startswith("="):
+                continue
+            me_a = _rowcol_to_a1(start_row + rr, start_col + cc)
+            singles = {m.group(1).upper() + m.group(2) for m in _RE_SINGLE_CELL_REF.finditer(local_ref_text(fx))}
+            if singles:
+                formula_singles[me_a] = singles
+                for t_a in singles:
+                    ref_index.setdefault(t_a, []).append(me_a)
+
+    def _sibling_shares_bound(rr, cc, side, left_c, right_c):
+        """同じ列の上下 12 マス以内の、同じ行の横集計（=SUM(D6:T6)）が、同じ側の端の列を使っているか。
+        並べた行がそろって同じ列から（まで）足しているのは作り（'前年比' の列を外す）で、1 行だけの漏れではない。"""
+        for d in (-12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12):
+            k = rr + d
+            if not (0 <= k < num_rows):
+                continue
+            m = _RE_SUM_FUNC.search(str(formulas[k][cc] or ""))
+            if not m:
+                continue
+            q1, qc1 = _a1_to_rowcol(m.group(2))
+            q2, qc2 = _a1_to_rowcol(m.group(3))
+            if q1 != q2:
+                continue
+            sl, sr = min(qc1, qc2) - start_col, max(qc1, qc2) - start_col
+            if (side == "left" and sl == left_c) or (side == "right" and sr == right_c):
+                return True
+        return False
+
     above_left: set = set()
 
     def _skip_omitted(val, target_cell, f, me=None):
@@ -261,6 +295,20 @@ def check_formula_linter(
         ほかの式の範囲が数えている数・それ自身が集計の式のセル。"""
         if val == 0:
             return True
+        if me is not None:
+            # 別の式が、漏れと言う相手とこの集計のセルを一緒に足している（=F5+F38）＝相手は集計の外で足す前の残高
+            if any(who != me and me in formula_singles.get(who, ()) for who in ref_index.get(target_cell, ())):
+                return True
+            # 集計する範囲の式が、その相手を入力に使っている（AA40=AA38*AA39 を足す SUM(AA40:AA41) の AA39）＝足すと二重になる元の数
+            for mm in _RE_RANGE_REF.finditer(local_ref_text(f)):
+                q1, qc1 = _a1_to_rowcol(mm.group(1) + mm.group(2))
+                q2, qc2 = _a1_to_rowcol(mm.group(3) + mm.group(4))
+                if (abs(q2 - q1) + 1) * (abs(qc2 - qc1) + 1) > 400:
+                    continue
+                for tr_ in range(min(q1, q2), max(q1, q2) + 1):
+                    for tc_ in range(min(qc1, qc2), max(qc1, qc2) + 1):
+                        if target_cell in formula_singles.get(_rowcol_to_a1(tr_, tc_), ()):
+                            return True
         # 数えているのが「重ならない別の塊」の式のときだけ（累計の列 =SUM($A$2:A4) は隣の行の式と範囲が重なる＝
         # 1 行だけ範囲が短い式は今までどおり漏れとして出す）
         mine = [(a_r, b_r, a_c, b_c) for mm in _RE_RANGE_REF.finditer(local_ref_text(f))
@@ -431,7 +479,8 @@ def check_formula_linter(
                     if 0 <= sum_row < num_rows:
                         # 直右のセル漏れチェック
                         omitted_right = right_c + 1
-                        if 0 <= omitted_right < num_cols and omitted_right != c and r == sum_row and omitted_right < c:
+                        if (0 <= omitted_right < num_cols and omitted_right != c and r == sum_row and omitted_right < c
+                                and not _sibling_shares_bound(r, c, "right", left_c, right_c)):
                             val_right = values[sum_row][omitted_right]
                             target_cell = _rowcol_to_a1(start_row + sum_row, start_col + omitted_right)
                             if (isinstance(val_right, (int, float)) and not isinstance(val_right, bool)
@@ -448,7 +497,8 @@ def check_formula_linter(
                         # 直左のセル漏れチェック
                         omitted_left = left_c - 1
                         if (0 <= omitted_left < num_cols and omitted_left != c and r == sum_row and c > right_c
-                                and not _copied(r, c, False)):
+                                and not _copied(r, c, False)
+                                and not _sibling_shares_bound(r, c, "left", left_c, right_c)):
                             val_left = values[sum_row][omitted_left]
                             target_cell = _rowcol_to_a1(start_row + sum_row, start_col + omitted_left)
                             if (isinstance(val_left, (int, float)) and not isinstance(val_left, bool)
@@ -513,6 +563,32 @@ def check_formula_linter(
                 if _only_day_counts_differ(pat, before):
                     continue
                 r, c = (t, k) if along == "col" else (k, t)
+                # 横の比べで、同じ列のセルだけを足す・写す式（=C17+C34・=D224）は、列ごとの集計・転記の行で、左右と形が違って当たり前
+                # （自分の行を横に足す範囲 =SUM(RC[-10]:RC) を含む式は別の話で、小計の行の差としては外さない）
+                # （同じ行の別の列を写す式どうしで列だけがずれた =B2 と =C2 は、横のコピーミスの本命なので外さない）
+                same_row_copy = (_is_pure_ref(pat) and _is_pure_ref(before) and pat.split('C')[0] == before.split('C')[0])
+                if along == "row" and not same_row_copy and (_is_column_only(pat) or (_is_column_only(before) and ":" not in pat)):
+                    continue
+                # 縦の比べで、同じ行に同じ列だけを足す式（=SUM(D$82,D$87,…)・=AI39+AI42+AI45）がある行は小計の行
+                # （小計の行の隣の式が明細と形が違うのは当たり前。2026-11-05 dock の台帳: 小計ブロック頭の差額の式）
+                if along == "col" and any(
+                        cc != c and cc < len(formulas_r1c1[r]) and _is_column_only(str(formulas_r1c1[r][cc] or ""))
+                        for cc in range(num_cols)):
+                    continue
+                # 他のシート・他のブックの決まった番地を直に指す式（=+Lonestar!F43・='[外.xls]S'!R51C37）は、行ごとに引き先を選んだ式
+                # （相対の参照が 1 つも無い）。引き先の並びに決まりが無く、隣と形が違って当たり前
+                if "!" in pat and not re.search(r"[RC]\[", pat):
+                    continue
+                # 同じシートの式が並ぶ列に、他のシート・ブックを指す式が 1 つ混じるのは、その行だけ別の所から引く作り
+                if "!" in pat and "!" not in before:
+                    continue
+                # 1 つの番地を写すだけの式（=+K48）が並び、写す元の行の差がまちまち＝行ごとに写す元を選んでいる列は、形が違って当たり前
+                # （写す元の行の差がそろった中の列のずれ =+F6 が =+G6 の列に混ざるのは、拾う）
+                if _is_pure_ref(pat) and _is_pure_ref(before) and pat.split('C')[0] != before.split('C')[0]:
+                    continue
+                # SUM に飛び飛びの範囲（=SUM(L19:M19,N19:P19)）を指定した式は、足す所を選んだ式
+                if re.match(r"^=\+?SUM\(", pat, re.I) and "," in pat:
+                    continue
                 addr = _rowcol_to_a1(start_row + r, start_col + c)
                 if addr in flagged_inc:
                     continue
@@ -528,11 +604,22 @@ def check_formula_linter(
                 })
 
     # 4. 式の列に数字の直書き（上下は =E2*F2 なのに G7 だけ 5000）
-    issues.extend(check_values_in_formula_columns(formulas, formulas_r1c1, values, start_row, start_col))
+    # 別の式が「=+Q35」とそのセル 1 つだけを写している数は、次の期へ繰り越す初期値・入力欄で、紛れた直書きではない
+    # （2026-11-05 dock の台帳: 月のブロックの頭に置いた初期値 100・52・122 を式の列の直書きと言う誤爆）。
+    # =D52-D40 のように計算に使うだけの式は数えない（その D52 は明細の列に紛れた直書きの本物）
+    referenced = set()
+    for _row in formulas:
+        for _fx in _row:
+            if isinstance(_fx, str) and _fx.startswith("="):
+                _m = re.fullmatch(r"=\s*\+?\s*\$?([A-Za-z]{1,3})\$?([1-9][0-9]{0,6})\s*", _fx)
+                if _m:
+                    referenced.add(_m.group(1).upper() + _m.group(2))
+    issues.extend(check_values_in_formula_columns(formulas, formulas_r1c1, values, start_row, start_col,
+                                                  referenced=referenced))
     return issues
 
 
-def check_values_in_formula_columns(formulas, formulas_r1c1, values, start_row, start_col, min_rows=3):
+def check_values_in_formula_columns(formulas, formulas_r1c1, values, start_row, start_col, min_rows=3, referenced=None):
     """式の列の中に紛れた数字の直書き（純 Python）。
 
     2026-09-23 の通しの実測: 金額の列（=E2*F2 …）の G7 に 5000 が直書きされていたのを、
@@ -577,8 +664,12 @@ def check_values_in_formula_columns(formulas, formulas_r1c1, values, start_row, 
                 continue
             v = values[r][c] if r < len(values) and c < len(values[r]) else None
             if isinstance(v, (int, float)) and not isinstance(v, bool):
+                a1 = _rowcol_to_a1(start_row + r, start_col + c)
+                # 0 の手入力は「無し」の印（未稼働の行）で、直書きの数字の誤りではない。別の式が指している数は入力欄
+                if v == 0 or (referenced and a1 in referenced):
+                    continue
                 out.append({
-                    "cell": _rowcol_to_a1(start_row + r, start_col + c),
+                    "cell": a1,
                     "severity": "warning",
                     "type": "value_in_formula_column",
                     "msg": f"式の列に数字 {v:g} が直書きされています（他 {len(rows)} 行は {first_a1} の形）",
@@ -594,6 +685,11 @@ _COL_TOTAL_RE = re.compile(r'^=(?:(?:SUM|AVERAGE|COUNTA?|MAX|MIN|MEDIAN)\(|SUBTO
 
 
 _RE_R1C1_REF = re.compile(r'(?<![A-Za-z0-9_])R(\[-?\d+\]|\d+)?C(\[-?\d+\]|\d+)?(?![A-Za-z0-9_(])')
+
+
+def _is_pure_ref(f_r1c1):
+    """=+K48 のように、別の行の番地 1 つだけを写す式か（R1C1 の字面。同じ行の =+F6 は横に伸ばす式なので除く）。"""
+    return bool(re.fullmatch(r"=\+?R(\[-?[1-9]\d*\]|\d+)C(\[-?\d+\]|\d+)?", str(f_r1c1 or "").replace(" ", "")))
 
 
 def _is_column_only(f_r1c1):
@@ -696,6 +792,123 @@ def check_data_cleaner(
         rows = col_num_rows[c]
         return len(rows) >= 2 and rows[0] > r
 
+    def _cell(r, c):
+        return values[r][c] if 0 <= r < num_rows and 0 <= c < len(values[r]) else None
+
+    def _is_tn(x):
+        return isinstance(x, str) and bool(_RE_TEXT_NUMBER.match(x.strip()))
+
+    def _label_num(x):
+        """並びの一員になれるセル: 文字の数字、または整数の数。"""
+        if _is_tn(x):
+            return float(x.strip())
+        return float(x) if _isnum(x) and float(x).is_integer() else None
+
+    def _is_label_sequence(r, c):
+        """文字の数字が、同じ行か列の等差の並び（年 1998〜2001・時刻 0500〜1500・日 13〜23）の一員か。
+        並びは 5 つ以上、または 3 つ以上で文字の数字が 2 つ以上（数の列に 1 個だけ紛れた文字の数字は並びと見ない）。
+        （2026-11-05 dock の台帳: 見出しの年・時刻・日の番号を文字の数字と言う誤爆）"""
+        for dr, dc in ((1, 0), (0, 1)):
+            cells = [(r, c)]
+            for sgn in (-1, 1):
+                k = 1
+                while k <= 60:
+                    pos = (r + sgn * k * dr, c + sgn * k * dc)
+                    if _label_num(_cell(*pos)) is None:
+                        # 1 つ飛ばし（番号の間に空の行を挟んだ年の列 25・26・27）は並びが続く
+                        nxt = (r + sgn * (k + 1) * dr, c + sgn * (k + 1) * dc)
+                        if _cell(*pos) in (None, "") and _label_num(_cell(*nxt)) is not None:
+                            k += 1
+                            continue
+                        break
+                    cells.append(pos)
+                    k += 1
+            cells.sort()
+            me = cells.index((r, c))
+            nums = [_label_num(_cell(a, b)) for a, b in cells]
+            for i in range(0, me + 1):
+                for j in range(max(me, i + 2), len(cells)):
+                    step = nums[i + 1] - nums[i]
+                    if step == 0 or any(nums[k + 1] - nums[k] != step for k in range(i, j)):
+                        break
+                    n_text = sum(1 for a, b in cells[i:j + 1] if _is_tn(_cell(a, b)))
+                    if j - i + 1 >= 5 or n_text >= 2:
+                        return True
+        return False
+
+    def _is_form_field(r, c):
+        """行の頭が文字の見出しで、この数の左右 2 マスに本物の数が無く、上下も文字の数字でない＝「契約番号: 26372」のような記入欄。
+        （文字の数字が縦に並ぶ列は記入欄ではない＝CSV の金額の列を黙らせない）"""
+        row = values[r]
+        first = next((x for x in row if x not in (None, "")), None)
+        return (isinstance(first, str) and bool(first.strip()) and not _is_tn(first)
+                and not any(_isnum(_cell(r, c + d)) for d in (-2, -1, 1, 2))
+                and not _is_tn(_cell(r - 1, c)) and not _is_tn(_cell(r + 1, c)))
+
+    def _is_label_row(r):
+        """行に文字の見出し（数でない文字）が 2 つ以上あり、本物の数が 1 つも無い＝名前・区分・番号を並べた一覧の行
+        （'Atlanta'・'6484'・'PRIM'・'SCOTT'）。CSV の金額の列のように文字の数字だけが並ぶ行とは違う。"""
+        row = values[r]
+        return (not any(_isnum(x) for x in row)
+                and sum(1 for x in row if isinstance(x, str) and x.strip() and not _is_tn(x)) >= 2)
+
+    def _repeated_in_column(c, trimmed, r=None):
+        """同じ文字の数字が列に 3 つ以上、またはすぐ上下に同じもの（'1' の区分・'6484' の番号が行ごとに繰り返す）＝区分・番号の値で金額ではない。"""
+        if r is not None and any(isinstance(_cell(r + d, c), str) and _cell(r + d, c).strip() == trimmed for d in (-1, 1)):
+            return True      # すぐ上か下に同じ文字の数字（PRIM・SEC の行ごとに同じ番号が並ぶ）
+        return sum(1 for k in range(num_rows) if c < len(values[k]) and _is_tn(values[k][c])
+                   and values[k][c].strip() == trimmed) >= 3
+
+    def _in_id_column(c, trimmed):
+        """列の本物の数が、桁数のそろった整数（5 桁以上・5 個以上）＝番号（部門コード・契約番号）の列で、この文字も同じ桁数。
+        金額の列は桁がそろわない。"""
+        nums = [values[k][c] for k in range(num_rows) if c < len(values[k]) and _isnum(values[k][c])]
+        if len(nums) < 5 or not all(float(x).is_integer() and x > 0 for x in nums):
+            return False
+        lens = {len(str(int(x))) for x in nums}
+        return len(lens) == 1 and next(iter(lens)) >= 5 and len(trimmed) == next(iter(lens))
+
+    def _is_year_heading(r, c, trimmed):
+        """年らしい 4 桁（1900〜2100）が見出しの位置か: 行に本物の数が無い（見出しだけの行）、または上下か左右が数でない文字
+        （'FY' の下の 2001・'Total' の上の 1998）。数の列に紛れた年は言う。"""
+        if not (len(trimmed) == 4 and trimmed.isdigit() and 1900 <= int(trimmed) <= 2100):
+            return False
+        if not any(_isnum(x) for x in values[r]):
+            return True
+        for rr, cc in ((r - 1, c), (r + 1, c)):
+            x = _cell(rr, cc)
+            if isinstance(x, str) and x.strip() and not _is_tn(x):
+                return True
+        return False
+
+    _AMOUNT_HEAD = re.compile(r"金額|売上|価格|単価|料|円|額|合計|費|収入|支出|数量|amount|sales|price|cost|total|revenue|qty", re.I)
+    _ID_HEAD = re.compile(r"番号|コード|ID|No|郵便|電話|科目|型番|code|zip|tel|phone", re.I)
+
+    def _looks_like_id_column(c):
+        """文字の数字ばかりの列が番号（勘定科目・コード）の列に見えるか。見出しが金額・売上などなら金額の列（CSV 取り込みで
+        文字になった数）で、番号の列ではない。見出しが番号・コードなら番号の列。見出しで決まらなければ、桁数がそろっているか
+        （8 割以上が同じ桁数で 3 桁以上）で見る。金額は 99・780・15200 と桁がまちまち。"""
+        head = next((values[k][c] for k in range(num_rows) if c < len(values[k]) and isinstance(values[k][c], str)
+                     and values[k][c].strip() and not _RE_TEXT_NUMBER.match(values[k][c].strip())), "")
+        if _AMOUNT_HEAD.search(str(head)):
+            return False
+        if _ID_HEAD.search(str(head)):
+            return True
+        lens = [len(values[k][c].strip().lstrip("-")) for k in range(num_rows)
+                if c < len(values[k]) and _is_tn(values[k][c])]
+        if not lens:
+            return True
+        top = max(lens.count(x) for x in set(lens))
+        return top * 5 >= len(lens) * 4 and max(lens, key=lens.count) >= 3
+
+    def _stands_alone(r, c):
+        """周り 8 マスに本物の数も文字の数字も無い（集計に入れる相手がいない・文字の数字が並ぶ列の一員ではない）。ぽつんと置いた番号・区分の文字の数字は SUM の漏れにならない。"""
+        for rr in range(r - 1, r + 2):
+            for cc in range(c - 1, c + 2):
+                if (rr, cc) != (r, c) and (_isnum(_cell(rr, cc)) or _is_tn(_cell(rr, cc))):
+                    return False
+        return True
+
     for r in range(num_rows):
         for c in range(num_cols):
             v = values[r][c]
@@ -742,11 +955,15 @@ def check_data_cleaner(
                 # （2026-09-23 通しの実測 2 で伝票番号 11 セルを「SUM 集計対象外リスク」と並べていた）
                 # 列の数より上の見出しの年（'2000'）と、数より文字の数字が多い「番号の列」（勘定科目 '100061'）は咎めない
                 # （2026-11-05 dock の実測: 1,215 件のほとんどがこの 2 つ）
-                code_col = col_textnum[c] > len(col_num_rows[c])
+                code_col = col_textnum[c] > len(col_num_rows[c]) and _looks_like_id_column(c)
                 # 全角の数字（'９'）は見せるための見出しの番号で、足し算に使わない（2026-11-05 日本語の公開ブック 60 本）
                 zenkaku = bool(re.search(r"[０-９]", trimmed)) or col_zen[c]
                 if (_RE_TEXT_NUMBER.match(trimmed) and len(trimmed) <= 15 and not zenkaku
-                        and not re.fullmatch(r"0\d+", trimmed) and not code_col and not _is_header_cell(r, c)):
+                        and not re.fullmatch(r"0\d+", trimmed) and not code_col and not _is_header_cell(r, c)
+                        and not _is_label_sequence(r, c) and not _is_year_heading(r, c, trimmed) and not _stands_alone(r, c)
+                        and not _is_form_field(r, c) and not _in_id_column(c, trimmed)
+                        and not _is_label_row(r) and not _repeated_in_column(c, trimmed, r)
+                        and not (v != v.lstrip() and v.rstrip() == v)):    # 字下げした数（'    14'）は見せるための番号の見出し
                     issues.append({
                         "cell": addr,
                         "severity": "warning",
@@ -778,6 +995,57 @@ def check_data_cleaner(
     date_rows = {r for r in range(num_rows)
                  if sum(1 for x in values[r] if isinstance(x, (int, float)) and not isinstance(x, bool)
                         and float(x).is_integer() and 30000 <= x <= 60000) >= 3}
+    def _neg_in_columns(c):
+        """この列の左右 3 列にあるマイナスの数（増減・差額の表では、どの列にもマイナスが並ぶ）。"""
+        return sum(1 for k in range(max(0, c - 3), min(num_cols, c + 4)) if k != c
+                   for rr in range(num_rows) if k < len(values[rr]) and _isnum(values[rr][k]) and values[rr][k] < 0)
+
+    def _row_context_quiet(r, c, v):
+        """同じ行の中でも説明のつく値: 同じ行にほかのマイナスが 2 つ以上ある（増減の行）、または行の隣が等差の連番（1・2・3・4 の番号の見出し）。"""
+        row = values[r]
+        if v < 0 and sum(1 for k, x in enumerate(row) if k != c and _isnum(x) and x < 0) >= 2:
+            return True
+        if 0 < c < len(row) - 1 and _isnum(row[c - 1]) and _isnum(row[c + 1]):
+            return row[c] - row[c - 1] == row[c + 1] - row[c] != 0
+        return False
+
+    def _is_breakdown(r, c, v):
+        """同じ列の連続した数の並び（r を含む）の合計が、その真上の数に合う＝合計の内訳の明細（2026-11-05 dock の台帳:
+        8,294,780 の下に 447,125・1,406,895・6,440,760 と並べた内訳）。"""
+        def num(k):
+            x = values[k][c] if 0 <= k < num_rows and c < len(values[k]) else None
+            return float(x) if _isnum(x) else None
+        for a in range(max(1, r - 9), r + 1):
+            if num(a - 1) is None or num(a) is None:
+                continue
+            tot = 0.0
+            for b in range(a, min(num_rows, a + 10)):
+                if num(b) is None:
+                    break
+                tot += num(b)
+                if b >= max(r, a + 1) and abs(tot - num(a - 1)) <= abs(num(a - 1)) * 0.005 and num(a - 1) != 0:
+                    return True
+        return False
+
+    def _is_labelled_side_block(r, c):
+        """3 つ以下の数が上下を空き（数でないセル）に挟まれ、各行の左に文字の見出しがある小さな別の塊（'Demand Charge 0.81'・
+        'ACQ = 952,000'）。表の本体とは別の記入欄・控えで、本体の数と比べても桁違いの根拠にならない。"""
+        def isn(k):
+            return 0 <= k < num_rows and c < len(values[k]) and _isnum(values[k][c])
+        a = r
+        while isn(a - 1):
+            a -= 1
+        b = r
+        while isn(b + 1):
+            b += 1
+        if b - a + 1 > 3:
+            return False
+        for k in range(a, b + 1):
+            left = values[k][c - 1] if c >= 1 and c - 1 < len(values[k]) else None
+            if not (isinstance(left, str) and left.strip() and not _is_tn(left)):
+                return False
+        return True
+
     for c in range(num_cols):
         num_entries = []
         nums_seen = 0
@@ -817,10 +1085,17 @@ def check_data_cleaner(
         neg = [(r, v) for r, v in num_entries if v < 0]
         pos = [v for _, v in num_entries if v > 0]
         flagged = set()
+        # 同じ値が列に 2 つ以上ある（正規取引の刻み -0.005 が 2 行）のは打ち間違いではなく決まった値。
+        # 左右の列にもマイナスが並ぶ表（増減・前年比・差額）では、マイナスは符号の打ち間違いの根拠にならない
+        # （2026-11-05 dock の台帳: 刻み値・日本語の増減率の表）
+        dup_vals = {v for _, v in num_entries if sum(1 for _r, x in num_entries if x == v) >= 2}
+        signed_table = _neg_in_columns(c) >= 3
         # 「ぽつんと」は 2 個まで（2026-11-05 dock の実測: 410 行の値動きの列のマイナス 41 個を全部「符号の打ち間違い」と出した）
         if not signed and not sorted_col and len(pos) >= 4 and 1 <= len(neg) <= min(2, max(1, len(num_entries) // 10)):
             for r, v in neg:
                 flagged.add(r)
+                if v in dup_vals or signed_table or _row_context_quiet(r, c, v):
+                    continue
                 issues.append({
                     "cell": _rowcol_to_a1(start_row + r, start_col + c),
                     "severity": "warning",
@@ -874,6 +1149,10 @@ def check_data_cleaner(
                     far = []
                 for r, v in far:
                     if sorted_col and r not in cliff:
+                        continue
+                    if v in dup_vals or (v < 0 and signed_table) or _row_context_quiet(r, c, v):
+                        continue
+                    if _is_breakdown(r, c, v) or _is_labelled_side_block(r, c):
                         continue
                     # 表の本体から空行 3 つ以上離れて置いた数（表の下の検算・控えの数）は別の塊
                     prev_r = max((rr for rr, _x in num_entries if rr < r), default=None)

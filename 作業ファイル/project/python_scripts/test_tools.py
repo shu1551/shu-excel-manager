@@ -3522,7 +3522,16 @@ def test_diagnose_does_not_call_total_rows_copy_mistakes_and_errors_print_as_tex
     a1 = [[f"=E{6 + i}*F{6 + i}"] for i in range(20)] + [[None], ["=SUM(G6:G25)"], ["=AVERAGE(G6:G25)"], ["=E29"]]
     vals = [[1.0]] * 20 + [[None], [20.0], [1.0], [1.0]]
     issues = [i for i in au.check_formula_linter(a1, r1c1, vals, 5, 6) if i["type"] == "inconsistent_formula"]
-    assert [i["cell"] for i in issues] == ["G29"]                         # 本当に形の違う式だけ残る
+    # 2026-11-05 段 C: 4 回目の「隣と違う式」は、前後の同じ形に挟まれたぽつんと 1 つだけを言う（列の端は正当に形が違う
+    # 最終行・小計が多く誤爆した）。この表の合計・平均の行は言わず、最終行の G29 も端なので言わない
+    assert [i["cell"] for i in issues] == []
+    # 本当に形の違う式が明細の途中に挟まれていれば言う（G6:G25 の 15 行目だけ =E21）
+    r1c1b = [list(x) for x in r1c1]
+    a1b = [list(x) for x in a1]
+    r1c1b[14] = ["=RC[-2]"]
+    a1b[14] = ["=E20"]
+    issues_b = [i for i in au.check_formula_linter(a1b, r1c1b, vals, 5, 6) if i["type"] == "inconsistent_formula"]
+    assert [i["cell"] for i in issues_b] == ["G20"]
     assert vc._cell_str(-2146826281) == "#DIV/0!" and vc._cell_str(-2146826246) == "#N/A"
     assert vc._cell_str(3) == "3" and vc._cell_str(True) == "True"
 
