@@ -1123,3 +1123,12 @@ def test_seiri_dock_autofix_wiring():
     src = inspect.getsource(vv.cmd_seiri)
     assert "seiri_dock_autofix" in src
     assert src.index("seiri_dock_autofix") < src.index("_seiri_autofix(xl, wb, ws)")
+
+
+def test_circular_ignores_cell_filename_and_row():
+    """実ブック(ニュース一覧): シート名を取る式 =…CELL("filename",A1)… は自己循環ではない。本物の自己参照は残す。"""
+    from vbam_audit import check_circular_references
+    f = [['=RIGHT(CELL("filename",A1),LEN(CELL("filename",A1))-FIND("]",CELL("filename",A1)))', '=B1+1'],
+         ['=ROW(A2)', '=ROW(B2)+C2']]
+    cells = [i["cell"] for i in check_circular_references(f, 0, 0)]
+    assert cells == ["B1"]

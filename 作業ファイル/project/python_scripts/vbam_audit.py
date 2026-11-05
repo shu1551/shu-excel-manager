@@ -211,6 +211,12 @@ def _rowcol_to_a1(row: int, col: int) -> str:
     return f"{col_str}{row + 1}"
 
 
+_RE_NO_DEP_CALL = re.compile(
+    r'(?i)\bCELL\(\s*"(?:filename|address|row|col|sheet|coord)"\s*,[^()]*\)'
+    r'|\b(?:ROW|COLUMN|ROWS|COLUMNS|SHEET|SHEETS)\(\s*[^()]*\)'
+)
+
+
 def check_circular_references(
     formulas: List[List[Any]],
     start_row: int,
@@ -243,6 +249,10 @@ def check_circular_references(
             addr = _rowcol_to_a1(start_row + r, start_col + c)
             formula_map[addr] = f
             deps = set()
+            # 値を読まない関数（CELL("filename"…)・ROW・COLUMN 等）の参照は依存ではない
+            # （2026-11-06 実ブック: シート名を取る式 =…CELL("filename",A1)… を A1 の自己循環と言う誤爆 13 件）
+            # local_ref_text は文字列リテラルを空にするので、その前に落とす
+            f = _RE_NO_DEP_CALL.sub("0", f)
             f = local_ref_text(f)
 
             # 範囲参照の展開 (例: A1:A5)
