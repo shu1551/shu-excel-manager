@@ -812,8 +812,13 @@ def test_dockC_quiet_and_kept_cases_20261105():
     # 文字の数字: 時刻の並び・見出しの年・日の並びは言わない
     vals = [["0500", 1], ["0600", 2], ["0700", 3], ["0800", 4], ["1000", 5]]
     assert not [i for i in va.check_data_cleaner([["x", "1998", "Total"], ["a", 5, 6], ["b", 7, 8]], 0, 0) if i["type"] == "text_number"]
+    # 並びの途中の 1 つだけが文字の数字（通し番号・日の列）は入力の誤りとして言う（2026-11-05 段 C3: 注入テストで 9 件見落とし）
     seq = [[13.0, 5.0], [14.0, 6.0], [15.0, 7.0], [16.0, 8.0], ["17", 9.0], [18.0, 1.0]]
-    assert not [i for i in va.check_data_cleaner(seq, 0, 0) if i["type"] == "text_number"]
+    assert [i["cell"] for i in va.check_data_cleaner(seq, 0, 0) if i["type"] == "text_number"] == ["A5"]
+    # ブロックごとに繰り返す日の番号（同じ行に同じ '18' が 3 つ）は見出しで言わない
+    rep = [[15.0, 1.0, 15.0, 1.0, 15.0], [16.0, 1.0, 16.0, 1.0, 16.0], [17.0, 1.0, 17.0, 1.0, 17.0],
+           ["18", 1.0, "18", 1.0, "18"], [19.0, 1.0, 19.0, 1.0, 19.0], [20.0, 1.0, 20.0, 1.0, 20.0]]
+    assert not [i for i in va.check_data_cleaner(rep, 0, 0) if i["type"] == "text_number"]
     # 本物: 数の列に 1 つだけ紛れた文字の数字は言う
     amounts = [[120.5, 3.0], [98.0, 4.0], ["77", 5.0], [310.0, 6.0], [41.0, 7.0]]
     assert [i["cell"] for i in va.check_data_cleaner(amounts, 0, 0) if i["type"] == "text_number"] == ["A3"]
@@ -885,3 +890,61 @@ def test_outlier_c2_real_typos_are_said_and_row_column_context_is_quiet_20261105
     # 金額の列（先頭の桁がばらばら）の 1 つだけ桁が少ないのは番号の桁欠けとは言わない
     amt = [["給与"]] + [[x] for x in [310000, 420000, 285000, 530000, 610000, 390000, 270000, 480000, 95000, 350000]]
     assert not [i for i in va.check_data_cleaner(amt, 0, 0) if "桁数が列と違います" in i["msg"]]
+
+
+def test_dockC3_misses_found_by_injection_20261105():
+    """段 C3（注入テストの見落とし）: 直書きが式の先頭・合計が範囲の上・行の合計に数えられただけの漏れ・比率の式・
+    式の列に貼り付けた 0・全角数字・明白な桁違いを言う。小計・別の合計は言わない。"""
+    def lint(f, v, r0=0, c0=0):
+        return va.check_formula_linter(f, f, v, r0, c0)
+    # hardcoded: 先頭のオペランド
+    for fx in ("=856-N17", "=2231+C8", "=515/$E$6", "=IF(A1>0,99-$N$12,0)"):
+        assert [i for i in lint([[fx]], [[1]]) if i["type"] == "hardcoded_constant"], fx
+    for fx in ("=1+A1", "=100*A1", "=SUM(A1:A3)", "=DATE(2020,1,1)"):
+        assert not [i for i in lint([[fx]], [[1]]) if i["type"] == "hardcoded_constant"], fx
+    # omitted: 合計が範囲の真上（G12=SUM(G13:G15) の下の G16 が漏れ）
+    f = [["=SUM(A2:A4)"], [1], [2], [3], [4]]
+    v = [[6], [1], [2], [3], [4]]
+    assert [i for i in lint(f, v) if i["type"] == "omitted_sum_range"]
+    # 漏れた相手が桁違いに大きい（それ自身が別の合計）なら言わない
+    v2 = [[6], [1], [2], [3], [4000]]
+    assert not [i for i in lint([["=SUM(A2:A4)"], [1], [2], [3], [4000]], v2) if i["type"] == "omitted_sum_range"]
+    # omitted: 相手が行の合計（=SUM(B3:C3)）に数えられているだけでは黙らない・比率の式（=ROUND(A4/A5)）も漏れの裏付け
+    f = [[1, 2, "=SUM(A1:B1)"], [3, 4, "=SUM(A2:B2)"], [5, 6, "=SUM(A3:B3)"], ["=SUM(A1:A2)", "=SUM(B1:B3)", "=SUM(C1:C3)"]]
+    v = [[1, 2, 3], [3, 4, 7], [5, 6, 11], [4, 9, 21]]
+    assert [i["cell"] for i in lint(f, v) if i["type"] == "omitted_sum_range"] == ["A4"]
+    # value_in_formula_column: 8 行以上の式の列の途中の 0 の貼り付けは言う。短い列の 0 は言わない
+    fa12 = [[k + 1, "=A%d*2" % (k + 1)] for k in range(12)]
+    f1_12 = [[k + 1, "=RC[-1]*2"] for k in range(12)]
+    v12 = [[k + 1, (k + 1) * 2] for k in range(12)]
+    fa12[5][1] = 0
+    f1_12[5][1] = 0
+    v12[5][1] = 0
+    assert [i["cell"] for i in va.check_formula_linter(fa12, f1_12, v12, 0, 0) if i["type"] == "value_in_formula_column"] == ["B6"]
+    fa5, f15, v5 = [r[:] for r in fa12[:5]], [r[:] for r in f1_12[:5]], [r[:] for r in v12[:5]]
+    fa5[2][1], f15[2][1], v5[2][1] = 0, 0, 0
+    assert not [i for i in va.check_formula_linter(fa5, f15, v5, 0, 0) if i["type"] == "value_in_formula_column"]
+    # text_number: 全角数字の文字列でも、数の列の途中なら言う。見出しの全角番号（全部文字）は言わない
+    col = [[120.0], [98.0], ["７７"], [310.0], [41.0], [55.0], [60.0]]
+    assert [i["cell"] for i in va.check_data_cleaner(col, 0, 0) if i["type"] == "text_number"] == ["A3"]
+    head = [["１"], ["２"], ["３"], ["４"], ["５"]]
+    assert not [i for i in va.check_data_cleaner(head, 0, 0) if i["type"] == "text_number"]
+    # outlier: 件数と金額が横に並ぶ表の、件数の列の 2 → 2000（横の金額が相手に見えても、列の最大の 100 倍以上の桁違いは言う）
+    rows = [[2.0, 501.0, 9000.0], [1.0, 450.0, 8500.0], [0.0, 520.0, 7000.0], [3.0, 610.0, 9100.0], [2.0, 399.0, 8800.0],
+            [2000.0, 501.0, 9200.0], [1.0, 430.0, 9400.0], [2.0, 440.0, 8700.0], [3.0, 470.0, 9900.0], [1.0, 390.0, 9500.0]]
+    assert [i["cell"] for i in va.check_data_cleaner(rows, 0, 0) if i["type"] == "outlier_value"] == ["A6"]
+
+
+def test_dockC3_flat_column_and_structured_refs_20261105():
+    """段 C3: ほぼ全部が同じ値の列（四分位範囲 0）の 1 → 1000 を言う。テーブルの計算列（構造化参照）・ROW() の列の途中の直書きを言う。"""
+    flat = [[1.0]] * 10 + [[1000.0]] + [[1.0]] * 4
+    assert [i["cell"] for i in va.check_data_cleaner(flat, 0, 0) if i["type"] == "outlier_value"] == ["A11"]
+    # 同じ値でない小さな揺れの列は言わない・全部 0 の列は言わない
+    assert not [i for i in va.check_data_cleaner([[0.0]] * 10 + [[1000.0]] + [[0.0]] * 4, 0, 0) if i["type"] == "outlier_value"]
+    # 構造化参照の計算列
+    fa = [[k + 1, '=[@a]*2'] for k in range(12)]
+    f1 = [[k + 1, '=[@a]*2'] for k in range(12)]
+    vv = [[k + 1, (k + 1) * 2] for k in range(12)]
+    fa[6][1], f1[6][1], vv[6][1] = 99, 99, 99
+    assert [i["cell"] for i in va.check_formula_linter(fa, f1, vv, 0, 0) if i["type"] == "value_in_formula_column"] == ["B7"]
+
