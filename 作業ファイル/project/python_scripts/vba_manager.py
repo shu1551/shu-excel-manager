@@ -150,6 +150,7 @@ from vbam_devtools import *  # noqa: F401,F403  (2026-09-16 職場向け VBA ツ
 from vbam_lineage import *  # noqa: F401,F403  (2026-09-17 系譜と閉じたブック: versions・history・list-file・grep-files・export-file)
 from vbam_audit import *  # noqa: F401,F403  (2026-09-17 数式・データ総合診断エンジン)
 from vbam_flow import *  # noqa: F401,F403  (2026-10-01 マクロの中の流れを Mermaid の流れ図に・flow)
+from vbam_xray import cmd_xray  # noqa: F401  (2026-11-06 シートのレントゲン・xray)
 from vbam_dock import cmd_dock  # noqa: F401  (2026-11-05 点検の部品を 1 回で撃つ・dock)
 from vbam_structure import cmd_structure, cmd_no_values, no_values_refusal  # noqa: F401  (2026-10-01 値を出さずにブックの構造だけ・structure)
 from vbam_recipes import cmd_recipe_save  # noqa: F401  (2026-10-22 業務レシピの保存・更新・削除)
@@ -388,6 +389,17 @@ def build_parser():
     p.add_argument("--out", default=None, help="Markdown の出力先（省略時 _last_dock.md）")
     p.add_argument("--sheet", dest="sheet_opt", default=None, help="このシートだけ（省略時はブック全体）")
     p.add_argument("--html", action="store_true", help="diagnose の HTML 報告と同じ作りで 1 枚の HTML も出す")
+
+    # xray [excel_file] [--sheet 名] [--json] [--svg [出力.svg]]
+    p = sub.add_parser("xray", aliases=["レントゲン"],
+                       help="シートのレントゲン（地図）：表の塊・見出し・明細・合計の行・列の顔・症状・安全の印を一瞬で（値は出さない）。"
+                            "確信できない所は unknown と理由。--json で JSON、--svg で写真（骨=白・筋肉=青・血管=緑・病巣=赤）")
+    p.add_argument("posargs", nargs="*")
+    p.add_argument("--sheet", dest="sheet_opt", default=None, help="このシートだけ（省略時はアクティブシート）")
+    p.add_argument("--json", action="store_true", help="地図を JSON で出す")
+    p.add_argument("--svg", nargs="?", const="1", default=None, help="SVG の写真も描く（出力先を省略すると _last_xray.svg）")
+    p.add_argument("--full-merges", dest="full_merges", action="store_true", help="結合セルを時間切れにせず全部読む（結合の多い .xls は遅い。既定は 0.08 秒で打ち切り、残りは unknown）")
+    p.add_argument("--neighbors", action="store_true", help="ほかのシートの先頭も読み、対応表（マスタ）と比べる相手を探す（既定は読まない＝速さのため）")
 
     # no-values [on|off]
     p = sub.add_parser("no-values", aliases=["値なし"],
@@ -2149,6 +2161,8 @@ def _raw_command_table():
         "flow":              cmd_flow,            # 2026-10-01 マクロの流れ図（Mermaid）
         "structure":         cmd_structure,       # 2026-10-01 値を出さずに構造だけ（オフィス田中の診断ツールに学ぶ）
         "構造":              cmd_structure,
+        "xray":              cmd_xray,            # 2026-11-06 シートのレントゲン（地図）
+        "レントゲン":          cmd_xray,
         "dock":              cmd_dock,            # 2026-11-05 点検の部品を 1 回で撃って 1 枚に
         "ドック":             cmd_dock,
         "no-values":         cmd_no_values,       # 2026-10-01 値なしの切り替え（AI に値を渡さない）

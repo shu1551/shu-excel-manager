@@ -2326,11 +2326,26 @@ def _seiri_fire_request(xl, wb, ws, request, before_snap):
     by_request = vp.request_column_macros("\n".join(lines))
     cells, fired = None, []
     stopped = None
+    aim_map = [None]                                  # 撃つ前の地図（棚ごとに撮り直す・Excelドック 段2）
     for k, nm in enumerate(plan):
         # 前の棚が止めた（断った・列が決まらない・エラー）なら、残りは撃たない＝半端な表に次の棚を重ねない（2026-10-14 段 3）
         if stopped:
             print(f"棚: {'・'.join(plan[k:])} は撃っていません（前の棚「{stopped}」が止めたため）")
             break
+        # Excelドック 段2: レントゲンの地図で、症状が無い棚・危ない条件に当たる棚は撃たない。撃つ所（症状のある列の明細）も地図が決める
+        aim_pick = None
+        before_map = None
+        try:
+            import vbam_aim as va
+            if va.has_aim(nm):
+                import vbam_xray as vx
+                before_map = vx.xray_sheet(ws, wb)
+                aim_pick = va.aim(before_map, nm)
+        except Exception:
+            aim_pick = None
+        if aim_pick and aim_pick['verdict'] != 'fire':
+            print(f"棚: {nm} は撃っていません: {aim_pick['reason']}（地図）")
+            continue
         if nm in by_request:
             # 列は頼みの文から決める棚（ピボット等・2026-10-09）: 列を選ばずに頼みの文を渡して撃つ。
             # 決まらなければマクロが撃たずに候補の見出しを返す（勝手な列で作らない）
@@ -2358,12 +2373,19 @@ def _seiri_fire_request(xl, wb, ws, request, before_snap):
             if cells is None:
                 cells = vp._header_cells(ws)
             cols = vp.pick_columns(request, cells, want) if want else None
+            if not cols and aim_pick and aim_pick.get('select'):
+                try:
+                    ws.Range(','.join(aim_pick['select'])).Select()      # 症状のある列の明細を、地図が選ぶ
+                    cols = ['@aim']
+                except Exception:
+                    cols = None
             if not cols:
                 print(f"棚: {nm} は列を選ぶ仕事（選ぶ列={need}）で、依頼の語と見出しから列が決まらないので撃っていません"
                       f"（shelf-run {nm} --select 列,列 で撃つ）")
                 stopped = nm
                 continue
-            vp.select_columns(ws, cols)
+            if cols != ['@aim']:
+                vp.select_columns(ws, cols)
         err_cnt_before, _ = _count_sheet_formula_errors(ws)
         snap = _guardrail_snapshot(ws)
         macro_err = None
@@ -2408,6 +2430,20 @@ def _seiri_fire_request(xl, wb, ws, request, before_snap):
                 print(f"⚠ 依頼の棚「{nm}」で {reason}。行や列が動いたので自動では戻していません（戻すなら agent --undo）")
             stopped = nm
             continue
+        if before_map is not None:
+            try:
+                import vbam_aim as va
+                import vbam_xray as vx
+                broke = va.verify(before_map, vx.xray_sheet(ws, wb), nm)
+            except Exception:
+                broke = []
+            if broke:
+                if snap and _guardrail_restore(ws, snap):
+                    print(f"⚠ 棚「{nm}」の後の地図で {'・'.join(broke)} ため、値と式を撃つ前に戻しました")
+                else:
+                    print(f"⚠ 棚「{nm}」の後の地図で {'・'.join(broke)}（行や列が動いたので自動では戻していません。戻すなら agent --undo）")
+                stopped = nm
+                continue
         fired.append(nm)
         vp.note_shot(xl, src, nm, request)           # 撃った棚の控え（レシピの保存の窓に並ぶ・棚番 段 4）
         print(f"棚: {nm}（依頼の文に当たった・{time.time() - t0:.2f} 秒）")
@@ -2647,11 +2683,25 @@ def _seiri_autofix(xl, wb, ws, max_steps=10):
     watcher = _start_dialog_watcher(xl)
     try:
         steps = []
+        gate_map = None
         for name, sel, why in todo[:max_steps]:
             key = _seiri_hint_key(name, sel)
             if key in tried:
                 continue
             tried.add(key)
+            # Excelドック 段2: 気づきの手も、地図が「危ない条件に当たる」と言うなら撃たない（症状の有無は気づき側の検出を信じる）
+            try:
+                import vbam_aim as va
+                if va.has_aim(name):
+                    if gate_map is None:
+                        import vbam_xray as vx
+                        gate_map = vx.xray_sheet(ws, wb)
+                    ap = va.aim(gate_map, name)
+                    if ap and ap['verdict'] == 'refuse':
+                        print(f"棚: {name} は撃っていません: {ap['reason']}（地図）")
+                        continue
+            except Exception:
+                pass
             steps.append((name, sel, why))
 
         batch_done = False
