@@ -571,9 +571,14 @@ def read_sheet(ws, wb=None, max_formula_areas=60, merge_budget=0.08, merge_cap=4
         fcells = None
     if fcells is not None:
         try:
-            addr = fcells.Address
-            areas = parse_multi_addr(addr)
-            if len(areas) <= max_formula_areas:
+            # 領域は Areas で数える（Range.Address は複数領域だと 255 字で切れて、式を取りこぼす・VBA 版との同値試験で発見）
+            areas = []
+            n_areas = int(fcells.Areas.Count)
+            if n_areas <= max_formula_areas:
+                for k in range(1, n_areas + 1):
+                    ar = fcells.Areas(k)
+                    areas.append((int(ar.Row), int(ar.Column), int(ar.Row) + int(ar.Rows.Count) - 1, int(ar.Column) + int(ar.Columns.Count) - 1))
+            if n_areas <= max_formula_areas:
                 for (a1, b1, a2, b2) in areas:
                     sub = ws.Range(ws.Cells(a1, b1), ws.Cells(a2, b2)).Formula
                     g = _grid(sub, a2 - a1 + 1, b2 - b1 + 1)
@@ -780,6 +785,19 @@ def analyze(sheet, nv=False, sample_symptoms=True):
     nr, nc = len(vals), (len(vals[0]) if vals else 0)
     formulas = sheet.get('formulas') or {}
     merged = list(sheet.get('merged') or [])
+    # 結合は、中のどこかに値がある物だけ使う（ファイルから読んだ結合には、空の結合や範囲外の結合も入る。VBA 版の読みと同じ）
+    if merged and vals:
+        _nr0, _nc0 = len(vals), len(vals[0])
+
+        def _has_val(m):
+            for a in range(max(m[0], r0), min(m[2], r0 + _nr0 - 1) + 1):
+                row = vals[a - r0]
+                for b in range(max(m[1], c0), min(m[3], c0 + _nc0 - 1) + 1):
+                    x = row[b - c0]
+                    if x is not None and x != '':
+                        return True
+            return False
+        merged = [m for m in merged if _has_val(m)]
     unknown_sheet = dict(sheet.get('unknown') or {})
     out = {'sheet': sheet.get('name'), 'used': addr_of(r0, c0, r0 + nr - 1, c0 + nc - 1) if nr and nc else '',
            'blocks': [], 'sheet_symptoms': [], 'unknown': [], 'no_values': bool(nv)}
@@ -2187,8 +2205,8 @@ def _formula_symptoms(ctx, j, det, tot, sy, rows_role):
                 starts.add(m.group(1))
         if len(starts) >= 2:
             sy.append(('S20', rel))
-    # S19: 合計の SUM が明細の最終行まで届いていない
-    if tot and det:
+    # S19: 合計の SUM が明細の最終行まで届いていない（合計の行が 1 つだけの表。区ごとの小計がある表の総計は小計を足すので、明細の最終行まで届かなくてよい）
+    if tot and det and len(tot) == 1:
         short = []
         d_last_abs = r0 + det[-1]
         for t in tot:
