@@ -2518,6 +2518,20 @@ def _seiri_hints_now(ws, include_shapes=True):
     r0, c0 = int(ur.Row), int(ur.Column)
     hidx = _guess_header_idx(grid)
     hints = []
+    # エクセルドック大元カルテからの確証ヒント直結（2026-11-07）
+    try:
+        xl_app = ws.Application
+        dock_json = xl_app.Run("エクセルドック_走査", ws)
+        if dock_json:
+            import json
+            d_karte = json.loads(dock_json)
+            for iss in d_karte.get("issues", []):
+                i_type = iss.get("type")
+                cell_a = iss.get("cell", "").split("!")[-1]
+                if i_type in ("inconsistent_formula", "value_in_formula_column"):
+                    hints.append((10, "選んだ列の途切れた数式をそろえる", cell_a, f"エクセルドック: {iss.get('msg', '数式の乱れ')}"))
+    except Exception:
+        pass
     dirt_notes(grid, r0, c0, hidx, None, hints=hints)
     hints += seiri_formula_hints(fa, fr, grid, r0, c0, hidx)
     if not include_shapes:
@@ -2952,11 +2966,31 @@ def cmd_seiri(args):
         _split("依頼の棚実行")
         # 気づき（重複行・空行・消えた先頭のゼロ・空白の揺れ・文字の日付・式のずれ）で棚が直せる手は、報告に並べずにここで撃つ
         # （2026-09-25 shu「検知した定型の異常を AI への宿題として突き返さず、seiri がその場でやり切る」）
-        # dock が見つけた隠れ空白・文字の数字だけ直す（diagnose --fix と同じ apply_audit_fixes・2026-11-06）
+        # 新エクセルドックの一撃完治（VBAインプロセスで空白・文字数字・途切れ数式・近似一致を一撃完治・2026-11-07）
         try:
             if not on_pivot:
-                from vbam_audit import seiri_dock_autofix
-                seiri_dock_autofix(ws, nv=nv)
+                dock_res = None
+                try:
+                    dock_res = xl.Application.Run("エクセルドック_一撃完治", ws)
+                except Exception:
+                    try:
+                        dock_res = xl.Application.Run("秀コンボ.xlam!エクセルドック_一撃完治", ws)
+                    except Exception:
+                        pass
+                if dock_res:
+                    import json
+                    try:
+                        d_info = json.loads(dock_res)
+                        fx = d_info.get("fixed", {})
+                        if fx.get("total_fixes", 0) > 0:
+                            print(f"エクセルドック一撃完治: 修復 {fx.get('total_fixes')} 件 "
+                                  f"(空白 {fx.get('hidden_spaces')}, 数値化 {fx.get('text_numbers')}, "
+                                  f"数式 {fx.get('formulas')}, 近似一致 {fx.get('approx_matches')})")
+                    except Exception:
+                        pass
+                else:
+                    from vbam_audit import seiri_dock_autofix
+                    seiri_dock_autofix(ws, nv=nv)
         except Exception as e:
             print(f"dock の自動修正を撃てませんでした: {e}（残りとして直す）")
         try:
