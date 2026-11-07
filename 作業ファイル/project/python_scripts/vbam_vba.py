@@ -1584,7 +1584,8 @@ def cmd_process(args):
                               "/FO", "CSV", "/NH"],
                              capture_output=True, text=True,
                              encoding='cp932', errors='replace',
-                             stdin=subprocess.DEVNULL, timeout=30)
+                             stdin=subprocess.DEVNULL, timeout=30,
+                             creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
         for line in out.stdout.splitlines():
             parts = [x.strip().strip('"') for x in line.split('","')]
             if len(parts) >= 5 and parts[0].upper().startswith("EXCEL"):
@@ -1630,7 +1631,8 @@ def cmd_process(args):
         # 結果を見てから「終了しました」と言う（管理者で動く Excel 等は「アクセスが拒否されました」で落ちる・2026-10-29 総点検 22）
         r = subprocess.run(["taskkill", "/PID", str(kill_pid), "/F"],
                            capture_output=True, text=True, encoding='cp932', errors='replace',
-                           stdin=subprocess.DEVNULL, timeout=30)
+                           stdin=subprocess.DEVNULL, timeout=30,
+                           creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
         if r.returncode != 0:
             print(f"エラー: PID {kill_pid} を終了できませんでした: {(r.stderr or r.stdout or '').strip()}")
             return False

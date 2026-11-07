@@ -234,7 +234,8 @@ def _any_excel_process():
     try:
         import subprocess
         out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq EXCEL.EXE", "/NH"],
-                             capture_output=True, encoding="cp932", errors="replace", timeout=10)
+                             capture_output=True, encoding="cp932", errors="replace", timeout=10,
+                             creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
         return "EXCEL.EXE" in (out.stdout or "")
     except Exception:
         return True
