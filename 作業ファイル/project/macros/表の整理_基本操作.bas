@@ -39,7 +39,7 @@ Sub 頼みの文で指した所の書式を変える()
         先撃ちに断る "どう変えるか分かりませんでした（例: 大きく・14ポイント・赤・背景を黄色・太字・中央・折り返し・下に二重線）"
         Exit Sub
     End If
-    Application.StatusBar = 何 & " を変えました: " & Mid$(済, 2)
+    Application.StatusBar = 何 & " を変えました: " & mid$(済, 2)
 End Sub
 
 Private Function 基_文字の書式(ByVal rng As Range, ByVal s As String) As String
@@ -346,7 +346,7 @@ Sub 頼みの文で指した列と行の幅と表示を変える()
     Dim 頼 As String, ws As Worksheet, 見r As Long, 左 As Long, 右 As Long, 末r As Long, 合r As Long, 下 As Long, 表あり As Boolean
     Dim 行の As Boolean, 対 As Range, 何 As String, 済 As String, cols As Collection, c As Variant, 最小 As Long, 最大 As Long
     Dim 選 As Boolean, 全部 As Boolean, n As Double, 足す As Double, 大 As Double, ar As Range, k As Long
-    Dim p As Long, q As Long, t As String, t1 As String, R1 As Long, r2 As Long, 区 As Long, ch As String
+    Dim p As Long, q As Long, t As String, t1 As String, r1 As Long, r2 As Long, 区 As Long, ch As String
     頼 = 基_頼み()
     If Len(頼) = 0 Then 先撃ちに断る "この棚は頼みの文で動きます（例:「金額の列の幅を広げて」「見出しの行の高さを高くして」「備考の列を隠して」）": Exit Sub
     If TypeName(ActiveSheet) <> "Worksheet" Then 先撃ちに断る "ワークシートを前に出してから頼んでください": Exit Sub
@@ -370,30 +370,30 @@ Sub 頼みの文で指した列と行の幅と表示を変える()
             Do While p > 0
                 q = p - 1: t = ""
                 Do While q >= 1
-                    ch = StrConv(Mid$(頼, q, 1), vbNarrow)
+                    ch = StrConv(mid$(頼, q, 1), vbNarrow)
                     If ch Like "[0-9]" Then t = ch & t: q = q - 1 Else Exit Do
                 Loop
                 If Len(t) > 0 And Len(t) <= 7 Then
-                    r2 = CLng(t): R1 = r2: 区 = 0
+                    r2 = CLng(t): r1 = r2: 区 = 0
                     If q >= 1 Then
-                        ch = Mid$(頼, q, 1)
+                        ch = mid$(頼, q, 1)
                         If ch = "-" Or ch = ChrW(&H301C) Or ch = ChrW(&HFF5E) Or ch = ChrW(&HFF0D) Then 区 = 1
                     End If
                     If 区 = 0 And q >= 2 Then
-                        If Mid$(頼, q - 1, 2) = "から" Then 区 = 2
+                        If mid$(頼, q - 1, 2) = "から" Then 区 = 2
                     End If
                     If 区 > 0 Then
                         q = q - 区: t1 = ""
                         Do While q >= 1
-                            ch = StrConv(Mid$(頼, q, 1), vbNarrow)
+                            ch = StrConv(mid$(頼, q, 1), vbNarrow)
                             If ch Like "[0-9]" Then t1 = ch & t1: q = q - 1 Else Exit Do
                         Loop
-                        If Len(t1) > 0 And Len(t1) <= 7 Then R1 = CLng(t1)
+                        If Len(t1) > 0 And Len(t1) <= 7 Then r1 = CLng(t1)
                     End If
-                    If R1 > r2 Then k = R1: R1 = r2: r2 = k
-                    If R1 >= 1 And r2 <= ws.rows.Count Then
-                        Set 対 = 基_足す(対, ws.Range(ws.rows(R1), ws.rows(r2)))
-                        何 = 何 & "・" & R1 & IIf(r2 > R1, "から" & r2, "") & "行目"
+                    If r1 > r2 Then k = r1: r1 = r2: r2 = k
+                    If r1 >= 1 And r2 <= ws.rows.Count Then
+                        Set 対 = 基_足す(対, ws.Range(ws.rows(r1), ws.rows(r2)))
+                        何 = 何 & "・" & r1 & IIf(r2 > r1, "から" & r2, "") & "行目"
                     End If
                 End If
                 p = InStr(p + 2, 頼, "行目")
@@ -417,13 +417,13 @@ Sub 頼みの文で指した列と行の幅と表示を変える()
                         Set 対 = 基_足す(対, ws.Columns(c))
                         何 = 何 & "・" & 見出しの字(ws.Cells(見r, c))
                     Next c
-                    何 = Mid$(何, 2) & "の列"
+                    何 = mid$(何, 2) & "の列"
                 End If
             End If
         End If
         If 選 And 対 Is Nothing Then Set 対 = Selection.EntireColumn: 何 = "選んだ列"
     End If
-    If Left$(何, 1) = "・" Then 何 = Mid$(何, 2)
+    If Left$(何, 1) = "・" Then 何 = mid$(何, 2)
     If 対 Is Nothing Then
         先撃ちに断る "どの" & IIf(行の, "行", "列") & "か分かりませんでした（「金額の列」のように見出しの名前で、または「見出しの行」「合計行」「選んだ列」「全部の列」で頼んでください）"
         Exit Sub
@@ -484,13 +484,13 @@ Sub 頼みの文で指した列と行の幅と表示を変える()
             If p > 1 Then
                 q = p - 1: t = ""
                 Do While q >= 1
-                    ch = StrConv(Mid$(頼, q, 1), vbNarrow)
+                    ch = StrConv(mid$(頼, q, 1), vbNarrow)
                     If ch Like "[0-9.]" Then t = ch & t: q = q - 1 Else Exit Do
                 Loop
                 If Len(t) > 0 Then
                     n = val(t)
-                ElseIf InStr("一二三四五", Mid$(頼, p - 1, 1)) > 0 Then
-                    n = InStr("一二三四五", Mid$(頼, p - 1, 1))
+                ElseIf InStr("一二三四五", mid$(頼, p - 1, 1)) > 0 Then
+                    n = InStr("一二三四五", mid$(頼, p - 1, 1))
                 End If
             End If
             If n <= 0 Then n = 2
@@ -610,7 +610,7 @@ Sub 頼みの文で指した列で表を絞り込む()
         On Error Resume Next
         n = rng.Columns(1).SpecialCells(xlCellTypeVisible).Count - 1
         On Error GoTo 0
-        Application.StatusBar = Mid$(済, 2) & " で絞り込みました（見えている行 " & n & "）"
+        Application.StatusBar = mid$(済, 2) & " で絞り込みました（見えている行 " & n & "）"
         Exit Sub
     End If
     If ボタン Then
@@ -639,9 +639,9 @@ Private Function 基_絞る値(ByVal 頼 As String, ByVal 見出し As String, ByRef 演 
     当 = h
     If p = 0 Then p = 見出しの語の位置(頼, 見出し, 当)
     If p = 0 Or Len(当) = 0 Then Exit Function
-    s = Mid$(頼, p + Len(当))
+    s = mid$(頼, p + Len(当))
     For Each w In Array("の列で", "の列が", "の列は", "の列を", "の列の", "列で", "列が", "の欄が", "の欄で", "が", "は", "で", "を", "に", "=")
-        If Left$(s, Len(w)) = w Then s = Mid$(s, Len(w) + 1): Exit For
+        If Left$(s, Len(w)) = w Then s = mid$(s, Len(w) + 1): Exit For
     Next w
     E = Len(s) + 1
     For Each w In Array("の行", "だけ", "で絞", "に絞", "を絞", "で抽", "以上", "以下", "未満", "以降", "以前", "より", "以外", "を超", "超え", _
@@ -649,7 +649,7 @@ Private Function 基_絞る値(ByVal 頼 As String, ByVal 見出し As String, ByRef 演 
         k = InStr(1, s, w, vbBinaryCompare)
         If k > 0 And k < E Then E = k
     Next w
-    後 = Mid$(s, E)
+    後 = mid$(s, E)
     s = Left$(s, E - 1)
     If 含む語(s, "空欄|空白|ブランク|未入力") Then
         基_絞る値 = ""
@@ -663,7 +663,7 @@ Private Function 基_絞る値(ByVal 頼 As String, ByVal 見出し As String, ByRef 演 
         Case Left$(後, 2) = "未満": 演 = "<"
         Case Left$(後, 2) = "を超", Left$(後, 2) = "超え": 演 = ">"
         Case Left$(後, 2) = "より"
-            If 含む語(Mid$(後, 3, 3), "大き|多|後|上|高") Then 演 = ">" Else 演 = "<"
+            If 含む語(mid$(後, 3, 3), "大き|多|後|上|高") Then 演 = ">" Else 演 = "<"
         Case Left$(後, 2) = "以外": 演 = "<>"
         Case Left$(後, 2) = "を含", Left$(後, 2) = "が入": 演 = "含む"
         Case Else: 演 = "="
@@ -825,7 +825,7 @@ Sub 頼みの文でシートの表示と印刷を変える()
         先撃ちに断る "どの表示・印刷の設定を変えるか分かりませんでした（例: 枠の固定を解除・目盛線を消す・表示倍率を100%・印刷を横向き・用紙をA3・余白を狭く・印刷範囲を表だけ・フッターにページ番号）"
         Exit Sub
     End If
-    Application.StatusBar = ws.Name & " の表示と印刷の設定を変えました: " & Mid$(済, 2) & 注
+    Application.StatusBar = ws.Name & " の表示と印刷の設定を変えました: " & mid$(済, 2) & 注
 End Sub
 
 Private Function 基_余白(ByVal ws As Worksheet, ByVal 上 As Double, ByVal 下 As Double, ByVal 左 As Double, ByVal 右 As Double, ByVal 頭 As Double) As Boolean
@@ -982,7 +982,7 @@ Sub 頼みの文でシートの名前と色と並びを変える()
         先撃ちに断る "シートをどう変えるか分かりませんでした（例: シート名を売上にして・シート見出しを赤に・隠す・隠したシートを表示・コピー・名前順に並べる・先頭へ・保護）"
         Exit Sub
     End If
-    Application.StatusBar = "シート「" & ws.Name & "」を変えました: " & Mid$(済, 2)
+    Application.StatusBar = "シート「" & ws.Name & "」を変えました: " & mid$(済, 2)
 End Sub
 
 
@@ -995,12 +995,12 @@ Private Function 基_シートの新しい名(ByVal 元 As String) As String
         p = InStr(1, 元, 開(i), vbBinaryCompare)
         If p > 0 Then
             q = InStr(p + 1, 元, 閉(i), vbBinaryCompare)
-            If q > p + 1 Then 基_シートの新しい名 = Mid$(元, p + 1, q - p - 1): Exit Function
+            If q > p + 1 Then 基_シートの新しい名 = mid$(元, p + 1, q - p - 1): Exit Function
         End If
     Next i
     For Each w In Array("シート名を", "シートの名前を", "名前を", "シート名は", "名前は")
         p = InStr(1, 元, w, vbBinaryCompare)
-        If p > 0 Then s = Mid$(元, p + Len(w)): Exit For
+        If p > 0 Then s = mid$(元, p + Len(w)): Exit For
     Next w
     If Len(s) = 0 Then Exit Function
     E = Len(s) + 1
@@ -1164,7 +1164,7 @@ Private Function 基_指した所(ByVal ws As Worksheet, ByVal 頼 As String, ByVal 見
                 If 合計 Then Set out = 基_足す(out, ws.Cells(合r, c))
                 何 = 何 & "・" & 見出しの字(ws.Cells(見r, c))
             Next c
-            何 = Mid$(何, 2) & IIf(見出し, "の見出し", "の合計")
+            何 = mid$(何, 2) & IIf(見出し, "の見出し", "の合計")
         Else
             If 見出し Then Set out = 基_足す(out, ws.Range(ws.Cells(見r, 左), ws.Cells(見r, 右))): 何 = 何 & "・見出し"
             If 合計 Then Set out = 基_足す(out, ws.Range(ws.Cells(合r, 左), ws.Cells(合r, 右))): 何 = 何 & "・合計行"
@@ -1174,7 +1174,7 @@ Private Function 基_指した所(ByVal ws As Worksheet, ByVal 頼 As String, ByVal 見
                     何 = 何 & "・" & 見出しの字(ws.Cells(見r, c)) & "の列"
                 Next c
             End If
-            何 = Mid$(何, 2)
+            何 = mid$(何, 2)
         End If
     End If
     If 含む語(頼, "選んだ|選択|この範囲|このセル|この列|この行") And TypeName(Selection) = "Range" Then
@@ -1264,10 +1264,10 @@ Private Function 基_数(ByVal s As String, Optional ByVal 後 As String = "") As D
     If Len(後) > 0 Then
         p = InStr(1, s, 後, vbBinaryCompare)
         If p = 0 Then Exit Function
-        s = Mid$(s, p + Len(後))
+        s = mid$(s, p + Len(後))
     End If
     For i = 1 To Len(s)
-        ch = Mid$(s, i, 1)
+        ch = mid$(s, i, 1)
         If ch Like "[0-9]" Or (ch = "." And Len(t) > 0) Then
             t = t & ch
         ElseIf Len(t) > 0 Then

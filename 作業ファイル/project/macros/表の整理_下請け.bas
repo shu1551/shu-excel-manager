@@ -102,7 +102,7 @@ Sub •\‚Ìdã‚°()
     '   Œ©o‚µ…F‚Ì“h‚èE‘¾šE’†‰›^”Ô†‚ÆƒR[ƒh‚Ì—ñ’†‰›^“ú•t¶‚Å yyyy/m/d^
     '   ”‰E‚Å #,##0i—¦E”NE% ‚Ì—ñ‚ÍG‚ç‚È‚¢j^‚»‚Ì‚Ù‚©‚Ì•¶š¶^×‚¢Šiq‚ÌŒrüEã‰º’†‰›E—ñ• 6`60
     Dim r As Range, c As Long, rr As Long, hname As String
-    Dim nNum As Long, nDate As Long, nAll As Long, v As Variant
+    Dim nnum As Long, nDate As Long, nAll As Long, v As Variant
     If mdã‚°”ÍˆÍ Is Nothing Then Exit Sub
     Set r = mdã‚°”ÍˆÍ
     If r.rows.Count < 1 Then Set mdã‚°”ÍˆÍ = Nothing: Exit Sub
@@ -135,7 +135,7 @@ Sub •\‚Ìdã‚°()
     End If
     For c = r.Column To r.Column + r.Columns.Count - 1
         hname = CStr(r.Worksheet.Cells(r.Row, c).Value)
-        nNum = 0: nDate = 0: nAll = 0
+        nnum = 0: nDate = 0: nAll = 0
         For rr = r.Row + 1 To r.Row + r.rows.Count - 1
             v = r.Worksheet.Cells(rr, c).Value
             If Not isEmpty(v) And Not IsError(v) Then
@@ -143,7 +143,7 @@ Sub •\‚Ìdã‚°()
                 If VarType(v) = vbDate Then
                     nDate = nDate + 1
                 ElseIf VarType(v) = vbDouble Or VarType(v) = vbCurrency Then
-                    nNum = nNum + 1
+                    nnum = nnum + 1
                 End If
             End If
         Next rr
@@ -153,7 +153,7 @@ Sub •\‚Ìdã‚°()
             ElseIf nAll > 0 And nDate >= nAll * 0.6 Then
                 .HorizontalAlignment = xlLeft
                 .NumberFormat = "yyyy/m/d"
-            ElseIf nAll > 0 And nNum >= nAll * 0.6 Then
+            ElseIf nAll > 0 And nnum >= nAll * 0.6 Then
                 .HorizontalAlignment = xlRight
                 If InStr(hname, "—¦") = 0 And InStr(hname, "”N") = 0 And InStr(hname, "%") = 0 And InStr(hname, "‡ˆÊ") = 0 Then .NumberFormat = "#,##0"
             Else
@@ -381,7 +381,7 @@ Function ”‚ÌƒL[(ByVal s As String) As String
     If Len(s) = 0 Then Exit Function
     If Not s Like "*[!0-9]*" Then
         Do While Len(s) > 1 And Left$(s, 1) = "0"
-            s = Mid$(s, 2)
+            s = mid$(s, 2)
         Loop
         ”‚ÌƒL[ = s
         Exit Function
@@ -435,11 +435,11 @@ Sub ’I‚ÌƒV[ƒg‚Ìˆó(ByVal sh As Object)
 End Sub
 
 Function ’I‚ÌƒV[ƒg‚©(ByVal sh As Object) As Boolean
-    Dim nm As Object
+    Dim nM As Object
     On Error Resume Next
-    For Each nm In sh.names
-        If nm.Name Like "*!’I_ì¬" Or nm.Name = "’I_ì¬" Then ’I‚ÌƒV[ƒg‚© = True: Exit Function
-    Next nm
+    For Each nM In sh.names
+        If nM.Name Like "*!’I_ì¬" Or nM.Name = "’I_ì¬" Then ’I‚ÌƒV[ƒg‚© = True: Exit Function
+    Next nM
 End Function
 
 ' ƒV[ƒg–¼‚Ég‚¦‚È‚¢ši: \ / ? * [ ]j‚ğ _ ‚ÉA31 š‚Ü‚ÅA‹ó‚È‚çu–³‘èvi2026-09-24 ‘“_ŒŸ: “ú•tEuA/Bv‚Ì’l‚Å
@@ -451,7 +451,7 @@ Function ƒV[ƒg–¼‚É‚Å‚«‚éš(ByVal s As String) As String
         s = Replace(s, ch, "_")
     Next ch
     Do While Left$(s, 1) = "'"
-        s = Mid$(s, 2)
+        s = mid$(s, 2)
     Loop
     Do While Right$(s, 1) = "'"
         s = Left$(s, Len(s) - 1)
@@ -565,7 +565,7 @@ Function —Š‚İ‚©‚çƒsƒ{ƒbƒg‚Ì—ñ(ByVal ws As Worksheet, ByVal Œ©o‚µs As Long, ByV
             •š = Replace(•š, Œ©X(‘I), String$(Len(Œ©X(‘I)), "¬"))
             ' uo‹Î“ú”‚ğ”‚¦‚Ävu“X•Ü”vŒ©o‚µ‚ÌŒã‚ë‚É ”E“ú”EŒ”El”E‰ñ” ‚ª‘±‚­”‚¦‚é—Š‚İ‚ÍA‚»‚Ì—ñ‚ğ”‚¦‚éis‚É‚µ‚È‚¢E2026-10-22 w¦‘046j
             If ”‚¦‚é‚¾‚¯ Then
-                Œã = Mid$(—Š, ˆÊ’u + Len(Œ©X(‘I)), 2)
+                Œã = mid$(—Š, ˆÊ’u + Len(Œ©X(‘I)), 2)
                 If Left$(Œã, 1) = "”" Or Œã = "“ú”" Or Œã = "Œ”" Or Œã = "l”" Or Œã = "‰ñ”" Then ”‚¦‚é‘ÎÛ(‘I) = True
             End If
         End If
@@ -585,7 +585,7 @@ Function —Š‚İ‚©‚çƒsƒ{ƒbƒg‚Ì—ñ(ByVal ws As Worksheet, ByVal Œ©o‚µs As Long, ByV
                             Œê = ŒêX(j)
                             ˆÊ’u = InStr(1, •š, Œê, vbBinaryCompare)
                             Do While ˆÊ’u > 0
-                                Œã = Mid$(•š, ˆÊ’u + Len(Œê), 1)
+                                Œã = mid$(•š, ˆÊ’u + Len(Œê), 1)
                                 If Len(Œê) >= 2 Or Len(Œã) = 0 Or InStr("•Ê‚²–ˆ’P‚Å‚ğ‚Æ‚ÌE,A‚É‚ª", Œã) > 0 Then Exit Do
                                 ˆÊ’u = InStr(ˆÊ’u + 1, •š, Œê, vbBinaryCompare)
                             Loop
@@ -608,14 +608,14 @@ Function —Š‚İ‚©‚çƒsƒ{ƒbƒg‚Ì—ñ(ByVal ws As Worksheet, ByVal Œ©o‚µs As Long, ByV
                 If ’· >= 2 Or InStr("•Ê–ˆ—¦”–¼Œv", Œê) = 0 Then
                     ˆÊ’u = InStr(1, •š, Œê, vbBinaryCompare)
                     Do While ˆÊ’u > 0
-                        Œã = Mid$(•š, ˆÊ’u + ’·, 2)
+                        Œã = mid$(•š, ˆÊ’u + ’·, 2)
                         If ’· >= 2 Then Exit Do
                         If Left$(Œã, 1) = "•Ê" Or Left$(Œã, 1) = "–ˆ" Or Œã = "‚²‚Æ" Or Œã = "’PˆÊ" Then Exit Do
                         ˆÊ’u = InStr(ˆÊ’u + 1, •š, Œê, vbBinaryCompare)
                     Loop
                     If ˆÊ’u > 0 Then
                         ˆÊ’uX(c) = ˆÊ’u: “–‚ÄX(c) = Œê
-                        •š = Left$(•š, ˆÊ’u - 1) & String$(’·, "¬") & Mid$(•š, ˆÊ’u + ’·)
+                        •š = Left$(•š, ˆÊ’u - 1) & String$(’·, "¬") & mid$(•š, ˆÊ’u + ’·)
                         Exit For
                     End If
                 End If
@@ -624,7 +624,7 @@ Function —Š‚İ‚©‚çƒsƒ{ƒbƒg‚Ì—ñ(ByVal ws As Worksheet, ByVal Œ©o‚µs As Long, ByV
     Next c
     For c = ¶ To ‰E
         If ˆÊ’uX(c) > 0 Then
-            Œã = Mid$(—Š, ˆÊ’uX(c) + Len(“–‚ÄX(c)), 2)
+            Œã = mid$(—Š, ˆÊ’uX(c) + Len(“–‚ÄX(c)), 2)
             ‹æØ‚è‚©(c) = (Left$(Œã, 1) = "•Ê" Or Œã = "‚²‚Æ" Or Left$(Œã, 1) = "–ˆ" Or Œã = "’PˆÊ")
         End If
     Next c
@@ -662,7 +662,7 @@ Function —Š‚İ‚©‚çƒsƒ{ƒbƒg‚Ì—ñ(ByVal ws As Worksheet, ByVal Œ©o‚µs As Long, ByV
     Next c
     Œó•â = "Œ©o‚µ: " & ˆê——
     If ’l‚Ì—ñ = -1 Then
-        Œó•â = "’l‚É‚·‚é”‚Ì—ñ‚ª 2 ‚ÂˆÈã“–‚½‚è‚Ü‚µ‚½i" & Mid$(’lX, 2) & "jB" & Œó•â
+        Œó•â = "’l‚É‚·‚é”‚Ì—ñ‚ª 2 ‚ÂˆÈã“–‚½‚è‚Ü‚µ‚½i" & mid$(’lX, 2) & "jB" & Œó•â
         ’l‚Ì—ñ = 0
         Exit Function
     End If
@@ -671,7 +671,7 @@ Function —Š‚İ‚©‚çƒsƒ{ƒbƒg‚Ì—ñ(ByVal ws As Worksheet, ByVal Œ©o‚µs As Long, ByV
         Exit Function
     End If
     If D” > 2 Then
-        Œó•â = "sE—ñ‚É‚·‚éŒ©o‚µ‚ª 3 ‚ÂˆÈã“–‚½‚è‚Ü‚µ‚½i" & Mid$(DX, 2) & "jB" & Œó•â
+        Œó•â = "sE—ñ‚É‚·‚éŒ©o‚µ‚ª 3 ‚ÂˆÈã“–‚½‚è‚Ü‚µ‚½i" & mid$(DX, 2) & "jB" & Œó•â
         Exit Function
     End If
     If ’l‚Ì—ñ = 0 And ”‚¦‚é‚¾‚¯ Then ’l‚Ì—ñ = D(1)       ' uŒ”v‚Ís‚Ì€–Ú‚»‚Ì‚à‚Ì‚ğ”‚¦‚éi2026-10-09j
@@ -714,11 +714,11 @@ End Function
 Function ƒsƒ{ƒbƒg‚ÌŒê‚È‚ç‚µ(ByVal •¶ As String) As String
     Dim s As String, i As Long, w As Long, ŠJ As Long, •Â As Long
     For i = 1 To Len(•¶)
-        w = AscW(Mid$(•¶, i, 1))
+        w = AscW(mid$(•¶, i, 1))
         If w >= &HFF01 And w <= &HFF5E Then
             s = s & ChrW(w - &HFEE0)
         ElseIf w <> 32 And w <> &H3000 And w <> 10 And w <> 13 And w <> 9 Then
-            s = s & Mid$(•¶, i, 1)
+            s = s & mid$(•¶, i, 1)
         End If
     Next i
     Do
@@ -726,7 +726,7 @@ Function ƒsƒ{ƒbƒg‚ÌŒê‚È‚ç‚µ(ByVal •¶ As String) As String
         If ŠJ = 0 Then Exit Do
         •Â = InStr(ŠJ, s, ")")
         If •Â = 0 Then Exit Do
-        s = Left$(s, ŠJ - 1) & Mid$(s, •Â + 1)
+        s = Left$(s, ŠJ - 1) & mid$(s, •Â + 1)
     Loop
     ƒsƒ{ƒbƒg‚ÌŒê‚È‚ç‚µ = s
 End Function
@@ -734,14 +734,14 @@ End Function
 ' æŒ‚‚¿iExcelƒRƒ“ƒ{Eseirij‚ª“n‚µ‚½—Š‚İ‚Ì•¶i2026-10-09jB’I‚©‚çl‚ª’¼‚ÉŒ‚‚Á‚½‚Æ‚«EƒRƒ“ƒ{“¹‹ï‚ª–³‚¢ƒuƒbƒN‚Å‚Í ""
 Function æŒ‚‚¿‚Ì—Š‚İ‚Ì•¶() As String
     On Error Resume Next
-    æŒ‚‚¿‚Ì—Š‚İ‚Ì•¶ = CStr(Application.Run("'" & ThisWorkbook.Name & "'!ƒRƒ“ƒ{“¹‹ï.—Š‚İ‚Ì•¶‚ğ•Ô‚·"))
+    æŒ‚‚¿‚Ì—Š‚İ‚Ì•¶ = CStr(Application.run("'" & ThisWorkbook.Name & "'!ƒRƒ“ƒ{“¹‹ï.—Š‚İ‚Ì•¶‚ğ•Ô‚·"))
 End Function
 
 ' ’I‚Ìƒ}ƒNƒ‚ªŒ‚‚Ä‚È‚©‚Á‚½——R‚ğAƒXƒe[ƒ^ƒXƒo[‚ÆæŒ‚‚¿iƒRƒ“ƒ{“¹‹ï‚Ì’f‚è‚ÌŒûj‚Éo‚·i2026-10-09jB–ß‚è’l‚Íg‚í‚È‚¢
 Function æŒ‚‚¿‚É’f‚é(ByVal •¶ As String) As Boolean
     Application.StatusBar = •¶
     On Error Resume Next
-    Application.Run "'" & ThisWorkbook.Name & "'!ƒRƒ“ƒ{“¹‹ï.’I‚Ì’f‚è‚ğ“ü‚ê‚é", •¶
+    Application.run "'" & ThisWorkbook.Name & "'!ƒRƒ“ƒ{“¹‹ï.’I‚Ì’f‚è‚ğ“ü‚ê‚é", •¶
 End Function
 
 ' —Š‚İ‚Ì•¶‚ÅAŒ©o‚µ‚ÌŒê‚ªƒsƒ{ƒbƒg‚Ì‚Ç‚±‚É’u‚­‚æ‚¤Œ¾‚í‚ê‚Ä‚¢‚é‚©i2026-10-09jB1sE2—ñE0Œ¾‚í‚ê‚Ä‚¢‚È‚¢B
@@ -752,8 +752,8 @@ Function ƒsƒ{ƒbƒg‚Ì’u‚«ê(ByVal —Š As String, ByVal Œê As String) As Long
     If Len(Œê) = 0 Then Exit Function
     ˆÊ’u = InStr(1, —Š, Œê, vbBinaryCompare)
     Do While ˆÊ’u > 0
-        ‘O = Mid$(—Š, IIf(ˆÊ’u > 4, ˆÊ’u - 4, 1), IIf(ˆÊ’u > 4, 4, ˆÊ’u - 1))
-        Œã = Left$(Mid$(—Š, ˆÊ’u + Len(Œê), 4), 2)
+        ‘O = mid$(—Š, IIf(ˆÊ’u > 4, ˆÊ’u - 4, 1), IIf(ˆÊ’u > 4, 4, ˆÊ’u - 1))
+        Œã = Left$(mid$(—Š, ˆÊ’u + Len(Œê), 4), 2)
         If Right$(‘O, 2) = "—ñ‚É" Or Right$(‘O, 2) = "—ñ‚Í" Or Right$(‘O, 2) = "‰¡‚É" Or Right$(‘O, 3) = "—ñ•ûŒü" Or _
            Right$(‘O, 3) = "‰¡²‚É" Or Œã = "‚ğ—ñ" Or Œã = "‚Í—ñ" Or Œã = "‚ª—ñ" Or Œã = "‚à—ñ" Or Œã = "‚ğ‰¡" Or Œã = "‚Í‰¡" Or Œã = "‚à‰¡" Then
             ƒsƒ{ƒbƒg‚Ì’u‚«ê = 2
@@ -849,7 +849,7 @@ Function —Š‚İ‚ÅƒOƒ‰ƒt‚ğì‚é(ByVal ws As Worksheet, ByVal —Š As String, ByVal í—
             Next c
             If š < 2 Then Exit Function
             æŒ‚‚¿‚É’f‚é "ƒOƒ‰ƒt‚Ì€–Ú‚É‚·‚é—ñ‚ªŒˆ‚Ü‚ç‚È‚¢‚Ì‚Åì‚Á‚Ä‚¢‚Ü‚¹‚ñi•¶š‚Ì—ñ‚ª " & š & " –{‚ ‚è‚Ü‚·jB" & _
-                Mid$(Œó•â, InStr(Œó•â, "Œ©o‚µ:")) & "i—Š‚İ•û‚Ì—á: u•”•Ê‚É‹àŠz‚ğ–_ƒOƒ‰ƒt‚Åvj"
+                mid$(Œó•â, InStr(Œó•â, "Œ©o‚µ:")) & "i—Š‚İ•û‚Ì—á: u•”•Ê‚É‹àŠz‚ğ–_ƒOƒ‰ƒt‚Åvj"
             —Š‚İ‚ÅƒOƒ‰ƒt‚ğì‚é = 1
             Exit Function
         End If
@@ -1155,7 +1155,7 @@ Function Œ©o‚µ‚ÌŒê‚ÌˆÊ’u(ByVal —Š As String, ByVal Œ©o‚µ As String, Optional B
                 For j = 0 To UBound(ŒêX)
                     p = InStr(1, —Š, ŒêX(j), vbBinaryCompare)
                     Do While p > 0
-                        Œã = Mid$(—Š, p + Len(ŒêX(j)), 1)
+                        Œã = mid$(—Š, p + Len(ŒêX(j)), 1)
                         If Len(ŒêX(j)) >= 2 Or Len(Œã) = 0 Or InStr("•Ê‚²–ˆ’P‚Å‚ğ‚Æ‚ÌE,A‚É‚ª‚à‚Í", Œã) > 0 Then Exit Do
                         p = InStr(p + 1, —Š, ŒêX(j), vbBinaryCompare)
                     Loop
@@ -1286,7 +1286,7 @@ End Function
 Function ƒJƒi‚ğŠÜ‚Ş‚©(ByVal s As String) As Boolean
     Dim i As Long, w As Long
     For i = 1 To Len(s)
-        w = AscW(Mid$(s, i, 1))
+        w = AscW(mid$(s, i, 1))
         If w < 0 Then w = w + 65536
         If (w >= &H30A1 And w <= &H30FA) Or (w >= &HFF66& And w <= &HFF9F&) Then ƒJƒi‚ğŠÜ‚Ş‚© = True: Exit Function
     Next i
@@ -1298,7 +1298,7 @@ End Function
 Function ƒJƒi‚Ìš‚ğ‚»‚ë‚¦‚é(ByVal s As String, ByVal Œ^ As String) As String
     Dim i As Long, w As Long, ˜A As String, o As String, ch As String
     For i = 1 To Len(s)
-        ch = Mid$(s, i, 1)
+        ch = mid$(s, i, 1)
         w = AscW(ch)
         If w < 0 Then w = w + 65536
         If w >= &HFF66& And w <= &HFF9F& Then
@@ -1316,7 +1316,7 @@ End Function
 Function ‘SŠpƒJƒi‚ğ•Ï‚¦‚é(ByVal š As String, ByVal Œ^ As String) As String
     Dim i As Long, w As Long, o As String
     For i = 1 To Len(š)
-        w = AscW(Mid$(š, i, 1))
+        w = AscW(mid$(š, i, 1))
         If w < 0 Then w = w + 65536
         If Œ^ = "‚Ğ‚ç" Then
             If (w >= &H30A1& And w <= &H30F4&) Or w = &H30FD& Or w = &H30FE& Then w = w - &H60&

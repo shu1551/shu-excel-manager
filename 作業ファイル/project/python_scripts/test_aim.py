@@ -81,3 +81,84 @@ def test_near_unknown_block_is_not_skip():
     m = _m(rows)
     r = va.aim(m, '選んだ列の文字の日付を日付にする')
     assert r['verdict'] in ('skip', 'unknown')
+
+
+def test_shelf_aim_headers_match_aim_rows():
+    """指示書124: vbam_aim._AIM_ROWS の 10 行と、棚の頭の 2 行（当てる症状・危ない条件）が一致することを照合する。"""
+    import os
+    import re
+    import glob
+
+    targets = [
+        '選んだ列の文字の日付を日付にする',
+        '選んだ列の文字の数字を数にする',
+        '文字の先頭の空白を削除する',
+        '空白だけのセルを空にする',
+        '表の中の空行を削除して詰める',
+        '全列が同じ重複行を削除する',
+        '結合セルをほどいて値を埋める',
+        '二段の見出しを一行に畳む',
+        '選んだ列の途切れた式を戻す',
+        '英数を半角にカナを全角にする',
+    ]
+
+    expected = {}
+    for name, kind, sym, dz in va._AIM_ROWS:
+        if name in targets:
+            expected[name] = (sym.strip(), dz.strip())
+
+    assert len(expected) == 10
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    macro_dir = os.path.abspath(os.path.join(here, '..', 'publish', 'addin', 'macros'))
+    if not os.path.exists(macro_dir):
+        for rel in [
+            os.path.join(here, '..', '..', 'publish', 'addin', 'macros'),
+            os.path.join(here, '..', '..', '..', 'publish', 'addin', 'macros'),
+            os.path.join(here, 'publish', 'addin', 'macros'),
+        ]:
+            c = os.path.abspath(rel)
+            if os.path.exists(c):
+                macro_dir = c
+                break
+    bas_files = glob.glob(os.path.join(macro_dir, '表の整理*.bas'))
+    assert bas_files, f"No macro files found in {macro_dir}"
+
+    found = {}
+    re_sub = re.compile(r'^(?:Public\s+)?Sub\s+([^\(\s]+)')
+    re_sym = re.compile(r"^\s*'\s*当てる症状:\s*(.+)$")
+    re_dz = re.compile(r"^\s*'\s*危ない条件:\s*(.+)$")
+
+    for bf in bas_files:
+        with open(bf, encoding='cp932', errors='ignore') as f:
+            lines = f.readlines()
+
+        cur_proc = None
+        cur_sym = None
+        cur_dz = None
+
+        for line in lines:
+            m_sub = re_sub.match(line.strip())
+            if m_sub:
+                if cur_proc and cur_proc in expected:
+                    found[cur_proc] = (cur_sym, cur_dz)
+                cur_proc = m_sub.group(1)
+                cur_sym = None
+                cur_dz = None
+                continue
+
+            if cur_proc and cur_proc in expected:
+                m_s = re_sym.match(line)
+                if m_s:
+                    cur_sym = m_s.group(1).strip()
+                m_d = re_dz.match(line)
+                if m_d:
+                    cur_dz = m_d.group(1).strip()
+
+        if cur_proc and cur_proc in expected:
+            found[cur_proc] = (cur_sym, cur_dz)
+
+    assert len(found) == 10, f"Found only {len(found)} procs: {set(expected) - set(found)}"
+    for name in targets:
+        assert found[name] == expected[name], f"Mismatch for {name}: header={found[name]} vs aim_rows={expected[name]}"
+

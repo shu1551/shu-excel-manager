@@ -1291,7 +1291,7 @@ Sub 表のおかしい所を右に報告する()
                     t = Replace(t, vbCr, ""): t = Replace(t, vbLf, "")
                     t = Replace(t, vbTab, " "): t = Replace(t, ChrW(160), " ")
                     Do While Len(t) > 0
-                        If Left$(t, 1) = " " Or Left$(t, 1) = ChrW(&H3000) Then t = Mid$(t, 2) Else Exit Do
+                        If Left$(t, 1) = " " Or Left$(t, 1) = ChrW(&H3000) Then t = mid$(t, 2) Else Exit Do
                     Loop
                     Do While Len(t) > 0
                         If Right$(t, 1) = " " Or Right$(t, 1) = ChrW(&H3000) Then t = Left$(t, Len(t) - 1) Else Exit Do
@@ -1481,7 +1481,7 @@ Sub 数式の危ない所を右に報告する()
                 If Len(u) > 0 Then
                     ws.Cells(outRow, outCol).Value = "直書きの数値"
                     ws.Cells(outRow, outCol + 1).Value = ws.Cells(r, c).Address(0, 0)
-                    ws.Cells(outRow, outCol + 2).Value = "'" & ws.Cells(r, c).Formula & "　（" & Mid$(u, 2) & " を式に直接書いている。変わったとき直し漏れる）"
+                    ws.Cells(outRow, outCol + 2).Value = "'" & ws.Cells(r, c).Formula & "　（" & mid$(u, 2) & " を式に直接書いている。変わったとき直し漏れる）"
                     outRow = outRow + 1
                 End If
             End If
@@ -1690,8 +1690,8 @@ Sub 引き継ぎの説明シートを作る()
             sh.Cells(outRow, 1).Value = ws.Name
             sh.Cells(outRow, 2).Value = ur.Address(0, 0)
             sh.Cells(outRow, 3).Value = IIf(hdrRow > 0, ur.Row + ur.rows.Count - 1 - hdrRow, 0)
-            sh.Cells(outRow, 4).Value = IIf(入力列 = "", "（なし）", Mid$(入力列, 2))
-            sh.Cells(outRow, 5).Value = IIf(計算列 = "", "（なし）", Mid$(計算列, 2))
+            sh.Cells(outRow, 4).Value = IIf(入力列 = "", "（なし）", mid$(入力列, 2))
+            sh.Cells(outRow, 5).Value = IIf(計算列 = "", "（なし）", mid$(計算列, 2))
             sh.Cells(outRow, 6).Value = "'" & 式範囲
             outRow = outRow + 1
         End If
@@ -1751,16 +1751,16 @@ Sub ブックの全シートを一覧にする()
     ' 開いているブックの全シートを、状態・使用範囲・行列数・データのセル数・数式のセル数・テーブル・グラフ・図形の数で一覧にする。
     ' 新しいシート「調査_全体像」に出す（前に作った同名の調査シートは作り直す）。元のシートは何も変えない。
     Dim wb As Workbook, sh As Object, out As Worksheet, old As Object
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, hR As Long, nc As Long
+    Dim nM As String, nm0 As String, kk As Long, r As Long, rT As Long, j As Long, hR As Long, nc As Long
     Dim ur As Range, fr As Range, lk As Variant, st As String
     On Error GoTo 失敗
     Set wb = ActiveWorkbook
     Application.ScreenUpdating = False
-    nm0 = "調査_全体像": nm = nm0: kk = 1
+    nm0 = "調査_全体像": nM = nm0: kk = 1
     Do
         Set old = Nothing
         On Error Resume Next
-        Set old = wb.Sheets(nm)
+        Set old = wb.Sheets(nM)
         On Error GoTo 失敗
         If old Is Nothing Then Exit Do
         If TypeName(old) = "Worksheet" Then
@@ -1772,10 +1772,10 @@ Sub ブックの全シートを一覧にする()
             End If
         End If
         kk = kk + 1
-        nm = nm0 & "_" & kk
+        nM = nm0 & "_" & kk
     Loop
     Set out = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
-    out.Name = nm
+    out.Name = nM
     out.Range("A1").Value = "調査：ブックの全体像　" & wb.Name
     out.Range("A2").Value = "調べた日時 " & Format(Now, "yyyy/m/d hh:nn")
     hR = 4: nc = 12
@@ -1819,7 +1819,7 @@ Sub ブックの全シートを一覧にする()
         End If
 次のシート1:
     Next sh
-    rt = r
+    rT = r
     r = r + 2
     out.Cells(r, 1).Value = "名前定義の数"
     out.Cells(r, 2).Value = wb.names.Count
@@ -1844,7 +1844,7 @@ Sub ブックの全シートを一覧にする()
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, nc))
+        With .Range(.Cells(hR, 1), .Cells(rT, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
@@ -1880,7 +1880,7 @@ Sub 表の見出しと列の型を一覧にする()
     ' 今のシートの表（選んでいるセルを含むひとまとまり。空のセルなら使用範囲）について、見出し・データの件数・列ごとの型／空欄／種類の数／最小・最大／例を、
     ' 新しいシート「調査_表の作り」に一覧にする。見出し行は範囲の先頭行とみなす。列の「意味」までは決められないので、見出しと例を並べる。元の表は何も変えない。
     Dim wb As Workbook, ws As Object, out As Worksheet, old As Object
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, nc As Long
+    Dim nM As String, nm0 As String, kk As Long, r As Long, rT As Long, j As Long, i As Long, hR As Long, nc As Long
     Dim tb As Range, v As Variant, nr As Long, nc2 As Long, x As Variant, s As String, 注 As String
     Dim d As Object, n数 As Long, n日 As Long, n文 As Long, n他 As Long, n空 As Long, n誤 As Long, n文数 As Long
     Dim mn As Variant, mx As Variant, 例 As String, 例数 As Long, 型 As String, n型数 As Long, 部 As String
@@ -1903,11 +1903,11 @@ Sub 表の見出しと列の型を一覧にする()
         v = tb.Value
     End If
     Application.ScreenUpdating = False
-    nm0 = "調査_表の作り": nm = nm0: kk = 1
+    nm0 = "調査_表の作り": nM = nm0: kk = 1
     Do
         Set old = Nothing
         On Error Resume Next
-        Set old = wb.Sheets(nm)
+        Set old = wb.Sheets(nM)
         On Error GoTo 失敗
         If old Is Nothing Then Exit Do
         If TypeName(old) = "Worksheet" Then
@@ -1919,10 +1919,10 @@ Sub 表の見出しと列の型を一覧にする()
             End If
         End If
         kk = kk + 1
-        nm = nm0 & "_" & kk
+        nM = nm0 & "_" & kk
     Loop
     Set out = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
-    out.Name = nm
+    out.Name = nM
     out.Range("A1").Value = "調査：表の作り　" & ws.Name
     out.Range("A2").Value = "範囲 " & tb.Address(False, False) & "　見出し行 " & tb.Row & "　データ " & Format(nr - 1, "#,##0") & " 行　" & nc2 & " 列 " & 注
     out.Range("A3").Value = "見出し行は範囲の先頭行とみなしています。列の意味は決められないので、見出しと例を並べています。"
@@ -1991,7 +1991,7 @@ Sub 表の見出しと列の型を一覧にする()
             If n日 > 0 Then 部 = 部 & "・日付 " & n日
             If n文 > 0 Then 部 = 部 & "・文字 " & n文
             If n他 > 0 Then 部 = 部 & "・真偽 " & n他
-            型 = "混在（" & Mid$(部, 2) & "）"
+            型 = "混在（" & mid$(部, 2) & "）"
         End If
         r = r + 1
         out.Cells(r, 1).Value = Split(tb.Cells(1, j).Address(True, False), "$")(0)
@@ -2019,7 +2019,7 @@ Sub 表の見出しと列の型を一覧にする()
         out.Cells(r, 10).Value = n誤
         out.Cells(r, 11).Value = "'" & 例
     Next j
-    rt = r
+    rT = r
     With out
         .Range("A1").Font.Bold = True
         .Range("A1").Font.Size = 12
@@ -2027,7 +2027,7 @@ Sub 表の見出しと列の型を一覧にする()
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, nc))
+        With .Range(.Cells(hR, 1), .Cells(rT, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
@@ -2062,7 +2062,7 @@ Sub 入力規則などの仕掛けを一覧にする()
     ' 形: なし
     ' 今のシートにある入力規則（ドロップダウンなど）・条件付き書式・結合セルを、範囲と内容つきで新しいシート「調査_仕掛け」に一覧にする。元のシートは何も変えない。
     Dim wb As Workbook, ws As Object, out As Worksheet, old As Object
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, nc As Long
+    Dim nM As String, nm0 As String, kk As Long, r As Long, rT As Long, j As Long, i As Long, hR As Long, nc As Long
     Dim dv As Range, ar As Range, fc As Object, c As Range, ur As Range, s As String, s2 As String, s3 As String
     Dim n1 As Long, n2 As Long, n3 As Long, n As Long, op As String
     Dim outBuf() As Variant, maxBuf As Long, bufIdx As Long
@@ -2073,11 +2073,11 @@ Sub 入力規則などの仕掛けを一覧にする()
     Set ws = ActiveSheet
     If TypeName(ws) <> "Worksheet" Then Exit Sub
     Application.ScreenUpdating = False
-    nm0 = "調査_仕掛け": nm = nm0: kk = 1
+    nm0 = "調査_仕掛け": nM = nm0: kk = 1
     Do
         Set old = Nothing
         On Error Resume Next
-        Set old = wb.Sheets(nm)
+        Set old = wb.Sheets(nM)
         On Error GoTo 失敗
         If old Is Nothing Then Exit Do
         If TypeName(old) = "Worksheet" Then
@@ -2089,10 +2089,10 @@ Sub 入力規則などの仕掛けを一覧にする()
             End If
         End If
         kk = kk + 1
-        nm = nm0 & "_" & kk
+        nM = nm0 & "_" & kk
     Loop
     Set out = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
-    out.Name = nm
+    out.Name = nM
     out.Range("A1").Value = "調査：仕掛け（入力規則・条件付き書式・結合セル）　" & ws.Name
     hR = 4: nc = 5
     out.Range("A4:E4").Value = Array("種類", "範囲", "内容1", "内容2", "内容3")
@@ -2232,7 +2232,7 @@ Sub 入力規則などの仕掛けを一覧にする()
         out.Cells(r, 1).Value = "仕掛けは見つかりませんでした"
     End If
 
-    rt = r
+    rT = r
     out.Range("A2").Value = "入力規則 " & n1 & " 件・条件付き書式 " & n2 & " 件・結合セル " & n3 & " 件"
     With out
         .Range("A1").Font.Bold = True
@@ -2241,7 +2241,7 @@ Sub 入力規則などの仕掛けを一覧にする()
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, nc))
+        With .Range(.Cells(hR, 1), .Cells(rT, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
@@ -2278,16 +2278,16 @@ Sub 印刷ページ数と切れ目を一覧にする()
     ' 開いているブックの表示中のシートごとに、印刷範囲・向き・用紙・拡大縮小・総ページ数・行と列の切れ目・繰り返す見出し行を、新しいシート「調査_印刷ページ」に一覧にする。
     ' プリンターが未設定だとページ数が出ないことがある。元のシートは何も変えない。
     Dim wb As Workbook, sh As Object, out As Worksheet, old As Object
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, nc As Long
+    Dim nM As String, nm0 As String, kk As Long, r As Long, rT As Long, j As Long, i As Long, hR As Long, nc As Long
     Dim pg As Long, hb As String, vb2 As String, s As String, zm As Variant, col As Long
     On Error GoTo 失敗
     Set wb = ActiveWorkbook
     Application.ScreenUpdating = False
-    nm0 = "調査_印刷ページ": nm = nm0: kk = 1
+    nm0 = "調査_印刷ページ": nM = nm0: kk = 1
     Do
         Set old = Nothing
         On Error Resume Next
-        Set old = wb.Sheets(nm)
+        Set old = wb.Sheets(nM)
         On Error GoTo 失敗
         If old Is Nothing Then Exit Do
         If TypeName(old) = "Worksheet" Then
@@ -2299,10 +2299,10 @@ Sub 印刷ページ数と切れ目を一覧にする()
             End If
         End If
         kk = kk + 1
-        nm = nm0 & "_" & kk
+        nM = nm0 & "_" & kk
     Loop
     Set out = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
-    out.Name = nm
+    out.Name = nM
     out.Range("A1").Value = "調査：印刷ページ　" & wb.Name
     out.Range("A2").Value = "切れ目の「N行目」は、その行から次のページが始まる位置です。"
     hR = 4: nc = 9
@@ -2361,7 +2361,7 @@ Sub 印刷ページ数と切れ目を一覧にする()
         End If
 次のシート1:
     Next sh
-    rt = r
+    rT = r
     With out
         .Range("A1").Font.Bold = True
         .Range("A1").Font.Size = 12
@@ -2369,7 +2369,7 @@ Sub 印刷ページ数と切れ目を一覧にする()
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, nc))
+        With .Range(.Cells(hR, 1), .Cells(rT, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
@@ -2388,7 +2388,7 @@ Sub 印刷ページ数と切れ目を一覧にする()
     ActiveWindow.FreezePanes = True
     out.Range("A1").Select
     Application.ScreenUpdating = True
-    Application.StatusBar = "調査_印刷ページ: " & (rt - hR) & " シートのページ数を一覧にしました。"
+    Application.StatusBar = "調査_印刷ページ: " & (rT - hR) & " シートのページ数を一覧にしました。"
     Exit Sub
 失敗:
     Application.ScreenUpdating = True
@@ -2404,16 +2404,16 @@ Sub 非表示のシートと行列を一覧にする()
     ' 形: なし
     ' ブックの中の非表示のシート・行・列・名前と、絞り込みで隠れている行を、新しいシート「調査_非表示」に一覧にする。何も表示し直さず、元のシートは変えない。
     Dim wb As Workbook, sh As Object, out As Worksheet, old As Object
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, nc As Long
+    Dim nM As String, nm0 As String, kk As Long, r As Long, rT As Long, j As Long, i As Long, hR As Long, nc As Long
     Dim ur As Range, x As Variant, a As Long, lastR As Long, lastC As Long, nn As Object, 何 As String
     On Error GoTo 失敗
     Set wb = ActiveWorkbook
     Application.ScreenUpdating = False
-    nm0 = "調査_非表示": nm = nm0: kk = 1
+    nm0 = "調査_非表示": nM = nm0: kk = 1
     Do
         Set old = Nothing
         On Error Resume Next
-        Set old = wb.Sheets(nm)
+        Set old = wb.Sheets(nM)
         On Error GoTo 失敗
         If old Is Nothing Then Exit Do
         If TypeName(old) = "Worksheet" Then
@@ -2425,10 +2425,10 @@ Sub 非表示のシートと行列を一覧にする()
             End If
         End If
         kk = kk + 1
-        nm = nm0 & "_" & kk
+        nM = nm0 & "_" & kk
     Loop
     Set out = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
-    out.Name = nm
+    out.Name = nM
     out.Range("A1").Value = "調査：非表示のもの　" & wb.Name
     hR = 4: nc = 4
     out.Range("A4:D4").Value = Array("種類", "シート", "場所", "備考") ' 書き戻し: 新しい所
@@ -2529,7 +2529,7 @@ Sub 非表示のシートと行列を一覧にする()
         r = r + 1
         out.Cells(r, 1).Value = "非表示のものは見つかりませんでした"
     End If
-    rt = r
+    rT = r
     With out
         .Range("A1").Font.Bold = True
         .Range("A1").Font.Size = 12
@@ -2537,7 +2537,7 @@ Sub 非表示のシートと行列を一覧にする()
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, nc))
+        With .Range(.Cells(hR, 1), .Cells(rT, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
@@ -2556,7 +2556,7 @@ Sub 非表示のシートと行列を一覧にする()
     ActiveWindow.FreezePanes = True
     out.Range("A1").Select
     Application.ScreenUpdating = True
-    Application.StatusBar = "調査_非表示: " & (rt - hR) & " 件を一覧にしました。"
+    Application.StatusBar = "調査_非表示: " & (rT - hR) & " 件を一覧にしました。"
     Exit Sub
 失敗:
     Application.ScreenUpdating = True
@@ -2572,17 +2572,17 @@ Sub 壊れた参照と名前を一覧にする()
     ' 形: なし
     ' ブックの中の #REF!・#NAME? のセルと、式の中に #REF! を持つセル、参照先が壊れた名前を、新しいシート「調査_壊れた参照」に一覧にする。何も直さない。
     Dim wb As Workbook, sh As Object, out As Worksheet, old As Object
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, nc As Long
+    Dim nM As String, nm0 As String, kk As Long, r As Long, rT As Long, j As Long, i As Long, hR As Long, nc As Long
     Dim fr As Range, c As Range, f As Range, s As String, n As Long, first As String, seen As Object, nn As Object, 他 As Long, 何 As String
     On Error GoTo 失敗
     Set wb = ActiveWorkbook
     Set seen = CreateObject("Scripting.Dictionary")
     Application.ScreenUpdating = False
-    nm0 = "調査_壊れた参照": nm = nm0: kk = 1
+    nm0 = "調査_壊れた参照": nM = nm0: kk = 1
     Do
         Set old = Nothing
         On Error Resume Next
-        Set old = wb.Sheets(nm)
+        Set old = wb.Sheets(nM)
         On Error GoTo 失敗
         If old Is Nothing Then Exit Do
         If TypeName(old) = "Worksheet" Then
@@ -2594,10 +2594,10 @@ Sub 壊れた参照と名前を一覧にする()
             End If
         End If
         kk = kk + 1
-        nm = nm0 & "_" & kk
+        nM = nm0 & "_" & kk
     Loop
     Set out = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
-    out.Name = nm
+    out.Name = nM
     out.Range("A1").Value = "調査：壊れた参照　" & wb.Name
     hR = 4: nc = 5
     out.Range("A4:E4").Value = Array("種類", "シート", "セル／名前", "内容（式）", "備考") ' 書き戻し: 新しい所
@@ -2667,9 +2667,9 @@ Sub 壊れた参照と名前を一覧にする()
             If 外p1 > 0 Then
                 外p2 = InStr(外p1, 外s, "]")
                 If 外p2 > 外p1 Then
-                    外t = LCase$(Mid$(外s, 外p1 + 1, 外p2 - 外p1 - 1))
+                    外t = LCase$(mid$(外s, 外p1 + 1, 外p2 - 外p1 - 1))
                     外前 = "="
-                    If 外p1 > 1 Then 外前 = Mid$(外s, 外p1 - 1, 1)
+                    If 外p1 > 1 Then 外前 = mid$(外s, 外p1 - 1, 1)
                     If 外t Like "*.xl*" Or (IsNumeric(外t) And InStr("=(,+-*/&' ", 外前) > 0) Then
                         r = r + 1
                         out.Cells(r, 1).Value = "他のブックを指す名前"
@@ -2688,7 +2688,7 @@ Sub 壊れた参照と名前を一覧にする()
         r = r + 1
         out.Cells(r, 1).Value = "壊れた参照は見つかりませんでした"
     End If
-    rt = r
+    rT = r
     With out
         .Range("A1").Font.Bold = True
         .Range("A1").Font.Size = 12
@@ -2696,7 +2696,7 @@ Sub 壊れた参照と名前を一覧にする()
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, nc))
+        With .Range(.Cells(hR, 1), .Cells(rT, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
@@ -2715,7 +2715,7 @@ Sub 壊れた参照と名前を一覧にする()
     ActiveWindow.FreezePanes = True
     out.Range("A1").Select
     Application.ScreenUpdating = True
-    Application.StatusBar = "調査_壊れた参照: " & (rt - hR) & " 件を一覧にしました。"
+    Application.StatusBar = "調査_壊れた参照: " & (rT - hR) & " 件を一覧にしました。"
     Exit Sub
 失敗:
     Application.ScreenUpdating = True
@@ -2732,7 +2732,7 @@ Sub 参照とリンクを一覧にする()
     ' 数式が他のシートや他のブックを参照している関係と、ブックのリンク元ファイルを、新しいシート「調査_参照とリンク」に一覧にする。何も変えない（リンクの解消は「外部リンクを値に変えて切る」）。
     Dim wb As Workbook, sh As Object, t As Object, out As Worksheet, old As Object
     Dim kv As Variant
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, nc As Long
+    Dim nM As String, nm0 As String, kk As Long, r As Long, rT As Long, j As Long, i As Long, hR As Long, nc As Long
     Dim fr As Range, ar As Range, v As Variant, a As Long, b As Long, f As String, key As String, total As Long
     Dim cnt As Object, ex As Object, cnt2 As Object, ex2 As Object, lk As Variant, p1 As Long, p2 As Long, bk As String, 打切 As Boolean
     On Error GoTo 失敗
@@ -2740,11 +2740,11 @@ Sub 参照とリンクを一覧にする()
     Set cnt = CreateObject("Scripting.Dictionary"): Set ex = CreateObject("Scripting.Dictionary")
     Set cnt2 = CreateObject("Scripting.Dictionary"): Set ex2 = CreateObject("Scripting.Dictionary")
     Application.ScreenUpdating = False
-    nm0 = "調査_参照とリンク": nm = nm0: kk = 1
+    nm0 = "調査_参照とリンク": nM = nm0: kk = 1
     Do
         Set old = Nothing
         On Error Resume Next
-        Set old = wb.Sheets(nm)
+        Set old = wb.Sheets(nM)
         On Error GoTo 失敗
         If old Is Nothing Then Exit Do
         If TypeName(old) = "Worksheet" Then
@@ -2756,10 +2756,10 @@ Sub 参照とリンクを一覧にする()
             End If
         End If
         kk = kk + 1
-        nm = nm0 & "_" & kk
+        nM = nm0 & "_" & kk
     Loop
     Set out = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
-    out.Name = nm
+    out.Name = nM
     out.Range("A1").Value = "調査：参照とリンク　" & wb.Name
     hR = 4: nc = 5
     out.Range("A4:E4").Value = Array("種類", "参照元", "参照先", "件数", "最初の例") ' 書き戻し: 新しい所
@@ -2806,7 +2806,7 @@ Sub 参照とリンクを一覧にする()
                             If p1 > 0 Then
                                 p2 = InStr(p1, f, "]")
                                 If p2 > p1 Then
-                                    bk = Mid$(f, p1 + 1, p2 - p1 - 1)
+                                    bk = mid$(f, p1 + 1, p2 - p1 - 1)
                                     key = sh.Name & "|" & bk
                                     If cnt2.exists(key) Then
                                         cnt2(key) = cnt2(key) + 1
@@ -2868,9 +2868,9 @@ Sub 参照とリンクを一覧にする()
         If 外p1 > 0 Then
             外p2 = InStr(外p1, 外s, "]")
             If 外p2 > 外p1 Then
-                外t = LCase$(Mid$(外s, 外p1 + 1, 外p2 - 外p1 - 1))
+                外t = LCase$(mid$(外s, 外p1 + 1, 外p2 - 外p1 - 1))
                 外前 = "="
-                If 外p1 > 1 Then 外前 = Mid$(外s, 外p1 - 1, 1)
+                If 外p1 > 1 Then 外前 = mid$(外s, 外p1 - 1, 1)
                 If 外t Like "*.xl*" Or (IsNumeric(外t) And InStr("=(,+-*/&' ", 外前) > 0) Then
                     r = r + 1
                     out.Cells(r, 1).Value = "他のブックを指す名前"
@@ -2889,7 +2889,7 @@ Sub 参照とリンクを一覧にする()
         r = r + 1
         out.Cells(r, 1).Value = "他のシート・他のブックへの参照は見つかりませんでした"
     End If
-    rt = r
+    rT = r
     With out
         .Range("A1").Font.Bold = True
         .Range("A1").Font.Size = 12
@@ -2897,7 +2897,7 @@ Sub 参照とリンクを一覧にする()
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, nc))
+        With .Range(.Cells(hR, 1), .Cells(rT, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
@@ -2916,7 +2916,7 @@ Sub 参照とリンクを一覧にする()
     ActiveWindow.FreezePanes = True
     out.Range("A1").Select
     Application.ScreenUpdating = True
-    Application.StatusBar = "調査_参照とリンク: " & (rt - hR) & " 件を一覧にしました。"
+    Application.StatusBar = "調査_参照とリンク: " & (rT - hR) & " 件を一覧にしました。"
     Exit Sub
 失敗:
     Application.ScreenUpdating = True
@@ -2933,17 +2933,17 @@ Sub ブックが重い原因を一覧にする()
     ' ブックが重くなる代表的な原因（余計に広がった使用範囲・図形と画像・条件付き書式・スタイル・名前・外部リンク・再計算の多い関数など）の状況を、
     ' 新しいシート「調査_重い原因」に一覧にして、気になるものに印を付ける。何も変えない（直すのは「余分な行列を削除し軽くする」）。
     Dim wb As Workbook, sh As Object, out As Worksheet, old As Object
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, nc As Long
+    Dim nM As String, nm0 As String, kk As Long, r As Long, rT As Long, j As Long, i As Long, hR As Long, nc As Long
     Dim ur As Range, lc As Range, fr As Range, endR As Long, endC As Long, lastR As Long, lastC As Long, gR As Long, gC As Long
     Dim shp As Object, np As Long, ns As Long, fcN As Long, lk As Variant, f As Range, first As String, n As Long, w As Variant, 数式計 As Long, s As String
     On Error GoTo 失敗
     Set wb = ActiveWorkbook
     Application.ScreenUpdating = False
-    nm0 = "調査_重い原因": nm = nm0: kk = 1
+    nm0 = "調査_重い原因": nM = nm0: kk = 1
     Do
         Set old = Nothing
         On Error Resume Next
-        Set old = wb.Sheets(nm)
+        Set old = wb.Sheets(nM)
         On Error GoTo 失敗
         If old Is Nothing Then Exit Do
         If TypeName(old) = "Worksheet" Then
@@ -2955,10 +2955,10 @@ Sub ブックが重い原因を一覧にする()
             End If
         End If
         kk = kk + 1
-        nm = nm0 & "_" & kk
+        nM = nm0 & "_" & kk
     Loop
     Set out = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
-    out.Name = nm
+    out.Name = nM
     out.Range("A1").Value = "調査：ブックが重い原因　" & wb.Name
     out.Range("A2").Value = "「要確認」は目安です。直すなら「余分な行列を削除し軽くする」（使用範囲の余計な書式を落とす）から。"
     hR = 4: nc = 4
@@ -3004,7 +3004,7 @@ Sub ブックが重い原因を一覧にする()
             ' 幅か高さが 0 の図形（幽霊）。線・コネクタ・コメントは幅か高さが 0 でも正常なので数えない
             幅 = 1: 高 = 1
             On Error Resume Next
-            幅 = shp.Width: 高 = shp.Height
+            幅 = shp.width: 高 = shp.Height
             If 幅 < 1 Or 高 < 1 Then
                 If shp.Type <> 9 And shp.Type <> 4 And shp.Connector = False Then 幽 = 幽 + 1
             End If
@@ -3082,9 +3082,9 @@ Sub ブックが重い原因を一覧にする()
         If 外p1 > 0 Then
             外p2 = InStr(外p1, 外s, "]")
             If 外p2 > 外p1 Then
-                外t = LCase$(Mid$(外s, 外p1 + 1, 外p2 - 外p1 - 1))
+                外t = LCase$(mid$(外s, 外p1 + 1, 外p2 - 外p1 - 1))
                 外前 = "="
-                If 外p1 > 1 Then 外前 = Mid$(外s, 外p1 - 1, 1)
+                If 外p1 > 1 Then 外前 = mid$(外s, 外p1 - 1, 1)
                 If 外t Like "*.xl*" Or (IsNumeric(外t) And InStr("=(,+-*/&' ", 外前) > 0) Then n外 = n外 + 1
             End If
         End If
@@ -3153,7 +3153,7 @@ Sub ブックが重い原因を一覧にする()
         Case Else: s = "テーブル以外は自動"
     End Select
     out.Cells(r, 2).Value = s
-    rt = r
+    rT = r
     With out
         .Range("A1").Font.Bold = True
         .Range("A1").Font.Size = 12
@@ -3161,7 +3161,7 @@ Sub ブックが重い原因を一覧にする()
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, nc))
+        With .Range(.Cells(hR, 1), .Cells(rT, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
@@ -3179,11 +3179,11 @@ Sub ブックが重い原因を一覧にする()
     out.Cells(hR + 1, 1).Select
     ActiveWindow.FreezePanes = True
     out.Range("A1").Select
-    For i = hR + 1 To rt
+    For i = hR + 1 To rT
         If out.Cells(i, 3).Value = "要確認" Then out.Range(out.Cells(i, 1), out.Cells(i, nc)).Interior.Color = RGB(255, 242, 204)
     Next i
     Application.ScreenUpdating = True
-    Application.StatusBar = "調査_重い原因: " & (rt - hR) & " 項目を一覧にしました（要確認は色付き）。"
+    Application.StatusBar = "調査_重い原因: " & (rT - hR) & " 項目を一覧にしました（要確認は色付き）。"
     Exit Sub
 失敗:
     Application.ScreenUpdating = True
@@ -3200,7 +3200,7 @@ Sub 同じ形の表のシートを一覧にする()
     ' ブックの各シートの見出し行（先頭 30 行のうち最初に 3 つ以上の文字が並ぶ行）を比べ、見出しが 6 割以上そろっているシートの組を、新しいシート「調査_同じ形の表」に一覧にする。
     ' 集計で足し合わせられる表を見つけるのに使う。何も変えない。
     Dim wb As Workbook, sh As Object, out As Worksheet, old As Object
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, nc As Long
+    Dim nM As String, nm0 As String, kk As Long, r As Long, rT As Long, j As Long, i As Long, hR As Long, nc As Long
     Dim ur As Range, hrow As Long, v As Variant, s As String, n As Long, a As Long, b As Long, common As Long, sim As Double
     Dim nms() As String, dic() As Object, rowsN() As Long, k As Variant, 差A As String, 差B As String, cA As Long, cB As Long
     On Error GoTo 失敗
@@ -3241,11 +3241,11 @@ Sub 同じ形の表のシートを一覧にする()
 次のシート1:
     Next sh
     Application.ScreenUpdating = False
-    nm0 = "調査_同じ形の表": nm = nm0: kk = 1
+    nm0 = "調査_同じ形の表": nM = nm0: kk = 1
     Do
         Set old = Nothing
         On Error Resume Next
-        Set old = wb.Sheets(nm)
+        Set old = wb.Sheets(nM)
         On Error GoTo 失敗
         If old Is Nothing Then Exit Do
         If TypeName(old) = "Worksheet" Then
@@ -3257,10 +3257,10 @@ Sub 同じ形の表のシートを一覧にする()
             End If
         End If
         kk = kk + 1
-        nm = nm0 & "_" & kk
+        nM = nm0 & "_" & kk
     Loop
     Set out = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
-    out.Name = nm
+    out.Name = nM
     out.Range("A1").Value = "調査：同じ形の表　" & wb.Name
     out.Range("A2").Value = "各シートの見出し行を比べ、見出しが 6 割以上そろっている組を出しています（類似度が高い順）。"
     hR = 4: nc = 8
@@ -3305,7 +3305,7 @@ Sub 同じ形の表のシートを一覧にする()
         r = r + 1
         out.Cells(r, 1).Value = "見出しが似ているシートの組は見つかりませんでした"
     End If
-    rt = r
+    rT = r
     With out
         .Range("A1").Font.Bold = True
         .Range("A1").Font.Size = 12
@@ -3313,7 +3313,7 @@ Sub 同じ形の表のシートを一覧にする()
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, nc))
+        With .Range(.Cells(hR, 1), .Cells(rT, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
@@ -3352,7 +3352,7 @@ Sub シートの数式を形ごとに一覧にする()
     ' 式が「何をしているか」の言葉での説明は AI の役目なので、形と例を並べる。何も変えない。
     Dim wb As Workbook, ws As Object, out As Worksheet, old As Object
     Dim kv As Variant
-    Dim nm As String, nm0 As String, kk As Long, r As Long, rt As Long, j As Long, i As Long, hR As Long, nc As Long
+    Dim nM As String, nm0 As String, kk As Long, r As Long, rT As Long, j As Long, i As Long, hR As Long, nc As Long
     Dim fr As Range, ar As Range, v As Variant, v2 As Variant, a As Long, b As Long, key As String, total As Long, 打切 As Boolean
     Dim cnt As Object, first As Object, ex As Object, re As Object, ms As Object, m As Object, fn As Object, sm As Object, s As String, f As String, tk As String
     On Error GoTo 失敗
@@ -3361,11 +3361,11 @@ Sub シートの数式を形ごとに一覧にする()
     If TypeName(ws) <> "Worksheet" Then Exit Sub
     Set cnt = CreateObject("Scripting.Dictionary"): Set first = CreateObject("Scripting.Dictionary"): Set ex = CreateObject("Scripting.Dictionary")
     Application.ScreenUpdating = False
-    nm0 = "調査_数式の一覧": nm = nm0: kk = 1
+    nm0 = "調査_数式の一覧": nM = nm0: kk = 1
     Do
         Set old = Nothing
         On Error Resume Next
-        Set old = wb.Sheets(nm)
+        Set old = wb.Sheets(nM)
         On Error GoTo 失敗
         If old Is Nothing Then Exit Do
         If TypeName(old) = "Worksheet" Then
@@ -3377,10 +3377,10 @@ Sub シートの数式を形ごとに一覧にする()
             End If
         End If
         kk = kk + 1
-        nm = nm0 & "_" & kk
+        nM = nm0 & "_" & kk
     Loop
     Set out = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
-    out.Name = nm
+    out.Name = nM
     out.Range("A1").Value = "調査：数式の一覧　" & ws.Name
     hR = 4: nc = 6
     out.Range("A4:F4").Value = Array("数式の形（R1C1）", "セル数", "最初のセル", "例（A1形式）", "使っている関数", "参照しているシート") ' 書き戻し: 新しい所
@@ -3467,7 +3467,7 @@ Sub シートの数式を形ごとに一覧にする()
         r = r + 1
         out.Cells(r, 1).Value = "このシートに数式はありません"
     End If
-    rt = r
+    rT = r
     With out
         .Range("A1").Font.Bold = True
         .Range("A1").Font.Size = 12
@@ -3475,7 +3475,7 @@ Sub シートの数式を形ごとに一覧にする()
             .Font.Bold = True
             .Interior.Color = RGB(221, 235, 247)
         End With
-        With .Range(.Cells(hR, 1), .Cells(rt, nc))
+        With .Range(.Cells(hR, 1), .Cells(rT, nc))
             .Borders.LineStyle = 1
             .VerticalAlignment = -4160
             .Columns.AutoFit
@@ -3494,7 +3494,7 @@ Sub シートの数式を形ごとに一覧にする()
     ActiveWindow.FreezePanes = True
     out.Range("A1").Select
     Application.ScreenUpdating = True
-    Application.StatusBar = "調査_数式の一覧: 数式 " & Format(total, "#,##0") & " 個を " & (rt - hR) & " 通りの形にまとめました。"
+    Application.StatusBar = "調査_数式の一覧: 数式 " & Format(total, "#,##0") & " 個を " & (rT - hR) & " 通りの形にまとめました。"
     Exit Sub
 失敗:
     Application.ScreenUpdating = True
@@ -3569,7 +3569,7 @@ Sub 列番号を直書きした式を一覧にする()
                         If InStr(式, """") > 0 Then
                             引用 = False: 大 = ""
                             For 区 = 1 To Len(式)
-                                文字 = Mid$(式, 区, 1)
+                                文字 = mid$(式, 区, 1)
                                 If 文字 = """" Then
                                     引用 = Not 引用
                                     大 = 大 & """"
@@ -3584,7 +3584,7 @@ Sub 列番号を直書きした式を一覧にする()
                             位 = InStr(大, 関 & "(")
                             Do While 位 > 0
                                 前 = ""
-                                If 位 > 1 Then 前 = Mid$(大, 位 - 1, 1)
+                                If 位 > 1 Then 前 = mid$(大, 位 - 1, 1)
                                 If 前 Like "[A-Z0-9_.]" Then GoTo 次の呼び出し
                                 始 = 位 + Len(関) + 1
                                 GoSub 引数を切る
@@ -3670,7 +3670,7 @@ Sub 列番号を直書きした式を一覧にする()
     For 区 = 1 To 9: 引数(区) = "": Next 区
     深 = 1: 引 = 始: 引用 = False: 引用S = False
     For 区 = 始 To Len(式)
-        文字 = Mid$(式, 区, 1)
+        文字 = mid$(式, 区, 1)
         If 引用 Then
             If 文字 = """" Then 引用 = False
         ElseIf 引用S Then
@@ -3685,12 +3685,12 @@ Sub 列番号を直書きした式を一覧にする()
             深 = 深 - 1
             If 深 = 0 Then
                 引数数 = 引数数 + 1
-                If 引数数 <= 9 Then 引数(引数数) = Mid$(式, 引, 区 - 引)
+                If 引数数 <= 9 Then 引数(引数数) = mid$(式, 引, 区 - 引)
                 Exit For
             End If
         ElseIf 文字 = "," And 深 = 1 Then
             引数数 = 引数数 + 1
-            If 引数数 <= 9 Then 引数(引数数) = Mid$(式, 引, 区 - 引)
+            If 引数数 <= 9 Then 引数(引数数) = mid$(式, 引, 区 - 引)
             引 = 区 + 1
         End If
     Next 区
@@ -3709,7 +3709,7 @@ Sub 列番号を直書きした式を一覧にする()
         On Error Resume Next
         Set 参照シート = wb.Worksheets(Replace(Left$(参照名, 区 - 1), "'", ""))
         On Error GoTo 失敗
-        参照名 = Mid$(参照名, 区 + 1)
+        参照名 = mid$(参照名, 区 + 1)
     End If
     If Not 参照シート Is Nothing Then
         Set 図 = Nothing
@@ -3819,7 +3819,7 @@ Sub ブックに隠れた物を一覧にする()
         参照 = 名前.RefersTo
         短 = 名前.Name
         On Error GoTo 失敗
-        If InStr(短, "!") > 0 Then 短 = Mid$(短, InStr(短, "!") + 1)
+        If InStr(短, "!") > 0 Then 短 = mid$(短, InStr(短, "!") + 1)
         If Not (短 Like "_xlnm*" Or 短 Like "Print_*" Or 短 Like "_FilterDatabase" Or 短 Like "_xlfn*" Or 短 Like "_xlpm*" Or 短 Like "Consolidate_Area" Or 短 Like "Sheet_Title") Then
             If 名前.Visible = False Then
                 種 = "非表示の名前"
@@ -4108,7 +4108,7 @@ Sub ブックの構造を一覧にする()
     計時 = Timer
     ' Excelコンボが材料にするときは文字で返す（コンボ道具が無いブックでもこのマクロだけで動くように Run で聞く）
     On Error Resume Next
-    文字で = Application.Run("'" & ThisWorkbook.Name & "'!コンボ道具.構造を文字で返すか")
+    文字で = Application.run("'" & ThisWorkbook.Name & "'!コンボ道具.構造を文字で返すか")
     On Error GoTo 失敗
     Application.ScreenUpdating = False
     Set 詳 = New Collection: Set 点 = New Collection: Set 要 = New Collection
@@ -4334,7 +4334,7 @@ Sub ブックの構造を一覧にする()
             Err.Clear
             On Error GoTo 失敗
             区 = "条件付き書式": 項 = 種 & IIf(前 = "", "", "（" & 前 & "）"): 場 = ws.Name & "!" & 範 & IIf(括, " ★まるごと", "")
-            法 = "書式: " & Mid$(印, 2)
+            法 = "書式: " & mid$(印, 2)
             GoSub 詳を足す
             If 括 Then
                 項 = "条件付き書式が列・行まるごと（" & ws.Name & "!" & 範 & "）"
@@ -4483,12 +4483,12 @@ Sub ブックの構造を一覧にする()
                     容 = 容 & IIf(容 = "", "", "　") & 系.Formula
                 Next 系
             End If
-            If 図種 <> 4 And (図.Visible = False Or 図.Height <= 1 Or 図.Width <= 1) Then
+            If 図種 <> 4 And (図.Visible = False Or 図.Height <= 1 Or 図.width <= 1) Then
                 幽数 = 幽数 + 1
                 If 幽数 <= 5 Then 幽 = 幽 & IIf(幽 = "", "", "・") & ws.Name & "!" & 図.Name
             End If
             区 = "図形": 項 = 図類: 場 = ws.Name & "!" & 範 & "　" & 図.Name & IIf(親 = "", "", "（グループ " & 親 & "）")
-            法 = Round(図.Height) & "×" & Round(図.Width) & IIf(字 = "", "", "・マクロ " & 字) & IIf(前 = "", "", "・リンク " & 前) & IIf(文字数 > 0, "・文字 " & 文字数 & " 字", "") & IIf(図.Visible, "", "・非表示")
+            法 = Round(図.Height) & "×" & Round(図.width) & IIf(字 = "", "", "・マクロ " & 字) & IIf(前 = "", "", "・リンク " & 前) & IIf(文字数 > 0, "・文字 " & 文字数 & " 字", "") & IIf(図.Visible, "", "・非表示")
             If 図種 = 6 Then
                 For Each 部品 In 図.GroupItems
                     列.Add Array(部品, 図.Name)
@@ -4532,7 +4532,7 @@ Sub ブックの構造を一覧にする()
         On Error GoTo 失敗
         名数 = 名数 + 1
         字 = 短
-        If InStr(字, "!") > 0 Then 字 = Mid$(字, InStr(字, "!") + 1)
+        If InStr(字, "!") > 0 Then 字 = mid$(字, InStr(字, "!") + 1)
         括 = (字 Like "_xl*" Or 字 = "_FilterDatabase" Or 字 Like "ExternalData_#*")
         If Not 括 Then 名本 = 名本 + 1
         区 = "名前": 項 = IIf(括, "Excel が作る名前", IIf(名前.Visible, "名前", "非表示の名前")): 場 = 短 & "（範囲 " & 範 & "）": 容 = 参照
@@ -4593,13 +4593,13 @@ Sub ブックの構造を一覧にする()
             p = InStr(xml, "<numFmt ")
             Do While p > 0
                 q = InStr(p, xml, ">")
-                字 = Mid$(xml, p, q - p)
+                字 = mid$(xml, p, q - p)
                 i = InStr(字, "formatCode=""")
                 j = InStr(字, "numFmtId=""")
                 If i > 0 And j > 0 Then
-                    書式 = Mid$(字, i + 12, InStr(i + 12, 字, """") - i - 12)
+                    書式 = mid$(字, i + 12, InStr(i + 12, 字, """") - i - 12)
                     書式 = Replace(Replace(Replace(Replace(Replace(書式, "&quot;", """"), "&lt;", "<"), "&gt;", ">"), "&apos;", "'"), "&amp;", "&")
-                    If val(Mid$(字, j + 10)) >= 164 And Not 書辞.exists(書式) Then
+                    If val(mid$(字, j + 10)) >= 164 And Not 書辞.exists(書式) Then
                         書辞.Add 書式, 1
                         書式数 = 書式数 + 1
                         区 = "表示形式": 項 = "ユーザー定義の表示形式": 場 = "ブック全体": 容 = 書式: 法 = ""
@@ -4642,7 +4642,7 @@ Sub ブックの構造を一覧にする()
             If i > 0 Then
                 j = InStr(i, 字, ";")
                 If j = 0 Then j = Len(字) + 1
-                字 = Left$(字, i + Len(鍵) - 1) & "***" & Mid$(字, j)
+                字 = Left$(字, i + Len(鍵) - 1) & "***" & mid$(字, j)
             End If
         Next 鍵
         区 = "接続": 項 = 繋.Name: 場 = "種類 " & 繋.Type: 容 = 字: 法 = IIf(前 = "", "", "コマンド " & 前) & IIf(p, "・開くとき更新", "")
@@ -4686,8 +4686,8 @@ Sub ブックの構造を一覧にする()
                 字 = ""
                 For Each 並 In Split(宣言, vbCrLf)
                     If 並 Like "*Declare *" And Left$(Trim$(並), 1) <> "'" Then
-                        語 = Trim$(Split(Split(Trim$(Mid$(並, InStr(並, "Declare ") + 8)), "(")(0), " Lib")(0))
-                        字 = 字 & IIf(字 = "", "", "・") & Mid$(語, InStrRev(語, " ") + 1)
+                        語 = Trim$(Split(Split(Trim$(mid$(並, InStr(並, "Declare ") + 8)), "(")(0), " Lib")(0))
+                        字 = 字 & IIf(字 = "", "", "・") & mid$(語, InStrRev(語, " ") + 1)
                     End If
                 Next 並
                 手 = ""
@@ -4707,7 +4707,7 @@ Sub ブックの構造を一覧にする()
                             ' コメントを外し、文字列を潰す
                             語 = "": 括 = False
                             For p = 1 To Len(並)
-                                前 = Mid$(並, p, 1)
+                                前 = mid$(並, p, 1)
                                 If 前 = """" Then
                                     括 = Not 括
                                 ElseIf 前 = "'" And Not 括 Then
@@ -4737,7 +4737,7 @@ Sub ブックの構造を一覧にする()
                         GoSub 詳を足す
                         For Each 鍵 In 当辞.keys
                             If 鍵 Like "*FileSearch*" Or 鍵 Like "*Cells.Count*" Or 鍵 Like "*95/97*" Then
-                                項 = 部品.Name & "." & 手名 & ": " & Mid$(鍵, 6)
+                                項 = 部品.Name & "." & 手名 & ": " & mid$(鍵, 6)
                                 容 = "今の Excel では止まるか、意図と違う形で動く"
                                 法 = "Alt+F11 で " & 部品.Name & " の " & 手名
                                 GoSub 点を足す
@@ -4868,7 +4868,7 @@ Sub ブックの構造を一覧にする()
                 文 = 文 & Replace(Replace(Replace(CStr(出力(i, j)), vbCrLf, "［改行］"), vbLf, "［改行］"), vbTab, " ") & IIf(j < 5, vbTab, vbLf)
             Next j
         Next i
-        Application.Run "'" & ThisWorkbook.Name & "'!コンボ道具.構造の文字を入れる", 文
+        Application.run "'" & ThisWorkbook.Name & "'!コンボ道具.構造の文字を入れる", 文
         Application.ScreenUpdating = True
         Exit Sub
     End If
@@ -4954,7 +4954,7 @@ Sub ブックの構造を一覧にする()
     ' 式の中の関数名を拾う（文字列の中は数えない・_xlfn. などを外す）→ 当 = "|SUM|IF|"
     当 = "|": 語 = "": 括 = False
     For p = 1 To Len(式)
-        字 = Mid$(式, p, 1)
+        字 = mid$(式, p, 1)
         If 字 = """" Then
             括 = Not 括: 語 = ""
         ElseIf Not 括 Then
@@ -4990,6 +4990,739 @@ Sub ブックの構造を一覧にする()
     If 文字で Then
         文 = "（ブックの構造を調べられませんでした: " & Err.Description & "）"
         On Error Resume Next
-        Application.Run "'" & ThisWorkbook.Name & "'!コンボ道具.構造の文字を入れる", 文
+        Application.run "'" & ThisWorkbook.Name & "'!コンボ道具.構造の文字を入れる", 文
     End If
 End Sub
+
+Sub シートのレントゲンを一覧にする()
+    ' 依頼の語: レントゲン|シートのレントゲン|表のレントゲン|シートの地図|表の地図|症状を一覧|シートの症状|表の症状を調べ|レントゲンを撮
+    ' 依頼の組: レントゲン,地図,症状+一覧,調べ,見,撮
+    ' 扱う: レントゲン 地図 症状 構造
+    ' 見出し: なし
+    ' 形: なし
+    ' 今のシートをレントゲン（コンボ地図）で撮り、表の塊（範囲・種類・見出し・明細行・合計行・結合・気をつける所）と、
+    ' 見つかった症状（S01?S17）および直せる棚マクロ・判定理由を、新しいシート「調査_レントゲン」に一覧にする。元の表は何も変えない。
+    Dim wb As Workbook, ws As Object, out As Worksheet, old As Object
+    Dim nM As String, nm0 As String, kk As Long, r As Long, rT1 As Long, rT2 As Long, hR1 As Long, hR2 As Long, j As Long
+    Dim g As Object, blocks As Object, syms As Object, b As Object, s As Object, safety As Object, ans As Object
+    Dim kindLabel As String, hdrInfo As String, detInfo As String, totInfo As String, safeNotes As String
+    Dim symCode As String, symName As String, shelfName As String, vStr As String, placeStr As String
+    Dim indKey As Variant
+    On Error GoTo 失敗
+    Set wb = ActiveWorkbook
+    Set ws = ActiveSheet
+    If wb Is Nothing Or ws Is Nothing Then Exit Sub
+    If TypeName(ws) <> "Worksheet" Then Exit Sub
+
+    Set g = コンボ地図_棚当て.地図を撮る(ws)
+    If g Is Nothing Then Exit Sub
+
+    Application.ScreenUpdating = False
+    nm0 = "調査_レントゲン": nM = nm0: kk = 1
+    Do
+        Set old = Nothing
+        On Error Resume Next
+        Set old = wb.Sheets(nM)
+        On Error GoTo 失敗
+        If old Is Nothing Then Exit Do
+        If TypeName(old) = "Worksheet" Then
+            If Left$(セルの字(old.Range("A1").Value), 3) = "調査：" Then
+                Application.DisplayAlerts = False
+                old.Delete
+                Application.DisplayAlerts = True
+                Exit Do
+            End If
+        End If
+        kk = kk + 1
+        nM = nm0 & "_" & kk
+    Loop
+
+    Set out = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
+    out.Name = nM
+    Set blocks = g("blocks")
+    Set syms = g("symptoms")
+
+    out.Range("A1").Value = "調査：シートのレントゲン　" & ws.Name
+    out.Range("A2").Value = "使用範囲 " & ws.UsedRange.Address(False, False) & "　表の塊 " & blocks.Count & " 個　症状 " & syms.Count & " 件　隠した行 " & g("hidden_rows_count") & "・隠した列 " & g("hidden_cols_count")
+    out.Range("A3").Value = "シートの構造（見出し・明細・合計・結合・参照）と、見つかった症状・直せる棚マクロの判定結果です。元のシートは何も変えていません。"
+
+    ' 第1表: 表の塊と構造
+    hR1 = 5
+    out.Range("A5:H5").Value = Array("塊ID", "種類", "範囲", "見出し行", "明細行", "合計・小計行", "結合セル数", "気をつける所（安全の印）") ' 書き戻し: 新しい所
+    r = hR1
+    If blocks.Count = 0 Then
+        r = r + 1
+        out.Cells(r, 1).Value = "（なし）"
+        out.Cells(r, 2).Value = "表の塊が見つかりませんでした"
+    Else
+        For Each b In blocks
+            r = r + 1
+            out.Cells(r, 1).Value = b("id")
+            Select Case CStr(b("kind"))
+                Case "table": kindLabel = "表（一覧）"
+                Case "form": kindLabel = "帳票（複数行1件）"
+                Case "memo": kindLabel = "メモ・注記"
+                Case Else: kindLabel = "不明（unknown）"
+            End Select
+            out.Cells(r, 2).Value = kindLabel
+            out.Cells(r, 3).Value = b("range")
+
+            If CLng(b("header_count")) > 0 Then
+                If CLng(b("header_first")) = CLng(b("header_last")) Then
+                    hdrInfo = b("header_first") & "行目（1段）"
+                Else
+                    hdrInfo = b("header_first") & "?" & b("header_last") & "行目（" & b("header_count") & "段）"
+                End If
+            Else
+                hdrInfo = "なし"
+            End If
+            out.Cells(r, 4).Value = "'" & hdrInfo
+
+            If Len(b("detail_rows")) > 0 Then
+                detInfo = b("detail_rows") & "行"
+            Else
+                detInfo = "なし"
+            End If
+            out.Cells(r, 5).Value = "'" & detInfo
+
+            If CLng(b("total_count")) > 0 Then
+                totInfo = b("total_count") & "行"
+            Else
+                totInfo = "なし"
+            End If
+            out.Cells(r, 6).Value = "'" & totInfo
+
+            Set safety = b("safety")
+            out.Cells(r, 7).Value = CLng(safety("merged_count"))
+
+            safeNotes = ""
+            If safety("subtotal_inside") Then safeNotes = safeNotes & "・途中に小計/合計あり(D01)"
+            If safety("merged_in_detail") Then safeNotes = safeNotes & "・明細に結合あり(" & safety("merged_detail_rows") & "行/D03)"
+            If safety("referenced_total") Then safeNotes = safeNotes & "・他の式から参照あり(D08)"
+            If safety("indent").Count > 0 Then
+                Dim indStr As String
+                indStr = ""
+                For Each indKey In safety("indent").keys
+                    indStr = indStr & IIf(Len(indStr) > 0, ",", "") & CStr(indKey) & "列"
+                Next indKey
+                safeNotes = safeNotes & "・字下げ階層(" & indStr & "/D05)"
+            End If
+            If Len(safeNotes) = 0 Then safeNotes = "なし" Else safeNotes = mid$(safeNotes, 2)
+            out.Cells(r, 8).Value = "'" & safeNotes
+        Next b
+    End If
+    rT1 = r
+
+    ' 第2表: 見つかった症状と直せる棚
+    hR2 = rT1 + 2
+    out.Range(out.Cells(hR2, 1), out.Cells(hR2, 6)).Value = Array("塊ID", "場所", "症状コード", "症状の内容", "直せる棚マクロ", "先撃ち判定") ' 書き戻し: 新しい所
+    r = hR2
+    If syms.Count = 0 Then
+        r = r + 1
+        out.Cells(r, 1).Value = "（なし）"
+        out.Cells(r, 4).Value = "症状は見つかりませんでした"
+    Else
+        For Each s In syms
+            r = r + 1
+            symCode = CStr(s("code"))
+            out.Cells(r, 1).Value = s("block")
+            If Len(s("col")) > 0 Then
+                placeStr = s("col") & "列"
+            ElseIf Len(s("rows")) > 0 Then
+                placeStr = s("rows") & "行"
+            Else
+                placeStr = "表全体"
+            End If
+            out.Cells(r, 2).Value = "'" & placeStr
+            out.Cells(r, 3).Value = symCode
+
+            symName = "": shelfName = ""
+            Select Case symCode
+                Case "S01": symName = "文字の日付": shelfName = "選んだ列の文字の日付を日付にする"
+                Case "S02": symName = "文字の数字": shelfName = "選んだ列の文字の数字を数にする"
+                Case "S03": symName = "先頭の空白": shelfName = "文字の先頭の空白を削除する"
+                Case "S04": symName = "空白だけのセル": shelfName = "空白だけのセルを空にする"
+                Case "S05": symName = "全角英数・半角カナ混在": shelfName = "英数を半角にカナを全角にする"
+                Case "S11": symName = "重複行": shelfName = "全列が同じ重複行を削除する"
+                Case "S12": symName = "表の中の空行": shelfName = "表の中の空行を削除して詰める"
+                Case "S15": symName = "明細内の結合セル": shelfName = "結合セルをほどいて値を埋める"
+                Case "S16": symName = "二段の見出し": shelfName = "二段の見出しを一行に畳む"
+                Case "S17": symName = "途切れた数式": shelfName = "選んだ列の途切れた式を戻す"
+                Case Else: symName = symCode: shelfName = ""
+            End Select
+            out.Cells(r, 4).Value = symName
+            out.Cells(r, 5).Value = shelfName
+
+            vStr = ""
+            If Len(shelfName) > 0 Then
+                Set ans = コンボ地図_棚当て.当てる(g, shelfName)
+                If Not (ans Is Nothing) Then
+                    If ans("verdict") = "fire" Then
+                        vStr = "○ 撃てる"
+                    ElseIf ans("verdict") = "refuse" Then
+                        vStr = "× 撃たない（" & ans("reason") & "）"
+                    Else
+                        vStr = ans("verdict") & "（" & ans("reason") & "）"
+                    End If
+                End If
+            End If
+            out.Cells(r, 6).Value = "'" & vStr
+        Next s
+    End If
+    rT2 = r
+
+    With out
+        .Range("A1").Font.Bold = True
+        .Range("A1").Font.Size = 12
+        With .Range(.Cells(hR1, 1), .Cells(hR1, 8))
+            .Font.Bold = True
+            .Interior.Color = RGB(221, 235, 247)
+        End With
+        With .Range(.Cells(hR1, 1), .Cells(rT1, 8))
+            .Borders.LineStyle = 1
+            .VerticalAlignment = -4160
+        End With
+        With .Range(.Cells(hR2, 1), .Cells(hR2, 6))
+            .Font.Bold = True
+            .Interior.Color = RGB(226, 239, 218)
+        End With
+        With .Range(.Cells(hR2, 1), .Cells(rT2, 6))
+            .Borders.LineStyle = 1
+            .VerticalAlignment = -4160
+        End With
+        .Columns("A:H").AutoFit
+        For j = 1 To 8
+            If .Columns(j).ColumnWidth > 55 Then
+                .Columns(j).ColumnWidth = 55
+                .Columns(j).WrapText = True
+            End If
+            If .Columns(j).ColumnWidth < 8 Then .Columns(j).ColumnWidth = 8
+        Next j
+    End With
+    out.Activate
+    out.Range("A1").Select
+    Application.ScreenUpdating = True
+    Application.StatusBar = "調査_レントゲン: 表の塊 " & blocks.Count & " 個・症状 " & syms.Count & " 件を一覧にしました。"
+    Exit Sub
+失敗:
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+    Application.StatusBar = "レントゲン: 調べられませんでした（" & Err.Description & "）"
+End Sub
+
+Sub ブックの人間ドックを一覧にする()
+    ' 依頼の語: 人間ドック|ブックの人間ドック|健康診断|ブックの健康診断|総合診断|総合点検|ドックを撃|ブックを丸ごと点検|シートの健康診断
+    ' 依頼の組: 人間ドック,健康診断,総合診断,総合点検+ブック,シート,調べ,見
+    ' 扱う: 人間ドック 健康診断 総合点検 点数
+    ' 見出し: なし
+    ' 形: なし
+    ' ブック全体（調査シートを除く）のシート構造（骨）、レントゲン症状・数式エラー・VLOOKUP直書きなどの病巣、
+    ' 健康点数（100点満点とA?D判定）、および「直す手（対応する棚マクロ）」を新しいシート「調査_人間ドック」1枚にまとめる。元のシートは何も変えない。
+    Dim wb As Workbook, sh As Worksheet, out As Worksheet, old As Object
+    Dim nM As String, nm0 As String, kk As Long, r As Long, rT1 As Long, rT2 As Long, hR1 As Long, hR2 As Long, colIdx As Long
+    Dim g As Object, blocks As Object, syms As Object, s As Object
+    Dim visStr As String, protStr As String, urAddr As String, symSummary As String
+    Dim nSheets As Long, nCrit As Long, nWarn As Long, nInfo As Long, score As Long, gradeStr As String
+    Dim issues As Collection, eachItem As Variant
+    Dim ur As Range, vArr As Variant, fArr As Variant, r0 As Long, c0 As Long, nr As Long, nc As Long, ri As Long, ci As Long
+    Dim fStr As String, fCount As Long, errCount As Long, vlookupCount As Long, firstErrAddr As String, firstVlAddr As String
+    Dim reVl As Object, shNames() As String, nTgt As Long, sheetIdx As Long
+    Dim beforeWarn As Boolean, beforeScr As Boolean
+
+    On Error GoTo 失敗
+    Set wb = ActiveWorkbook
+    If wb Is Nothing Then Exit Sub
+
+    beforeWarn = Application.DisplayAlerts
+    beforeScr = Application.ScreenUpdating
+    Application.ScreenUpdating = False
+
+    ' 1. 対象シート名一覧を先に収集（調査_ で始まるシートは除外）
+    nTgt = 0
+    For Each old In wb.Sheets
+        If TypeName(old) = "Worksheet" Then
+            If Left$(old.Name, 3) <> "調査_" Then
+                nTgt = nTgt + 1
+                ReDim Preserve shNames(1 To nTgt)
+                shNames(nTgt) = old.Name
+            End If
+        End If
+    Next old
+    If nTgt = 0 Then GoTo 終了処理
+
+    ' 2. 既存の 調査_人間ドック シートの整理
+    nm0 = "調査_人間ドック": nM = nm0: kk = 1
+    Do
+        Set old = Nothing
+        On Error Resume Next
+        Set old = wb.Sheets(nM)
+        On Error GoTo 失敗
+        If old Is Nothing Then Exit Do
+        If TypeName(old) = "Worksheet" Then
+            Application.DisplayAlerts = False
+            old.Delete
+            Application.DisplayAlerts = beforeWarn
+            Exit Do
+        End If
+        kk = kk + 1
+        nM = nm0 & "_" & kk
+    Loop
+
+    Set reVl = CreateObject("VBScript.RegExp")
+    reVl.Pattern = "\b(VLOOKUP|HLOOKUP)\s*\([^,]+,[^,]+,\s*(\d+)"
+    reVl.IgnoreCase = True
+    reVl.Global = False
+
+    Set issues = New Collection
+    Set out = wb.Worksheets.Add(after:=wb.Sheets(wb.Sheets.Count))
+    out.Name = nM
+
+    hR1 = 5
+    out.Range("A5:G5").Value = Array("シート名", "表示", "保護", "使用範囲", "表の塊", "数式数", "レントゲン症状・注意点")
+    r = hR1
+
+    ' 3. 各シートを検査
+    For sheetIdx = 1 To nTgt
+        Set sh = wb.Sheets(shNames(sheetIdx))
+        nSheets = nSheets + 1
+        r = r + 1
+        Select Case sh.Visible
+            Case -1: visStr = "表示"
+            Case 0: visStr = "非表示": nInfo = nInfo + 1: issues.Add Array("気づき", sh.Name, "シート全体", "非表示シート", "シートが非表示になっています", "非表示のシートと行列を一覧にする")
+            Case 2: visStr = "VeryHidden": nInfo = nInfo + 1: issues.Add Array("気づき", sh.Name, "シート全体", "VeryHiddenシート", "通常操作で再表示できない非表示シートです", "非表示のシートと行列を一覧にする")
+            Case Else: visStr = CStr(sh.Visible)
+        End Select
+        protStr = IIf(sh.ProtectContents, "あり", "-")
+
+        Set ur = sh.UsedRange
+        urAddr = ur.Address(False, False)
+        r0 = ur.Row: c0 = ur.Column: nr = ur.rows.Count: nc = ur.Columns.Count
+
+        fCount = 0: errCount = 0: vlookupCount = 0: firstErrAddr = "": firstVlAddr = ""
+        If CDbl(nr) * CDbl(nc) <= 200000 Then
+            If nr = 1 And nc = 1 Then
+                ReDim vArr(1 To 1, 1 To 1): ReDim fArr(1 To 1, 1 To 1)
+                vArr(1, 1) = ur.Value2: fArr(1, 1) = ur.Formula
+            Else
+                vArr = ur.Value2: fArr = ur.Formula
+            End If
+            For ri = 1 To nr
+                For ci = 1 To nc
+                    If IsError(vArr(ri, ci)) Then
+                        errCount = errCount + 1
+                        If Len(firstErrAddr) = 0 Then firstErrAddr = ur.Cells(ri, ci).Address(False, False)
+                    End If
+                    If Not IsError(fArr(ri, ci)) Then
+                        fStr = CStr(fArr(ri, ci))
+                        If Left$(fStr, 1) = "=" Then
+                            fCount = fCount + 1
+                            If InStr(1, fStr, "VLOOKUP(", vbTextCompare) > 0 Or InStr(1, fStr, "HLOOKUP(", vbTextCompare) > 0 Then
+                                If reVl.Test(fStr) Then
+                                    vlookupCount = vlookupCount + 1
+                                    If Len(firstVlAddr) = 0 Then firstVlAddr = ur.Cells(ri, ci).Address(False, False)
+                                End If
+                            End If
+                        End If
+                    End If
+                Next ci
+            Next ri
+        End If
+
+        If errCount > 0 Then
+            nCrit = nCrit + 1
+            issues.Add Array("重大", sh.Name, firstErrAddr & IIf(errCount > 1, " ほか" & (errCount - 1) & "件", ""), "数式エラー", "エラー値（#DIV/0!, #REF!, #N/A 等）が " & errCount & " セルあります", "エラー値のセルを一覧にする ／ ゼロで割るエラーの式を直す")
+        End If
+        If vlookupCount > 0 Then
+            nWarn = nWarn + 1
+            issues.Add Array("警告", sh.Name, firstVlAddr & IIf(vlookupCount > 1, " ほか" & (vlookupCount - 1) & "件", ""), "列番号の直書き", "VLOOKUP/HLOOKUP の列・行番号が直書きされています（" & vlookupCount & " 件）", "VLOOKUPの列番号を見出しから引く形にする")
+        End If
+
+        ' レントゲン地図の取得
+        Set g = Nothing
+        On Error Resume Next
+        Set g = コンボ地図_棚当て.地図を撮る(sh)
+        On Error GoTo 失敗
+
+        symSummary = ""
+        If Not (g Is Nothing) Then
+            Set blocks = g("blocks")
+            Set syms = g("symptoms")
+            out.Cells(r, 5).Value = blocks.Count & " 個"
+            If CLng(g("hidden_rows_count")) > 0 Or CLng(g("hidden_cols_count")) > 0 Then
+                nInfo = nInfo + 1
+                issues.Add Array("気づき", sh.Name, "行" & g("hidden_rows_count") & "・列" & g("hidden_cols_count"), "隠した行・列", "非表示の行または列があります", "隠れた行と列を全部表示する")
+                symSummary = symSummary & "・隠した行列あり"
+            End If
+            For Each s In syms
+                Dim sc As String, sPlace As String, sSev As String, sKind As String, sMsg As String, sFix As String
+                sc = CStr(s("code"))
+                If Len(s("col")) > 0 Then
+                    sPlace = s("col") & "列"
+                ElseIf Len(s("rows")) > 0 Then
+                    sPlace = s("rows") & "行"
+                Else
+                    sPlace = s("block")
+                End If
+                Select Case sc
+                    Case "S17"
+                        sSev = "警告": nWarn = nWarn + 1: sKind = "式の途切れ(S17)": sMsg = sPlace & " で数式の並びが途切れています": sFix = "選んだ列の途切れた式を戻す"
+                    Case "S11"
+                        sSev = "警告": nWarn = nWarn + 1: sKind = "重複行(S11)": sMsg = "全列が同じ重複行があります（" & sPlace & "）": sFix = "全列が同じ重複行を削除する"
+                    Case "S01"
+                        sSev = "警告": nWarn = nWarn + 1: sKind = "文字の日付(S01)": sMsg = sPlace & " に文字列の日付があります": sFix = "選んだ列の文字の日付を日付にする"
+                    Case "S02"
+                        sSev = "警告": nWarn = nWarn + 1: sKind = "文字の数字(S02)": sMsg = sPlace & " に文字列の数字があります": sFix = "選んだ列の文字の数字を数にする"
+                    Case "S03"
+                        sSev = "気づき": nInfo = nInfo + 1: sKind = "先頭の空白(S03)": sMsg = sPlace & " に先頭空白があります": sFix = "文字の先頭の空白を削除する"
+                    Case "S04"
+                        sSev = "気づき": nInfo = nInfo + 1: sKind = "空白だけのセル(S04)": sMsg = sPlace & " に空白文字だけのセルがあります": sFix = "空白だけのセルを空にする"
+                    Case "S05"
+                        sSev = "気づき": nInfo = nInfo + 1: sKind = "全角半角混在(S05)": sMsg = sPlace & " に全角英数・半角カナの混在があります": sFix = "英数を半角にカナを全角にする"
+                    Case "S12"
+                        sSev = "気づき": nInfo = nInfo + 1: sKind = "表の中の空行(S12)": sMsg = "明細の途中に空行があります（" & sPlace & "）": sFix = "表の中の空行を削除して詰める"
+                    Case "S15"
+                        sSev = "気づき": nInfo = nInfo + 1: sKind = "明細内の結合(S15)": sMsg = "明細の中に結合セルがあります（" & sPlace & "）": sFix = "結合セルをほどいて値を埋める"
+                    Case "S16"
+                        sSev = "気づき": nInfo = nInfo + 1: sKind = "二段の見出し(S16)": sMsg = "見出しが複数段に分かれています（" & sPlace & "）": sFix = "二段の見出しを一行に畳む"
+                    Case Else
+                        sSev = "気づき": nInfo = nInfo + 1: sKind = sc: sMsg = sPlace: sFix = ""
+                End Select
+                issues.Add Array(sSev, sh.Name, sPlace, sKind, sMsg, sFix)
+                symSummary = symSummary & "・" & sc & "(" & sPlace & ")"
+            Next s
+        Else
+            out.Cells(r, 5).Value = "-"
+        End If
+
+        out.Cells(r, 1).Value = "'" & sh.Name
+        out.Cells(r, 2).Value = visStr
+        out.Cells(r, 3).Value = protStr
+        out.Cells(r, 4).Value = urAddr
+        out.Cells(r, 6).Value = fCount
+        If errCount > 0 Then symSummary = "・エラー" & errCount & "件" & symSummary
+        If vlookupCount > 0 Then symSummary = "・直書き検索" & vlookupCount & "件" & symSummary
+        If Len(symSummary) = 0 Then symSummary = "問題なし" Else symSummary = mid$(symSummary, 2)
+        out.Cells(r, 7).Value = "'" & symSummary
+    Next sheetIdx
+    rT1 = r
+
+    ' 健康点数の計算（100点満点から減点）
+    score = 100 - (nCrit * 15 + nWarn * 5 + nInfo * 2)
+    If score < 0 Then score = 0
+    If score >= 90 Then
+        gradeStr = "A（極めて健全）"
+    ElseIf score >= 75 Then
+        gradeStr = "B（概ね良好）"
+    ElseIf score >= 50 Then
+        gradeStr = "C（要点検）"
+    Else
+        gradeStr = "D（危険）"
+    End If
+
+    out.Range("A1").Value = "調査：ブックの人間ドック　" & wb.Name
+    out.Range("A2").Value = "健康点数: " & score & " / 100  " & gradeStr
+    out.Range("A3").Value = "重大 " & nCrit & " 件・警告 " & nWarn & " 件・気づき " & nInfo & " 件　（点検シート " & nSheets & " 枚・元のシートは何も変えていません）"
+
+    ' 第2表: 病巣と直す手
+    hR2 = rT1 + 2
+    out.Range(out.Cells(hR2, 1), out.Cells(hR2, 6)).Value = Array("重さ", "シート", "場所", "種類", "内容", "直す手（対応する棚マクロ）")
+    r = hR2
+    If issues.Count = 0 Then
+        r = r + 1
+        out.Cells(r, 1).Value = "なし"
+        out.Cells(r, 5).Value = "病巣は見つかりませんでした"
+    Else
+        Dim passIdx As Long, targetSev As String
+        For passIdx = 1 To 3
+            targetSev = Choose(passIdx, "重大", "警告", "気づき")
+            For Each eachItem In issues
+                If CStr(eachItem(0)) = targetSev Then
+                    r = r + 1
+                    out.Cells(r, 1).Value = eachItem(0)
+                    out.Cells(r, 2).Value = "'" & eachItem(1)
+                    out.Cells(r, 3).Value = "'" & eachItem(2)
+                    out.Cells(r, 4).Value = eachItem(3)
+                    out.Cells(r, 5).Value = "'" & eachItem(4)
+                    out.Cells(r, 6).Value = eachItem(5)
+                    If targetSev = "重大" Then out.Cells(r, 1).Font.Color = RGB(192, 0, 0)
+                End If
+            Next eachItem
+        Next passIdx
+    End If
+    rT2 = r
+
+    With out
+        .Range("A1").Font.Bold = True
+        .Range("A1").Font.Size = 12
+        .Range("A2").Font.Bold = True
+        .Range("A2").Font.Size = 11
+        With .Range(.Cells(hR1, 1), .Cells(hR1, 7))
+            .Font.Bold = True
+            .Interior.Color = RGB(221, 235, 247)
+        End With
+        With .Range(.Cells(hR1, 1), .Cells(rT1, 7))
+            .Borders.LineStyle = 1
+            .VerticalAlignment = -4160
+        End With
+        With .Range(.Cells(hR2, 1), .Cells(hR2, 6))
+            .Font.Bold = True
+            .Interior.Color = RGB(252, 228, 214)
+        End With
+        With .Range(.Cells(hR2, 1), .Cells(rT2, 6))
+            .Borders.LineStyle = 1
+            .VerticalAlignment = -4160
+        End With
+        .Columns("A:G").AutoFit
+        For colIdx = 1 To 7
+            If .Columns(colIdx).ColumnWidth > 55 Then
+                .Columns(colIdx).ColumnWidth = 55
+                .Columns(colIdx).WrapText = True
+            End If
+            If .Columns(colIdx).ColumnWidth < 8 Then .Columns(colIdx).ColumnWidth = 8
+        Next colIdx
+    End With
+    out.Activate
+    out.Range("A1").Select
+
+終了処理:
+    Application.ScreenUpdating = beforeScr
+    Application.DisplayAlerts = beforeWarn
+    Application.StatusBar = "調査_人間ドック: 健康点数 " & score & " 点（" & gradeStr & "）・指摘 " & issues.Count & " 件を一覧にしました。"
+    Exit Sub
+
+失敗:
+    Application.ScreenUpdating = beforeScr
+    Application.DisplayAlerts = beforeWarn
+    Application.StatusBar = "人間ドック: 調べられませんでした（" & Err.Description & "）"
+End Sub
+
+Sub 合計の式のつながりを一覧にする()
+    ' 依頼の語: 式のつながり|数式のつながり|合計の式のつながり|式の系統|数式の系統|式の親子|どこを足して|合計の内訳の式|式の参照ツリー
+    ' 依頼の組: 式,数式,合計+つながり,繋がり,系統,ツリー,内訳,たど,辿
+    ' 扱う: 式のつながり 合計 参照 系統
+    ' 見出し: なし
+    ' 形: なし
+    ' 選択セルまたはシート全体の集計式（SUM/+/SUBTOTAL等）から、参照先セル・範囲・子式・現在値を深さ2までツリー展開し、新しいシート「調査_式のつながり」にまとめる。元のシートは何も変えない。
+    Dim wb As Workbook, wsSrc As Worksheet, out As Worksheet, old As Object
+    Dim nM As String, nm0 As String, kk As Long, r As Long, hR As Long, colIdx As Long
+    Dim c As Range, formCells As Range, rootCells As Collection
+    Dim regRef As Object, matches As Object, m As Object
+    Dim beforeWarn As Boolean, beforeScr As Boolean
+    Dim srcName As String, rootCell As Range
+    Dim addr As String, fStr As String, vVal As String, lbl As String
+
+    On Error GoTo 失敗
+    Set wb = ActiveWorkbook
+    If wb Is Nothing Then Exit Sub
+
+    Set wsSrc = ActiveSheet
+    If wsSrc Is Nothing Then Exit Sub
+    If Left$(wsSrc.Name, 3) = "調査_" Then Exit Sub
+    srcName = wsSrc.Name
+
+    beforeWarn = Application.DisplayAlerts
+    beforeScr = Application.ScreenUpdating
+    Application.ScreenUpdating = False
+
+    ' 1. 出力シートの準備
+    nm0 = "調査_式のつながり": nM = nm0: kk = 1
+    Do
+        Set old = Nothing
+        On Error Resume Next
+        Set old = wb.Sheets(nM)
+        On Error GoTo 失敗
+        If old Is Nothing Then Exit Do
+        If TypeName(old) = "Worksheet" Then
+            Application.DisplayAlerts = False
+            old.Delete
+            Application.DisplayAlerts = beforeWarn
+            Exit Do
+        End If
+        kk = kk + 1
+        nM = nm0 & "_" & kk
+    Loop
+
+    Set out = wb.Worksheets.Add(after:=wsSrc)
+    out.Name = nM
+
+    ' 2. 起点となる数式セルの探索
+    Set rootCells = New Collection
+    If TypeName(Selection) = "Range" Then
+        If Selection.Count = 1 And Selection.Worksheet.Name = srcName Then
+            If Selection.HasFormula Then
+                rootCells.Add Selection
+            End If
+        End If
+    End If
+
+    If rootCells.Count = 0 Then
+        ' シート全体から数式セルを収集（集計式優先）
+        On Error Resume Next
+        Set formCells = wsSrc.UsedRange.SpecialCells(xlCellTypeFormulas)
+        On Error GoTo 失敗
+        If Not (formCells Is Nothing) Then
+            ' 下から上へ走査して総計・合計を拾う
+            Dim revList As Collection, cellItem As Range
+            Set revList = New Collection
+            For Each cellItem In formCells
+                revList.Add cellItem
+            Next cellItem
+            ' 逆順で集計式（SUM, +, SUBTOTAL, 参照式）を起点とする
+            Dim revIdx As Long
+            For revIdx = revList.Count To 1 Step -1
+                Set cellItem = revList(revIdx)
+                fStr = UCase$(cellItem.Formula)
+                If InStr(fStr, "SUM") > 0 Or InStr(fStr, "+") > 0 Or InStr(fStr, "SUBTOTAL") > 0 Or InStr(fStr, "AGGREGATE") > 0 Then
+                    rootCells.Add cellItem
+                    If rootCells.Count >= 20 Then Exit For
+                End If
+            Next revIdx
+            ' もし集計式が無ければ全数式から先頭5件
+            If rootCells.Count = 0 Then
+                For Each cellItem In formCells
+                    rootCells.Add cellItem
+                    If rootCells.Count >= 10 Then Exit For
+                Next cellItem
+            End If
+        End If
+    End If
+
+    ' 3. 出力見出し
+    out.Range("A1").Value = "調査：式のつながり（集計ツリー）　" & srcName
+    out.Range("A2").Value = "対象ブック: " & wb.Name & "　／　対象シート: " & srcName & "　（元のシートは何も変えていません）"
+    hR = 4
+    out.Range("A4:G4").Value = Array("階層", "種類", "セル番地", "数式", "現在の値", "見出し名", "内訳・参照先")
+    r = hR
+
+    Set regRef = CreateObject("VBScript.RegExp")
+    regRef.Pattern = "\b(?:[A-Za-z0-9_]+!)?\$?[A-Z]+\$?[0-9]+(?::\$?[A-Z]+\$?[0-9]+)?\b"
+    regRef.IgnoreCase = True
+    regRef.Global = True
+
+    ' 4. ツリー展開
+    Dim rootIdx As Long, rngRef As Range, refStr As String, childRng As Range, childCell As Range
+    Dim SubMatches As Object, subM As Object, subRefStr As String
+    For rootIdx = 1 To rootCells.Count
+        Set rootCell = rootCells(rootIdx)
+        r = r + 1
+        out.Cells(r, 1).Value = "● 親式"
+        out.Cells(r, 2).Value = IIf(InStr(UCase$(rootCell.Formula), "SUM") > 0, "合計(SUM)", "集計式")
+        out.Cells(r, 3).Value = rootCell.Address(False, False)
+        out.Cells(r, 4).Value = "'" & rootCell.Formula
+        out.Cells(r, 5).Value = IIf(IsError(rootCell.Value), "#ERROR", rootCell.text)
+        out.Cells(r, 6).Value = "'" & セルの見出し名(rootCell)
+        out.Cells(r, 1).Font.Bold = True
+
+        ' 深さ 1: 参照先をパース
+        Set matches = regRef.Execute(rootCell.Formula)
+        For Each m In matches
+            refStr = m.Value
+            Set rngRef = Nothing
+            On Error Resume Next
+            Set rngRef = wsSrc.Range(refStr)
+            On Error GoTo 失敗
+            If Not (rngRef Is Nothing) Then
+                For Each childCell In rngRef.Cells
+                    r = r + 1
+                    If childCell.HasFormula Then
+                        out.Cells(r, 1).Value = "  ├ 子式"
+                        out.Cells(r, 2).Value = "計算式"
+                        out.Cells(r, 1).Font.Color = RGB(0, 32, 96)
+                    Else
+                        out.Cells(r, 1).Value = "  └ 参照"
+                        out.Cells(r, 2).Value = "入力値"
+                        out.Cells(r, 1).Font.Color = RGB(80, 80, 80)
+                    End If
+                    out.Cells(r, 3).Value = childCell.Address(False, False)
+                    out.Cells(r, 4).Value = IIf(childCell.HasFormula, "'" & childCell.Formula, "-")
+                    out.Cells(r, 5).Value = IIf(IsError(childCell.Value), "#ERROR", childCell.text)
+                    out.Cells(r, 6).Value = "'" & セルの見出し名(childCell)
+                    out.Cells(r, 7).Value = "親: " & rootCell.Address(False, False)
+
+                    ' 深さ 2: 子式がさらに数式を持っている場合、その参照先も展開
+                    If childCell.HasFormula Then
+                        Set SubMatches = regRef.Execute(childCell.Formula)
+                        For Each subM In SubMatches
+                            subRefStr = subM.Value
+                            r = r + 1
+                            out.Cells(r, 1).Value = "    └ 孫参照"
+                            out.Cells(r, 2).Value = "入力値"
+                            out.Cells(r, 3).Value = subRefStr
+                            out.Cells(r, 4).Value = "-"
+                            Dim subCell As Range
+                            Set subCell = Nothing
+                            On Error Resume Next
+                            Set subCell = wsSrc.Range(subRefStr)
+                            On Error GoTo 失敗
+                            If Not (subCell Is Nothing) Then
+                                out.Cells(r, 5).Value = IIf(IsError(subCell.Cells(1, 1).Value), "#ERROR", subCell.Cells(1, 1).text)
+                                out.Cells(r, 6).Value = "'" & セルの見出し名(subCell.Cells(1, 1))
+                            Else
+                                out.Cells(r, 5).Value = "-"
+                                out.Cells(r, 6).Value = "-"
+                            End If
+                            out.Cells(r, 7).Value = "子式: " & childCell.Address(False, False) & " の参照先"
+                            out.Cells(r, 1).Font.Color = RGB(128, 128, 128)
+                        Next subM
+                    End If
+                Next childCell
+            End If
+        Next m
+    Next rootIdx
+
+    ' 5. 書式設定
+    With out
+        .Range("A1").Font.Bold = True
+        .Range("A1").Font.Size = 12
+        .Range("A2").Font.Size = 10
+        With .Range(.Cells(hR, 1), .Cells(hR, 7))
+            .Font.Bold = True
+            .Interior.Color = RGB(221, 235, 247)
+        End With
+        With .Range(.Cells(hR, 1), .Cells(r, 7))
+            .Borders.LineStyle = 1
+            .VerticalAlignment = -4160
+        End With
+        .Columns("A:G").AutoFit
+        For colIdx = 1 To 7
+            If .Columns(colIdx).ColumnWidth > 50 Then
+                .Columns(colIdx).ColumnWidth = 50
+                .Columns(colIdx).WrapText = True
+            End If
+            If .Columns(colIdx).ColumnWidth < 8 Then .Columns(colIdx).ColumnWidth = 8
+        Next colIdx
+    End With
+    out.Activate
+    out.Range("A1").Select
+
+終了処理:
+    Application.ScreenUpdating = beforeScr
+    Application.DisplayAlerts = beforeWarn
+    Application.StatusBar = "調査_式のつながり: 集計式 " & rootCells.Count & " 件の参照ツリーを一覧にしました。"
+    Exit Sub
+
+失敗:
+    Application.ScreenUpdating = beforeScr
+    Application.DisplayAlerts = beforeWarn
+    Application.StatusBar = "式のつながり: 調べられませんでした（" & Err.Description & "）"
+End Sub
+
+Private Function セルの見出し名(ByVal c As Range) As String
+    Dim r As Long, col As Long, ws As Worksheet, k As Long, s As String
+    On Error Resume Next
+    Set ws = c.Worksheet
+    r = c.Row: col = c.Column
+    For k = col - 1 To 1 Step -1
+        s = Trim$(CStr(ws.Cells(r, k).text))
+        If Len(s) > 0 And Not IsNumeric(s) Then
+            セルの見出し名 = s
+            Exit Function
+        End If
+    Next k
+    s = Trim$(CStr(ws.Cells(1, col).text))
+    If Len(s) > 0 Then
+        セルの見出し名 = s
+        Exit Function
+    End If
+    セルの見出し名 = "-"
+End Function

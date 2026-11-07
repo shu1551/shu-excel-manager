@@ -369,7 +369,7 @@ NextRow:
     For ii = 0 To Application.Min(2, listColCnt - 1)
         ˆó = ˆó & "|" & listColNames(ii)
     Next ii
-    oldRightCol = ‰E‚Ìo‚µæ(ws, hdrRow, frmRight + 2, listColCnt, Mid$(ˆó, 2))
+    oldRightCol = ‰E‚Ìo‚µæ(ws, hdrRow, frmRight + 2, listColCnt, mid$(ˆó, 2))
     If ƒZƒ‹‚Ìš(ws.Cells(hdrRow, oldRightCol).Value) = listColNames(0) Then ‘O‚Ìo—Í‚ğÁ‚· ws, hdrRow, oldRightCol, listColCnt
 
     ' Œ³‚Ì’ •[‚Ì¶’[—ñ‚ğ“Á’è
@@ -697,7 +697,7 @@ ChkNext:
             If Len(mm) = 8 And IsNumeric(mm) Then
                 On Error Resume Next
                 Dim dtFrom8 As Date
-                dtFrom8 = DateSerial(CInt(Left(mm, 4)), CInt(Mid(mm, 5, 2)), CInt(Right(mm, 2)))
+                dtFrom8 = DateSerial(CInt(Left(mm, 4)), CInt(mid(mm, 5, 2)), CInt(Right(mm, 2)))
                 If Err.Number = 0 Then moVal = Month(dtFrom8)
                 Err.Clear
                 On Error GoTo 0
@@ -706,7 +706,7 @@ ChkNext:
                 Dim p1r As Long, p2r As Long
                 p1r = InStr(mm, "”N"): p2r = InStr(mm, "Œ")
                 If p1r > 0 And p2r > p1r Then
-                    On Error Resume Next: moVal = CInt(Mid(mm, p1r + 1, p2r - p1r - 1)): On Error GoTo 0
+                    On Error Resume Next: moVal = CInt(mid(mm, p1r + 1, p2r - p1r - 1)): On Error GoTo 0
                 End If
             End If
             If moVal = 0 Then
@@ -726,7 +726,7 @@ ChkNext:
                 Dim pn1 As Long, pn2 As Long
                 pn1 = InStr(mm, "”N"): pn2 = InStr(mm, "Œ")
                 If pn2 > pn1 Then
-                    On Error Resume Next: moVal = CInt(Mid(mm, pn1 + 1, pn2 - pn1 - 1)): On Error GoTo 0
+                    On Error Resume Next: moVal = CInt(mid(mm, pn1 + 1, pn2 - pn1 - 1)): On Error GoTo 0
                 End If
             End If
             If moVal = 0 Then
@@ -1664,7 +1664,7 @@ NormalizeCode2:
     ss = Replace(ss, " ", "")
     nc2 = ""
     For ci2 = 1 To Len(ss)
-        ch2 = Mid$(ss, ci2, 1)
+        ch2 = mid$(ss, ci2, 1)
         cp2 = AscW(ch2)
         If cp2 >= &HFF21 And cp2 <= &HFF3A Then
             nc2 = nc2 & Chr(cp2 - &HFF21 + 65)
@@ -1688,7 +1688,7 @@ NormalizeAmount:
     ares = ""
     negFlag = False
     For ai = 1 To Len(rawAmt)
-        ach = Mid$(rawAmt, ai, 1)
+        ach = mid$(rawAmt, ai, 1)
         acp = AscW(ach)
         If acp >= &HFF10 And acp <= &HFF19 Then
             ares = ares & Chr(acp - &HFF10 + 48)
@@ -2212,7 +2212,7 @@ NormHdr:
     Dim nhI As Long, nhC As String, nhCW As Long, nhOut As String
     nhOut = ""
     For nhI = 1 To Len(nh)
-        nhC = Mid(nh, nhI, 1)
+        nhC = mid(nh, nhI, 1)
         nhCW = AscW(nhC)
         If nhCW >= &HFF01 And nhCW <= &HFF5E Then nhC = Chr(nhCW - &HFF01 + &H21)
         nhOut = nhOut & nhC
@@ -2228,7 +2228,7 @@ NormKeySub:
     Dim nkI As Long, nkC As String, nkCW As Long, nkOut As String
     nkOut = ""
     For nkI = 1 To Len(nk)
-        nkC = Mid(nk, nkI, 1)
+        nkC = mid(nk, nkI, 1)
         nkCW = AscW(nkC)
         If nkCW >= &HFF10 And nkCW <= &HFF19 Then nkC = Chr(Asc("0") + nkCW - &HFF10)
         nkOut = nkOut & nkC
@@ -2246,7 +2246,7 @@ NormAmtSub:
     Dim naI As Long, naC As String, naCW As Long, naOut As String
     naOut = ""
     For naI = 1 To Len(nA)
-        naC = Mid(nA, naI, 1)
+        naC = mid(nA, naI, 1)
         naCW = AscW(naC)
         If naCW >= &HFF10 And naCW <= &HFF19 Then naC = Chr(Asc("0") + naCW - &HFF10)
         If naC = "," Or naCW = &HFF0C Then GoTo SkipNaC
@@ -2709,17 +2709,17 @@ nextSh:
     ' „Ÿ„Ÿ Šî€•\‚Ì€–Ú—ñE”’l—ñ‚ğŒ`‚Å’T‚·
     Dim pur3 As Object
     Set pur3 = wsP.UsedRange
-    Dim pR As Long, pc As Long, pRows As Long, pCols As Long
-    pR = pur3.Row: pc = pur3.Column
+    Dim pr As Long, pc As Long, pRows As Long, pCols As Long
+    pr = pur3.Row: pc = pur3.Column
     pRows = pur3.rows.Count: pCols = pur3.Columns.Count
 
     Dim pHRow As Long, pNameCol As Long, pNumCol As Long
-    pHRow = pR: pNameCol = pc: pNumCol = 0
+    pHRow = pr: pNameCol = pc: pNumCol = 0
     Dim bestNumCol As Long, bestNumCnt As Long
     bestNumCol = 0: bestNumCnt = 0
     For ci = pc To pc + pCols - 1
         Dim numCnt As Long: numCnt = 0
-        For ri = pR + 1 To pR + pRows - 1
+        For ri = pr + 1 To pr + pRows - 1
             Dim sv As String
             sv = Trim(CStr(wsP.Cells(ri, ci).Value))
             s = sv: GoSub ³‹K‰»num
@@ -2736,7 +2736,7 @@ nextSh:
     bestStrCol = 0: bestStrCnt = 0
     For ci = pc To pNumCol - 1
         Dim strCnt As Long: strCnt = 0
-        For ri = pR + 1 To pR + pRows - 1
+        For ri = pr + 1 To pr + pRows - 1
             Dim sv2 As String
             sv2 = Trim(CStr(wsP.Cells(ri, ci).Value))
             If ƒZƒ‹‚Ìš(sv2) <> "" And Not IsNumeric(sv2) Then strCnt = strCnt + 1
@@ -2753,7 +2753,7 @@ nextSh:
     Dim depNums() As Double
     Dim depCount As Long: depCount = 0
     Dim totalPeople As Double: totalPeople = 0
-    For ri = pHRow + 1 To pR + pRows - 1
+    For ri = pHRow + 1 To pr + pRows - 1
         Dim pn As String
         pn = Trim(CStr(wsP.Cells(ri, pNameCol).Value))
         If ƒZƒ‹‚Ìš(pn) = "" Then GoTo nextPR
@@ -2949,7 +2949,7 @@ nextScan:
     s = Replace(s, "@", "")
     Dim negFlag As Boolean: negFlag = False
     If Left(s, 1) = "¢" Or Left(s, 1) = "£" Then
-        negFlag = True: s = Mid(s, 2)
+        negFlag = True: s = mid(s, 2)
     End If
     If negFlag And ƒZƒ‹‚Ìš(s) <> "" Then s = "-" & s
     Return
@@ -2966,7 +2966,7 @@ nextScan:
     s = Replace(s, "@", "")
     Dim parenPos As Long: parenPos = InStr(s, "(")
     If parenPos > 1 Then
-        Dim sfx As String: sfx = Mid(s, parenPos)
+        Dim sfx As String: sfx = mid(s, parenPos)
         If sfx = "(‰~)" Or sfx = "(ç‰~)" Or sfx = "(l)" Or sfx = "(Œv)" Then
             s = Left(s, parenPos - 1)
         End If
@@ -3475,12 +3475,12 @@ NextSheet:
     ' --- ‡Œvs ---
     Dim totalRow As Long
     totalRow = dataStartRow + rowIdx
-    Dim R1 As Long, r2 As Long
-    R1 = dataStartRow: r2 = dataStartRow + rowIdx - 1
+    Dim r1 As Long, r2 As Long
+    r1 = dataStartRow: r2 = dataStartRow + rowIdx - 1
     ws.Cells(totalRow, outCol).Value = "‡Œv"
-    ws.Cells(totalRow, outCol + 1).Value = "=SUM(" & ws.Cells(R1, outCol + 1).Address & ":" & ws.Cells(r2, outCol + 1).Address & ")"
-    ws.Cells(totalRow, outCol + 2).Value = "=SUM(" & ws.Cells(R1, outCol + 2).Address & ":" & ws.Cells(r2, outCol + 2).Address & ")"
-    ws.Cells(totalRow, outCol + 3).Value = "=SUM(" & ws.Cells(R1, outCol + 3).Address & ":" & ws.Cells(r2, outCol + 3).Address & ")"
+    ws.Cells(totalRow, outCol + 1).Value = "=SUM(" & ws.Cells(r1, outCol + 1).Address & ":" & ws.Cells(r2, outCol + 1).Address & ")"
+    ws.Cells(totalRow, outCol + 2).Value = "=SUM(" & ws.Cells(r1, outCol + 2).Address & ":" & ws.Cells(r2, outCol + 2).Address & ")"
+    ws.Cells(totalRow, outCol + 3).Value = "=SUM(" & ws.Cells(r1, outCol + 3).Address & ":" & ws.Cells(r2, outCol + 3).Address & ")"
 
     Dim sumPrev As Double
     Dim sumDiff As Double
@@ -3514,7 +3514,7 @@ NextSheet:
     Dim nlCi As Long
     For nlCi = 1 To Len(nlS)
         Dim nlCh As String
-        nlCh = Mid$(nlS, nlCi, 1)
+        nlCh = mid$(nlS, nlCi, 1)
         Dim nlCode As Long
         nlCode = AscW(nlCh)
         If nlCode >= &HFF01 And nlCode <= &HFF5E Then
@@ -3539,7 +3539,7 @@ NextSheet:
     Dim ci As Long
     For ci = 1 To Len(s)
         Dim ch As String
-        ch = Mid$(s, ci, 1)
+        ch = mid$(s, ci, 1)
         Dim code As Long
         code = AscW(ch)
         If code >= &HFF01 And code <= &HFF5E Then
@@ -3563,7 +3563,7 @@ normKey:
     Dim nkCi As Long
     For nkCi = 1 To Len(nkOut)
         Dim nkCh As String
-        nkCh = Mid$(nkOut, nkCi, 1)
+        nkCh = mid$(nkOut, nkCi, 1)
         Dim nkCode As Long
         nkCode = AscW(nkCh)
         If nkCode >= &HFF01 And nkCode <= &HFF5E Then
@@ -4901,11 +4901,11 @@ Sub ƒ}ƒXƒ^‚ğˆø‚­ŒvZ—ñ‚ğ‘«‚·()
             For mc = 1 To mLO.ListColumns.Count
                 Dim dicM As Object
                 Set dicM = CreateObject("Scripting.Dictionary")
-                Dim mR As Long
-                For mR = 1 To mLO.DataBodyRange.rows.Count
-                    s = CStr(mLO.DataBodyRange.Cells(mR, mc).Value): GoSub normKey
+                Dim mr As Long
+                For mr = 1 To mLO.DataBodyRange.rows.Count
+                    s = CStr(mLO.DataBodyRange.Cells(mr, mc).Value): GoSub normKey
                     If ƒZƒ‹‚Ìš(s) <> "" Then dicM(s) = 1
-                Next mR
+                Next mr
                 If dicM.Count = 0 Then GoTo NextMc
 
                 Dim mainC As Long
@@ -4917,14 +4917,14 @@ Sub ƒ}ƒXƒ^‚ğˆø‚­ŒvZ—ñ‚ğ‘«‚·()
                     Next ri
 
                     If score > bestScore Then
-                        Dim mc2 As Long
+                        Dim mC2 As Long
                         Dim cVal As String: cVal = ""
-                        For mc2 = 1 To mLO.ListColumns.Count
-                            If mc2 <> mc Then
-                                cVal = mLO.ListColumns(mc2).Name
+                        For mC2 = 1 To mLO.ListColumns.Count
+                            If mC2 <> mc Then
+                                cVal = mLO.ListColumns(mC2).Name
                                 Exit For
                             End If
-                        Next mc2
+                        Next mC2
                         If ƒZƒ‹‚Ìš(cVal) <> "" Then
                             bestScore = score
                             keyColIdxMain = mainC
@@ -5165,7 +5165,7 @@ Sub ‘I‚ñ‚¾3—ñ‚Åƒ_ƒbƒVƒ…ƒ{[ƒh‚ğì‚é()
     graphLeft = dashWs.Cells(3, ptRight + 2).Left
     graphTop = dashWs.Cells(3, 1).Top
 
-    Set co = dashWs.ChartObjects.Add(Left:=graphLeft, Top:=graphTop, Width:=300, Height:=200)
+    Set co = dashWs.ChartObjects.Add(Left:=graphLeft, Top:=graphTop, width:=300, Height:=200)
     Set ch = co.Chart
     ch.SetSourceData Source:=pt.TableRange1
     ch.ChartType = xlColumnClustered
@@ -7151,7 +7151,7 @@ Sub ‘I‚ñ‚¾—ñ‚Ì‰E‚É—İŒv—ñ‚ğ‘«‚·()
     colLetter = ""
     For i = 1 To Len(tmpAddr)
         Dim ch As String
-        ch = Mid(tmpAddr, i, 1)
+        ch = mid(tmpAddr, i, 1)
         If ch >= "A" And ch <= "Z" Then
             colLetter = colLetter & ch
         Else
@@ -7307,13 +7307,13 @@ Sub ‘I‚ñ‚¾—ñ‚Ì‰E‚É\¬”ä—ñ‚ğ‘«‚·()
 
     ' ‘I‚ñ‚¾—ñ‚Ì‚¤‚¿”‚Ì—ñ‚ğg‚¤i‰Û–¼‚Æ‹àŠz‚ğ‘I‚ñ‚¾‚Æ‚«E•¶š‚Ì—ñ‚ğ‘I‚ñ‚¾‚Æ‚«‚É #VALUE! ‚ğì‚ç‚È‚¢jB
     ' ”‚Ì—ñ‚ğ‘I‚ñ‚Å‚¢‚È‚¯‚ê‚ÎA•\‚Ì‰E’[‚Ì”‚Ì—ñ‚ğg‚¤B”‚Ì—ñ‚ª–³‚¯‚ê‚Î‰½‚à‚µ‚È‚¢i2026-09-22j
-    Dim ar As Range, nNum As Long, nAll As Long, rr As Long, cc As Long
+    Dim ar As Range, nnum As Long, nAll As Long, rr As Long, cc As Long
     selCol = 0
     For Each ar In Selection.Areas
         For cc = ar.Column To ar.Column + ar.Columns.Count - 1
             If selCol = 0 And cc >= urFirstCol And cc <= urLastCol Then
                 GoSub ”‚Ì—ñ‚©
-                If nAll > 0 And nNum >= nAll * 0.6 Then selCol = cc
+                If nAll > 0 And nnum >= nAll * 0.6 Then selCol = cc
             End If
         Next cc
     Next ar
@@ -7321,7 +7321,7 @@ Sub ‘I‚ñ‚¾—ñ‚Ì‰E‚É\¬”ä—ñ‚ğ‘«‚·()
         For cc = urLastCol To urFirstCol Step -1
             If selCol = 0 Then
                 GoSub ”‚Ì—ñ‚©
-                If nAll > 0 And nNum >= nAll * 0.6 Then selCol = cc
+                If nAll > 0 And nnum >= nAll * 0.6 Then selCol = cc
             End If
         Next cc
     End If
@@ -7476,7 +7476,7 @@ CleanUp:
 
 ”‚Ì—ñ‚©:
     ' cc —ñ‚ÌŒ©o‚µ‚Ì‰º‚ª”‚Ì’l‚©‚ğ”‚¦‚éinNum/nAllj
-    nNum = 0: nAll = 0
+    nnum = 0: nAll = 0
     Dim ccRel As Long
     ccRel = cc - urFirstCol + 1
     For rr = hdrRow + 1 To urLastRow
@@ -7487,7 +7487,7 @@ CleanUp:
         If Not isEmpty(cVal) Then
             nAll = nAll + 1
             If VarType(cVal) = vbDouble Or VarType(cVal) = vbCurrency Or (IsNumeric(cVal) And ƒZƒ‹‚Ìš(cVal) <> "") Then
-                nNum = nNum + 1
+                nnum = nnum + 1
             End If
         End If
     Next rr
@@ -7570,12 +7570,12 @@ Sub ‘I‚ñ‚¾2—ñ‚Ì‘Œ¸Šz‚Æ‘Œ¸—¦‚ğ‘«‚·()
     End If
 
     ' 2 —ñ‚Æ‚à”‚Ì—ñ‚Å‚È‚¯‚ê‚Î‰½‚à‚µ‚È‚¢i‰Û–¼‚Æ‹àŠz‚ğ‘I‚ñ‚Å #VALUE! ‚ğ•À‚×‚½B2026-09-22j
-    Dim chkC As Variant, rr As Long, nNum As Long, nAll As Long
+    Dim chkC As Variant, rr As Long, nnum As Long, nAll As Long
     Dim chkCol As Long, chkColRel As Long, rRel As Long, cVal As Variant
     For Each chkC In Array(sel1.Column, sel2.Column)
         chkCol = CLng(chkC)
         chkColRel = chkCol - urLeft + 1
-        nNum = 0: nAll = 0
+        nnum = 0: nAll = 0
         If chkColRel >= 1 And chkColRel <= nURCols Then
             For rr = hdrRow + 1 To urLast
                 rRel = rr - urTop + 1
@@ -7584,13 +7584,13 @@ Sub ‘I‚ñ‚¾2—ñ‚Ì‘Œ¸Šz‚Æ‘Œ¸—¦‚ğ‘«‚·()
                     If Not isEmpty(cVal) And Not IsError(cVal) Then
                         nAll = nAll + 1
                         If VarType(cVal) = vbDouble Or VarType(cVal) = vbCurrency Or (IsNumeric(cVal) And ƒZƒ‹‚Ìš(cVal) <> "") Then
-                            nNum = nNum + 1
+                            nnum = nnum + 1
                         End If
                     End If
                 End If
             Next rr
         End If
-        If nAll = 0 Or nNum < nAll * 0.6 Then GoTo CleanUp
+        If nAll = 0 Or nnum < nAll * 0.6 Then GoTo CleanUp
     Next chkC
 
     ' –{•¶‚ÌÅIs
@@ -7761,13 +7761,13 @@ Sub “ú•t‚©‚ç”N“x‚ÆŒ‚Æl”¼Šú‚ğ‘«‚·()
 
     ' ‘I‚ñ‚¾—ñ‚Ì‚¤‚¿“ú•t‚Ì—ñ‚ğg‚¤B“ú•t‚Ì—ñ‚ğ‘I‚ñ‚Å‚¢‚È‚¯‚ê‚ÎA•\‚Ì¶‚©‚çÅ‰‚Ì“ú•t‚Ì—ñB–³‚¯‚ê‚Î‰½‚à‚µ‚È‚¢
     ' i‹àŠz‚â‰Û–¼‚Ì—ñ‚ğ“ú•t‚Æ‚µ‚Ä®‚ğ‘‚«A#VALUE! ‚ğ•À‚×‚½B2026-09-22j
-    Dim ar As Range, nD As Long, nA As Long, rr As Long
+    Dim ar As Range, nd As Long, nA As Long, rr As Long
     selCol = 0
     For Each ar In Selection.Areas
         For c = ar.Column To ar.Column + ar.Columns.Count - 1
             If selCol = 0 And c <= lastCol Then
                 GoSub “ú•t‚Ì—ñ‚©
-                If nA > 0 And nD >= nA * 0.6 Then selCol = c
+                If nA > 0 And nd >= nA * 0.6 Then selCol = c
             End If
         Next c
     Next ar
@@ -7775,7 +7775,7 @@ Sub “ú•t‚©‚ç”N“x‚ÆŒ‚Æl”¼Šú‚ğ‘«‚·()
         For c = ur.Column To lastCol
             If selCol = 0 Then
                 GoSub “ú•t‚Ì—ñ‚©
-                If nA > 0 And nD >= nA * 0.6 Then selCol = c
+                If nA > 0 And nd >= nA * 0.6 Then selCol = c
             End If
         Next c
     End If
@@ -7860,15 +7860,15 @@ NextRow:
 
 “ú•t‚Ì—ñ‚©:
     ' c —ñ‚ÌŒ©o‚µ‚Ì‰º‚ª“ú•ti“ú•t‚Ì’lE“ú•t‚Æ‚µ‚Ä“Ç‚ß‚é•¶šj‚©‚ğ”‚¦‚éinD/nAj
-    nD = 0: nA = 0
+    nd = 0: nA = 0
     For rr = hdrRow + 1 To lastRow
         v = ws.Cells(rr, c).Value
         If Not isEmpty(v) And Not IsError(v) Then
             nA = nA + 1
             If VarType(v) = vbDate Then
-                nD = nD + 1
+                nd = nd + 1
             ElseIf VarType(v) = vbString Then
-                If IsDate(v) And (InStr(v, "/") > 0 Or InStr(v, "-") > 0 Or InStr(v, "”N") > 0) Then nD = nD + 1
+                If IsDate(v) And (InStr(v, "/") > 0 Or InStr(v, "-") > 0 Or InStr(v, "”N") > 0) Then nd = nd + 1
             End If
         End If
     Next rr
@@ -7907,13 +7907,13 @@ Sub ‘I‚ñ‚¾—ñ‚ÌãˆÊ5Œ‚ğ‰E‚É”²‚«o‚·()
     hdrRow = Selection.Cells(1, 1).Row
     ' ‘I‚ñ‚¾—ñ‚Ì‚¤‚¿”‚Ì—ñ‚ğg‚¤B”‚Ì—ñ‚ğ‘I‚ñ‚Å‚¢‚È‚¯‚ê‚Î•\‚Ì‰E’[‚Ì”‚Ì—ñB–³‚¯‚ê‚Î‰½‚à‚µ‚È‚¢
     ' i”Ô†E‰Û–¼‚Ì—ñ‚Å LARGE ‚ğ‘g‚ñ‚Å #NUM! ‚ğ•À‚×‚½B2026-09-22j
-    Dim ar As Object, rr As Long, nNum As Long, nAll As Long
+    Dim ar As Object, rr As Long, nnum As Long, nAll As Long
     selCol = 0
     For Each ar In Selection.Areas
         For c = ar.Column To ar.Column + ar.Columns.Count - 1
             If selCol = 0 Then
                 GoSub ”‚Ì—ñ‚©
-                If nAll > 0 And nNum >= nAll * 0.6 Then selCol = c
+                If nAll > 0 And nnum >= nAll * 0.6 Then selCol = c
             End If
         Next c
     Next ar
@@ -7921,7 +7921,7 @@ Sub ‘I‚ñ‚¾—ñ‚ÌãˆÊ5Œ‚ğ‰E‚É”²‚«o‚·()
         For c = ur.Column + ur.Columns.Count - 1 To ur.Column Step -1
             If selCol = 0 Then
                 GoSub ”‚Ì—ñ‚©
-                If nAll > 0 And nNum >= nAll * 0.6 Then selCol = c
+                If nAll > 0 And nnum >= nAll * 0.6 Then selCol = c
             End If
         Next c
     End If
@@ -8004,15 +8004,15 @@ Sub ‘I‚ñ‚¾—ñ‚ÌãˆÊ5Œ‚ğ‰E‚É”²‚«o‚·()
         outStartCol = candidateCol
     End If
 
-    Dim R1 As Long, r2 As Long
-    R1 = hdrRow + 1
+    Dim r1 As Long, r2 As Long
+    r1 = hdrRow + 1
     r2 = lastRow
 
     Dim numAddr As String
     Dim itemAddr As String
 
-    colLetterInput = selCol: GoSub colLetter: numAddr = "$" & colLetterResult & "$" & R1 & ":$" & colLetterResult & "$" & r2
-    colLetterInput = itemCol: GoSub colLetter: itemAddr = "$" & colLetterResult & "$" & R1 & ":$" & colLetterResult & "$" & r2
+    colLetterInput = selCol: GoSub colLetter: numAddr = "$" & colLetterResult & "$" & r1 & ":$" & colLetterResult & "$" & r2
+    colLetterInput = itemCol: GoSub colLetter: itemAddr = "$" & colLetterResult & "$" & r1 & ":$" & colLetterResult & "$" & r2
 
     Dim outItemCol As Long
     Dim outNumCol As Long
@@ -8030,7 +8030,7 @@ Sub ‘I‚ñ‚¾—ñ‚ÌãˆÊ5Œ‚ğ‰E‚É”²‚«o‚·()
         ws.Cells(outR, outNumCol).NumberFormat = "#,##0"
         ' “¯‚¶Šz‚ª 2 Œ‚ ‚é‚Æ MATCH ‚Í 1 Œ–Ú‚µ‚©•Ô‚³‚¸A“¯‚¶€–Ú‚ª 2 ‰ñ•À‚ñ‚¾i2026-09-24 ‘“_ŒŸjBã‚©‚ç k ”Ô–Ú‚ÌŠz‚ª
         ' o‚Ä‚­‚é‚Ì‚ª‰½‰ñ–Ú‚©iCOUNTIFj‚ğ”‚¦A‚»‚Ì‰ñ–Ú‚Ìs‚ğ AGGREGATE ‚ÅE‚¤
-        ws.Cells(outR, outItemCol).Formula = "=INDEX(" & itemAddr & ",AGGREGATE(15,6,(ROW(" & numAddr & ")-" & (R1 - 1) & ")/(" & numAddr & "=" & _
+        ws.Cells(outR, outItemCol).Formula = "=INDEX(" & itemAddr & ",AGGREGATE(15,6,(ROW(" & numAddr & ")-" & (r1 - 1) & ")/(" & numAddr & "=" & _
             ws.Cells(outR, outNumCol).Address(False, False) & "),COUNTIF(" & ws.Cells(hdrRow + 1, outNumCol).Address(True, True) & ":" & _
             ws.Cells(outR, outNumCol).Address(False, False) & "," & ws.Cells(outR, outNumCol).Address(False, False) & ")))"
     Next k
@@ -8065,11 +8065,11 @@ colLetter:
 
 ”‚Ì—ñ‚©:
     ' c —ñ‚ÌŒ©o‚µ‚Ì‰º‚ª”‚Ì’l‚©‚ğ”‚¦‚éinNum/nAllj
-    nNum = 0: nAll = 0
+    nnum = 0: nAll = 0
     For rr = hdrRow + 1 To ur.Row + ur.rows.Count - 1
         If Not isEmpty(ws.Cells(rr, c).Value) And Not IsError(ws.Cells(rr, c).Value) Then
             nAll = nAll + 1
-            If VarType(ws.Cells(rr, c).Value) = vbDouble Or VarType(ws.Cells(rr, c).Value) = vbCurrency Then nNum = nNum + 1
+            If VarType(ws.Cells(rr, c).Value) = vbDouble Or VarType(ws.Cells(rr, c).Value) = vbCurrency Then nnum = nnum + 1
         End If
     Next rr
     Return
@@ -8107,7 +8107,7 @@ Sub ‹æ•ª‚ÌØ‚ê–Ú‚É¬Œvs‚ğ‘}“ü‚·‚é()
     Dim bCount As Long
     Dim bStart As Long
     Dim insertAfter As Long
-    Dim R1 As String, r2 As String
+    Dim r1 As String, r2 As String
     Dim hdrS As String
     Dim grpVal As String
     Dim k As Integer
@@ -8202,7 +8202,7 @@ Sub ‹æ•ª‚ÌØ‚ê–Ú‚É¬Œvs‚ğ‘}“ü‚·‚é()
             tmp = ""
             Dim ch As String
             For ci = 1 To Len(hdrHalf)
-                ch = Mid$(hdrHalf, ci, 1)
+                ch = mid$(hdrHalf, ci, 1)
                 Dim code As Long
                 code = AscW(ch)
                 If code >= &HFF21 And code <= &HFF3A Then
@@ -8280,9 +8280,9 @@ Sub ‹æ•ª‚ÌØ‚ê–Ú‚É¬Œvs‚ğ‘}“ü‚·‚é()
         For c = 1 To nCols
             colIdx = usedLeft + c - 1
             If sumRanges(c) And colIdx <> grpCol Then
-                R1 = ws.Cells(bStart, colIdx).Address(False, True)
+                r1 = ws.Cells(bStart, colIdx).Address(False, True)
                 r2 = ws.Cells(insertAfter, colIdx).Address(False, True)
-                ws.Cells(insertAfter + 1, colIdx).Formula = "=SUM(" & R1 & ":" & r2 & ")"
+                ws.Cells(insertAfter + 1, colIdx).Formula = "=SUM(" & r1 & ":" & r2 & ")"
             End If
         Next c
     Next j
@@ -8349,14 +8349,14 @@ Sub ‘I‚ñ‚¾—ñ‚Ì‰E‚É‡ˆÊ—ñ‚ğ‘«‚·()
     Dim hdrRow As Long
     hdrRow = Selection.Cells(1, 1).Row
     ' ‘I‚ñ‚¾—ñ‚Ì‚¤‚¿”‚Ì—ñ‚ğg‚¤B”‚Ì—ñ‚ğ‘I‚ñ‚Å‚¢‚È‚¯‚ê‚Î•\‚Ì‰E’[‚Ì”‚Ì—ñB–³‚¯‚ê‚Î‰½‚à‚µ‚È‚¢i•¶š‚Ì—ñ‚É RANK ‚ğ‘‚¢‚Ä #VALUE! ‚ğ•À‚×‚½B2026-09-22j
-    Dim urS As Range, ar As Range, cc As Long, rr As Long, nNum As Long, nAll As Long
+    Dim urS As Range, ar As Range, cc As Long, rr As Long, nnum As Long, nAll As Long
     Set urS = ws.UsedRange
     selCol = 0
     For Each ar In Selection.Areas
         For cc = ar.Column To ar.Column + ar.Columns.Count - 1
             If selCol = 0 Then
                 GoSub ”‚Ì—ñ‚©
-                If nAll > 0 And nNum >= nAll * 0.6 Then selCol = cc
+                If nAll > 0 And nnum >= nAll * 0.6 Then selCol = cc
             End If
         Next cc
     Next ar
@@ -8364,7 +8364,7 @@ Sub ‘I‚ñ‚¾—ñ‚Ì‰E‚É‡ˆÊ—ñ‚ğ‘«‚·()
         For cc = urS.Column + urS.Columns.Count - 1 To urS.Column Step -1
             If selCol = 0 Then
                 GoSub ”‚Ì—ñ‚©
-                If nAll > 0 And nNum >= nAll * 0.6 Then selCol = cc
+                If nAll > 0 And nnum >= nAll * 0.6 Then selCol = cc
             End If
         Next cc
     End If
@@ -8470,11 +8470,11 @@ NextRow:
 
 ”‚Ì—ñ‚©:
     ' cc —ñ‚ÌŒ©o‚µ‚Ì‰º‚ª”‚Ì’l‚©‚ğ”‚¦‚éinNum/nAllj
-    nNum = 0: nAll = 0
+    nnum = 0: nAll = 0
     For rr = hdrRow + 1 To •\‚Ì–{•¶‚ÌÅIs(ws)
         If Not isEmpty(ws.Cells(rr, cc).Value) And Not IsError(ws.Cells(rr, cc).Value) Then
             nAll = nAll + 1
-            If VarType(ws.Cells(rr, cc).Value) = vbDouble Or VarType(ws.Cells(rr, cc).Value) = vbCurrency Then nNum = nNum + 1
+            If VarType(ws.Cells(rr, cc).Value) = vbDouble Or VarType(ws.Cells(rr, cc).Value) = vbCurrency Then nnum = nnum + 1
         End If
     Next rr
     Return
@@ -8636,13 +8636,13 @@ Sub ‘I‚ñ‚¾—ñ‚Ì“x”•ª•z•\‚ğ‰E‚Éì‚é()
     Dim ur As Range
     Set ur = ws.UsedRange
     ' ‘I‚ñ‚¾—ñ‚Ì‚¤‚¿”‚Ì—ñ‚ğg‚¤B”‚Ì—ñ‚ğ‘I‚ñ‚Å‚¢‚È‚¯‚ê‚Î•\‚Ì‰E’[‚Ì”‚Ì—ñB–³‚¯‚ê‚Î‰½‚à‚µ‚È‚¢i2026-09-22j
-    Dim ar As Range, rr As Long, nNum As Long, nAll As Long, cs As Long
+    Dim ar As Range, rr As Long, nnum As Long, nAll As Long, cs As Long
     selCol = 0
     For Each ar In Selection.Areas
         For cs = ar.Column To ar.Column + ar.Columns.Count - 1
             If selCol = 0 Then
                 GoSub ”‚Ì—ñ‚©
-                If nAll > 0 And nNum >= nAll * 0.6 Then selCol = cs
+                If nAll > 0 And nnum >= nAll * 0.6 Then selCol = cs
             End If
         Next cs
     Next ar
@@ -8650,7 +8650,7 @@ Sub ‘I‚ñ‚¾—ñ‚Ì“x”•ª•z•\‚ğ‰E‚Éì‚é()
         For cs = ur.Column + ur.Columns.Count - 1 To ur.Column Step -1
             If selCol = 0 Then
                 GoSub ”‚Ì—ñ‚©
-                If nAll > 0 And nNum >= nAll * 0.6 Then selCol = cs
+                If nAll > 0 And nnum >= nAll * 0.6 Then selCol = cs
             End If
         Next cs
     End If
@@ -8828,11 +8828,11 @@ Sub ‘I‚ñ‚¾—ñ‚Ì“x”•ª•z•\‚ğ‰E‚Éì‚é()
 
 ”‚Ì—ñ‚©:
     ' cs —ñ‚ÌŒ©o‚µ‚Ì‰º‚ª”‚Ì’l‚©‚ğ”‚¦‚éi‡Œvs‚Ì®‚à”‚É”‚¦‚éj
-    nNum = 0: nAll = 0
+    nnum = 0: nAll = 0
     For rr = hdrRow + 1 To •\‚Ì–{•¶‚ÌÅIs(ws)
         If Not isEmpty(ws.Cells(rr, cs).Value) And Not IsError(ws.Cells(rr, cs).Value) Then
             nAll = nAll + 1
-            If VarType(ws.Cells(rr, cs).Value) = vbDouble Or VarType(ws.Cells(rr, cs).Value) = vbCurrency Then nNum = nNum + 1
+            If VarType(ws.Cells(rr, cs).Value) = vbDouble Or VarType(ws.Cells(rr, cs).Value) = vbCurrency Then nnum = nnum + 1
         End If
     Next rr
     Return
@@ -8868,21 +8868,21 @@ Sub ¶”NŒ“ú‚©‚ç”N—î‚Æ‹Î‘±”N”‚ğ‘«‚·()
     hdrRow = Selection.Cells(1, 1).Row
 
     ' 2 —ñ‚Æ‚à“ú•t‚Ì—ñ‚Å‚È‚¯‚ê‚Î‰½‚à‚µ‚È‚¢i‰Û–¼E‹àŠz‚ğ¶”NŒ“ú‚Æ‚µ‚Ä DATEDIF ‚ğ‘‚« #VALUE! ‚ğ•À‚×‚½B2026-09-22j
-    Dim chkC As Variant, rr As Long, nD As Long, nA As Long, vv As Variant
+    Dim chkC As Variant, rr As Long, nd As Long, nA As Long, vv As Variant
     For Each chkC In Array(colDOB, colHire)
-        nD = 0: nA = 0
+        nd = 0: nA = 0
         For rr = hdrRow + 1 To ws.UsedRange.Row + ws.UsedRange.rows.Count - 1
             vv = ws.Cells(rr, chkC).Value
             If Not isEmpty(vv) And Not IsError(vv) Then
                 nA = nA + 1
                 If VarType(vv) = vbDate Then
-                    nD = nD + 1
+                    nd = nd + 1
                 ElseIf VarType(vv) = vbString Then
-                    If IsDate(vv) And (InStr(vv, "/") > 0 Or InStr(vv, "-") > 0 Or InStr(vv, "”N") > 0) Then nD = nD + 1
+                    If IsDate(vv) And (InStr(vv, "/") > 0 Or InStr(vv, "-") > 0 Or InStr(vv, "”N") > 0) Then nd = nd + 1
                 End If
             End If
         Next rr
-        If nA = 0 Or nD < nA * 0.6 Then Exit Sub
+        If nA = 0 Or nd < nA * 0.6 Then Exit Sub
     Next chkC
 
     ' Šî€“úƒZƒ‹‚ğ’T‚·iŒ©o‚µs‚æ‚èã‚ÅuŠî€“úv‚Ån‚Ü‚éƒZƒ‹‚Ì‚·‚®‰Ej
@@ -9539,7 +9539,7 @@ NextRow:
 
     Dim urRight As Double
     urRight = ws.Cells(ur.Row, ur.Column + ur.Columns.Count - 1).Left + _
-              ws.Cells(ur.Row, ur.Column + ur.Columns.Count - 1).Width + 10
+              ws.Cells(ur.Row, ur.Column + ur.Columns.Count - 1).width + 10
 
     Dim coNew As ChartObject
     Set coNew = ws.ChartObjects.Add(urRight, ws.Cells(ur.Row, ur.Column).Top, 480, 300)
@@ -10691,9 +10691,9 @@ Sub ‘I‚ñ‚¾’l‚É‡‚¤s‚ğ”²‚«o‚·()
 
     ‹L† = ""
     If Left$(ğŒ, 2) = ">=" Or Left$(ğŒ, 2) = "<=" Or Left$(ğŒ, 2) = "<>" Then
-        ‹L† = Left$(ğŒ, 2): ’l = Trim$(Mid$(ğŒ, 3))
+        ‹L† = Left$(ğŒ, 2): ’l = Trim$(mid$(ğŒ, 3))
     ElseIf Left$(ğŒ, 1) = ">" Or Left$(ğŒ, 1) = "<" Or Left$(ğŒ, 1) = "=" Then
-        ‹L† = Left$(ğŒ, 1): ’l = Trim$(Mid$(ğŒ, 2))
+        ‹L† = Left$(ğŒ, 1): ’l = Trim$(mid$(ğŒ, 2))
     Else
         ’l = ğŒ
     End If
@@ -10839,7 +10839,7 @@ Sub ƒV[ƒg‚Ì•\‚ğCSV‚Å‘‚«o‚·()
     Next r
     If hdrRow = 0 Then hdrRow = urTop
 
-    ƒpƒX = CreateObject("WScript.Shell").SpecialFolders.Item("Desktop") & "\" & _
+    ƒpƒX = CreateObject("WScript.Shell").SpecialFolders.item("Desktop") & "\" & _
            Replace(Replace(ws.Parent.Name, ".xlsm", ""), ".xlsx", "") & "_" & ws.Name & "_" & Format$(Now, "yyyymmdd") & ".csv"
 
     Application.ScreenUpdating = False
@@ -10900,7 +10900,7 @@ Sub ƒV[ƒg‚ğPDF‚Å•Û‘¶‚·‚é()
     ' ¡‚ÌƒV[ƒg‚ğ PDF ‚É‚µ‚ÄƒfƒXƒNƒgƒbƒv‚É’u‚­B–¼‘O‚Íu“ú•t ƒV[ƒg–¼.pdfvA“¯‚¶–¼‘O‚ª‚ ‚ê‚Î (1)(2)c ‚ğ•t‚¯‚éishu003uƒV[ƒg‚ğƒfƒXƒNƒgƒbƒv‚ÖPDFo—Ív‚ğ’I‚Öj
     Dim p As String, fp As String, i As Long
     If TypeName(ActiveSheet) <> "Worksheet" Then Exit Sub
-    p = CreateObject("WScript.Shell").SpecialFolders.Item("Desktop")
+    p = CreateObject("WScript.Shell").SpecialFolders.item("Desktop")
     fp = p & "\" & Format(Date, "YYYYMMDD") & " " & ActiveSheet.Name & ".pdf"
     Do Until ƒZƒ‹‚Ìš(Dir(fp)) = ""
         i = i + 1
@@ -10916,14 +10916,14 @@ Sub ƒV[ƒg‚ğ•ÊƒuƒbƒN‚Å•Û‘¶‚·‚é()
     ' Œ©o‚µ: ‚È‚µ
     ' Œ`: ‚È‚µ
     ' ¡‚ÌƒV[ƒg‚ğV‚µ‚¢ƒuƒbƒN‚ÉÊ‚µ‚ÄƒfƒXƒNƒgƒbƒv‚É•Û‘¶‚µA•Â‚¶‚éB–¼‘O‚Íu“ú•t ƒV[ƒg–¼.xlsmvA“¯‚¶–¼‘O‚ª‚ ‚ê‚Î (1)(2)cishu003uƒV[ƒg‚ğƒfƒXƒNƒgƒbƒv‚ÖExcelo—Ív‚ğ’I‚Öj
-    Dim p As String, fp As String, i As Long, nm As String
+    Dim p As String, fp As String, i As Long, nM As String
     If TypeName(ActiveSheet) <> "Worksheet" Then Exit Sub
-    nm = ActiveSheet.Name
-    p = CreateObject("WScript.Shell").SpecialFolders.Item("Desktop")
-    fp = p & "\" & Format(Date, "YYYYMMDD") & " " & nm & ".xlsm"
+    nM = ActiveSheet.Name
+    p = CreateObject("WScript.Shell").SpecialFolders.item("Desktop")
+    fp = p & "\" & Format(Date, "YYYYMMDD") & " " & nM & ".xlsm"
     Do Until ƒZƒ‹‚Ìš(Dir(fp)) = ""
         i = i + 1
-        fp = p & "\" & Format(Date, "YYYYMMDD") & " " & nm & "(" & i & ").xlsm"
+        fp = p & "\" & Format(Date, "YYYYMMDD") & " " & nM & "(" & i & ").xlsm"
     Loop
     Application.ScreenUpdating = False
     ActiveSheet.Copy
@@ -10944,9 +10944,9 @@ Sub ƒV[ƒg‚ğ•ÊƒuƒbƒN‚Å•Û‘¶‚·‚é()
         If p1 > 0 Then
             p2 = InStr(p1, s2, "]")
             If p2 > p1 Then
-                t2 = LCase$(Mid$(s2, p1 + 1, p2 - p1 - 1))
+                t2 = LCase$(mid$(s2, p1 + 1, p2 - p1 - 1))
                 ‘O = "="
-                If p1 > 1 Then ‘O = Mid$(s2, p1 - 1, 1)
+                If p1 > 1 Then ‘O = mid$(s2, p1 - 1, 1)
                 If t2 Like "*.xl*" Or (IsNumeric(t2) And InStr("=(,+-*/&' ", ‘O) > 0) Then n–¼‘O = n–¼‘O + 1
             End If
         End If
@@ -10975,9 +10975,9 @@ Sub ¶‰E‚É•À‚ñ‚¾•\‚ğ“Ë‚«‡‚í‚¹‚é()
     Dim ws As Worksheet, ur As Range, v As Variant
     Dim r As Long, c As Long, i As Long, j As Long, k As Long, n As Long
     Dim urTop As Long, urBottom As Long, urLeft As Long, urRight As Long
-    Dim hdr As Long, L1 As Long, L2 As Long, R1 As Long, r2 As Long, keyL As Long, keyR As Long
+    Dim hdr As Long, L1 As Long, L2 As Long, r1 As Long, r2 As Long, keyL As Long, keyR As Long
     Dim s As String, selName As String, best As String, bestL As Long, bestR As Long, score As Long, bestScore As Long
-    Dim bs() As Long, be() As Long, nb As Long, inB As Boolean
+    Dim bs() As Long, be() As Long, nB As Long, inB As Boolean
 
     Set ws = ActiveSheet
     Set ur = ws.UsedRange
@@ -10994,7 +10994,7 @@ Sub ¶‰E‚É•À‚ñ‚¾•\‚ğ“Ë‚«‡‚í‚¹‚é()
         If r > urTop + 40 Then Exit For
         ReDim bs(1 To urRight - urLeft + 2)
         ReDim be(1 To urRight - urLeft + 2)
-        nb = 0: inB = False
+        nB = 0: inB = False
         For c = urLeft To urRight + 1
             s = ""
             If c <= urRight Then
@@ -11003,18 +11003,18 @@ Sub ¶‰E‚É•À‚ñ‚¾•\‚ğ“Ë‚«‡‚í‚¹‚é()
             End If
             If Len(s) > 0 Then
                 If Not inB Then
-                    nb = nb + 1
-                    bs(nb) = c
+                    nB = nB + 1
+                    bs(nB) = c
                     inB = True
                 End If
-                be(nb) = c
+                be(nB) = c
             Else
                 inB = False
             End If
         Next c
         bestScore = 0
-        For i = 1 To nb - 1
-            For j = i + 1 To nb
+        For i = 1 To nB - 1
+            For j = i + 1 To nB
                 If be(i) > bs(i) And be(j) > bs(j) Then
                     For c = bs(i) To be(i)
                         s = ""
@@ -11030,7 +11030,7 @@ Sub ¶‰E‚É•À‚ñ‚¾•\‚ğ“Ë‚«‡‚í‚¹‚é()
                                         If s = selName Then score = 3
                                         If score > bestScore Then
                                             bestScore = score: best = s: bestL = c: bestR = k
-                                            L1 = bs(i): L2 = be(i): R1 = bs(j): r2 = be(j)
+                                            L1 = bs(i): L2 = be(i): r1 = bs(j): r2 = be(j)
                                         End If
                                     End If
                                 End If
@@ -11054,7 +11054,7 @@ Sub ¶‰E‚É•À‚ñ‚¾•\‚ğ“Ë‚«‡‚í‚¹‚é()
     Const NOTR As String = "i‰E‚Ì•\j"
     Dim chkCol As Long, reuseChk As Boolean
     chkCol = r2 + 1: reuseChk = False
-    For c = R1 + 1 To r2
+    For c = r1 + 1 To r2
         v = ws.Cells(hdr, c).Value
         If Not IsError(v) Then
             If Trim$(CStr(v)) = CHK Then
@@ -11077,7 +11077,7 @@ Sub ¶‰E‚É•À‚ñ‚¾•\‚ğ“Ë‚«‡‚í‚¹‚é()
     Next r
     lastR = hdr: blank = 0
     For r = hdr + 1 To urBottom
-        If Application.WorksheetFunction.CountA(ws.Range(ws.Cells(r, R1), ws.Cells(r, r2))) > 0 Then
+        If Application.WorksheetFunction.CountA(ws.Range(ws.Cells(r, r1), ws.Cells(r, r2))) > 0 Then
             lastR = r: blank = 0
         Else
             blank = blank + 1
@@ -11087,15 +11087,15 @@ Sub ¶‰E‚É•À‚ñ‚¾•\‚ğ“Ë‚«‡‚í‚¹‚é()
     If lastL <= hdr Or lastR <= hdr Then Exit Sub
 
     ' ¶‚Éˆø‚­—ñ‰E‚Ì•\‚ÌŒ®‚Æ“Ë‡‚Ì—ñ‚ğœ‚¢‚½‘S•”
-    Dim bring() As Long, nm() As String
+    Dim bring() As Long, nM() As String
     n = 0
-    ReDim bring(1 To r2 - R1 + 1)
-    ReDim nm(1 To r2 - R1 + 1)
-    For c = R1 To r2
+    ReDim bring(1 To r2 - r1 + 1)
+    ReDim nM(1 To r2 - r1 + 1)
+    For c = r1 To r2
         If c <> keyR Then
             n = n + 1
             bring(n) = c
-            nm(n) = Trim$(CStr(ws.Cells(hdr, c).Value))
+            nM(n) = Trim$(CStr(ws.Cells(hdr, c).Value))
         End If
     Next c
     If n = 0 Then Exit Sub
@@ -11107,7 +11107,7 @@ Sub ¶‰E‚É•À‚ñ‚¾•\‚ğ“Ë‚«‡‚í‚¹‚é()
         reuse = True
         For k = 1 To n
             s = Trim$(CStr(ws.Cells(hdr, L2 - n + k).Value))
-            If s <> nm(k) And s <> nm(k) & NOTR Then reuse = False
+            If s <> nM(k) And s <> nM(k) & NOTR Then reuse = False
         Next k
     End If
     If reuse Then
@@ -11117,9 +11117,9 @@ Sub ¶‰E‚É•À‚ñ‚¾•\‚ğ“Ë‚«‡‚í‚¹‚é()
         outStart = L2 + 1
         origL2 = L2
         ' ‹ó‚«—ñ‚ª‘«‚è‚È‚¢i‰E‚Ì•\‚Ü‚Å 1 —ñ‹ó‚¯‚ç‚ê‚È‚¢j‚©A’u‚­Š‚É‰½‚©‚ ‚ê‚ÎA—ñ‚ğ‘}“ü‚·‚é
-        If outStart + n - 1 > R1 - 2 Or Application.WorksheetFunction.CountA(ws.Range(ws.Cells(hdr, outStart), ws.Cells(lastL, outStart + n - 1))) > 0 Then
+        If outStart + n - 1 > r1 - 2 Or Application.WorksheetFunction.CountA(ws.Range(ws.Cells(hdr, outStart), ws.Cells(lastL, outStart + n - 1))) > 0 Then
             ws.Columns(outStart).Resize(, n).Insert
-            R1 = R1 + n: r2 = r2 + n: keyR = keyR + n: chkCol = chkCol + n
+            r1 = r1 + n: r2 = r2 + n: keyR = keyR + n: chkCol = chkCol + n
             For k = 1 To n
                 bring(k) = bring(k) + n
             Next k
@@ -11128,7 +11128,7 @@ Sub ¶‰E‚É•À‚ñ‚¾•\‚ğ“Ë‚«‡‚í‚¹‚é()
     ' ¶‚Ì•\‚É“¯‚¶Œ©o‚µ‚ª‚ ‚ê‚Îi‰E‚Ì•\j‚ğ•t‚¯‚Ä•ª‚¯‚é
     For k = 1 To n
         For c = L1 To origL2
-            If Trim$(ƒZƒ‹‚Ìš(ws.Cells(hdr, c).Value)) = nm(k) Then nm(k) = nm(k) & NOTR: Exit For
+            If Trim$(ƒZƒ‹‚Ìš(ws.Cells(hdr, c).Value)) = nM(k) Then nM(k) = nM(k) & NOTR: Exit For
         Next c
     Next k
     If Not reuseChk Then
@@ -11143,7 +11143,7 @@ Sub ¶‰E‚É•À‚ñ‚¾•\‚ğ“Ë‚«‡‚í‚¹‚é()
     For k = 1 To n
         oc = outStart + k - 1
         srcRng = ws.Range(ws.Cells(hdr + 1, bring(k)), ws.Cells(lastR, bring(k))).Address
-        ws.Cells(hdr, oc).Value = nm(k)
+        ws.Cells(hdr, oc).Value = nM(k)
         For r = hdr + 1 To lastL
             v = ws.Cells(r, keyL).Value
             isBlank = False
@@ -11217,7 +11217,7 @@ Sub —Š‚İ‚Ì•¶‚Åƒsƒ{ƒbƒg‚ğè’¼‚µ‚·‚é()
     For Each pf In pt.PivotFields
         p = Œ©o‚µ‚ÌŒê‚ÌˆÊ’u(—Š, pf.Name, “–)
         If p > 0 And Len(“–) > 0 Then
-            Œã = Mid$(—Š, p + Len(“–), 2)
+            Œã = mid$(—Š, p + Len(“–), 2)
             If ‘«‚· And pf.Orientation = xlHidden Then
                 If pf.DataType = xlNumber And Not (Left$(Œã, 1) = "•Ê" Or Œã = "‚²‚Æ") Then
                     pt.AddDataField pf, , xlSum
@@ -11264,13 +11264,13 @@ Sub —Š‚İ‚Ì•¶‚Åƒsƒ{ƒbƒg‚ğè’¼‚µ‚·‚é()
                         For Each pi In pf.PivotItems
                             If InStr(1, —Š, ƒsƒ{ƒbƒg‚ÌŒê‚È‚ç‚µ(pi.Name), vbBinaryCompare) > 0 Then pi.Visible = False
                         Next pi
-                        ‚µ‚½ = ‚µ‚½ & "E" & pf.Name & " ‚©‚ç " & Mid$(“–‚Ä–¼, 2) & " ‚ğœ‚¢‚½"
+                        ‚µ‚½ = ‚µ‚½ & "E" & pf.Name & " ‚©‚ç " & mid$(“–‚Ä–¼, 2) & " ‚ğœ‚¢‚½"
                     Else
                         pf.ClearAllFilters
                         For Each pi In pf.PivotItems
                             pi.Visible = (InStr(1, —Š, ƒsƒ{ƒbƒg‚ÌŒê‚È‚ç‚µ(pi.Name), vbBinaryCompare) > 0)
                         Next pi
-                        ‚µ‚½ = ‚µ‚½ & "E" & pf.Name & " ‚ğ " & Mid$(“–‚Ä–¼, 2) & " ‚¾‚¯‚É"
+                        ‚µ‚½ = ‚µ‚½ & "E" & pf.Name & " ‚ğ " & mid$(“–‚Ä–¼, 2) & " ‚¾‚¯‚É"
                     End If
                 End If
             End If
@@ -11283,7 +11283,7 @@ Sub —Š‚İ‚Ì•¶‚Åƒsƒ{ƒbƒg‚ğè’¼‚µ‚·‚é()
         For Each Œê In Array("ãˆÊ", "ƒgƒbƒv", "ƒxƒXƒg", "‰ºˆÊ", "ƒ[ƒXƒg")
             p = InStr(1, —Š, Œê, vbBinaryCompare)
             If p > 0 Then
-                n = val(Mid$(—Š, p + Len(Œê)))
+                n = val(mid$(—Š, p + Len(Œê)))
                 If n <= 0 Then n = 5
                 s.ClearValueFilters
                 If Œê = "‰ºˆÊ" Or Œê = "ƒ[ƒXƒg" Then
@@ -11325,11 +11325,11 @@ Sub —Š‚İ‚Ì•¶‚Åƒsƒ{ƒbƒg‚ğè’¼‚µ‚·‚é()
             ˆê—— = ˆê—— & "E" & pf.Name
         Next pf
         æŒ‚‚¿‚É’f‚é "ƒsƒ{ƒbƒg‚ğ‚Ç‚¤’¼‚·‚©•ª‚©‚è‚Ü‚¹‚ñ‚Å‚µ‚½B—Š‚İ•û‚Ì—á: u’S“–Ò‚às‚É‘«‚µ‚Ävu‘–±‰Û‚¾‚¯‚Éi‚Á‚Ävu‘å‚«‚¢‡‚Év" & _
-            "uãˆÊ3Œ‚¾‚¯vu•½‹Ï‚É•Ï‚¦‚Ävui‚è‚İ‚ğ‰ğœ‚µ‚ÄvBƒtƒB[ƒ‹ƒh: " & Mid$(ˆê——, 2)
+            "uãˆÊ3Œ‚¾‚¯vu•½‹Ï‚É•Ï‚¦‚Ävui‚è‚İ‚ğ‰ğœ‚µ‚ÄvBƒtƒB[ƒ‹ƒh: " & mid$(ˆê——, 2)
         Exit Sub
     End If
     ƒsƒ{ƒbƒg‚ğ‚¢‚Â‚à‚ÌŒ`‚É‚»‚ë‚¦‚é
-    Application.StatusBar = "ƒsƒ{ƒbƒg‚ğ’¼‚µ‚Ü‚µ‚½: " & Mid$(‚µ‚½, 2)
+    Application.StatusBar = "ƒsƒ{ƒbƒg‚ğ’¼‚µ‚Ü‚µ‚½: " & mid$(‚µ‚½, 2)
 End Sub
 
 
@@ -11585,19 +11585,19 @@ Function —Š‚İ‚Ì”(ByVal —Š As String, ByRef ˆÊ’u As Long) As Double
     ˆÊ’u = 0
     —Š‚İ‚Ì” = -1
     For i = 1 To Len(—Š)
-        ch = Mid$(—Š, i, 1)
+        ch = mid$(—Š, i, 1)
         If ch Like "[‚O-‚X]" Then ch = ChrW(AscW(ch) - AscW("‚O") + AscW("0"))
         If ch = "C" Then ch = ","
         If ch = "D" Then ch = "."
         s = s & ch
     Next i
     For i = 1 To Len(s)
-        If Mid$(s, i, 1) Like "#" Then ˆÊ’u = i: Exit For
+        If mid$(s, i, 1) Like "#" Then ˆÊ’u = i: Exit For
     Next i
     If ˆÊ’u = 0 Then Exit Function
     i = ˆÊ’u
     Do While i <= Len(s)
-        ch = Mid$(s, i, 1)
+        ch = mid$(s, i, 1)
         If ch Like "#" Or ch = "." Then
             š = š & ch
         ElseIf ch <> "," Then
@@ -11606,7 +11606,7 @@ Function —Š‚İ‚Ì”(ByVal —Š As String, ByRef ˆÊ’u As Long) As Double
         i = i + 1
     Loop
     —Š‚İ‚Ì” = val(š)
-    If Mid$(s, i, 1) = "–œ" Then —Š‚İ‚Ì” = —Š‚İ‚Ì” * 10000
+    If mid$(s, i, 1) = "–œ" Then —Š‚İ‚Ì” = —Š‚İ‚Ì” * 10000
 End Function
 
 ' •\‚Ì”‚Ì—ñ‚Ì‚¤‚¿A—Š‚İ‚Ì•¶‚ÉŒ©o‚µiŠ‡ŒÊ‚Ì’PˆÊ‚ğŠO‚µ‚½Œ`‚àj‚ªo‚Ä‚­‚é—ñ‚Æ‚»‚ÌˆÊ’uB•Ô‚è’l‚Í“–‚½‚Á‚½”
@@ -12064,7 +12064,7 @@ Sub ƒfƒUƒCƒ“”ü‰»‚ğÀs‚·‚é( _
             Dim hLen As Long: hLen = 0
             Dim chIdx As Long
             For chIdx = 1 To Len(hTitle)
-                Dim chCode As Long: chCode = AscW(Mid$(hTitle, chIdx, 1))
+                Dim chCode As Long: chCode = AscW(mid$(hTitle, chIdx, 1))
                 If (chCode >= 0 And chCode <= 255) Or (chCode >= &HFF61 And chCode <= &HFF9F) Then
                     hLen = hLen + 1
                 Else
@@ -12080,7 +12080,7 @@ Sub ƒfƒUƒCƒ“”ü‰»‚ğÀs‚·‚é( _
                     Dim sVal As String: sVal = CStr(cellV)
                     Dim sLen As Long: sLen = 0
                     For chIdx = 1 To Len(sVal)
-                        chCode = AscW(Mid$(sVal, chIdx, 1))
+                        chCode = AscW(mid$(sVal, chIdx, 1))
                         If (chCode >= 0 And chCode <= 255) Or (chCode >= &HFF61 And chCode <= &HFF9F) Then
                             sLen = sLen + 1
                         Else
@@ -12889,7 +12889,7 @@ Sub ‘I‚ñ‚¾“ú•t—ñ‚É—j“ú‚ğ‘«‚·()
         If Not isEmpty(v) And Not IsError(v) Then
             If VarType(v) = vbDate Or (IsNumeric(v) And IsDate(v) And v > 0) Then
                 w = Weekday(CDate(v), vbSunday)
-                wStr = Mid$("“úŒ‰Î…–Ø‹à“y", w, 1)
+                wStr = mid$("“úŒ‰Î…–Ø‹à“y", w, 1)
                 ws.Cells(r, colWeek).Value = wStr
                 ws.Cells(r, colWeek).HorizontalAlignment = xlCenter
                 If w = 7 Then
@@ -13116,7 +13116,7 @@ Private Function ConvertVlookupToXlookup(ByVal f As String) As String
     depth = 0: curArg = ""
     Set argList = New Collection
     For i = pos + 8 To Len(f)
-        ch = Mid$(f, i, 1)
+        ch = mid$(f, i, 1)
         If ch = "(" Then
             depth = depth + 1
             curArg = curArg & ch
@@ -13147,7 +13147,7 @@ Private Function ConvertVlookupToXlookup(ByVal f As String) As String
     excPos = InStr(tableRef, "!")
     If excPos > 0 Then
         shName = Left$(tableRef, excPos)
-        tblAddr = Mid$(tableRef, excPos + 1)
+        tblAddr = mid$(tableRef, excPos + 1)
     Else
         shName = ""
         tblAddr = tableRef
@@ -13157,7 +13157,7 @@ Private Function ConvertVlookupToXlookup(ByVal f As String) As String
     If colonP = 0 Then ConvertVlookupToXlookup = f: Exit Function
     Dim c1 As String, c2 As String
     c1 = Left$(tblAddr, colonP - 1)
-    c2 = Mid$(tblAddr, colonP + 1)
+    c2 = mid$(tblAddr, colonP + 1)
 
     On Error Resume Next
     Dim dummyW As Worksheet: Set dummyW = ActiveSheet
@@ -13176,9 +13176,9 @@ Private Function ConvertVlookupToXlookup(ByVal f As String) As String
 
     Dim absC1 As Boolean, absR1 As Boolean, absC2 As Boolean, absR2 As Boolean
     absC1 = (InStr(c1, "$") = 1)
-    absR1 = (InStr(Mid$(c1, 2), "$") > 0)
+    absR1 = (InStr(mid$(c1, 2), "$") > 0)
     absC2 = (InStr(c2, "$") = 1)
-    absR2 = (InStr(Mid$(c2, 2), "$") > 0)
+    absR2 = (InStr(mid$(c2, 2), "$") > 0)
 
     Dim searchColRng As Range, returnColRng As Range
     Set searchColRng = dummyW.Range(dummyW.Cells(startRow, startCol), dummyW.Cells(endRow, startCol))
@@ -13191,7 +13191,7 @@ Private Function ConvertVlookupToXlookup(ByVal f As String) As String
     Dim xlookStr As String
     xlookStr = "XLOOKUP(" & searchVal & ", " & shName & searchColAddr & ", " & shName & returnColAddr & ", """")"
 
-    ConvertVlookupToXlookup = Left$(f, pos - 1) & xlookStr & Mid$(f, endPos + 1)
+    ConvertVlookupToXlookup = Left$(f, pos - 1) & xlookStr & mid$(f, endPos + 1)
 End Function
 
 Sub Šî€‚ğ‰º‰ñ‚és‚Éˆó‚ÆF‚ğ•t‚¯‚é()
@@ -13268,7 +13268,7 @@ Sub Šî€‚ğ‰º‰ñ‚és‚Éˆó‚ÆF‚ğ•t‚¯‚é()
         Do While p1 > 0
             p2 = InStr(p1 + 1, ¶—Š, IIf(CStr(Š‡) = "w", "x", "v"))
             If p2 = 0 Then Exit Do
-            Š‡‚Ì’† = Trim$(Mid$(¶—Š, p1 + 1, p2 - p1 - 1))
+            Š‡‚Ì’† = Trim$(mid$(¶—Š, p1 + 1, p2 - p1 - 1))
             If Len(Š‡‚Ì’†) > 0 And Len(Š‡‚Ì’†) <= 12 Then
                 ”»’è‚ÌŒê = ""
                 For c = c1 To c2
@@ -13290,9 +13290,9 @@ Sub Šî€‚ğ‰º‰ñ‚és‚Éˆó‚ÆF‚ğ•t‚¯‚é()
         ”»’è—ñ = ‰E‚Ìo‚µæ(ws, hdr, c2 + 1, 1, "”»’è", c2 + 1)
         ' —Š‚İ‚ÉuD—ñ‚Év‚Æ‚ ‚èA‚»‚Ì—ñ‚ÌŒ©o‚µ‚©‚çÅŒã‚Ì–¾×‚Ìs‚Ü‚Å‚ª‹ó‚È‚ç‚»‚±‚ÖiŒ³‚Ì—ñ‚Íg‚í‚È‚¢j
         For i = 1 To Len(¶—Š) - 1
-            If Mid$(¶—Š, i, 1) = "—ñ" And i >= 2 Then
-                If Mid$(¶—Š, i + 1, 1) = "‚É" Or Mid$(¶—Š, i + 1, 1) = "‚Ö" Then
-                    —ñ•¶š = StrConv(Mid$(¶—Š, i - 1, 1), vbNarrow)
+            If mid$(¶—Š, i, 1) = "—ñ" And i >= 2 Then
+                If mid$(¶—Š, i + 1, 1) = "‚É" Or mid$(¶—Š, i + 1, 1) = "‚Ö" Then
+                    —ñ•¶š = StrConv(mid$(¶—Š, i - 1, 1), vbNarrow)
                     If —ñ•¶š Like "[A-Za-z]" Then
                         s = ws.Range(UCase$(—ñ•¶š) & "1").Column
                         If s >= c1 And s <= c2 + 1 Then
@@ -13480,7 +13480,7 @@ Sub ƒ[ƒ‚ÅŠ„‚éƒGƒ‰[‚Ì®‚ğ’¼‚·()
         Set cel = ‘ÎÛ(k)
         f = cel.Formula
         On Error Resume Next
-        cel.Formula = "=IFERROR(" & Mid$(f, 2) & ","""")"
+        cel.Formula = "=IFERROR(" & mid$(f, 2) & ","""")"
         If Err.Number <> 0 Then
             ¸”s = ¸”s + 1
             Err.Clear
@@ -13603,10 +13603,10 @@ Sub ‡Œv‚Ì®‚Ì”ÍˆÍ‚ğ•\‚ÌI‚í‚è‚Ü‚ÅL‚°‚é()
                 ˆø”Ô = 0
                 If ŠÖ = "SUM" And ” = 1 Then ˆø”Ô = 1
                 If ŠÖ = "SUBTOTAL" And ” = 2 Then
-                    If Trim$(Mid$(V, ˆÊ’u(1), ’·‚³(1))) = "9" Or Trim$(Mid$(V, ˆÊ’u(1), ’·‚³(1))) = "109" Then ˆø”Ô = 2
+                    If Trim$(mid$(V, ˆÊ’u(1), ’·‚³(1))) = "9" Or Trim$(mid$(V, ˆÊ’u(1), ’·‚³(1))) = "109" Then ˆø”Ô = 2
                 End If
                 If ˆø”Ô > 0 Then
-                    Œ³ˆø = Mid$(V, ˆÊ’u(ˆø”Ô), ’·‚³(ˆø”Ô))
+                    Œ³ˆø = mid$(V, ˆÊ’u(ˆø”Ô), ’·‚³(ˆø”Ô))
                     ˆø = Trim$(Œ³ˆø)
                     ‘O‹ó = Len(Œ³ˆø) - Len(LTrim$(Œ³ˆø))
                     Œã‹ó = Len(Œ³ˆø) - Len(RTrim$(Œ³ˆø))
@@ -13633,7 +13633,7 @@ Sub ‡Œv‚Ì®‚Ì”ÍˆÍ‚ğ•\‚ÌI‚í‚è‚Ü‚ÅL‚°‚é()
                                     Next ‘¼
                                 End If
                                 If “Í‚­ Then
-                                    V = Left$(V, ˆÊ’u(ˆø”Ô) - 1) & Left$(Œ³ˆø, ‘O‹ó) & s‚ğ•Ï‚¦‚½”ÍˆÍ(ˆø, ã, V‰º) & Right$(Œ³ˆø, Œã‹ó) & Mid$(V, ˆÊ’u(ˆø”Ô) + ’·‚³(ˆø”Ô))
+                                    V = Left$(V, ˆÊ’u(ˆø”Ô) - 1) & Left$(Œ³ˆø, ‘O‹ó) & s‚ğ•Ï‚¦‚½”ÍˆÍ(ˆø, ã, V‰º) & Right$(Œ³ˆø, Œã‹ó) & mid$(V, ˆÊ’u(ˆø”Ô) + ’·‚³(ˆø”Ô))
                                 End If
                             End If
                         End If
@@ -13824,12 +13824,12 @@ Sub VLOOKUP‚Ì—ñ”Ô†‚ğŒ©o‚µ‚©‚çˆø‚­Œ`‚É‚·‚é()
         For k = Š” To 1 Step -1
             ” = ®‚Ìˆø”‚ğØ‚é(V, Š(k) + Len("VLOOKUP") + 1, ˆÊ’u, ’·‚³)
             If ” >= 3 Then
-                ”Ô† = Trim$(Mid$(V, ˆÊ’u(3), ’·‚³(3)))
+                ”Ô† = Trim$(mid$(V, ˆÊ’u(3), ’·‚³(3)))
                 If Len(”Ô†) >= 1 And Len(”Ô†) <= 4 And Not (”Ô† Like "*[!0-9]*") Then
                     ”Ô = CLng(”Ô†)
                     Set } = Nothing
                     Set Œ© = Nothing
-                    If ”Ô >= 1 Then Set } = ®‚Ì”ÍˆÍ(ws, Trim$(Mid$(V, ˆÊ’u(2), ’·‚³(2))))
+                    If ”Ô >= 1 Then Set } = ®‚Ì”ÍˆÍ(ws, Trim$(mid$(V, ˆÊ’u(2), ’·‚³(2))))
                     If Not } Is Nothing Then
                         If }.Areas.Count = 1 And ”Ô <= }.Columns.Count Then Set Œ© = •\‚ÌŒ©o‚µ‚Ìs(})
                     End If
@@ -13844,7 +13844,7 @@ Sub VLOOKUP‚Ì—ñ”Ô†‚ğŒ©o‚µ‚©‚çˆø‚­Œ`‚É‚·‚é()
                             If Œ©.Worksheet.Name <> ws.Name Then Œ©‚Ì”Ô’n = "'" & Replace(Œ©.Worksheet.Name, "'", "''") & "'!" & Œ©‚Ì”Ô’n
                             ' MATCH ‚Ì 0 ‚Í * ? ~ ‚ğƒƒCƒ‹ƒhƒJ[ƒh‚É“Ç‚Ş‚Ì‚ÅAŒ©o‚µ‚Ìš‚Ì‚»‚ê‚É‚Í ~ ‚ğ•t‚¯‚é
                             š = Replace(Replace(Replace(š, "~", "~~"), "*", "~*"), "?", "~?")
-                            V = Left$(V, ˆÊ’u(3) - 1) & "MATCH(""" & Replace(š, """", """""") & """," & Œ©‚Ì”Ô’n & ",0)" & Mid$(V, ˆÊ’u(3) + ’·‚³(3))
+                            V = Left$(V, ˆÊ’u(3) - 1) & "MATCH(""" & Replace(š, """", """""") & """," & Œ©‚Ì”Ô’n & ",0)" & mid$(V, ˆÊ’u(3) + ’·‚³(3))
                         End If
                     End If
                 End If
@@ -13913,7 +13913,7 @@ Private Function ®‚ÌŠÖ”‚ÌˆÊ’u(ByVal f As String, ByVal –¼ As String, ByRef Š(
     ReDim Š(1 To 1)
     ‘å = UCase$(f)
     For i = 1 To Len(f)
-        ch = Mid$(f, i, 1)
+        ch = mid$(f, i, 1)
         If ˆø—p Then
             If ch = """" Then ˆø—p = False
         ElseIf ˆø—pS Then
@@ -13922,9 +13922,9 @@ Private Function ®‚ÌŠÖ”‚ÌˆÊ’u(ByVal f As String, ByVal –¼ As String, ByRef Š(
             ˆø—p = True
         ElseIf ch = "'" Then
             ˆø—pS = True
-        ElseIf Mid$(‘å, i, L + 1) = –¼ & "(" Then
+        ElseIf mid$(‘å, i, L + 1) = –¼ & "(" Then
             ‘O = ""
-            If i > 1 Then ‘O = Mid$(f, i - 1, 1)
+            If i > 1 Then ‘O = mid$(f, i - 1, 1)
             If Not (‘O Like "[A-Za-z0-9_.]") Then
                 n = n + 1
                 ReDim Preserve Š(1 To n)
@@ -13942,7 +13942,7 @@ Private Function ®‚Ìˆø”‚ğØ‚é(ByVal f As String, ByVal n As Long, ByRef ˆÊ’u(
     ReDim ˆÊ’u(1 To 1): ReDim ’·‚³(1 To 1)
     [ = 1: ˆø = n
     For i = n To Len(f)
-        ch = Mid$(f, i, 1)
+        ch = mid$(f, i, 1)
         If ˆø—p Then
             If ch = """" Then ˆø—p = False
         ElseIf ˆø—pS Then
@@ -13980,7 +13980,7 @@ Private Function “¯‚¶—ñ‚ğ‡Œv‚µ‚Ä‚¢‚é‚©(ByVal f As String, ByVal —ñ As Long, ByV
         For k = 1 To Š”
             ” = ®‚Ìˆø”‚ğØ‚é(f, Š(k) + Len(ŠÖ) + 1, ˆÊ’u, ’·‚³)
             For i = 1 To ”
-                If ˆê—ñ‚Ì”ÍˆÍ‚©(Trim$(Mid$(f, ˆÊ’u(i), ’·‚³(i))), —ñš, ã, ‰º) Then
+                If ˆê—ñ‚Ì”ÍˆÍ‚©(Trim$(mid$(f, ˆÊ’u(i), ’·‚³(i))), —ñš, ã, ‰º) Then
                     If —ñš‚Ì”Ô†(—ñš) = —ñ And ã <= s2 And ‰º >= s1 Then
                         “¯‚¶—ñ‚ğ‡Œv‚µ‚Ä‚¢‚é‚© = True
                         Exit Function
@@ -13993,13 +13993,13 @@ End Function
 
 ' "D2:D8"E"$D$2:$D$8" ‚Ì‚æ‚¤‚È“¯‚¶—ñ‚Ì 1 —ñ‚Ì”ÍˆÍ‚È‚ç True ‚ÅA—ñ‚Ìš‚ÆãE‰º‚Ìs‚ğ•Ô‚·iƒV[ƒg–¼‚Â‚«E—ñ‚¾‚¯E–¼‘O‚Í Falsej
 Private Function ˆê—ñ‚Ì”ÍˆÍ‚©(ByVal s As String, ByRef —ñš As String, ByRef ã As Long, ByRef ‰º As Long) As Boolean
-    Dim p As Long, c1 As String, c2 As String, R1 As Long, r2 As Long
+    Dim p As Long, c1 As String, c2 As String, r1 As Long, r2 As Long
     p = InStr(s, ":")
     If p = 0 Then Exit Function
-    If Not ”Ô’n‚ğ•ª‚¯‚é(Left$(s, p - 1), c1, R1) Then Exit Function
-    If Not ”Ô’n‚ğ•ª‚¯‚é(Mid$(s, p + 1), c2, r2) Then Exit Function
-    If c1 <> c2 Or R1 > r2 Then Exit Function
-    —ñš = c1: ã = R1: ‰º = r2
+    If Not ”Ô’n‚ğ•ª‚¯‚é(Left$(s, p - 1), c1, r1) Then Exit Function
+    If Not ”Ô’n‚ğ•ª‚¯‚é(mid$(s, p + 1), c2, r2) Then Exit Function
+    If c1 <> c2 Or r1 > r2 Then Exit Function
+    —ñš = c1: ã = r1: ‰º = r2
     ˆê—ñ‚Ì”ÍˆÍ‚© = True
 End Function
 
@@ -14008,7 +14008,7 @@ Private Function ”Ô’n‚ğ•ª‚¯‚é(ByVal s As String, ByRef —ñš As String, ByRef s 
     Dim i As Long, ch As String, š As String, ”š As String
     s = Replace(s, "$", "")
     For i = 1 To Len(s)
-        ch = Mid$(s, i, 1)
+        ch = mid$(s, i, 1)
         If ch Like "[A-Za-z]" And ”š = "" Then
             š = š & UCase$(ch)
         ElseIf ch Like "[0-9]" And š <> "" Then
@@ -14027,7 +14027,7 @@ End Function
 Private Function —ñš‚Ì”Ô†(ByVal —ñš As String) As Long
     Dim i As Long, n As Long
     For i = 1 To Len(—ñš)
-        n = n * 26 + (Asc(Mid$(—ñš, i, 1)) - 64)
+        n = n * 26 + (Asc(mid$(—ñš, i, 1)) - 64)
     Next i
     —ñš‚Ì”Ô† = n
 End Function
@@ -14036,14 +14036,14 @@ End Function
 Private Function s‚ğ•Ï‚¦‚½”ÍˆÍ(ByVal s As String, ByVal ã As Long, ByVal ‰º As Long) As String
     Dim p As Long
     p = InStr(s, ":")
-    s‚ğ•Ï‚¦‚½”ÍˆÍ = s‚ğ•Ï‚¦‚½”Ô’n(Left$(s, p - 1), ã) & ":" & s‚ğ•Ï‚¦‚½”Ô’n(Mid$(s, p + 1), ‰º)
+    s‚ğ•Ï‚¦‚½”ÍˆÍ = s‚ğ•Ï‚¦‚½”Ô’n(Left$(s, p - 1), ã) & ":" & s‚ğ•Ï‚¦‚½”Ô’n(mid$(s, p + 1), ‰º)
 End Function
 
 Private Function s‚ğ•Ï‚¦‚½”Ô’n(ByVal s As String, ByVal s As Long) As String
     Dim i As Long
     i = Len(s)
     Do While i > 0
-        If Not (Mid$(s, i, 1) Like "[0-9]") Then Exit Do
+        If Not (mid$(s, i, 1) Like "[0-9]") Then Exit Do
         i = i - 1
     Loop
     s‚ğ•Ï‚¦‚½”Ô’n = Left$(s, i) & CStr(s)
@@ -14077,7 +14077,7 @@ Private Function R1C1‚Ìœ‘g‚İ(ByVal f As String, ByRef QÆ() As String, ByRef 
     ReDim QÆ(1 To 1)
     i = 1
     Do While i <= n
-        ch = Mid$(f, i, 1)
+        ch = mid$(f, i, 1)
         j = 0
         If ˆø—p Then
             If ch = """" Then ˆø—p = False
@@ -14089,13 +14089,13 @@ Private Function R1C1‚Ìœ‘g‚İ(ByVal f As String, ByRef QÆ() As String, ByRef 
             ˆø—pS = True
         ElseIf ch = "R" Or ch = "C" Then
             ‘O = ""
-            If i > 1 Then ‘O = Mid$(f, i - 1, 1)
+            If i > 1 Then ‘O = mid$(f, i - 1, 1)
             If Not (‘O Like "[A-Za-z0-9_.]") Then j = R1C1‚ÌQÆ‚Ì’·‚³(f, i)
         End If
         If j > 0 Then
             ” = ” + 1
             ReDim Preserve QÆ(1 To ”)
-            QÆ(”) = Mid$(f, i, j)
+            QÆ(”) = mid$(f, i, j)
             œ = œ & ChrW(1)
             i = i + j
         Else
@@ -14110,16 +14110,16 @@ End Function
 Private Function R1C1‚ÌQÆ‚Ì’·‚³(ByVal f As String, ByVal i As Long) As Long
     Dim j As Long, —L As Boolean, Ÿ As String
     j = i
-    If Mid$(f, j, 1) = "R" Then
+    If mid$(f, j, 1) = "R" Then
         —L = True
         j = R1C1‚Ì•”‚ÌI‚í‚è(f, j + 1)
     End If
-    If Mid$(f, j, 1) = "C" Then
+    If mid$(f, j, 1) = "C" Then
         —L = True
         j = R1C1‚Ì•”‚ÌI‚í‚è(f, j + 1)
     End If
     If Not —L Then Exit Function
-    Ÿ = Mid$(f, j, 1)
+    Ÿ = mid$(f, j, 1)
     If Ÿ Like "[A-Za-z0-9_.(]" Then Exit Function
     R1C1‚ÌQÆ‚Ì’·‚³ = j - i
 End Function
@@ -14127,17 +14127,17 @@ End Function
 ' REC ‚ÌŒã‚ë‚Ìu”v‚©u[”]v‚ğ‰z‚¦‚½ˆÊ’u
 Private Function R1C1‚Ì•”‚ÌI‚í‚è(ByVal f As String, ByVal j As Long) As Long
     Dim k As Long
-    If Mid$(f, j, 1) = "[" Then
+    If mid$(f, j, 1) = "[" Then
         k = InStr(j, f, "]")
         If k > j + 1 Then
-            If Not (Mid$(f, j + 1, k - j - 1) Like "*[!0-9-]*") Then
+            If Not (mid$(f, j + 1, k - j - 1) Like "*[!0-9-]*") Then
                 R1C1‚Ì•”‚ÌI‚í‚è = k + 1
                 Exit Function
             End If
         End If
     End If
     Do While j <= Len(f)
-        If Not (Mid$(f, j, 1) Like "[0-9]") Then Exit Do
+        If Not (mid$(f, j, 1) Like "[0-9]") Then Exit Do
         j = j + 1
     Loop
     R1C1‚Ì•”‚ÌI‚í‚è = j
@@ -14168,7 +14168,7 @@ Private Function R1C1‚ÌQÆ‚ğ•ª‚¯‚é(ByVal s As String, ByRef s•” As String, ByR
         s•” = s
     Else
         s•” = Left$(s, p - 1)
-        —ñ•” = Mid$(s, p)
+        —ñ•” = mid$(s, p)
     End If
     R1C1‚ÌQÆ‚ğ•ª‚¯‚é = True
 End Function
@@ -14176,7 +14176,7 @@ End Function
 ' R ‚Ì•”EC ‚Ì•”‚ª $ •t‚«iR2EC5 ‚Ì‚æ‚¤‚É”‚ª [ ] ‚Å•ï‚Ü‚ê‚Ä‚¢‚È‚¢j‚©
 Private Function R1C1‚Ì•”‚ªŒÅ’è‚©(ByVal s As String) As Boolean
     If Len(s) < 2 Then Exit Function
-    R1C1‚Ì•”‚ªŒÅ’è‚© = Not (Mid$(s, 2) Like "*[!0-9]*")
+    R1C1‚Ì•”‚ªŒÅ’è‚© = Not (mid$(s, 2) Like "*[!0-9]*")
 End Function
 
 ' ®‚Ì’†‚Ì”ÍˆÍ‚Ìši$H$2:$K$20E'’P‰¿•\'!A:DE–¼‘Oj¨ RangeB•Ê‚ÌƒuƒbƒNE“Ç‚ß‚È‚¢š‚Í Nothing
@@ -14187,9 +14187,9 @@ Private Function ®‚Ì”ÍˆÍ(ByVal ws As Worksheet, ByVal •\ As String) As Range
     If p > 0 Then
         –¼ = Left$(•\, p - 1)
         If InStr(–¼, "[") > 0 Then Exit Function
-        If Left$(–¼, 1) = "'" And Right$(–¼, 1) = "'" And Len(–¼) >= 2 Then –¼ = Replace(Mid$(–¼, 2, Len(–¼) - 2), "''", "'")
+        If Left$(–¼, 1) = "'" And Right$(–¼, 1) = "'" And Len(–¼) >= 2 Then –¼ = Replace(mid$(–¼, 2, Len(–¼) - 2), "''", "'")
         Set sh = ws.Parent.Worksheets(–¼)
-        æ = Mid$(•\, p + 1)
+        æ = mid$(•\, p + 1)
     Else
         Set sh = ws
         æ = •\
@@ -14256,7 +14256,7 @@ Sub w’è‚µ‚½’l‚Ìs‚Ì”wŒiF‚ğ•Ê‚Ì’l‚Ìs‚É‚»‚ë‚¦‚é()
 
     Dim ws As Worksheet, •\ As Range, why As String
     Dim req As String, targetWord As String, refWord As String
-    Dim hdr As Long, R1 As Long, r2 As Long, c1 As Long, c2 As Long
+    Dim hdr As Long, r1 As Long, r2 As Long, c1 As Long, c2 As Long
     Dim r As Long, c As Long, hitCount As Long
     Dim refColor As Variant, refColorIndex As Variant, foundRef As Boolean
     Dim cellText As String, reg As Object, matches As Object
@@ -14267,11 +14267,11 @@ Sub w’è‚µ‚½’l‚Ìs‚Ì”wŒiF‚ğ•Ê‚Ì’l‚Ìs‚É‚»‚ë‚¦‚é()
     If •\ Is Nothing Then Call æŒ‚‚¿‚É’f‚é(why): Exit Sub
 
     hdr = •\.Row
-    R1 = •\.Row + 1
+    r1 = •\.Row + 1
     r2 = •\.Row + •\.rows.Count - 1
     c1 = •\.Column
     c2 = •\.Column + •\.Columns.Count - 1
-    If r2 < R1 Then Call æŒ‚‚¿‚É’f‚é("Œ©o‚µ‚Ì‰º‚É–¾×s‚ª‚ ‚è‚Ü‚¹‚ñB"): Exit Sub
+    If r2 < r1 Then Call æŒ‚‚¿‚É’f‚é("Œ©o‚µ‚Ì‰º‚É–¾×s‚ª‚ ‚è‚Ü‚¹‚ñB"): Exit Sub
 
     req = Trim$(æŒ‚‚¿‚Ì—Š‚İ‚Ì•¶())
     If Len(req) = 0 Then
@@ -14307,7 +14307,7 @@ Sub w’è‚µ‚½’l‚Ìs‚Ì”wŒiF‚ğ•Ê‚Ì’l‚Ìs‚É‚»‚ë‚¦‚é()
 
     ' 1. Šî€‚Æ‚È‚é refWord ‚ÌƒZƒ‹‚ğ’T‚µA”wŒiF‚ğæ“¾
     foundRef = False
-    For r = R1 To r2
+    For r = r1 To r2
         For c = c1 To c2
             cellText = Trim$(ws.Cells(r, c).text)
             If cellText = refWord Or (Len(refWord) >= 2 And InStr(cellText, refWord) > 0) Then
@@ -14330,7 +14330,7 @@ Sub w’è‚µ‚½’l‚Ìs‚Ì”wŒiF‚ğ•Ê‚Ì’l‚Ìs‚É‚»‚ë‚¦‚é()
 
     ' 2. ‘ÎÛ‚Æ‚È‚é targetWord ‚Ìs‚Ì”wŒiF‚ğ‚»‚ë‚¦‚é
     hitCount = 0
-    For r = R1 To r2
+    For r = r1 To r2
         For c = c1 To c2
             cellText = Trim$(ws.Cells(r, c).text)
             If cellText = targetWord Or (Len(targetWord) >= 2 And InStr(cellText, targetWord) > 0) Then
