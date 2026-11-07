@@ -5162,18 +5162,27 @@ Sub シートのレントゲンを一覧にする()
                 Case "S31": symName = "セル内改行": shelfName = "セルの見えない空白と改行を取る"
                 Case "S32": symName = "セル内タブ": shelfName = "セルの見えない空白と改行を取る"
                 Case "S33": symName = "制御文字": shelfName = "セルの見えない空白と改行を取る"
-                Case "S34": symName = "HTML実体参照": shelfName = "文字の実体参照を文字に戻す"
+                Case "S34": symName = "HTML実体参照": shelfName = "セルの見えない空白と改行を取る"
                 Case "S35": symName = "非表示の行・列": shelfName = "隠れた行と列を全部表示する"
                 Case "S36": symName = "テーブルの範囲拡張": shelfName = "テーブルの範囲を下と右へ広げる"
                 Case "S37": symName = "帳票・非一覧表": shelfName = "帳票を右に1行1件の一覧にする"
                 Case "S38": symName = "ピボットの元範囲拡張": shelfName = "ピボットの元範囲を広げて更新する"
                 Case "S39": symName = "散らばった図形": shelfName = "図形を一覧にし位置をそろえる"
-                Case "S45": symName = "丸数字・特殊記号": shelfName = "丸数字や特殊記号を普通の文字にする"
+                Case "S45": symName = "丸数字・特殊記号": shelfName = "英数を半角にカナを全角にする"
                 Case "S46": symName = "不要な合計・小計行": shelfName = "表の合計と小計の行を消す"
                 Case "S47": symName = "見出し枠固定の未設定": shelfName = "見出しで枠を固定しA1に戻す"
                 Case "S48": symName = "グラフの書体・凡例": shelfName = "グラフの書体と凡例をそろえる"
                 Case "S49": symName = "ピボットの標準レイアウト": shelfName = "ピボットをいつもの形にそろえる"
                 Case "S50": symName = "印刷設定・改ページ": shelfName = "横で見出し毎ページの印刷設定"
+                Case "S09": symName = "前ゼロ・桁数不揃い": shelfName = "番号に先頭のゼロを付けてそろえる"
+                Case "S10": symName = "連番飛び・乱れ": shelfName = "番号の列を連番に振り直す"
+                Case "S14": symName = "空欄の上値埋め": shelfName = "選んだ列の空白を上の値で埋める"
+                Case "S18": symName = "ゼロ除算式": shelfName = "ゼロで割るエラーの式を直す"
+                Case "S19": symName = "合計範囲漏れ": shelfName = "合計の式の範囲を表の終わりまで広げる"
+                Case "S20": symName = "絶対参照抜け": shelfName = "下へ写した式の絶対参照の抜けを直す"
+                Case "S21": symName = "VLOOKUP列直書き": shelfName = "VLOOKUPの列番号を見出しから引く形にする"
+                Case "S28": symName = "ふりがなカタカナ": shelfName = "選んだ列のカナをひらがなにする"
+                Case "S40": symName = "コード列": shelfName = "選んだコード列の右に名称列を足す"
                 Case Else: symName = symCode: shelfName = ""
             End Select
             out.Cells(r, 4).Value = symName
@@ -5224,6 +5233,7 @@ Sub シートのレントゲンを一覧にする()
             End If
             If .Columns(j).ColumnWidth < 8 Then .Columns(j).ColumnWidth = 8
         Next j
+        If .Columns(5).ColumnWidth < 32 Then .Columns(5).ColumnWidth = 32
     End With
     out.Activate
     out.Range("A1").Select
@@ -5356,7 +5366,7 @@ Sub ブックの人間ドックを一覧にする()
 
         If errCount > 0 Then
             nCrit = nCrit + 1
-            issues.Add Array("重大", sh.Name, firstErrAddr & IIf(errCount > 1, " ほか" & (errCount - 1) & "件", ""), "数式エラー", "エラー値（#DIV/0!, #REF!, #N/A 等）が " & errCount & " セルあります", "エラー値のセルを一覧にする ／ ゼロで割るエラーの式を直す")
+            issues.Add Array("重大", sh.Name, firstErrAddr & IIf(errCount > 1, " ほか" & (errCount - 1) & "件", ""), "数式エラー", "エラー値（#DIV/0!, #REF!, #N/A 等）が " & errCount & " セルあります", "エラー値のセルを一覧にする")
         End If
         If vlookupCount > 0 Then
             nWarn = nWarn + 1
@@ -5439,7 +5449,7 @@ Sub ブックの人間ドックを一覧にする()
                     Case "S33"
                         sSev = "気づき": nInfo = nInfo + 1: sKind = "制御文字(S33)": sMsg = sPlace & " に制御文字があります": sFix = "セルの見えない空白と改行を取る"
                     Case "S34"
-                        sSev = "気づき": nInfo = nInfo + 1: sKind = "実体参照(S34)": sMsg = sPlace & " に HTML 実体参照があります": sFix = "文字の実体参照を文字に戻す"
+                        sSev = "気づき": nInfo = nInfo + 1: sKind = "実体参照(S34)": sMsg = sPlace & " に HTML 実体参照があります": sFix = "セルの見えない空白と改行を取る"
                     Case "S35"
                         sSev = "気づき": nInfo = nInfo + 1: sKind = "非表示行列(S35)": sMsg = "隠れた行や列があります（" & sPlace & "）": sFix = "隠れた行と列を全部表示する"
                     Case "S36"
@@ -5451,7 +5461,7 @@ Sub ブックの人間ドックを一覧にする()
                     Case "S39"
                         sSev = "気づき": nInfo = nInfo + 1: sKind = "図形位置(S39)": sMsg = "シート上に図形があります（" & sPlace & "）": sFix = "図形を一覧にし位置をそろえる"
                     Case "S45"
-                        sSev = "気づき": nInfo = nInfo + 1: sKind = "特殊記号(S45)": sMsg = sPlace & " に丸数字や機種依存文字があります": sFix = "丸数字や特殊記号を普通の文字にする"
+                        sSev = "気づき": nInfo = nInfo + 1: sKind = "特殊記号(S45)": sMsg = sPlace & " に丸数字や機種依存文字があります": sFix = "英数を半角にカナを全角にする"
                     Case "S46"
                         sSev = "気づき": nInfo = nInfo + 1: sKind = "合計小計行(S46)": sMsg = "表の中に合計・小計行があります（" & sPlace & "）": sFix = "表の合計と小計の行を消す"
                     Case "S47"
@@ -5462,11 +5472,33 @@ Sub ブックの人間ドックを一覧にする()
                         sSev = "気づき": nInfo = nInfo + 1: sKind = "ピボット配置(S49)": sMsg = "ピボットテーブルがあります（" & sPlace & "）": sFix = "ピボットをいつもの形にそろえる"
                     Case "S50"
                         sSev = "気づき": nInfo = nInfo + 1: sKind = "印刷設定(S50)": sMsg = "印刷設定が標準と異なります（" & sPlace & "）": sFix = "横で見出し毎ページの印刷設定"
+                    Case "S09"
+                        sSev = "気づき": nInfo = nInfo + 1: sKind = "前ゼロ・桁数不揃い(S09)": sMsg = sPlace & " に桁数の揃っていない番号や前ゼロ落ちがあります": sFix = "番号に先頭のゼロを付けてそろえる"
+                    Case "S10"
+                        sSev = "気づき": nInfo = nInfo + 1: sKind = "連番飛び(S10)": sMsg = sPlace & " に連番の飛びや乱れがあります": sFix = "番号の列を連番に振り直す"
+                    Case "S14"
+                        sSev = "気づき": nInfo = nInfo + 1: sKind = "空欄の上値埋め(S14)": sMsg = sPlace & " に途中の空欄があり上の値で埋められます": sFix = "選んだ列の空白を上の値で埋める"
+                    Case "S18"
+                        sSev = "警告": nWarn = nWarn + 1: sKind = "ゼロ除算式(S18)": sMsg = sPlace & " にエラー保護のない割り算式があります": sFix = "ゼロで割るエラーの式を直す"
+                    Case "S19"
+                        sSev = "警告": nWarn = nWarn + 1: sKind = "合計範囲漏れ(S19)": sMsg = sPlace & " の合計式が表の終わりまで届いていません": sFix = "合計の式の範囲を表の終わりまで広げる"
+                    Case "S20"
+                        sSev = "警告": nWarn = nWarn + 1: sKind = "絶対参照抜け(S20)": sMsg = sPlace & " の式に $ 固定が抜けている可能性があります": sFix = "下へ写した式の絶対参照の抜けを直す"
+                    Case "S21"
+                        sSev = "警告": nWarn = nWarn + 1: sKind = "VLOOKUP列直書き(S21)": sMsg = sPlace & " の列番号が直書きされています": sFix = "VLOOKUPの列番号を見出しから引く形にする"
+                    Case "S28"
+                        sSev = "気づき": nInfo = nInfo + 1: sKind = "ふりがなカタカナ(S28)": sMsg = sPlace & " にカタカナ混在のふりがながあります": sFix = "選んだ列のカナをひらがなにする"
+                    Case "S40"
+                        sSev = "気づき": nInfo = nInfo + 1: sKind = "コード列(S40)": sMsg = sPlace & " はコード列です（名称補完が可能です）": sFix = "選んだコード列の右に名称列を足す"
                     Case Else
                         sSev = "気づき": nInfo = nInfo + 1: sKind = sc: sMsg = sPlace: sFix = ""
                 End Select
                 issues.Add Array(sSev, sh.Name, sPlace, sKind, sMsg, sFix)
-                symSummary = symSummary & "・" & sc & "(" & sPlace & ")"
+                If Len(sPlace) > 0 Then
+                    symSummary = symSummary & "・" & sKind & "(" & sPlace & ")"
+                Else
+                    symSummary = symSummary & "・" & sKind
+                End If
             Next s
         Else
             out.Cells(r, 5).Value = "-"
@@ -5484,8 +5516,11 @@ Sub ブックの人間ドックを一覧にする()
     Next sheetIdx
     rT1 = r
 
-    ' 健康点数の計算（100点満点から減点）
-    score = 100 - (nCrit * 15 + nWarn * 5 + nInfo * 2)
+    ' 健康点数の計算（重大・警告を重く、軽微な気づきは上限15点までの減点に抑える）
+    Dim infoPenalty As Long
+    infoPenalty = nInfo
+    If infoPenalty > 15 Then infoPenalty = 15
+    score = 100 - (nCrit * 20 + nWarn * 6 + infoPenalty)
     If score < 0 Then score = 0
     If score >= 90 Then
         gradeStr = "A（極めて健全）"
@@ -5558,6 +5593,8 @@ Sub ブックの人間ドックを一覧にする()
             End If
             If .Columns(colIdx).ColumnWidth < 8 Then .Columns(colIdx).ColumnWidth = 8
         Next colIdx
+        If .Columns(6).ColumnWidth < 32 Then .Columns(6).ColumnWidth = 32
+        If .Columns(5).ColumnWidth < 25 Then .Columns(5).ColumnWidth = 25
     End With
     out.Activate
     out.Range("A1").Select
