@@ -30,7 +30,10 @@ os.chdir(SCRIPT_DIR)
 import pythoncom  # noqa: E402
 import vba_manager  # noqa: E402
 import vbam_core  # noqa: E402
-from mcp.server.fastmcp import FastMCP  # noqa: E402
+try:
+    from mcp.server.fastmcp import FastMCP  # noqa: E402  mcp 1.x
+except ImportError:
+    from mcp.server.mcpserver import MCPServer as FastMCP  # noqa: E402  mcp 2.x（FastMCP が MCPServer に改名された）
 
 # _last_proc.vba の置き場は vbam_core.LAST_PROC_FILE の 1 か所（get・replace-procedure と同じ物を見る）。
 # ここに別の定数を持つと、テストが vbam_core 側を差し替えても本物の _last_proc.vba を書いてしまう（2026-09-13）
